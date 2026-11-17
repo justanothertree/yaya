@@ -2,6 +2,8 @@ import { LEVELS as CHESS_LEVELS } from '../../gpu/chess'
 import { chessRules } from '../../gpu/chessRoom'
 import { LEVELS as REVERSI_LEVELS, SIZES } from '../../gpu/reversi'
 import { reversiRules } from '../../gpu/reversiRoom'
+import { LEVELS as POOL_LEVELS } from '../../gpu/pool'
+import { poolRules } from '../../gpu/poolRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -40,6 +42,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     sizes: SIZES,
   },
   chess: { name: MATCH_NAMES.chess, rulesFor: () => chessRules, levels: CHESS_LEVELS },
+  pool: { name: MATCH_NAMES.pool, rulesFor: () => poolRules, levels: POOL_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>

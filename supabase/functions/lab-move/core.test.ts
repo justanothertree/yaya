@@ -1,11 +1,22 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bundle, OUT } from '../../../scripts/lab-move-bundle.mjs'
 import { chessRules, replay } from '../../../src/gpu/chessRoom'
 import { count, moves } from '../../../src/gpu/reversi'
 import { readReversiGame, reversiRules } from '../../../src/gpu/reversiRoom'
 import * as built from './core.bundle.js'
-import { GAMES, decide, readAsk, type Ask, type Plan, type Row } from './core'
+import {
+  GAMES,
+  HISTORY_BYTES,
+  decide,
+  historyRow,
+  jsonbBytes,
+  readAsk,
+  type Ask,
+  type Plan,
+  type Row,
+} from './core'
+import { poolRules, readPoolGame } from '../../../src/gpu/poolRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -108,7 +119,7 @@ describe('who may ask', () => {
   })
 
   it('refuses a toy, a mode or settings it cannot play, before anything is written', () => {
-    expect(status(decide(invite({ demo_id: 'pool' }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(invite({ demo_id: 'hockey' }), B, { op: 'accept' }))).toBe(422)
     expect(status(decide(invite({ demo_id: 'toString' }), B, { op: 'accept' }))).toBe(422)
     expect(status(decide(invite({ settings: { size: 7 } }), B, { op: 'accept' }))).toBe(422)
     expect(status(decide(invite({ settings: { size: '8' } }), B, { op: 'accept' }))).toBe(422)
@@ -280,15 +291,37 @@ describe('together: two friends against the computer', () => {
 })
 
 describe('the list of toys', () => {
-  it('is the same as lab_match_playable in the matches SQL', () => {
-    const sql = readFileSync(
-      new URL('../../../docs/2026-11-14-lab-matches.DRAFT.sql', import.meta.url),
-      'utf8',
-    )
-    const body = /lab_match_playable[\s\S]*?select p_demo in \(([^)]*)\)/.exec(sql)
-    expect(body).not.toBeNull()
-    const listed = body![1].split(',').map((s) => s.trim().replace(/'/g, ''))
-    expect(listed.sort()).toEqual(Object.keys(GAMES).sort())
+  /**
+   * ⚠️ THE NEWEST DEFINITION, WHEREVER IT IS. `lab_match_playable` is replaced each time a toy
+   * joins, so the list lives in the latest file that defines it: an applied migration, or the
+   * draft waiting to be applied beside the code that needs it. Dated by the name: a migration's
+   * timestamp, a doc's day (a doc counts as the end of its day, because the draft for a change is
+   * written before the migration that applies it).
+   */
+  it('is the same as the newest lab_match_playable in the SQL', () => {
+    const root = new URL('../../../', import.meta.url)
+    const files = [
+      ...readdirSync(new URL('supabase/migrations/', root)).map((f) => ({
+        at: f.slice(0, 14),
+        url: new URL(`supabase/migrations/${f}`, root),
+      })),
+      ...readdirSync(new URL('docs/', root))
+        .filter((f) => f.endsWith('.sql') && !f.includes('ROLLBACK'))
+        .map((f) => ({
+          at: f.slice(0, 10).replace(/-/g, '') + '999999',
+          url: new URL(`docs/${f}`, root),
+        })),
+    ]
+    let newest: { at: string; list: string[] } | null = null
+    for (const f of files) {
+      const body = /lab_match_playable\(p_demo text\)[\s\S]*?select p_demo in \(([^)]*)\)/.exec(
+        readFileSync(f.url, 'utf8'),
+      )
+      if (body && (!newest || f.at > newest.at))
+        newest = { at: f.at, list: body[1].split(',').map((x) => x.trim().replace(/'/g, '')) }
+    }
+    expect(newest).not.toBeNull()
+    expect(newest!.list.sort()).toEqual(Object.keys(GAMES).sort())
   })
 
   it('names each toy’s own rules, not a copy', () => {
@@ -317,5 +350,68 @@ describe('the bundle the server runs', () => {
     expect(built.readAsk({ op: 'move', match: MATCH, at: 2, move: 5 })).toEqual(
       readAsk({ op: 'move', match: MATCH, at: 2, move: 5 }),
     )
+  })
+})
+
+describe('pool by turns: the shot is the move, and the server plays it', () => {
+  const pool = (over: Partial<Row> = {}) => invite({ demo_id: 'pool', settings: {}, ...over })
+  /** each side's shot, as the toy's own computer would choose it */
+  const shotFor = (row: Row) => poolRules.computer!.choose(readPoolGame(row.state)!, 'fair')
+
+  it('plays a versus match to the end, every stored table one the rules accept', () => {
+    for (let k = 0; k < 6; k++) {
+      const { row, plans } = playOut(pool(), shotFor, 300)
+      expect(row.status).toBe('finished')
+      for (const p of plans) {
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') continue
+        expect(readPoolGame(p.state)).not.toBeNull()
+        expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+      }
+      const last = plans.at(-1)
+      expect(last?.kind === 'commit' && [0, 1]).toContain(
+        last?.kind === 'commit' && last.result?.winner,
+      )
+    }
+  })
+
+  it('together: the computer shoots on in the same call, and the history still fits its column', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = pool({ mode: 'together', settings: { level } })
+      const { row, plans } = playOut(start, shotFor, 300)
+      expect(row.status).toBe('finished')
+      for (const p of plans)
+        if (p.kind === 'commit') expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+    }
+  })
+
+  it('refuses a shot that is not one, and a spot for a cue ball that is not in hand', () => {
+    const row = after(pool(), decide(pool(), B, { op: 'accept' }))
+    for (const bad of [
+      { a: 0, p: 0 },
+      { a: 0, p: 1.5 },
+      { a: 'x', p: 0.5 },
+      { a: 0 },
+      { a: 0, p: 0.5, x: 1 },
+    ])
+      expect(status(decide(row, A, move(0, bad)))).toBe(400)
+    // the cue ball is not in hand at the break, so it cannot be put anywhere
+    expect(status(decide(row, A, move(0, { a: 0, p: 0.5, x: 0.5, y: 0.5 })))).toBe(400)
+    expect(status(decide(row, A, move(0, { a: Math.PI, p: 0.9 })))).toBe('commit')
+  })
+
+  it('refuses a stored table no game could be in, rather than playing on it', () => {
+    const row = after(pool(), decide(pool(), B, { op: 'accept' }))
+    const s = row.state as { balls: number[][] }
+    const stacked = { ...s, balls: s.balls.map((b) => [b[0], 1, 0.5, 0]) }
+    expect(status(decide({ ...row, state: stacked }, A, move(0, { a: 0, p: 0.5 })))).toBe(500)
+    const twice = { ...s, balls: s.balls.map((b, i) => (i === 3 ? [2, b[1], b[2], b[3]] : b)) }
+    expect(status(decide({ ...row, state: twice }, A, move(0, { a: 0, p: 0.5 })))).toBe(500)
+  })
+
+  it('keeps a long run of replies as a count rather than overflowing the column', () => {
+    const shot = { a: 1.2345678901234567, p: 0.8765432109876543 }
+    expect(historyRow(shot, [shot])).toEqual({ m: shot, then: [shot] })
+    expect(historyRow(shot, [shot, shot, shot, shot])).toEqual({ m: shot, replies: 4 })
   })
 })

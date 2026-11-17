@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { GAMES } from '../../../supabase/functions/lab-move/core'
 import { MATCH_TOYS } from './games'
 import { MATCH_LEVELS, MATCH_NAMES } from './names'
@@ -12,10 +12,12 @@ import { MATCH_LEVELS, MATCH_NAMES } from './names'
 const SETTINGS: Record<string, Record<string, unknown>[]> = {
   reversi: [{}, { size: null }, { size: 6 }, { size: 8 }, { size: 10 }, { size: 6, level: 'hard' }],
   chess: [{}, { level: 'easy' }],
+  pool: [{}, { level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
   chess: [],
+  pool: [],
 }
 
 describe('the match toys', () => {
@@ -32,7 +34,14 @@ describe('the match toys', () => {
         const mine = MATCH_TOYS[demo].rulesFor(s)
         const theirs = GAMES[demo](s)?.rules
         expect(mine, `${demo} ${JSON.stringify(s)}`).not.toBeNull()
-        expect(mine!.encode(mine!.fresh('versus'))).toEqual(theirs!.encode(theirs!.fresh('versus')))
+        // a fresh rack is shuffled from Math.random: the same draw on both sides, for the comparison
+        const same = () => vi.spyOn(Math, 'random').mockReturnValue(0.4321)
+        same()
+        const a = mine!.encode(mine!.fresh('versus'))
+        same()
+        const b = theirs!.encode(theirs!.fresh('versus'))
+        vi.restoreAllMocks()
+        expect(a).toEqual(b)
         expect(mine!.modes).toEqual(theirs!.modes)
         expect(mine!.computer?.levels).toEqual(theirs!.computer?.levels)
       }

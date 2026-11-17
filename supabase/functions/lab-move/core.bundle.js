@@ -696,7 +696,7 @@ function search$1(p, depth, alpha, beta, ply, budget) {
   if (!legal) return inCheck(p) ? -1e5 + ply : 0;
   return alpha;
 }
-const LEVELS$1 = ["easy", "fair", "hard"];
+const LEVELS$2 = ["easy", "fair", "hard"];
 const DEPTH = { easy: 1, fair: 2, hard: 3 };
 const CAP = { easy: 1e9, fair: 1e9, hard: 35e3 };
 function choose$1(p, level, rand = Math.random, history2 = []) {
@@ -764,7 +764,7 @@ const chessRules = {
   modes: ["versus", "together"],
   computer: {
     side: 1,
-    levels: LEVELS$1,
+    levels: LEVELS$2,
     choose: (g, level) => uci(choose$1(posOf(g), level, Math.random, history(g)))
   },
   result: (g) => !g.over ? null : g.over.winner === null ? "draw" : g.over.winner === "w" ? 0 : 1,
@@ -818,7 +818,7 @@ function moves(b, who) {
     if (b.cells[i] === 0 && flips(b, i, who).length) out.push(i);
   return out;
 }
-function place(b, i, who) {
+function place$1(b, i, who) {
   const f = flips(b, i, who);
   if (!f.length) throw new Error(`${i} is not a move for ${who}`);
   const cells = b.cells.slice();
@@ -839,7 +839,7 @@ function nextTurn(b, who) {
   if (moves(b, who).length) return who;
   return null;
 }
-const LEVELS = ["easy", "fair", "hard"];
+const LEVELS$1 = ["easy", "fair", "hard"];
 function weights(n) {
   const w = [];
   const last = n - 1;
@@ -900,7 +900,7 @@ function search(b, who, me, depth, alpha, beta, w, exact) {
     for (const m of list) {
       best2 = Math.max(
         best2,
-        search(place(b, m, who), other(who), me, depth - 1, alpha, beta, w, exact)
+        search(place$1(b, m, who), other(who), me, depth - 1, alpha, beta, w, exact)
       );
       alpha = Math.max(alpha, best2);
       if (alpha >= beta) break;
@@ -911,7 +911,7 @@ function search(b, who, me, depth, alpha, beta, w, exact) {
   for (const m of list) {
     best = Math.min(
       best,
-      search(place(b, m, who), other(who), me, depth - 1, alpha, beta, w, exact)
+      search(place$1(b, m, who), other(who), me, depth - 1, alpha, beta, w, exact)
     );
     beta = Math.min(beta, best);
     if (alpha >= beta) break;
@@ -941,7 +941,7 @@ function choose(b, who, level, rand = Math.random) {
   let best = [];
   let bv = -Infinity;
   for (const m of list.sort((a, c) => w[c] - w[a])) {
-    const v = search(place(b, m, who), other(who), who, depth - 1, -Infinity, Infinity, w, exact);
+    const v = search(place$1(b, m, who), other(who), who, depth - 1, -Infinity, Infinity, w, exact);
     if (v > bv) {
       bv = v;
       best = [m];
@@ -957,7 +957,7 @@ function reversiRules(size) {
     turn: (g) => g.turn === null ? null : toSeat(g.turn),
     legal: (g, i, by) => g.turn !== null && (by === void 0 || toWho(by) === g.turn) && Number.isInteger(i) && moves(g.b, g.turn).includes(i),
     apply: (g, i) => {
-      const b = place(g.b, i, g.turn);
+      const b = place$1(g.b, i, g.turn);
       return { b, turn: nextTurn(b, g.turn) };
     },
     encode: (g) => ({ n: g.b.n, cells: g.b.cells, turn: g.turn ?? 0 }),
@@ -966,7 +966,7 @@ function reversiRules(size) {
     modes: ["versus", "together"],
     computer: {
       side: 1,
-      levels: LEVELS,
+      levels: LEVELS$1,
       choose: (g, level) => choose(g.b, 2, level)
     },
     result: (g) => {
@@ -1000,6 +1000,422 @@ function readReversiGame(x) {
   if (!moves(b, t).length) return null;
   return { b, turn: t };
 }
+function rng(seed2) {
+  let s = seed2 >>> 0 || 1;
+  return () => {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    return (s >>> 0) / 2 ** 32;
+  };
+}
+const TW = 2.24;
+const TH = 1.12;
+const R = 0.0286;
+const POCKET = 0.062;
+const POCKETS = [
+  { x: 0, y: 0 },
+  { x: TW / 2, y: -0.012 },
+  { x: TW, y: 0 },
+  { x: 0, y: TH },
+  { x: TW / 2, y: TH + 0.012 },
+  { x: TW, y: TH }
+];
+const MAX_SPEED = 5.2;
+const ROLL = 0.32;
+const CUSHION = 0.78;
+const BALL_E = 0.95;
+const groupOf = (n) => n >= 1 && n <= 7 ? "solids" : n >= 9 ? "stripes" : null;
+const HEAD_X = TW * 0.25;
+const FOOT = { x: TW * 0.73, y: TH / 2 };
+function rack(seed2) {
+  const rand = rng(seed2);
+  const rest = [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15];
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  const solid = rest.findIndex((n) => n < 8);
+  const a = rest.splice(solid, 1)[0];
+  const stripe = rest.findIndex((n) => n > 8);
+  const b = rest.splice(stripe, 1)[0];
+  let k = 0;
+  const balls = [{ n: 0, x: HEAD_X, y: TH / 2, vx: 0, vy: 0, down: false }];
+  for (let row = 0; row < 5; row++)
+    for (let i = 0; i <= row; i++) {
+      let n;
+      if (row === 2 && i === 1) n = 8;
+      else if (row === 4 && i === 0) n = a;
+      else if (row === 4 && i === 4) n = b;
+      else n = rest[k++];
+      const dx = row * R * Math.sqrt(3) * 1.002;
+      const dy = (i - row / 2) * R * 2.004;
+      balls.push({ n, x: FOOT.x + dx, y: FOOT.y + dy, vx: 0, vy: 0, down: false });
+    }
+  return balls.sort((p, q) => p.n - q.n);
+}
+const near = (b) => POCKETS.some((p) => Math.hypot(b.x - p.x, b.y - p.y) < POCKET + R * 0.6);
+function strike(balls, angle, power, record = false) {
+  const bs = balls.map((b) => ({ ...b }));
+  const cue = bs.find((b) => b.n === 0);
+  const sp = Math.max(0, Math.min(1, power)) * MAX_SPEED;
+  cue.vx = Math.cos(angle) * sp;
+  cue.vy = Math.sin(angle) * sp;
+  const log = { first: -1, down: [], rail: false, time: 0, frames: [] };
+  const dt = 1 / 600;
+  let step = 0;
+  for (let t = 0; t < 30; t += dt) {
+    if (record && step++ % 10 === 0) log.frames.push(bs.flatMap((b) => [b.x, b.y, b.down ? 1 : 0]));
+    let moving = false;
+    for (const b of bs) {
+      if (b.down) continue;
+      const v = Math.hypot(b.vx, b.vy);
+      if (v === 0) continue;
+      moving = true;
+      const slow = Math.max(0, v - ROLL * dt) / v;
+      b.vx *= slow;
+      b.vy *= slow;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      if (Math.hypot(b.vx, b.vy) < 4e-3) b.vx = b.vy = 0;
+      const p = POCKETS.find((q) => Math.hypot(b.x - q.x, b.y - q.y) < POCKET);
+      if (p) {
+        b.down = true;
+        b.vx = b.vy = 0;
+        log.down.push(b.n);
+        continue;
+      }
+      if (!near(b)) {
+        let hit = false;
+        if (b.x < R || b.x > TW - R) {
+          b.x = b.x < R ? R : TW - R;
+          b.vx = (b.x === R ? 1 : -1) * Math.abs(b.vx) * CUSHION;
+          hit = true;
+        }
+        if (b.y < R || b.y > TH - R) {
+          b.y = b.y < R ? R : TH - R;
+          b.vy = (b.y === R ? 1 : -1) * Math.abs(b.vy) * CUSHION;
+          hit = true;
+        }
+        if (hit && log.first >= 0) log.rail = true;
+      } else {
+        b.x = Math.max(-R, Math.min(TW + R, b.x));
+        b.y = Math.max(-R, Math.min(TH + R, b.y));
+      }
+    }
+    for (let i = 0; i < bs.length; i++) {
+      const a = bs[i];
+      if (a.down) continue;
+      for (let j = i + 1; j < bs.length; j++) {
+        const b = bs[j];
+        if (b.down) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= 4 * R * R || d2 === 0) continue;
+        const d = Math.sqrt(d2);
+        const nx = dx / d;
+        const ny = dy / d;
+        const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+        const push = (2 * R - d) / 2;
+        a.x -= nx * push;
+        a.y -= ny * push;
+        b.x += nx * push;
+        b.y += ny * push;
+        if (rel <= 0) continue;
+        const jn = rel * (1 + BALL_E) / 2;
+        a.vx -= jn * nx;
+        a.vy -= jn * ny;
+        b.vx += jn * nx;
+        b.vy += jn * ny;
+        if (log.first < 0 && (a.n === 0 || b.n === 0)) log.first = a.n === 0 ? b.n : a.n;
+      }
+    }
+    log.time = t;
+    if (!moving) break;
+  }
+  if (record) log.frames.push(bs.flatMap((b) => [b.x, b.y, b.down ? 1 : 0]));
+  return { balls: bs, log };
+}
+function newGame(seed2, first = 0) {
+  return {
+    balls: rack(seed2),
+    turn: first,
+    groups: [null, null],
+    inHand: false,
+    broken: false,
+    winner: null,
+    said: ""
+  };
+}
+const left = (g, grp) => g.balls.filter((b) => !b.down && groupOf(b.n) === grp).length;
+function targets(g, w = g.turn) {
+  const grp = g.groups[w];
+  if (!grp)
+    return g.balls.filter((b) => !b.down && b.n !== 0 && (b.n !== 8 || !g.broken)).map((b) => b.n);
+  if (left(g, grp) === 0) return [8];
+  return g.balls.filter((b) => !b.down && groupOf(b.n) === grp).map((b) => b.n);
+}
+function canPlace(g, x, y) {
+  if (x < R || x > TW - R || y < R || y > TH - R) return false;
+  return g.balls.every((b) => b.down || b.n === 0 || Math.hypot(b.x - x, b.y - y) >= 2 * R + 2e-3);
+}
+function place(g, x, y) {
+  if (!g.inHand || !canPlace(g, x, y)) return g;
+  return place_(g, { x, y });
+}
+function spotFree(balls, n, at2, along) {
+  const free = (x, y) => x >= R && x <= TW - R && y >= R && y <= TH - R && balls.every((b) => b.down || b.n === n || Math.hypot(b.x - x, b.y - y) >= 2 * R + 2e-3);
+  for (let k = 0; k <= 400; k++)
+    for (const way of k ? [1, -1] : [1]) {
+      const d = way * k * R * 0.25;
+      const p = along === "y" ? { x: at2.x, y: at2.y + d } : { x: at2.x + d, y: at2.y };
+      if (free(p.x, p.y)) return p;
+    }
+  return at2;
+}
+function shoot(g, angle, power, record = false) {
+  const legal = targets(g);
+  const { balls, log } = strike(g.balls, angle, power, record);
+  const w = g.turn;
+  const them = w === 0 ? 1 : 0;
+  const groups = [...g.groups];
+  const scratch = log.down.includes(0);
+  const potted = log.down.filter((n) => n !== 0);
+  let foul = null;
+  if (scratch) foul = "the cue ball went in";
+  else if (log.first < 0) foul = "nothing was hit";
+  else if (!legal.includes(log.first))
+    foul = `the first ball hit was the ${log.first === 8 ? "black" : `${log.first}`}`;
+  else if (!potted.length && !log.rail) foul = "nothing reached a cushion";
+  if (potted.includes(8)) {
+    if (!g.broken) {
+      const spot = balls.find((b) => b.n === 8);
+      Object.assign(spot, { ...spotFree(balls, 8, FOOT, "x"), down: false, vx: 0, vy: 0 });
+    } else {
+      const earned = !foul && groups[w] !== null && left({ ...g, balls }, groups[w]) === 0 && legal.includes(8);
+      return {
+        game: {
+          ...g,
+          balls,
+          groups,
+          broken: true,
+          winner: earned ? w : them,
+          inHand: false,
+          said: earned ? "The black goes down — game!" : `The black went down ${foul ? `on a foul (${foul})` : "too early"} — that loses.`
+        },
+        log
+      };
+    }
+  }
+  if (!foul && g.broken && !groups[w]) {
+    const first = potted.map(groupOf).find(Boolean);
+    if (first) {
+      groups[w] = first;
+      groups[them] = first === "solids" ? "stripes" : "solids";
+    }
+  }
+  if (scratch) {
+    const cue = balls.find((b) => b.n === 0);
+    Object.assign(cue, {
+      down: false,
+      ...spotFree(balls, 0, { x: HEAD_X, y: TH / 2 }, "y"),
+      vx: 0,
+      vy: 0
+    });
+  }
+  const mine = groups[w];
+  const keep = !foul && potted.some((n) => mine ? groupOf(n) === mine : n !== 8);
+  const game = {
+    balls,
+    turn: keep ? w : them,
+    groups,
+    inHand: !!foul,
+    broken: true,
+    winner: null,
+    said: foul ? `Foul — ${foul}. Ball in hand.` : keep ? `${potted.length === 1 ? "Down" : `${potted.length} down`} — shoot again.` : potted.length ? "Down, but not one of theirs to keep the turn." : "Nothing down."
+  };
+  return { game, log };
+}
+const LEVELS = ["easy", "fair", "hard"];
+const SKILL = {
+  easy: { wobble: 0.035, tries: 3 },
+  fair: { wobble: 0.012, tries: 10 },
+  hard: { wobble: 3e-3, tries: 28 }
+};
+const place_ = (g, at2) => ({
+  ...g,
+  balls: g.balls.map((b) => b.n === 0 ? { ...b, x: at2.x, y: at2.y, down: false } : b)
+});
+function clear(balls, ax, ay, bx, by, skip) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy || 1;
+  return balls.every((o) => {
+    if (o.down || skip.includes(o.n)) return true;
+    const u = Math.max(0, Math.min(1, ((o.x - ax) * dx + (o.y - ay) * dy) / len2));
+    return Math.hypot(ax + dx * u - o.x, ay + dy * u - o.y) >= 2 * R;
+  });
+}
+function plan(g, level, rand = Math.random) {
+  const skill = SKILL[level];
+  let base = g;
+  let place2;
+  if (g.inHand) {
+    const spot = [
+      { x: HEAD_X, y: TH / 2 },
+      { x: TW / 2, y: TH / 2 },
+      { x: TW * 0.4, y: TH * 0.3 },
+      { x: TW * 0.4, y: TH * 0.7 },
+      { x: TW * 0.6, y: TH * 0.3 },
+      { x: TW * 0.6, y: TH * 0.7 }
+    ].filter((s) => canPlace(g, s.x, s.y));
+    place2 = spot[Math.floor(rand() * spot.length)];
+    if (place2) base = place_(g, place2);
+  }
+  const cue = base.balls.find((b) => b.n === 0);
+  const legal = targets(base);
+  const cands = [];
+  for (const n of legal) {
+    const o = base.balls.find((b) => b.n === n);
+    for (const p of POCKETS) {
+      const px = p.x - o.x;
+      const py = p.y - o.y;
+      const pd = Math.hypot(px, py);
+      const gx = o.x - px / pd * 2 * R;
+      const gy = o.y - py / pd * 2 * R;
+      const cx = gx - cue.x;
+      const cy = gy - cue.y;
+      const cd = Math.hypot(cx, cy);
+      const cut = Math.acos(Math.max(-1, Math.min(1, (cx * px + cy * py) / (cd * pd))));
+      if (cut > 1.2) continue;
+      if (!clear(base.balls, cue.x, cue.y, gx, gy, [0, n]) || !clear(base.balls, o.x, o.y, p.x, p.y, [n]))
+        continue;
+      cands.push({ angle: Math.atan2(cy, cx), score: -cut * 2 - cd - pd * 0.6 });
+    }
+  }
+  cands.sort((a, b) => b.score - a.score);
+  let best = null;
+  for (const c of cands.slice(0, skill.tries)) {
+    for (const power of [0.35, 0.55, 0.8]) {
+      const { game, log } = shoot(base, c.angle, power);
+      const won = game.winner === base.turn;
+      const lost = game.winner !== null && !won;
+      const keep = game.turn === base.turn && !game.inHand;
+      const value = (won ? 100 : lost ? -100 : keep ? 10 : game.inHand ? -6 : 0) - log.time * 0.1;
+      if (!best || value > best.value) best = { angle: c.angle, power, value };
+    }
+    if (best && best.value >= 9) break;
+  }
+  if (!best) {
+    const o = base.balls.filter((b) => legal.includes(b.n)).sort(
+      (a, b) => Math.hypot(a.x - cue.x, a.y - cue.y) - Math.hypot(b.x - cue.x, b.y - cue.y)
+    )[0];
+    best = { angle: o ? Math.atan2(o.y - cue.y, o.x - cue.x) : 0, power: 0.6, value: 0 };
+  }
+  const wobble = (rand() * 2 - 1) * skill.wobble;
+  return { angle: best.angle + wobble, power: best.power, place: place2 };
+}
+const finite = (x) => typeof x === "number" && Number.isFinite(x);
+function readShot(x) {
+  const o = x;
+  if (!o || typeof o !== "object") return null;
+  if (!finite(o.a) || Math.abs(o.a) > 8 || !finite(o.p) || o.p <= 0 || o.p > 1) return null;
+  const spot = o.x !== void 0 || o.y !== void 0;
+  if (spot && (!finite(o.x) || !finite(o.y))) return null;
+  return spot ? { a: o.a, p: o.p, x: o.x, y: o.y } : { a: o.a, p: o.p };
+}
+const packBalls = (bs) => bs.map((b) => [b.n, b.x, b.y, b.down ? 1 : 0]);
+function readBalls(x) {
+  if (!Array.isArray(x) || x.length !== 16) return null;
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const b of x) {
+    if (!Array.isArray(b) || b.length !== 4) return null;
+    const [n, bx, by, d] = b;
+    if (!Number.isInteger(n) || n < 0 || n > 15 || seen.has(n)) return null;
+    if (!finite(bx) || !finite(by) || d !== 0 && d !== 1) return null;
+    const slack = d === 1 ? 4 * R : R;
+    if (bx < -slack || bx > TW + slack || by < -slack || by > TH + slack) return null;
+    seen.add(n);
+    out.push({ n, x: bx, y: by, vx: 0, vy: 0, down: d === 1 });
+  }
+  const up = out.filter((b) => !b.down);
+  for (let i = 0; i < up.length; i++)
+    for (let j = i + 1; j < up.length; j++)
+      if (Math.hypot(up[i].x - up[j].x, up[i].y - up[j].y) < R) return null;
+  return out.sort((p, q) => p.n - q.n);
+}
+const GROUPS = ["solids", "stripes", null];
+function readPoolGame(x) {
+  const o = x;
+  if (!o || typeof o !== "object") return null;
+  const balls = readBalls(o.balls);
+  if (!balls) return null;
+  const g = o.groups;
+  if (!Array.isArray(g) || g.length !== 2 || !g.every((v) => GROUPS.includes(v)))
+    return null;
+  const groups = g;
+  if (groups[0] === null !== (groups[1] === null)) return null;
+  if (groups[0] !== null && groups[0] === groups[1]) return null;
+  if (o.turn !== 0 && o.turn !== 1) return null;
+  if (o.winner !== null && o.winner !== 0 && o.winner !== 1) return null;
+  if (typeof o.inHand !== "boolean" || typeof o.broken !== "boolean") return null;
+  if (typeof o.said !== "string" || o.said.length > 200) return null;
+  const cue = balls.find((b) => b.n === 0);
+  const black = balls.find((b) => b.n === 8);
+  if ((cue.down || black.down) && o.winner === null) return null;
+  const last = o.last === null ? null : readShot(o.last);
+  if (o.last !== null && !last) return null;
+  const prev = o.prev === null ? null : readBalls(o.prev);
+  if (o.prev !== null && !prev) return null;
+  return {
+    balls,
+    groups,
+    turn: o.turn,
+    winner: o.winner,
+    inHand: o.inHand,
+    broken: o.broken,
+    said: o.said,
+    last,
+    prev
+  };
+}
+const seed = () => Math.floor(Math.random() * 2 ** 31);
+const poolRules = {
+  fresh: () => ({ ...newGame(seed(), 0), last: null, prev: null }),
+  turn: (g) => g.winner !== null ? null : g.turn,
+  legal: (g, m, by) => g.winner === null && (by === void 0 || by === g.turn) && readShot(m) !== null && (m.x === void 0 || g.inHand && canPlace(g, m.x, m.y)),
+  apply: (g, m) => {
+    const base = m.x !== void 0 && g.inHand ? place(g, m.x, m.y) : g;
+    const { game } = shoot(base, m.a, m.p);
+    return { ...game, last: m, prev: base.balls };
+  },
+  encode: (g) => ({
+    balls: packBalls(g.balls),
+    groups: g.groups,
+    turn: g.turn,
+    winner: g.winner,
+    inHand: g.inHand,
+    broken: g.broken,
+    said: g.said,
+    last: g.last,
+    prev: g.prev ? packBalls(g.prev) : null
+  }),
+  decode: readPoolGame,
+  readMove: readShot,
+  modes: ["versus", "together"],
+  computer: {
+    side: 1,
+    levels: LEVELS,
+    choose: (g, level) => {
+      const s = plan(g, level);
+      return s.place ? { a: s.angle, p: s.power, ...s.place } : { a: s.angle, p: s.power };
+    }
+  },
+  result: (g) => g.winner,
+  begun: (g) => g.broken
+};
 const GAMES = {
   reversi: (s) => {
     const size = s.size ?? 8;
@@ -1009,7 +1425,8 @@ const GAMES = {
       score: (g) => count(g.b).join("–")
     };
   },
-  chess: () => ({ rules: chessRules })
+  chess: () => ({ rules: chessRules }),
+  pool: () => ({ rules: poolRules })
 };
 const refuse = (status, error) => ({ kind: "refuse", status, error });
 function readAsk(body) {
@@ -1027,6 +1444,13 @@ function levelOf(game, settings) {
   if (!levels) return null;
   const asked = settings.level ?? levels[0];
   return typeof asked === "string" && levels.includes(asked) ? asked : null;
+}
+const HISTORY_BYTES = 180;
+const jsonbBytes = (x) => new TextEncoder().encode(JSON.stringify(x).replace(/([,:])/g, "$1 ")).length;
+function historyRow(m, then) {
+  if (!then.length) return { m };
+  const whole = { m, then };
+  return jsonbBytes(whole) <= HISTORY_BYTES ? whole : { m, replies: then.length };
 }
 const MAX_REPLIES = 64;
 function decide(row, me, ask, games = GAMES) {
@@ -1076,7 +1500,7 @@ function decide(row, me, ask, games = GAMES) {
   return {
     kind: "commit",
     at: row.seq,
-    move: then.length ? { m: move, then } : { m: move },
+    move: historyRow(move, then),
     state: rules.encode(g),
     // versus: whoever the board says; together: the other friend takes the team's next move
     turn: over ? null : row.mode === "together" ? 1 - seat : rules.turn(g),
@@ -1085,6 +1509,9 @@ function decide(row, me, ask, games = GAMES) {
 }
 export {
   GAMES,
+  HISTORY_BYTES,
   decide,
+  historyRow,
+  jsonbBytes,
   readAsk
 };
