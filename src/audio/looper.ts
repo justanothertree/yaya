@@ -339,6 +339,8 @@ let timer = 0
 let loopStart = 0
 /** How far ahead we have already scheduled, as an absolute audio time. */
 let scheduledTo = 0
+/** nothing is scheduled from here on, when a recording asked for one pass — see endPassAt */
+let lastAt: number | null = null
 /**
  * The exact audio time a waiting take will begin at.
  *
@@ -874,7 +876,7 @@ function tick() {
     }
   }
 
-  const target = now + lookahead
+  const target = Math.min(now + lookahead, lastAt ?? Infinity)
   if (scheduledTo < now) scheduledTo = now
   if (target > scheduledTo) {
     scheduleWindow(scheduledTo, target)
@@ -894,6 +896,7 @@ function tick() {
  */
 export function startLoop(leadIn = 0) {
   if (state.playing) return
+  lastAt = null
   resumeAudio()
   const c = sharedCtx()
   loopStart = c.currentTime + 0.08 + Math.max(0, leadIn)
@@ -924,6 +927,20 @@ export function startLoop(leadIn = 0) {
  * last-change-wins rule — which is what you want, because a loop with two different origins is
  * not one loop.
  */
+/**
+ * Make the pass that is playing the last: nothing is scheduled from `t` on, for a recording of the
+ * song (⬇ Stems, ⬇ Export song). Cleared by stopLoop and startLoop.
+ *
+ * ⚠️ STOPPING AT THE END IS TOO LATE (found 16 Nov 2026, measured). The scheduler works 140ms
+ * ahead, so by the song's last beat the next pass's first is already on the audio clock, and a
+ * drum hit once scheduled plays whatever is released: an export's ring-out opened on a full-level
+ * kick, and every stem ended on the first 40ms of the next pass. Not scheduling it is the only
+ * cut that leaves the song's own ending alone.
+ */
+export function endPassAt(t: number | null) {
+  lastAt = t
+}
+
 export function seekTo(t: number) {
   if (!state.playing) return
   const c = sharedCtx()
@@ -940,6 +957,7 @@ export function seekTo(t: number) {
 export function stopLoop() {
   if (timer) clearInterval(timer)
   timer = 0
+  lastAt = null
   // ⚠️ before commitTake, not after: a take being committed can add a layer, and releasing
   // afterwards would then chase notes that were never started
   releaseAllLayers()
