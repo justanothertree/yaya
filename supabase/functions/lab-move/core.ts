@@ -21,6 +21,8 @@ import { reversiRules } from '../../../src/gpu/reversiRoom'
 import { SIZES as GOMOKU_SIZES } from '../../../src/gpu/gomoku'
 import { gomokuRules } from '../../../src/gpu/gomokuRoom'
 import { draughtsRules } from '../../../src/gpu/draughtsRoom'
+import { SIZES as DOTS_SIZES } from '../../../src/gpu/dots'
+import { dotsRules, type DotsGame } from '../../../src/gpu/dotsRoom'
 import { poolRules } from '../../../src/gpu/poolRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
@@ -56,6 +58,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
       : null
   },
   draughts: () => ({ rules: draughtsRules }),
+  dots: (s) => {
+    const size = s.size ?? 4
+    if (!(DOTS_SIZES as readonly unknown[]).includes(size)) return null
+    return { rules: dotsRules(size as number), score: (d: DotsGame) => d.g.score.join('–') }
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
