@@ -6,6 +6,8 @@ import { LEVELS as POOL_LEVELS } from '../../gpu/pool'
 import { poolRules } from '../../gpu/poolRoom'
 import { LEVELS as GOMOKU_LEVELS, SIZES as GOMOKU_SIZES } from '../../gpu/gomoku'
 import { gomokuRules } from '../../gpu/gomokuRoom'
+import { LEVELS as DRAUGHTS_LEVELS } from '../../gpu/draughts'
+import { draughtsRules } from '../../gpu/draughtsRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -56,6 +58,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     levels: GOMOKU_LEVELS,
     sizes: GOMOKU_SIZES,
   },
+  draughts: { name: MATCH_NAMES.draughts, rulesFor: () => draughtsRules, levels: DRAUGHTS_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
