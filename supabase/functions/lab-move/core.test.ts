@@ -87,6 +87,8 @@ import {
 } from '../../../src/gpu/curlingRoom'
 import { COURSE, PICK_UP, stroke as puttStroke } from '../../../src/gpu/putt'
 import { replay as puttReplay } from '../../../src/gpu/puttRoom'
+import { aimFor, hitAt, land, SPREAD } from '../../../src/gpu/darts'
+import { dartsMatchRules, MAX_DARTS, tidy } from '../../../src/gpu/dartsRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -2267,6 +2269,132 @@ describe('putt by turns: each ball putts its hole out, the server rolls every pu
     expect(
       status(
         decide({ ...row, state: { putts: Array(97).fill([0, 0.02]) } }, A, move(row.seq, [0, 0.5])),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('darts by turns: 501, double out, first to two legs; a dart is where it went in', () => {
+  const dt = (over: Partial<Row> = {}) => invite({ demo_id: 'darts', settings: {}, ...over })
+  const dartsOf = (state: unknown) => (state as { darts: [number, number][] }).darts
+  /**
+   * The match these darts make, counted here rather than by darts.ts: a leg is 501 down to
+   * exactly nothing on a double; a turn is three darts unless it busts (below nothing, one left,
+   * or nothing on anything but a double), which puts the score back to where the turn began; the
+   * first throw of each leg goes to each side in turn. Only the board — what a landing hits — is
+   * the toy's.
+   */
+  const count = (darts: readonly [number, number][]) => {
+    const legs = [0, 0]
+    let legNo = 0
+    let left = [501, 501]
+    let up = 0
+    let from = 501
+    let inTurn = 0
+    for (const [x, y] of darts) {
+      const h = hitAt(x, y)
+      const after = left[up] - h.n * h.mult
+      inTurn++
+      const pass = () => {
+        up = 1 - up
+        from = left[up]
+        inTurn = 0
+      }
+      if (after < 0 || after === 1 || (after === 0 && h.mult !== 2)) {
+        left[up] = from
+        pass()
+      } else if (after === 0) {
+        legs[up]++
+        if (Math.max(...legs) >= 2) break
+        legNo++
+        left = [501, 501]
+        up = legNo % 2
+        from = 501
+        inTurn = 0
+      } else {
+        left[up] = after
+        if (inTurn === 3) pass()
+      }
+    }
+    return legs
+  }
+  const throwFor = (state: unknown, rnd: () => number) => {
+    const g = dartsMatchGame(state)
+    const p = tidy(land(aimFor(g.leg, 'fair'), SPREAD.fair, rnd))
+    return [p.x, p.y]
+  }
+  const dartsMatchGame = (state: unknown) => dartsMatchRules.decode(state)!
+
+  it('keeps the longest match a match can hold inside its 16 KB column, every dart at its widest', () => {
+    const state = { darts: Array.from({ length: MAX_DARTS }, () => [-299.9, -299.9]) }
+    expect(jsonbBytes(state)).toBeLessThanOrEqual(16384)
+  })
+
+  it('plays versus to the end, the legs what a 501 counted in the test makes of the darts', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(dt(), (r) => throwFor(r.state, rnd), 1000)
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const legs = count(dartsOf(last.state))
+      expect(Math.max(...legs)).toBe(2)
+      expect(last.result!.score).toBe(`${legs[0]}–${legs[1]}`)
+      expect(last.result!.winner).toBe(legs[0] > legs[1] ? 0 : 1)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('keeps the turn for three darts, then hands it on', () => {
+    let row = after(dt(), decide(dt(), B, { op: 'accept' }))
+    // three singles, well clear of a bust
+    for (let k = 0; k < 3; k++) {
+      expect(row.turn).toBe(0)
+      row = after(row, decide(row, A, move(row.seq, [0, 120])))
+    }
+    expect(row.turn).toBe(1)
+  })
+
+  it('together: the computer throws its turn in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = dt({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      let turns = 0
+      for (let k = 0; k < 9 && row.status === 'active' && turns < 2; k++) {
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, [0, 120]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        row = after(row, p)
+        const h = p.move as { then?: unknown[]; replies?: number }
+        const n = h.then?.length ?? h.replies ?? 0
+        if (n) {
+          // a turn is three darts unless it busts or wins
+          expect(n).toBeGreaterThanOrEqual(1)
+          expect(n).toBeLessThanOrEqual(3)
+          turns++
+        }
+      }
+      expect(turns).toBe(2)
+    }
+  })
+
+  it('refuses a dart past the board’s neighbourhood, one not to a tenth of a millimetre, not numbers, and a stored match no darts could make', () => {
+    const row = after(dt(), decide(dt(), B, { op: 'accept' }))
+    for (const bad of [[0, 300.2], [0.05, 120], [0, 120.123], ['0', 120], [0], { x: 0 }])
+      expect(status(decide(row, A, move(row.seq, bad)))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [-12.3, 99.9])))).toBe('commit')
+    expect(
+      status(decide({ ...row, state: { darts: [[0, 999]] } }, A, move(row.seq, [0, 120]))),
+    ).toBe(500)
+    expect(
+      status(
+        decide(
+          { ...row, state: { darts: Array(MAX_DARTS + 1).fill([0, 120]) } },
+          A,
+          move(row.seq, [0, 120]),
+        ),
       ),
     ).toBe(500)
   })

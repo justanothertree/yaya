@@ -30,6 +30,11 @@ import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn as roomTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK: Record<
@@ -98,19 +103,37 @@ export function DartsDemo() {
   const [thrown, setThrown] = useState<Thrown[]>([])
   const [line, setLine] = useState('501, double out, first to two legs. You throw first.')
   const [over, setOver] = useState(false)
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was.
+     ⚠️ A DART IS SENT AS IT IS THROWN, with no Undo: your hand's scatter is decided here, by how
+     long you held, so by the time it is a move you have seen where it went in. A take-back then
+     would let it be thrown again until it hit; letting go is the choosing, and the hook's
+     `commit` sends it. */
+  const lm = useLabMatch('darts', { preview: false })
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as DartsGame | null) : null
+
   /* ── the call's match: seat 0 throws first in the first leg; it travels as its darts */
   const [opp, setOpp] = useState<Opponent>('bot')
   const lab = useLabRoom('darts', dartsRules)
   const words = tableSeats(lab, dartsRules)
-  const room = opp === 'call' ? lab.room : null
-  const cg: DartsGame | null = room ? room.game : null
+  const room = opp === 'call' && !inMatch ? lab.room : null
+  /** the match or the call's game on screen, or null when playing the computer alone */
+  const cg: DartsGame | null = matchGame ?? (room ? room.game : null)
   /** the leg, the legs and the darts in the board on screen: the call's in a call */
   const vLeg = cg ? cg.leg : leg
   const vLegs = cg ? cg.legs : legs
   const vThrown: Thrown[] = cg ? cg.board : thrown
   const vOver = cg ? dartsRules.turn(cg) === null : over
   /** this player's side: their seat's, or the team's together */
-  const meSide: Who = room?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+  const meSide: Who = (
+    inMatch
+      ? lm.view?.mode === 'versus' && lm.view.you === 1
+      : room?.mode === 'versus' && words.mySeat === 1
+  )
+    ? 1
+    : 0
   const legRef = useRef(vLeg)
   legRef.current = vLeg
   const savedRef = useRef(saved)
@@ -126,9 +149,11 @@ export function DartsDemo() {
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 
-  const myTurn = room
-    ? lab.live && roomTurn(dartsRules, room)
-    : opp === 'bot' && !over && leg.winner === null && leg.turn === 0
+  const myTurn = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && roomTurn(dartsRules, room)
+      : opp === 'bot' && !over && leg.winner === null && leg.turn === 0
   const aimingRef = useRef(myTurn)
   aimingRef.current = myTurn
   const record = (patch: (t: Saved['record'][Level]) => Partial<Saved['record'][Level]>) =>
@@ -197,6 +222,11 @@ export function DartsDemo() {
     const held = (performance.now() - a.holdFrom) / 1000
     a.holdFrom = 0
     const p = land(a, yourSpread(held), Math.random)
+    if (inMatch) {
+      // the server scores it off the board, and the dart comes back with the board
+      lm.commit(tidy(p))
+      return
+    }
     if (room) {
       // in the call the host scores it off the board, and the dart comes back to everybody
       lab.act({ t: 'move', move: tidy(p) })
@@ -239,15 +269,23 @@ export function DartsDemo() {
 
   /* ── the call's match in words, and carrying it on alone */
   const callName = (w: Who) =>
-    !room
-      ? ''
-      : room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 1
           ? 'The computer'
-          : words.mySeat !== null
-            ? 'You'
-            : 'The team'
-        : words.who(room.seats[w])
+          : 'You'
+        : w === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : !room
+        ? ''
+        : room.mode === 'together'
+          ? w === 1
+            ? 'The computer'
+            : words.mySeat !== null
+              ? 'You'
+              : 'The team'
+          : words.who(room.seats[w])
   /** what the last dart did: a dart, a turn, a leg or the match */
   const callLine = (g: DartsGame) => {
     const l = g.last
@@ -310,6 +348,19 @@ export function DartsDemo() {
       later(800, () => computerRef.current(l))
     } else setLine(`Carrying on against the computer. Your throw: ${l.scores[0]} left.`)
   }
+
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) {
+      stopHere()
+      setOpp('bot')
+      nextLeg(true)
+    }
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
 
   /* -------------------------------------------------------------------- aiming */
 
@@ -374,60 +425,64 @@ export function DartsDemo() {
 
   return (
     <div className={`lab-keys dt-room is-${saved.board}`}>
-      <div className="lab-controls">
-        {(lab.live || opp === 'call') && (
-          <div className="lab-group" role="group" aria-label="Opponent">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={opp === 'bot'}
-              onClick={() => {
-                if (opp === 'bot') return
-                stopHere()
-                setOpp('bot')
-                nextLeg(true)
-              }}
-            >
-              Against the computer
-            </button>
-            <button
-              className="btn btn-ghost"
-              aria-pressed={opp === 'call'}
-              onClick={() => {
-                stopHere()
-                setOpp('call')
-              }}
-            >
-              👥 With the call
-            </button>
-          </div>
-        )}
-        {opp === 'bot' && (
-          <>
-            <div className="lab-group" role="group" aria-label="How well the computer throws">
-              {LEVELS.map((l) => (
-                <button
-                  key={l}
-                  className="btn btn-ghost"
-                  aria-pressed={saved.level === l}
-                  onClick={() => {
-                    setSaved((s) => ({ ...s, level: l }))
-                    if (untouched || over) {
-                      setLevel(l)
-                      if (over) nextLeg(true)
-                    }
-                  }}
-                >
-                  {LEVEL_NAMES[l]}
-                </button>
-              ))}
+      {inMatch && <MatchBar lm={lm} sides={['the first thrower', 'the second thrower']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          {(lab.live || opp === 'call') && (
+            <div className="lab-group" role="group" aria-label="Opponent">
+              <button
+                className="btn btn-ghost"
+                aria-pressed={opp === 'bot'}
+                onClick={() => {
+                  if (opp === 'bot') return
+                  stopHere()
+                  setOpp('bot')
+                  nextLeg(true)
+                }}
+              >
+                Against the computer
+              </button>
+              <button
+                className="btn btn-ghost"
+                aria-pressed={opp === 'call'}
+                onClick={() => {
+                  stopHere()
+                  setOpp('call')
+                }}
+              >
+                👥 With the call
+              </button>
             </div>
-            <button className="btn btn-ghost" onClick={() => nextLeg(true)}>
-              ↻ New match
-            </button>
-          </>
-        )}
-      </div>
-      {opp === 'call' && (
+          )}
+          {opp === 'bot' && (
+            <>
+              <div className="lab-group" role="group" aria-label="How well the computer throws">
+                {LEVELS.map((l) => (
+                  <button
+                    key={l}
+                    className="btn btn-ghost"
+                    aria-pressed={saved.level === l}
+                    onClick={() => {
+                      setSaved((s) => ({ ...s, level: l }))
+                      if (untouched || over) {
+                        setLevel(l)
+                        if (over) nextLeg(true)
+                      }
+                    }}
+                  >
+                    {LEVEL_NAMES[l]}
+                  </button>
+                ))}
+              </div>
+              <button className="btn btn-ghost" onClick={() => nextLeg(true)}>
+                ↻ New match
+              </button>
+              {signedIn && <MatchChallenge demo="darts" settings={{}} levelNames={LEVEL_NAMES} />}
+            </>
+          )}
+        </div>
+      )}
+      {opp === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={dartsRules}
@@ -445,7 +500,7 @@ export function DartsDemo() {
             className={`dice-score${vLeg.turn === w && vLeg.winner === null && !vOver ? ' is-up' : ''}`}
           >
             <span>
-              {room ? callName(w) : w === 0 ? 'You' : `The computer · ${LEVEL_NAMES[level]}`} · legs{' '}
+              {cg ? callName(w) : w === 0 ? 'You' : `The computer · ${LEVEL_NAMES[level]}`} · legs{' '}
               {vLegs[w]}
             </span>
             <strong>{vLeg.scores[w]}</strong>
@@ -602,19 +657,19 @@ export function DartsDemo() {
         />
       </div>
       <div className="lab-controls">
-        {!room && leg.winner !== null && !over && (
+        {!cg && leg.winner !== null && !over && (
           <button className="btn" onClick={() => nextLeg()}>
             ▶ Next leg
           </button>
         )}
-        {!room && over && (
+        {!cg && over && (
           <button className="btn" onClick={() => nextLeg(true)}>
             ↻ Play again
           </button>
         )}
       </div>
 
-      {!room && (
+      {!cg && (
         <p className="sun-reading">
           <span className="muted">
             Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
@@ -624,7 +679,7 @@ export function DartsDemo() {
           </span>
         </p>
       )}
-      {!room && level !== saved.level && !untouched && !over && (
+      {!cg && level !== saved.level && !untouched && !over && (
         <p className="muted mc-note">The new level starts with the next match.</p>
       )}
       <div className="fw-panel">
