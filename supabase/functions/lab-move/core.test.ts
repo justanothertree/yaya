@@ -23,6 +23,13 @@ import {
   place as gomokuPlace,
 } from '../../../src/gpu/gomoku'
 import { gomokuRules } from '../../../src/gpu/gomokuRoom'
+import {
+  choose as draughtsChoose,
+  moves as draughtsMoves,
+  newGame as draughtsGame,
+  owner,
+} from '../../../src/gpu/draughts'
+import { draughtsRules, replay as draughtsReplay } from '../../../src/gpu/draughtsRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -505,5 +512,91 @@ describe('five in a row by turns', () => {
       gomokuRules(11).fresh('versus'),
     )
     expect(GAMES.gomoku({ size: 9 })).toBeNull()
+  })
+})
+
+describe('draughts by turns: a move is the whole path its piece takes', () => {
+  const dr = (over: Partial<Row> = {}) => invite({ demo_id: 'draughts', settings: {}, ...over })
+  const game = (state: unknown) => draughtsReplay((state as { moves: number[][] }).moves)!
+
+  it('plays versus to the end: the loser is the side to move with no move left, or it is a draw', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 16; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(
+        dr(),
+        (r) => draughtsChoose(game(r.state).g, seed % 2 ? 'fair' : 'easy', rnd).path,
+        600,
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state).g
+      const winner = last.result!.winner
+      seen.add(String(winner))
+      if (winner === 'draw') continue
+      // asked of the board, not of the result: the side to move cannot, and it is the loser
+      expect(draughtsMoves(g)).toHaveLength(0)
+      expect(winner).toBe(g.turn === 1 ? 1 : 0)
+      expect(last.turn).toBeNull()
+    }
+    // sixteen games won only by one seat would mean the other was never asked about
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('refuses a step when a take is there, and half of a jump that goes on', () => {
+    // play the toy against itself until a take is forced, with a man that could otherwise step
+    const rnd = seeded(3)
+    let row = after(dr(), decide(dr(), B, { op: 'accept' }))
+    let checked = 0
+    for (let k = 0; k < 200 && row.status === 'active' && checked < 2; k++) {
+      const g = game(row.state).g
+      const list = draughtsMoves(g)
+      const who = row.turn === 0 ? A : B
+      if (list[0]?.taken.length) {
+        // a plain step of one of the mover's own pieces into an empty square next to it
+        const step = draughtsMoves({
+          ...g,
+          board: g.board.map((p, i) => (list.some((m) => m.taken.includes(i)) ? 0 : p)),
+        }).find((m) => !m.taken.length && owner(g.board[m.path[0]]) === g.turn)
+        if (step) {
+          expect(status(decide(row, who, move(row.seq, step.path)))).toBe(400)
+          checked++
+        }
+        const long = list.find((m) => m.path.length > 2)
+        if (long) expect(status(decide(row, who, move(row.seq, long.path.slice(0, 2))))).toBe(400)
+      }
+      row = after(row, decide(row, who, move(row.seq, draughtsChoose(g, 'easy', rnd).path)))
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 3)
+      let row = after(
+        dr({ mode: 'together', settings: { level } }),
+        decide(dr({ mode: 'together', settings: { level } }), B, { op: 'accept' }),
+      )
+      for (let k = 0; k < 6 && row.status === 'active'; k++) {
+        const p = decide(
+          row,
+          row.turn === 0 ? A : B,
+          move(row.seq, draughtsChoose(game(row.state).g, 'easy', rnd).path),
+        )
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        if (p.turn !== null) expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  })
+
+  it('refuses a stored game no board could have come from', () => {
+    const row = after(dr(), decide(dr(), B, { op: 'accept' }))
+    const first = draughtsMoves(draughtsGame())[0].path
+    for (const state of [{ moves: [[0, 4]] }, { moves: [first, first] }, { moves: 'none' }])
+      expect(status(decide({ ...row, state }, A, move(0, first)))).toBe(500)
+    expect(GAMES.draughts({})!.rules).toBe(draughtsRules)
   })
 })

@@ -20,6 +20,7 @@ import { SIZES, count } from '../../../src/gpu/reversi'
 import { reversiRules } from '../../../src/gpu/reversiRoom'
 import { SIZES as GOMOKU_SIZES } from '../../../src/gpu/gomoku'
 import { gomokuRules } from '../../../src/gpu/gomokuRoom'
+import { draughtsRules } from '../../../src/gpu/draughtsRoom'
 import { poolRules } from '../../../src/gpu/poolRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
@@ -54,6 +55,7 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
       ? { rules: gomokuRules(size as number) }
       : null
   },
+  draughts: () => ({ rules: draughtsRules }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
