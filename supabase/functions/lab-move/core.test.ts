@@ -1942,8 +1942,17 @@ describe('bowling by turns: a frame each, the server bowls every ball', () => {
     total += r[i] + r[i + 1] + (third ? r[i + 2] : 0)
     return { total, balls: i + (third ? 3 : 2) }
   }
-  const aim = (standing: number[], rnd: () => number) =>
-    bowlInside(bowlWobble(bowlPlan(standing, 'fair', rnd), 'fair', rnd))
+  /* ⚠️ THE TEST'S OWN AIM WAS NINE TENTHS OF ITS TIME: the toy's planner bowls two to four hundred
+     balls to choose one, and measured on 17 Nov 2026 it took 5.5–7.7s of each 6–8.6s game, so eight
+     games sat on the 60s limit and failed on a slower machine. What it plans depends only on the pins
+     standing, so it is planned once per set of pins; the hand's wobble still varies every ball. */
+  const planned = new Map<string, ReturnType<typeof bowlPlan>>()
+  const aim = (standing: number[], rnd: () => number) => {
+    const key = standing.join()
+    let p = planned.get(key)
+    if (!p) planned.set(key, (p = bowlPlan(standing, 'fair', rnd)))
+    return bowlInside(bowlWobble(p, 'fair', rnd))
+  }
 
   it('plays versus to the end, the winner the higher scorecard, every ball accounted for', () => {
     const seen = new Set<string>()
