@@ -2059,6 +2059,16 @@ html:has(.lab) {
   border-top: 1px dashed rgba(255, 255, 255, 0.35);
   padding-top: 6px;
 }
+/* a match: the row the palette fills — the code being hidden, or the guess — is ringed */
+.cb-row.is-code {
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.35);
+  padding-bottom: 6px;
+}
+.cb-row.is-editing {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 1px;
+  border-radius: 8px;
+}
 .cb-n {
   text-align: center;
   font-variant-numeric: tabular-nums;
