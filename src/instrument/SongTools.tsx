@@ -17,6 +17,7 @@ import {
   toggleMute,
   type loopState,
 } from '../audio/looper'
+import { setSongName } from './songName'
 import { library, removeFromLibrary, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { songNotes, songToLayers } from '../audio/songFile'
 import { hasLyrics } from '../audio/lyricLines'
@@ -364,6 +365,7 @@ function Songs({
                   className="btn"
                   onClick={() => {
                     loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
+                    setSongName(it.name)
                     setEditing(null)
                     // ⚠️ offered, not pushed — see jam.offerSong. A no-op when nobody is jamming.
                     jam.offerSong(it.song)

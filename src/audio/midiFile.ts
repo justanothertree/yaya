@@ -81,6 +81,8 @@ export const GM_PROGRAM: Record<Exclude<InstrumentId, 'drums'>, number> = {
 export const GM_DRUM = [36, 37, 38, 39, 45, 47, 42, 50, 46, 51, 56, 49] as const
 
 export type MidiSong = {
+  /** the song's kept name, for the file's own title; "Song" when it has none */
+  name?: string
   bpm: number
   bars: number
   quantize: number
@@ -131,7 +133,7 @@ export function songToMidi(song: MidiSong): Uint8Array<ArrayBuffer> {
   const usPerBeat = Math.round(60_000_000 / song.bpm)
 
   const head: Ev[] = [
-    { tick: 0, order: 0, bytes: meta(0x03, text('Song')) },
+    { tick: 0, order: 0, bytes: meta(0x03, text(song.name?.trim() || 'Song')) },
     {
       tick: 0,
       order: 0,
