@@ -2025,7 +2025,11 @@
    it belongs under a document, and this is a room. Offsets in PIXELS — the root size is fluid.
    Measured at 1440×900: card 680 → 795 tall. */
 @media (min-width: 641px) {
-  [data-page='chat'] #chat.card {
+  /* ⚠️ `:has(.cz-chat)` ON EVERY RULE HERE: only when there is a chat in the card. Signed out,
+     the card holds one sentence asking you to sign in, and the first version of this block made
+     that sentence a window-tall card with the footer taken away — found in the built bundle,
+     as a visitor, after it had shipped. */
+  [data-page='chat'] #chat.card:has(.cz-chat) {
     display: flex;
     flex-direction: column;
     height: calc(100dvh - var(--nav-h, 60px) - 44px);
@@ -2034,7 +2038,7 @@
   /* The call anchor floats over the bottom middle of the window, which is now where the
      composer is. Same answer the phone rule gives: hand that strip back, by the dock's own
      measured height, so Send is never under Leave. */
-  :root[data-in-call='1'] [data-page='chat'] #chat.card {
+  :root[data-in-call='1'] [data-page='chat'] #chat.card:has(.cz-chat) {
     height: calc(100dvh - var(--nav-h, 60px) - 44px - var(--dock-h) - var(--pin-gap) * 2);
   }
   /* ⚠️ AND NO FOOTER, which is not tidiness: with one, the document is taller than the window,
@@ -2042,19 +2046,19 @@
      page 32px to put the card at the top, sliding its heading under the nav on every load.
      Measured, not guessed: scrollY was 32 before anything was clicked. With nothing below the
      card there is nothing to scroll to. Scoped to the card so a canvas keeps its footer. */
-  [data-page='chat']:has(#chat.card) footer {
+  [data-page='chat']:has(#chat.card .cz-chat) footer {
     display: none;
   }
-  [data-page='chat'] #chat.card .cz-tab-chat {
+  [data-page='chat'] #chat.card:has(.cz-chat) .cz-tab-chat {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
-  [data-page='chat'] #chat.card .cz-chat-box {
+  [data-page='chat'] #chat.card:has(.cz-chat) .cz-chat-box {
     flex: 1;
   }
-  [data-page='chat'] #chat.card .cz-chat {
+  [data-page='chat'] #chat.card:has(.cz-chat) .cz-chat {
     flex: 1;
     min-height: 0;
     height: auto;
