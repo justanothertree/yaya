@@ -1,7 +1,7 @@
 name: db guards
 
-# Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, against a
-# throwaway local database on every push.
+# Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, then
+# supabase/tests/lab-nudge-guards.sql, against a throwaway local database on every push.
 #
 # ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
 # `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
@@ -177,6 +177,9 @@ jobs:
           # ON_ERROR_STOP turns the suite's own RAISE into a failed job
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chronicle-daily-flow.sql
+          # the nudge's realtime topic: closed to anon by privilege and by calling, open only to a
+          # match's two players, and both realtime.messages policies written for authenticated
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-nudge-guards.sql
 
       - name: Stop the database
         if: always()
