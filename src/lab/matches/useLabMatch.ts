@@ -14,6 +14,7 @@ import {
 } from './cloud'
 import { matchToy } from './games'
 import { useNudge } from './nudge'
+import { useMatchChat } from './useMatchChat'
 import { matchHash } from './words'
 
 /**
@@ -116,7 +117,17 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
 
   /* ── the nudge: the other player's page looks again the moment this one acts, while both have
      the match open (nudge.ts); the looks above stay, since a nudge is never relied on */
-  const tell = useNudge(id, !!view, () => void load())
+  const chatReload = useRef<() => void>(() => {})
+  const nudge = useNudge(
+    id,
+    !!view,
+    () => void load(),
+    () => chatReload.current(),
+  )
+  const tell = nudge.moved
+  /* ── the match's chat: kept with the match, only its two players (useMatchChat.ts) */
+  const chat = useMatchChat(id, !!view, nudge.said)
+  chatReload.current = () => void chat.reload()
 
   /* ── the game, by the toy's own rules */
   const rules = useMemo(
@@ -189,6 +200,7 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
     id,
     view,
     error,
+    chat,
     busy,
     rules,
     game,

@@ -7025,3 +7025,86 @@ html:has(.lab) {
   color: inherit;
   font-weight: 600;
 }
+
+/* ── a match's chat (src/lab/matches/ChatHud.tsx), by turns and live in a call alike ───────────
+   In the page on a phone, under the match bar or the table; floating in the corner from 700px up,
+   like the snake games' chat, and faded there until something happens. */
+.lab-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.lab-chat.is-floating {
+  position: fixed;
+  /* ⚠️ THE RIGHT-HAND CORNER, NOT THE SNAKE GAMES' LEFT: a Lab board sits on the left of a wide
+     page, and the left corner covered the first player's back rank (chess, measured at 1440). Raised
+     clear of the back-to-top button below it, and of the call's dock (--dock-h) when there is one. */
+  right: var(--pin-gap, 0.75rem);
+  bottom: calc(
+    var(--bottom-guard, 0px) + var(--kb, 0px) + var(--pin-gap, 0.75rem) + var(--dock-h, 0px) +
+      3.5rem
+  );
+  z-index: 55;
+  width: min(22rem, calc(100vw - 1.5rem));
+  margin: 0;
+  border-color: transparent;
+  background: transparent;
+  /* idle: legible but recessive, never invisible — a chat you cannot find is worse than one that
+     is slightly in the way */
+  opacity: 0.45;
+  transition:
+    opacity 0.25s ease,
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+}
+.lab-chat.is-floating.is-live,
+.lab-chat.is-floating:hover,
+.lab-chat.is-floating:focus-within {
+  opacity: 1;
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.lab-chat-log {
+  /* a fixed height: a box that grew as lines arrived would push the board down mid-game */
+  height: 7rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lab-chat-line,
+.lab-chat-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.lab-chat.is-floating .lab-chat-line,
+.lab-chat.is-floating .lab-chat-empty {
+  /* readable over the page while the panel behind it is transparent */
+  text-shadow: 0 1px 2px var(--bg);
+}
+.lab-chat-line.is-mine {
+  color: var(--acc, var(--accent));
+}
+.lab-chat-form {
+  display: flex;
+  gap: 6px;
+}
+.lab-chat-form input {
+  flex: 1;
+  /* an input's min-width is its size attribute's worth of characters: without this it runs off a
+     narrow panel (CLAUDE.md §6, "flex: 1 does not shrink an input") */
+  min-width: 0;
+}
+.lab-chat-error {
+  margin: 0;
+  font-size: 0.8rem;
+}

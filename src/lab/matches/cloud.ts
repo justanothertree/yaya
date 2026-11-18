@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../finance/client'
+import { readLine, type ChatLine } from './chat'
 
 /**
  * A Lab match by turns, as the server shows it to one of its two players — and every way to ask
@@ -114,6 +115,18 @@ const one = (x: unknown) => {
   const v = readView(x)
   if (!v) throw new MatchError('The match came back in a shape this page does not know.')
   return v
+}
+
+/** a line for the match's chat, from your seat; what the server kept, or MatchError */
+export async function sayLine(id: string, text: string): Promise<ChatLine> {
+  const l = readLine(await rpc('lab_match_say', { p_match: id, p_body: text }))
+  if (!l) throw new MatchError('The line came back in a shape this page does not know.')
+  return l
+}
+/** the match's chat after line `after`, oldest first */
+export async function readLines(id: string, after = 0): Promise<ChatLine[]> {
+  const rows = await rpc('lab_match_lines', { p_match: id, p_after: after })
+  return (Array.isArray(rows) ? rows : []).map(readLine).filter((l): l is ChatLine => l !== null)
 }
 
 export const getMatch = async (id: string) => one(await rpc('lab_match_get', { p_match: id }))

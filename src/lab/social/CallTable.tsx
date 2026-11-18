@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { idle, type Mode, type Rules, type Seat } from './room'
 import { rematchOf, tableLine, tableSeats, type Table, type TableWords } from './table'
 import { challenge } from '../matches/cloud'
+import { CallChat } from './CallChat'
 import { MATCH_NAMES } from '../matches/names'
 import { matchHash } from '../matches/words'
 
@@ -165,6 +166,7 @@ export function CallTable<G, M>(p: Props<G, M>) {
             ` · ${room.present.length + 1 - room.seats.filter(Boolean).length} watching`}
         </p>
       )}
+      <CallChat table={table} rules={rules} />
     </>
   )
 }
