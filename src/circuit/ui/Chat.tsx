@@ -515,259 +515,269 @@ export function Chat({
     new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
   return (
-    <div className="cz-chat" data-view={room ? 'thread' : 'list'}>
-      {/* ── friends, rooms and the directory ──────────────────────────── */}
-      <ChatList
-        ppl={listErr ? { ...ppl, err: ppl.err ?? listErr } : ppl}
-        rooms={rooms}
-        openId={room?.id ?? null}
-        voiceIn={voiceIn}
-        onOpenRoom={openRoom}
-        onOpenPerson={(p) => void openPerson(p)}
-        opening={opening}
-        lounge={{
-          offer: loungeIn === false,
-          busy: loungeBusy,
-          join: () => void setLounge(true),
-        }}
-      />
+    /* ⚠️ THE OUTER BOX IS A SIZE CONTAINER, and that is what decides one pane or two. The rule
+       used to ask the SCREEN (max-width: 640px), and this component also lives in a canvas
+       window, which is as narrow as you drag it on a screen as wide as you like — so a 430px
+       window kept both panes and the conversation got what was left. Measured: 77px. */
+    <div className="cz-chat-box">
+      <div className="cz-chat" data-view={room ? 'thread' : 'list'}>
+        {/* ── friends, rooms and the directory ──────────────────────────── */}
+        <ChatList
+          ppl={listErr ? { ...ppl, err: ppl.err ?? listErr } : ppl}
+          rooms={rooms}
+          openId={room?.id ?? null}
+          voiceIn={voiceIn}
+          onOpenRoom={openRoom}
+          onOpenPerson={(p) => void openPerson(p)}
+          opening={opening}
+          lounge={{
+            offer: loungeIn === false,
+            busy: loungeBusy,
+            join: () => void setLounge(true),
+          }}
+        />
 
-      {/* ── the open thread ───────────────────────────────────────────── */}
-      <div className="cz-chat-thread">
-        {room ? (
-          <>
-            <div className="cz-thread-head">
-              <button className="cz-thread-back" onClick={backToList} aria-label="Back to messages">
-                ‹
-              </button>
-              {peer ? (
-                /* Whose conversation this is, as a person rather than a room name: their
+        {/* ── the open thread ───────────────────────────────────────────── */}
+        <div className="cz-chat-thread">
+          {room ? (
+            <>
+              <div className="cz-thread-head">
+                <button
+                  className="cz-thread-back"
+                  onClick={backToList}
+                  aria-label="Back to messages"
+                >
+                  ‹
+                </button>
+                {peer ? (
+                  /* Whose conversation this is, as a person rather than a room name: their
                    avatar and presence, and the name is the way to their profile — which is
                    what their row in the directory used to be before it became this thread. */
-                <a
-                  className="cz-thread-who"
-                  href={'#profile?u=' + encodeURIComponent(peer.username)}
-                  title={`See ${peer.name}'s profile`}
-                >
-                  <PersonAvatar person={peer} seen={peerSeen} />
-                  <span className="cz-person-text">
-                    <span className="cz-thread-name">{peer.name}</span>
-                    <span className="cz-person-handle muted">
-                      @{peer.username}
-                      {peerSeen && <> · {seenWord(peerSeen)}</>}
+                  <a
+                    className="cz-thread-who"
+                    href={'#profile?u=' + encodeURIComponent(peer.username)}
+                    title={`See ${peer.name}'s profile`}
+                  >
+                    <PersonAvatar person={peer} seen={peerSeen} />
+                    <span className="cz-person-text">
+                      <span className="cz-thread-name">{peer.name}</span>
+                      <span className="cz-person-handle muted">
+                        @{peer.username}
+                        {peerSeen && <> · {seenWord(peerSeen)}</>}
+                      </span>
                     </span>
-                  </span>
-                </a>
-              ) : (
-                <>
-                  <span className="cz-thread-ic" aria-hidden>
-                    {roomIcon(room.kind)}
-                  </span>
-                  <span className="cz-thread-name">{room.name}</span>
-                </>
-              )}
-              {/* Beside the Call button underneath, so the two things you do WITH a person —
+                  </a>
+                ) : (
+                  <>
+                    <span className="cz-thread-ic" aria-hidden>
+                      {roomIcon(room.kind)}
+                    </span>
+                    <span className="cz-thread-name">{room.name}</span>
+                  </>
+                )}
+                {/* Beside the Call button underneath, so the two things you do WITH a person —
                   talk to them and play them — start from the conversation you have with them.
                   ⚠️ Friends only, and the server asks again: lab_match_challenge refuses
                   anybody who is not an accepted friend, so a DM left over from a friendship
                   that ended is not offered a button that could only fail. */}
-              {peer?.rel === 'friend' && (
-                <button
-                  className={'btn cz-thread-act' + (challenging ? ' is-on' : '')}
-                  aria-expanded={challenging}
-                  aria-controls="profile-challenge"
-                  onClick={() => setChallenging((v) => !v)}
-                >
-                  🎲 Challenge
-                </button>
-              )}
-              {room.kind === 'lounge' && loungeIn && (
-                <button
-                  className="btn btn-ghost cz-thread-leave"
-                  onClick={() => void setLounge(false)}
-                  disabled={loungeBusy}
-                  title="Stop seeing The Lounge. You can rejoin any time."
-                >
-                  {loungeBusy ? 'Leaving…' : 'Leave'}
-                </button>
-              )}
-            </div>
-            {/* Plain text, deliberately NOT links to a profile. Someone chose a name here
+                {peer?.rel === 'friend' && (
+                  <button
+                    className={'btn cz-thread-act' + (challenging ? ' is-on' : '')}
+                    aria-expanded={challenging}
+                    aria-controls="profile-challenge"
+                    onClick={() => setChallenging((v) => !v)}
+                  >
+                    🎲 Challenge
+                  </button>
+                )}
+                {room.kind === 'lounge' && loungeIn && (
+                  <button
+                    className="btn btn-ghost cz-thread-leave"
+                    onClick={() => void setLounge(false)}
+                    disabled={loungeBusy}
+                    title="Stop seeing The Lounge. You can rejoin any time."
+                  >
+                    {loungeBusy ? 'Leaving…' : 'Leave'}
+                  </button>
+                )}
+              </div>
+              {/* Plain text, deliberately NOT links to a profile. Someone chose a name here
                 specifically so the Lounge wouldn't reveal who they really are -- turning that
                 name into a click-through to their real profile would undo the entire point. */}
-            {room.kind === 'lounge' && loungeNames.length > 0 && (
-              <div className="cz-lounge-whos-here muted">
-                {loungeNames.length} here: {loungeNames.join(', ')}
-              </div>
-            )}
-
-            {challenging && peer?.rel === 'friend' && (
-              <div className="cz-thread-challenge">
-                <ProfileChallenge
-                  key={peer.username}
-                  username={peer.username}
-                  name={peer.name}
-                  friendId={peer.user_id}
-                />
-              </div>
-            )}
-
-            {/* Voice only makes sense with a real session — the DEV harness has no peers. */}
-            {!previewMember && sb && me && (
-              <VoiceBar
-                roomId={room.id}
-                roomName={room.name}
-                meId={me}
-                myName={myName}
-                // presence is already loaded for the room list — it is the only count of who
-                // is in a call, since nothing server-side keeps a tally
-                occupancy={voiceIn[room.id]?.length ?? 0}
-                roomKind={
-                  room.kind === 'lounge' || room.kind === 'dm' || room.kind === 'circuit'
-                    ? room.kind
-                    : undefined
-                }
-              />
-            )}
-
-            <div className="cz-chat-log">
-              {msgs.length === 0 && (
-                <p className="muted" style={{ margin: 'auto', fontSize: '0.85rem' }}>
-                  Nothing here yet — say the first thing.
-                </p>
+              {room.kind === 'lounge' && loungeNames.length > 0 && (
+                <div className="cz-lounge-whos-here muted">
+                  {loungeNames.length} here: {loungeNames.join(', ')}
+                </div>
               )}
-              {msgs.map((m, i) => {
-                const mine = m.mine
-                const newDay = i === 0 || dayOf(m.created_at) !== dayOf(msgs[i - 1].created_at)
-                return (
-                  <div key={m.id}>
-                    {newDay && (
-                      <div
-                        className="muted"
-                        style={{ textAlign: 'center', fontSize: '0.7rem', margin: '0.35rem 0' }}
-                      >
-                        {dayOf(m.created_at)}
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        maxWidth: '85%',
-                        marginLeft: mine ? 'auto' : 0,
-                        padding: '0.4rem 0.6rem',
-                        borderRadius: 10,
-                        background: mine
-                          ? 'var(--accent, #7c6af7)'
-                          : 'var(--card2, rgba(127,127,127,0.15))',
-                        color: mine ? 'var(--btn-text, #fff)' : 'var(--text, #eeeef8)',
-                      }}
-                    >
-                      {!mine &&
-                        (m.author_username ? (
-                          <a
-                            className="cz-msg-author"
-                            href={'#profile?u=' + encodeURIComponent(m.author_username)}
-                            title={`See ${m.author_name}'s profile`}
-                          >
-                            {m.author_name}
-                          </a>
-                        ) : (
-                          // no username means the server withheld it (the Lounge): a name with
-                          // nowhere to go, which is the whole point of the pseudonym
-                          <div className="cz-msg-author cz-msg-author-plain">{m.author_name}</div>
-                        ))}
-                      {/* A Snake challenge is an ordinary message with a room link in it. Shown
-                          as a card with a Join button rather than a URL to squint at — and it
-                          still falls back to the plain text if the link is malformed. */}
-                      {challengeRoomOf(m.body) ? (
-                        <div className="cz-challenge">
-                          {challengeText(m.body) && (
-                            <div className="cz-challenge-say">{challengeText(m.body)}</div>
-                          )}
-                          <a
-                            className="btn cz-challenge-join"
-                            href={`#snake?room=${encodeURIComponent(challengeRoomOf(m.body)!)}`}
-                          >
-                            🎮 Join the game
-                          </a>
-                        </div>
-                      ) : boutCodeOf(m.body) ? (
-                        /* A scrap invite is the same idea again, with the bout code in the link —
-                           see src/pets/boutInvite.ts. Same card, so all three read alike. */
-                        <div className="cz-challenge">
-                          {boutInviteText(m.body) && (
-                            <div className="cz-challenge-say">{boutInviteText(m.body)}</div>
-                          )}
-                          <a
-                            className="btn cz-challenge-join"
-                            href={`#games?play=fight&bout=${encodeURIComponent(boutCodeOf(m.body)!)}`}
-                          >
-                            ⚔️ Join the scrap
-                          </a>
-                        </div>
-                      ) : circuitJoinCodeOf(m.body) ? (
-                        /* A circuit invite is the same idea with a different link — see
-                           src/circuit/inviteLink.ts. Same card so both read alike. */
-                        <div className="cz-challenge">
-                          {circuitInviteText(m.body) && (
-                            <div className="cz-challenge-say">{circuitInviteText(m.body)}</div>
-                          )}
-                          <a
-                            className="btn cz-challenge-join"
-                            href={`#circuit?join=${encodeURIComponent(circuitJoinCodeOf(m.body)!)}`}
-                          >
-                            🏆 Join the circuit
-                          </a>
-                        </div>
-                      ) : (
+
+              {challenging && peer?.rel === 'friend' && (
+                <div className="cz-thread-challenge">
+                  <ProfileChallenge
+                    key={peer.username}
+                    username={peer.username}
+                    name={peer.name}
+                    friendId={peer.user_id}
+                  />
+                </div>
+              )}
+
+              {/* Voice only makes sense with a real session — the DEV harness has no peers. */}
+              {!previewMember && sb && me && (
+                <VoiceBar
+                  roomId={room.id}
+                  roomName={room.name}
+                  meId={me}
+                  myName={myName}
+                  // presence is already loaded for the room list — it is the only count of who
+                  // is in a call, since nothing server-side keeps a tally
+                  occupancy={voiceIn[room.id]?.length ?? 0}
+                  roomKind={
+                    room.kind === 'lounge' || room.kind === 'dm' || room.kind === 'circuit'
+                      ? room.kind
+                      : undefined
+                  }
+                />
+              )}
+
+              <div className="cz-chat-log">
+                {msgs.length === 0 && (
+                  <p className="muted" style={{ margin: 'auto', fontSize: '0.85rem' }}>
+                    Nothing here yet — say the first thing.
+                  </p>
+                )}
+                {msgs.map((m, i) => {
+                  const mine = m.mine
+                  const newDay = i === 0 || dayOf(m.created_at) !== dayOf(msgs[i - 1].created_at)
+                  return (
+                    <div key={m.id}>
+                      {newDay && (
                         <div
-                          style={{
-                            fontSize: '0.9rem',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                          }}
+                          className="muted"
+                          style={{ textAlign: 'center', fontSize: '0.7rem', margin: '0.35rem 0' }}
                         >
-                          {m.body}
+                          {dayOf(m.created_at)}
                         </div>
                       )}
-                      <div style={{ fontSize: '0.65rem', opacity: 0.7, textAlign: 'right' }}>
-                        {timeOf(m.created_at)}
+                      <div
+                        style={{
+                          maxWidth: '85%',
+                          marginLeft: mine ? 'auto' : 0,
+                          padding: '0.4rem 0.6rem',
+                          borderRadius: 10,
+                          background: mine
+                            ? 'var(--accent, #7c6af7)'
+                            : 'var(--card2, rgba(127,127,127,0.15))',
+                          color: mine ? 'var(--btn-text, #fff)' : 'var(--text, #eeeef8)',
+                        }}
+                      >
+                        {!mine &&
+                          (m.author_username ? (
+                            <a
+                              className="cz-msg-author"
+                              href={'#profile?u=' + encodeURIComponent(m.author_username)}
+                              title={`See ${m.author_name}'s profile`}
+                            >
+                              {m.author_name}
+                            </a>
+                          ) : (
+                            // no username means the server withheld it (the Lounge): a name with
+                            // nowhere to go, which is the whole point of the pseudonym
+                            <div className="cz-msg-author cz-msg-author-plain">{m.author_name}</div>
+                          ))}
+                        {/* A Snake challenge is an ordinary message with a room link in it. Shown
+                          as a card with a Join button rather than a URL to squint at — and it
+                          still falls back to the plain text if the link is malformed. */}
+                        {challengeRoomOf(m.body) ? (
+                          <div className="cz-challenge">
+                            {challengeText(m.body) && (
+                              <div className="cz-challenge-say">{challengeText(m.body)}</div>
+                            )}
+                            <a
+                              className="btn cz-challenge-join"
+                              href={`#snake?room=${encodeURIComponent(challengeRoomOf(m.body)!)}`}
+                            >
+                              🎮 Join the game
+                            </a>
+                          </div>
+                        ) : boutCodeOf(m.body) ? (
+                          /* A scrap invite is the same idea again, with the bout code in the link —
+                           see src/pets/boutInvite.ts. Same card, so all three read alike. */
+                          <div className="cz-challenge">
+                            {boutInviteText(m.body) && (
+                              <div className="cz-challenge-say">{boutInviteText(m.body)}</div>
+                            )}
+                            <a
+                              className="btn cz-challenge-join"
+                              href={`#games?play=fight&bout=${encodeURIComponent(boutCodeOf(m.body)!)}`}
+                            >
+                              ⚔️ Join the scrap
+                            </a>
+                          </div>
+                        ) : circuitJoinCodeOf(m.body) ? (
+                          /* A circuit invite is the same idea with a different link — see
+                           src/circuit/inviteLink.ts. Same card so both read alike. */
+                          <div className="cz-challenge">
+                            {circuitInviteText(m.body) && (
+                              <div className="cz-challenge-say">{circuitInviteText(m.body)}</div>
+                            )}
+                            <a
+                              className="btn cz-challenge-join"
+                              href={`#circuit?join=${encodeURIComponent(circuitJoinCodeOf(m.body)!)}`}
+                            >
+                              🏆 Join the circuit
+                            </a>
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              fontSize: '0.9rem',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {m.body}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '0.65rem', opacity: 0.7, textAlign: 'right' }}>
+                          {timeOf(m.created_at)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-              <div ref={endRef} />
-            </div>
+                  )
+                })}
+                <div ref={endRef} />
+              </div>
 
-            {err && (
-              <p
-                className="muted"
-                style={{ margin: 0, fontSize: '0.8rem', color: 'var(--accent-2, #ff5566)' }}
+              {err && (
+                <p
+                  className="muted"
+                  style={{ margin: 0, fontSize: '0.8rem', color: 'var(--accent-2, #ff5566)' }}
+                >
+                  {err}
+                </p>
+              )}
+
+              <form
+                className="cz-chat-form"
+                onSubmit={send}
+                style={{ display: 'flex', gap: '0.4rem' }}
               >
-                {err}
-              </p>
-            )}
-
-            <form
-              className="cz-chat-form"
-              onSubmit={send}
-              style={{ display: 'flex', gap: '0.4rem' }}
-            >
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder={`Message ${room.name}`}
-                maxLength={2000}
-                style={{ flex: 1, padding: '0.55rem 0.7rem', borderRadius: 10 }}
-              />
-              <button className="btn" disabled={!draft.trim() || sending} type="submit">
-                {sending ? '…' : 'Send'}
-              </button>
-            </form>
-          </>
-        ) : (
-          <p className="muted cz-thread-empty">Pick a friend or a room to start reading.</p>
-        )}
+                <input
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder={`Message ${room.name}`}
+                  maxLength={2000}
+                  style={{ flex: 1, padding: '0.55rem 0.7rem', borderRadius: 10 }}
+                />
+                <button className="btn" disabled={!draft.trim() || sending} type="submit">
+                  {sending ? '…' : 'Send'}
+                </button>
+              </form>
+            </>
+          ) : (
+            <p className="muted cz-thread-empty">Pick a friend or a room to start reading.</p>
+          )}
+        </div>
       </div>
     </div>
   )

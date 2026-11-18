@@ -1738,6 +1738,9 @@
     display: flex;
     flex-direction: column;
   }
+  [data-page='chat'] .cz-tab-chat .cz-chat-box {
+    flex: 1;
+  }
   [data-page='chat'] .cz-tab-chat .cz-chat {
     flex: 1;
     min-height: 0;
@@ -1910,6 +1913,37 @@
   }
   .cz-conv {
     min-height: 56px;
+  }
+}
+
+/* ⚠️ AND THE SAME TURN-TAKING WHEREVER THE CHAT'S OWN BOX IS NARROW, WHATEVER THE SCREEN IS.
+   The block above asks the viewport, which is the right question on a phone and the wrong one
+   in a canvas window: that is a box you drag to any width on a 1440px screen, so the media query
+   never matched and both panes stayed — measured in a 430px window, the list took 340 and the
+   conversation was 77px wide, one syllable to a line. A container query asks the box. 620px is
+   where a 240px list leaves a thread under 380, about the width of a phone's.
+   Kept beside the media block rather than replacing it: a browser without container queries
+   still gets the phone layout on a phone. MUST stay after the base rules, same as that block. */
+.cz-chat-box {
+  container-type: inline-size;
+  container-name: chat;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+@container chat (max-width: 620px) {
+  .cz-chat {
+    grid-template-columns: 1fr;
+  }
+  .cz-chat[data-view='list'] .cz-chat-thread {
+    display: none;
+  }
+  .cz-chat[data-view='thread'] .cz-chat-list {
+    display: none;
+  }
+  .cz-thread-back {
+    display: inline-flex;
   }
 }
 
