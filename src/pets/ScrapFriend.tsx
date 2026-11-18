@@ -17,7 +17,7 @@ export function ScrapFriend({ code }: { code: string }) {
       label="⚔️ Fight a friend"
       title="Send a friend an invite to this scrap"
       verb="challenge"
-      emptyHint="No friends yet — add someone on the People page and you can fight them here."
+      emptyHint="No friends yet — add someone in Chat and you can fight them here."
       hint="They’ll get it in your messages, with a button that drops them straight into this bout."
     />
   )

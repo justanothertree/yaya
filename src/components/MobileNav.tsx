@@ -148,7 +148,7 @@ export function MobileNav({
     circuit: member
       ? [{ key: 'log', label: 'Quick log', icon: '✏️', section: 'circuit', tab: 'log' }]
       : [],
-    people: member
+    chat: member
       ? [{ key: 'circuits', label: 'Circuits', icon: '👥', section: 'circuit', tab: 'circuits' }]
       : [],
   }
@@ -215,8 +215,13 @@ export function MobileNav({
               {d.icon}
             </span>
             <span className="mnav-lbl">{d.label}</span>
-            {d.key === 'chat' && unreadChats > 0 && (
-              <span className="mnav-pip">{unreadChats > 9 ? '9+' : unreadChats}</span>
+            {/* ⚠️ Requests count here too. They used to pip the Menu button, because People was
+                a tile inside it; the directory is this room's list now, so a request waiting
+                on you is waiting HERE, and a pip on Menu would point at a tile that is gone. */}
+            {d.key === 'chat' && unreadChats + friendRequests > 0 && (
+              <span className="mnav-pip">
+                {unreadChats + friendRequests > 9 ? '9+' : unreadChats + friendRequests}
+              </span>
             )}
           </button>
         ))}
@@ -230,9 +235,6 @@ export function MobileNav({
             ☰
           </span>
           <span className="mnav-lbl">Menu</span>
-          {friendRequests > 0 && (
-            <span className="mnav-pip">{friendRequests > 9 ? '9+' : friendRequests}</span>
-          )}
         </button>
       </nav>
 
@@ -261,8 +263,8 @@ export function MobileNav({
                     {d.icon}
                   </span>
                   <span className="mtile-lbl">{d.label}</span>
-                  {d.key === 'people' && friendRequests > 0 && (
-                    <span className="mnav-pip">{friendRequests}</span>
+                  {d.key === 'chat' && unreadChats + friendRequests > 0 && (
+                    <span className="mnav-pip">{unreadChats + friendRequests}</span>
                   )}
                 </button>
               ))}
