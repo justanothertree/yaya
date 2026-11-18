@@ -24,6 +24,7 @@ import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
 import { fourRowRules, type FourGame } from './fourrowRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallChat } from '../lab/social/CallChat'
 import { myTurn, seatOf, waitingFor } from '../lab/social/room'
 import { useLabMatch } from '../lab/matches/useLabMatch'
 import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
@@ -554,6 +555,8 @@ export function FourRowDemo() {
           )}
         </div>
       )}
+      {/* the call's chat, for the two seated players (CallChat.tsx): this toy draws its own table */}
+      {mode === 'call' && !inMatch && <CallChat table={lab} rules={roomRules} />}
 
       <div className="dice-scores">
         {([1, 2] as Who[]).map((w) => (
