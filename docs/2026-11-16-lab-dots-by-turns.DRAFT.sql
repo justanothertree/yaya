@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Dots and boxes by turns: step 4 of the Lab multiplayer plan, the third of
+-- ✅ APPLIED to production 17 Nov 2026 (UTC) as migration `lab_dots_by_turns`, version 20261117044920:
+-- md5(statements[1]) = ed1a29de5ed9bfd50ae56a48096be98c, this file's body. The record is
+-- supabase/migrations/20261117044920_lab_dots_by_turns.sql.
+--
+-- (as drafted) Dots and boxes by turns: step 4 of the Lab multiplayer plan, the third of
 -- the remaining versus toys (Five in a row, Draughts, Dots, Four in a row).
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and Dots

@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. A finished Lab match in the Feed: step 6 of
+-- ✅ APPLIED to production 17 Nov 2026 (UTC) as migration `feed_finished_matches`, version 20261117004841:
+-- md5(statements[1]) = 52e283bb614266093bf587d725a45056, this file's body. The record is
+-- supabase/migrations/20261117004841_feed_finished_matches.sql.
+--
+-- (as drafted) A finished Lab match in the Feed: step 6 of
 -- docs/2026-11-14-lab-async-matches-plan.md, and decision 2 of Evan's answers (14 Nov).
 --
 -- WHAT IT ADDS: one more source in feed_recent's "things made, and comments" block, so a match

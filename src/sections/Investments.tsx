@@ -1854,9 +1854,21 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
    * 🔒 Personal about something all 33 accounts own. Measured 14 Nov 2026: AKAM, CURI, GENI,
    * MNRO and SKHY on Robinhood — 79.96 units, $813.84 at cost.
    *
-   * It also costs money quietly: `admin_correct_position` gates the family’s share of a
-   * correction on that same flag, so fixing a missed split on one of these hands them none of it.
-   * That fix is a migration — see docs/2026-11-14-correction-follows-ownership.sql.
+   * ⚠️ IT USED TO COST MONEY QUIETLY, AND THAT HALF IS FIXED — 16 Nov 2026, migration
+   * `20261116020828`. `admin_correct_position` gated the family’s share of a correction on this
+   * same flag while computing the share from their actual ownership, so fixing a missed split on
+   * one of these handed them none of it; it asks `finance.family_share_at` now, which is the
+   * ownership itself. Reasoning in docs/2026-11-14-correction-follows-ownership.sql.
+   *
+   * ⚠️ AND TWO PIECES OF COPY ON THIS SCREEN SAID SO, which is the §2 shape: the cause and its
+   * consequence shipped in one sitting, and the consequence was a sentence. The hero line and the
+   * row’s tooltip both promised that a ✏️ correction "gives the family none of it" — true when
+   * written in #339, false an hour later, and nothing on screen would ever have contradicted it.
+   *
+   * What remains is real and smaller, and is what the copy says now: the row reads `isFamily`, so
+   * the one screen built to say who owns what calls this yours, and `admin_even_split_trades`
+   * will not split future trades of an unmarked symbol — they return to the review queue instead,
+   * which is arguably right and is left alone.
    */
   const undeclared = held.filter((p) => !p.isFamily && p.familyUnits > DUST_UNITS)
   const brokerLabel = (pl: string) =>
@@ -1917,8 +1929,9 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
           <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
             🟡 {undeclared.length} {undeclared.length === 1 ? 'position is' : 'positions are'} held
             by the family from per-trade answers while the symbol itself is still marked Personal:{' '}
-            {undeclared.map((p) => p.symbol).join(', ')}. They keep their units, but a ✏️ correction
-            to one of them gives the family none of it.
+            {undeclared.map((p) => p.symbol).join(', ')}. Their units are safe and a ✏️ correction
+            now follows what they actually hold — but new trades of these come back to the review
+            queue instead of splitting automatically.
           </p>
         )}
         <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
@@ -2024,7 +2037,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                         <span
                           className="cz-undeclared"
                           style={{ flexBasis: '100%' }}
-                          title="The family holds units of this from per-trade answers, but the symbol was never marked Family. A ✏️ correction here would give them none of it."
+                          title="The family holds units of this from per-trade answers, but the symbol was never marked Family. A ✏️ correction follows the units they actually hold; new trades of it return to the review queue rather than splitting automatically."
                         >
                           🟡 <strong>The family holds {fmtU(p.familyUnits)} units</strong> of this,
                           answered trade by trade — the symbol itself is still Personal.
