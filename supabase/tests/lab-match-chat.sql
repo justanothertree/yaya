@@ -3,9 +3,14 @@
 -- Each case is a real call under a real role with real claims.
 --
 -- HOW TO RUN, until the draft is applied and recorded as a migration: on the throwaway stack
--- db-guards.yml builds (`supabase db reset`),
+-- db-guards.yml builds. ⚠️ Its `supabase db reset` is the 4 Nov dump plus the seed, which predates
+-- the Lab, so the three migrations the nudge guards apply come first, then the draft:
+--   for m in 20261109030613_lab_catalog_and_feedback 20261115002456_lab_matches_and_results \
+--            20261117003350_lab_match_nudge; do
+--     psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/migrations/$m.sql"; done
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -1 -f docs/2026-11-18-lab-match-chat.DRAFT.sql
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-match-chat.sql
+-- Measured that way on 18 Nov 2026, on a stack reset exactly as the job resets it: all 30 hold.
 -- Everything here is in one transaction that rolls back. It raises, listing every failed case, if
 -- anything is wrong, and says how many cases it asked otherwise.
 --
