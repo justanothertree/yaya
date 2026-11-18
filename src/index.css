@@ -1095,7 +1095,9 @@
    the phone rules above collapse this to one pane at a time via data-view. */
 .cz-chat {
   display: grid;
-  grid-template-columns: minmax(200px, 260px) 1fr;
+  /* the list holds people now, not only room names: an avatar, a name, a line of preview and
+     two buttons on a request row need more than the 260px a list of chips did */
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
   gap: 0.75rem;
   min-height: 0;
   /* Grows with the window instead of sitting at a fixed 26rem, which left a tall screen
@@ -1119,6 +1121,89 @@
   flex-direction: column;
   gap: 0.5rem;
   min-height: 0;
+}
+/* ── the list's own furniture: your status, the search box, and a heading per group ── */
+.cz-chat-list .ppl-me {
+  flex: 0 0 auto;
+  padding: 0 0.2rem;
+}
+.cz-list-search {
+  flex: 0 0 auto;
+  width: 100%;
+  /* a flex child of a column still takes min-width: auto from its `size`; let it be narrow */
+  min-width: 0;
+  margin: 0.3rem 0 0.2rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+}
+.cz-list-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 0.55rem;
+}
+.cz-list-sec > .cz-sec {
+  padding: 0 0.55rem;
+  margin-bottom: 0.15rem;
+}
+.cz-list-note {
+  margin: 0.2rem 0.55rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+/* A request row carries two buttons beside the name. In a 240px list they would crush the name
+   to nothing, so the actions drop to their own line instead — the name keeps a floor in PIXELS
+   (the root size is fluid, so rem is not a length here). */
+.cz-chat-list .cz-person {
+  flex-wrap: wrap;
+  row-gap: 0.3rem;
+}
+.cz-chat-list .cz-person-main {
+  flex: 1 1 120px;
+}
+.cz-chat-list .cz-person-actions {
+  margin-left: auto;
+}
+/* a friend's row is a conversation row with an avatar where a room has an icon */
+.cz-conv-person .cz-person-av {
+  width: 36px;
+  height: 36px;
+}
+.cz-conv:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.cz-conv-seen {
+  color: var(--text);
+  font-weight: 600;
+}
+/* the thread's head when the conversation is a person: avatar, name, and the way to their page */
+.cz-thread-who {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.cz-thread-who:hover .cz-thread-name {
+  text-decoration: underline;
+}
+.cz-thread-act {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 0.82rem;
+}
+.cz-thread-challenge {
+  flex: 0 0 auto;
+  /* a challenge panel is three rows of choices; on a short phone it must not take the thread */
+  max-height: 45%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cz-thread-challenge .profile-challenge {
+  margin-top: 0;
 }
 .cz-thread-empty {
   margin: auto;
@@ -1653,6 +1738,9 @@
     display: flex;
     flex-direction: column;
   }
+  [data-page='chat'] .cz-tab-chat .cz-chat-box {
+    flex: 1;
+  }
   [data-page='chat'] .cz-tab-chat .cz-chat {
     flex: 1;
     min-height: 0;
@@ -1794,10 +1882,119 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  /* tight inside a run of one person's messages; .is-first opens the gap between speakers */
+  gap: 3px;
   padding: 0.5rem;
   background: var(--b1, rgba(127, 127, 127, 0.08));
   border-radius: 10px;
+}
+/* The log's frame: it takes the height the log used to, so the pill has something to sit on
+   that does not scroll with the messages. */
+.cz-chat-logwrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* "↓ 3 new messages" — over the bottom of the log, where the messages it is about will appear */
+.cz-chat-new {
+  position: absolute;
+  left: 50%;
+  bottom: 0.5rem;
+  transform: translateX(-50%);
+  max-width: calc(100% - 1rem);
+  min-height: 32px;
+  padding: 0.25rem 0.8rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent, #7c6af7);
+  color: var(--btn-text, #fff);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+/* A short conversation sits at the BOTTOM, against the composer, the way every messenger puts
+   it: an auto margin on the first row takes the spare height. (Not justify-content: flex-end,
+   which makes the overflowing top of a long conversation unreachable by scrolling.) */
+.cz-chat-log > .cz-msg-row:first-of-type {
+  margin-top: auto;
+}
+/* the composer: the field takes the row and may shrink (an input's min-width is its `size`,
+   about 200px, which is wider than a narrow panel has to give) */
+.cz-chat-form {
+  display: flex;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+.cz-chat-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+}
+.cz-chat-err {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--accent-2, #ff5566);
+}
+.cz-msg-row {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+.cz-msg-row.is-first:not(:first-of-type) {
+  padding-top: 0.45rem;
+}
+.cz-msg-day {
+  align-self: center;
+  font-size: 0.7rem;
+  margin: 0.25rem 0 0.35rem;
+}
+/* One message. As wide as its words, up to a line length that is still comfortable to read:
+   in PIXELS, because the root size is fluid here and a thread on a 1440 screen is ~950px wide,
+   where "85%" was an 800px line. */
+.cz-msg {
+  align-self: flex-start;
+  max-width: min(85%, 560px);
+  min-width: 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 12px;
+  background: var(--card2, rgba(127, 127, 127, 0.15));
+  color: var(--text, #eeeef8);
+}
+.cz-msg.is-mine {
+  align-self: flex-end;
+  background: var(--accent, #7c6af7);
+  color: var(--btn-text, #fff);
+}
+/* the words, then the time beside the last of them — it wraps under only when there is no room */
+.cz-msg-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  column-gap: 0.6rem;
+}
+.cz-msg-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cz-msg-line > .cz-challenge {
+  flex: 1 1 100%;
+}
+.cz-msg-time {
+  flex: 0 0 auto;
+  font-size: 0.65rem;
+  line-height: 1.6;
+  opacity: 0.7;
+  white-space: nowrap;
 }
 
 /* Phone: the two panes take turns instead of sitting side by side, and the thread grows a
@@ -1825,6 +2022,115 @@
   }
   .cz-conv {
     min-height: 56px;
+  }
+}
+
+/* ⚠️ AND THE SAME TURN-TAKING WHEREVER THE CHAT'S OWN BOX IS NARROW, WHATEVER THE SCREEN IS.
+   The block above asks the viewport, which is the right question on a phone and the wrong one
+   in a canvas window: that is a box you drag to any width on a 1440px screen, so the media query
+   never matched and both panes stayed — measured in a 430px window, the list took 340 and the
+   conversation was 77px wide, one syllable to a line. A container query asks the box. 620px is
+   where a 240px list leaves a thread under 380, about the width of a phone's.
+   Kept beside the media block rather than replacing it: a browser without container queries
+   still gets the phone layout on a phone. MUST stay after the base rules, same as that block. */
+.cz-chat-box {
+  container-type: inline-size;
+  container-name: chat;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+/* ── HOW TALL A CHAT IS, in the three places one lives ───────────────────────────────────────
+   ⚠️ IT WAS ONE NUMBER FOR ALL OF THEM: `.cz-chat` is clamp(26rem, 100dvh − nav − 13rem, 62rem),
+   a guess at the chrome above and below it made from the viewport. On the page that left the
+   card ending 137px above the bottom of a 900px screen with the footer in the gap. In a canvas
+   window it ignored the window entirely — drag one to 400px tall and the chat was still 605, so
+   the composer was a scroll away; drag it to 1000 and the chat was still 605, with nothing under
+   it. Each place now gives the chat the height it actually has, and the chat fills it. */
+
+/* 1 · The page, wider than a phone (the phone has its own fixed-screen rules above). The card
+   runs from under the nav to the bottom of the window, and the footer waits below the fold:
+   it belongs under a document, and this is a room. Offsets in PIXELS — the root size is fluid.
+   Measured at 1440×900: card 680 → 795 tall. */
+@media (min-width: 641px) {
+  /* ⚠️ `:has(.cz-chat)` ON EVERY RULE HERE: only when there is a chat in the card. Signed out,
+     the card holds one sentence asking you to sign in, and the first version of this block made
+     that sentence a window-tall card with the footer taken away — found in the built bundle,
+     as a visitor, after it had shipped. */
+  [data-page='chat'] #chat.card:has(.cz-chat) {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--nav-h, 60px) - 44px);
+    min-height: 420px;
+  }
+  /* The call anchor floats over the bottom middle of the window, which is now where the
+     composer is. Same answer the phone rule gives: hand that strip back, by the dock's own
+     measured height, so Send is never under Leave. */
+  :root[data-in-call='1'] [data-page='chat'] #chat.card:has(.cz-chat) {
+    height: calc(100dvh - var(--nav-h, 60px) - 44px - var(--dock-h) - var(--pin-gap) * 2);
+  }
+  /* ⚠️ AND NO FOOTER, which is not tidiness: with one, the document is taller than the window,
+     and `#chat` in the address bar is also an ANCHOR to this card — so the browser scrolled the
+     page 32px to put the card at the top, sliding its heading under the nav on every load.
+     Measured, not guessed: scrollY was 32 before anything was clicked. With nothing below the
+     card there is nothing to scroll to. Scoped to the card so a canvas keeps its footer. */
+  [data-page='chat']:has(#chat.card .cz-chat) footer {
+    display: none;
+  }
+  [data-page='chat'] #chat.card:has(.cz-chat) .cz-tab-chat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  [data-page='chat'] #chat.card:has(.cz-chat) .cz-chat-box {
+    flex: 1;
+  }
+  [data-page='chat'] #chat.card:has(.cz-chat) .cz-chat {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+}
+
+/* 2 · A canvas window — as the Chat window (.cz-tab-chat) or as the Circuit's Chat pane (the
+   box directly). The window's body is the height; the chat takes all of it and scrolls inside
+   itself, and only a window dragged shorter than a usable chat scrolls as a whole. */
+.cz-body:has(> .cz-tab-chat),
+.cz-body:has(> .cz-chat-box) {
+  display: flex;
+  flex-direction: column;
+}
+.cz-body > .cz-tab-chat {
+  flex: 1 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cz-body > .cz-tab-chat > .cz-chat-box,
+.cz-body > .cz-chat-box {
+  flex: 1 0 300px;
+}
+.cz-body > .cz-tab-chat .cz-chat,
+.cz-body > .cz-chat-box > .cz-chat {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+
+@container chat (max-width: 620px) {
+  .cz-chat {
+    grid-template-columns: 1fr;
+  }
+  .cz-chat[data-view='list'] .cz-chat-thread {
+    display: none;
+  }
+  .cz-chat[data-view='thread'] .cz-chat-list {
+    display: none;
+  }
+  .cz-thread-back {
+    display: inline-flex;
   }
 }
 
@@ -6881,6 +7187,93 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   background: var(--card, var(--bg));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+}
+/* The anchor's other panels — microphone settings, and the call's chat.
+   ⚠️ `position: fixed` HERE IS RELATIVE TO THE DOCK, NOT THE VIEWPORT: .call-dock carries a
+   transform (it centres itself with one), and a transformed element is the containing block for
+   its fixed descendants. Written as a viewport offset the way the roster above is, this sat 91px
+   above the dock at 390 wide, the whole guard counted twice. So it says what it means instead:
+   one gap above the dock's own top edge, whatever height the dock turns out to be — which on a
+   phone is two rows, where a panel placed for one covers mute and Leave. */
+.call-pop {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(100% + var(--pin-gap));
+  z-index: 900010;
+  width: min(92vw, 24rem);
+  /* never taller than the room above the dock: the head, and with it the ✕, stays on screen */
+  max-height: calc(
+    100dvh - var(--bottom-guard) - var(--kb) - var(--dock-h) - var(--pin-gap) * 3 -
+      var(--nav-h, 52px)
+  );
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  background: var(--card, var(--bg));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.call-pop-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+/* The call's chat. A fixed height rather than "as tall as its content": an empty chat would be
+   a sliver you then watch grow, and the log needs a box to scroll in. Capped by the same room
+   above the dock the other panels are, so the head and its ✕ stay on screen with the keyboard up. */
+.call-chat {
+  width: min(94vw, 26rem);
+  height: min(
+    520px,
+    100dvh - var(--bottom-guard) - var(--kb) - var(--dock-h) - var(--pin-gap) * 3 -
+      var(--nav-h, 52px)
+  );
+  gap: 0.4rem;
+  padding-bottom: 0.5rem;
+}
+.call-chat > :not(.callroster-head) {
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+}
+.call-chat-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.call-chat-note {
+  margin-top: 0;
+  margin-bottom: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+/* how many arrived while the panel was shut — on the button, where the eye already is */
+.call-dock-chat {
+  position: relative;
+}
+.call-dock-new {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent-2, #ff5566);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+/* inside the panel the settings need no box of their own — the panel is the box */
+.call-pop-body .voice-audio {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.6rem 0.7rem;
 }
 .callroster-head {
   display: flex;
