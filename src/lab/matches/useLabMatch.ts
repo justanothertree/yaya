@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { peekPersistedUserId } from '../../finance/auth'
 import { TOY_EVENT, hashParam } from '../links'
+import { SIGN_IN_TO_SEE } from './errors'
 import {
   MatchError,
   acceptMatch,
@@ -47,6 +49,8 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
   const [id, setId] = useState<string | null>(() => idFor(demo))
   const [view, setView] = useState<MatchView | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** the match is closed to whoever is looking because they are not signed in */
+  const [needsSignIn, setNeedsSignIn] = useState(false)
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<unknown>(null)
   const [hasPending, setHasPending] = useState(false)
@@ -66,6 +70,14 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
   const load = useCallback(async () => {
     if (!id) return
     const g = gen.current
+    /* signed out, nothing to ask: every match function is closed to anon, and the answer would be
+       Postgres's own "permission denied", so say what would open it instead */
+    if (!peekPersistedUserId()) {
+      setView(null)
+      setError(SIGN_IN_TO_SEE)
+      setNeedsSignIn(true)
+      return
+    }
     try {
       const v = await getMatch(id)
       if (g !== gen.current) return
@@ -76,10 +88,13 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
       }
       setView(v)
       setError(null)
+      setNeedsSignIn(false)
     } catch (e) {
       if (g !== gen.current) return
       setError(e instanceof Error ? e.message : 'The match could not be loaded.')
-      if (e instanceof MatchError && e.status === 404) setView(null)
+      const status = e instanceof MatchError ? e.status : 0
+      setNeedsSignIn(status === 401)
+      if (status === 404 || status === 401) setView(null)
     }
   }, [id, demo])
 
@@ -87,6 +102,7 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
     gen.current++
     setView(null)
     setError(null)
+    setNeedsSignIn(false)
     setPending(null)
     setHasPending(false)
     void load()
@@ -189,6 +205,7 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
     id,
     view,
     error,
+    needsSignIn,
     busy,
     rules,
     game,
