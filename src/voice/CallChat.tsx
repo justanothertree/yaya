@@ -2,7 +2,7 @@ import { MessageLog } from '../circuit/ui/MessageLog'
 import { Composer } from '../circuit/ui/Composer'
 import { sendToThread } from '../circuit/roomThread'
 import type { Msg } from '../circuit/chatRooms'
-import { sendCallChat } from './callChat'
+import { sendCallChat } from './callChatStore'
 
 /**
  * The call's chat, risen from the anchor: read and type without leaving the page you are on.
