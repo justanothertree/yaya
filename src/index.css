@@ -1894,6 +1894,24 @@
 .cz-chat-log > .cz-msg-row:first-of-type {
   margin-top: auto;
 }
+/* the composer: the field takes the row and may shrink (an input's min-width is its `size`,
+   about 200px, which is wider than a narrow panel has to give) */
+.cz-chat-form {
+  display: flex;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+.cz-chat-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+}
+.cz-chat-err {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--accent-2, #ff5566);
+}
 .cz-msg-row {
   display: flex;
   flex-direction: column;
@@ -7168,6 +7186,54 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   overflow-y: auto;
   overscroll-behavior: contain;
   min-height: 0;
+}
+/* The call's chat. A fixed height rather than "as tall as its content": an empty chat would be
+   a sliver you then watch grow, and the log needs a box to scroll in. Capped by the same room
+   above the dock the other panels are, so the head and its ✕ stay on screen with the keyboard up. */
+.call-chat {
+  width: min(94vw, 26rem);
+  height: min(
+    520px,
+    100dvh - var(--bottom-guard) - var(--kb) - var(--dock-h) - var(--pin-gap) * 3 -
+      var(--nav-h, 52px)
+  );
+  gap: 0.4rem;
+  padding-bottom: 0.5rem;
+}
+.call-chat > :not(.callroster-head) {
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+}
+.call-chat-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.call-chat-note {
+  margin-top: 0;
+  margin-bottom: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+/* how many arrived while the panel was shut — on the button, where the eye already is */
+.call-dock-chat {
+  position: relative;
+}
+.call-dock-new {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent-2, #ff5566);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
 }
 /* inside the panel the settings need no box of their own — the panel is the box */
 .call-pop-body .voice-audio {

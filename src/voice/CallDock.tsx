@@ -4,6 +4,8 @@ import type { VoicePeer } from './voiceSession'
 import { callWord, peerWord, speakingNames } from './callWords'
 import { CallRoster } from './CallRoster'
 import { MicSettings } from './MicSettings'
+import { CallChat } from './CallChat'
+import { useCallMessages } from './useCallMessages'
 import { routeIsPrivate } from '../party/party'
 import { together } from '../party/together'
 import { shared } from '../party/shared'
@@ -81,7 +83,7 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
    * ⚠️ They all rise from the same place, directly above the dock, so two open at once is one
    * hidden behind the other. A single value makes opening one the same act as closing the rest.
    */
-  const [panel, setPanel] = useState<'roster' | 'mic' | null>(null)
+  const [panel, setPanel] = useState<'roster' | 'mic' | 'chat' | null>(null)
   const rosterOpen = panel === 'roster'
   const setRosterOpen = (on: boolean | ((was: boolean) => boolean)) =>
     setPanel((was) => ((typeof on === 'function' ? on(was === 'roster') : on) ? 'roster' : null))
@@ -89,6 +91,7 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
     inCall,
     roomId,
     roomName,
+    roomKind,
     peers,
     muted,
     leave,
@@ -105,6 +108,8 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
     setShareMode,
   } = useVoiceSession()
   const [volume, setVolume] = useState(readVol)
+  /* the call's chat is followed for the whole call, so its button can say something arrived */
+  const chat = useCallMessages(inCall ? roomId : null, inCall ? roomKind : null, panel === 'chat')
 
   useEffect(() => {
     setMaster(volume)
@@ -222,6 +227,30 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
         <CallRoster
           onClose={() => setRosterOpen(false)}
           showMeter={isAdmin || (import.meta.env.DEV && devMeter())}
+        />
+      )}
+      {/* Text, while you talk. ⚠️ The room name beside this is a link BACK to the conversation,
+          which takes you off the page you are on — the wrong door when you are mid-game with
+          somebody and only want to paste them a link. This opens the same conversation here. */}
+      <button
+        className={'btn call-dock-chat' + (panel === 'chat' ? ' is-on' : '')}
+        onClick={() => setPanel((was) => (was === 'chat' ? null : 'chat'))}
+        aria-expanded={panel === 'chat'}
+        aria-label={
+          chat.unseen > 0 ? `Chat for this call, ${chat.unseen} new` : 'Chat for this call'
+        }
+        title="Text the call without leaving this page"
+      >
+        💬{chat.unseen > 0 && <span className="call-dock-new">{chat.unseen}</span>}
+      </button>
+      {panel === 'chat' && (
+        <CallChat
+          roomId={roomId}
+          roomName={roomName}
+          msgs={chat.msgs}
+          inRoom={chat.inRoom}
+          err={chat.err}
+          onClose={() => setPanel(null)}
         />
       )}
       {/* A refusal has to be SEEN. This lived only in the button's tooltip, so hitting share

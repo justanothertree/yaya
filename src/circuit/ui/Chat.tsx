@@ -3,8 +3,6 @@ import { getSupabaseClient } from '../../finance/client'
 import {
   previewMember,
   PREVIEW_ME,
-  previewMsgs,
-  PREVIEW_PEOPLE,
   PREVIEW_UNREAD,
   previewOverview,
   previewOpenDm,
@@ -15,7 +13,9 @@ import { useRoomPresence } from '../../voice/useRoomPresence'
 import { VoiceBar } from '../../voice/VoiceBar'
 import { usePeople, type Person } from '../usePeople'
 import { ChatList, PersonAvatar } from './ChatList'
-import { MessageLog, type Msg } from './MessageLog'
+import { MessageLog } from './MessageLog'
+import { Composer } from './Composer'
+import { sendToThread, useThread } from '../roomThread'
 import { roomIcon, seenWord, type Overview } from '../chatRooms'
 import { ProfileChallenge } from '../../lab/matches/ProfileChallenge'
 
@@ -43,9 +43,6 @@ export function Chat({
   const sb = authed && !previewMember ? getSupabaseClient() : null
   const [rooms, setRooms] = useState<Overview[]>([])
   const [room, setRoom] = useState<Overview | null>(null)
-  const [msgs, setMsgs] = useState<Msg[]>([])
-  const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   /** a refusal that happened in the LIST — shown there, since on a phone the thread is hidden */
   const [listErr, setListErr] = useState<string | null>(null)
@@ -215,106 +212,10 @@ export function Chat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
 
-  // load + live-follow the open room
-  useEffect(() => {
-    if (previewMember) {
-      if (room) {
-        // Mirror what list_room_messages does server-side, so the harness exercises the real
-        // rule: identity everywhere except the lounge, where the name stays unlinkable.
-        setMsgs(
-          (previewMsgs()[room.id] ?? []).map((m) => ({
-            id: m.id,
-            room_id: m.room_id,
-            author_user_id: room.kind === 'lounge' ? null : m.user_id,
-            author_name: m.author_name,
-            author_username:
-              room.kind === 'lounge'
-                ? null
-                : (PREVIEW_PEOPLE.find((p) => p.name === m.author_name)?.username ?? null),
-            mine: m.user_id === PREVIEW_ME.id,
-            body: m.body,
-            created_at: m.created_at,
-          })),
-        )
-      }
-      return
-    }
-    if (!sb || !room) return
-    let live = true
-    // ⚠️ Through the RPC, not `from('chat_messages').select('*')`. The RPC returns an identity
-    // only where it's the author's to show. The table itself no longer holds one for the
-    // Lounge at all — see the lounge_message_authors migration — so neither this read nor the
-    // realtime payload below can carry the alias away, whichever way someone reaches for it.
-    void sb.rpc('list_room_messages', { p_room: room.id, p_limit: 50 }).then(({ data, error }) => {
-      if (!live) return
-      if (error) setErr(error.message)
-      else {
-        setMsgs(((data as Msg[]) ?? []).reverse())
-      }
-    })
-    const ch = sb
-      // private: gated on being in this room, so a non-member can't even hold the subscription
-      // open. The row payloads were already filtered by chat_messages' RLS — this is depth.
-      .channel('chat:' + room.id, { config: { private: true } })
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `room_id=eq.${room.id}`,
-        },
-        (payload) => {
-          // The raw table row. `user_id` is null for every lounge message now — the column
-          // holds nothing there, so this payload cannot carry the alias away with it.
-          const row = payload.new as {
-            id: string
-            room_id: string
-            user_id: string | null
-            author_name: string
-            body: string
-            created_at: string
-          }
-          setMsgs((prev) => {
-            if (prev.some((x) => x.id === row.id)) return prev
-            // Resolve the username the way the RPC would, from authors already loaded for THIS
-            // room, rather than trusting anything in the payload. Guarded on a non-null id:
-            // matching null against null would pair a lounge message with the first other
-            // lounge message in the list, which is the exact link this is meant to prevent.
-            const known = row.user_id ? prev.find((x) => x.author_user_id === row.user_id) : null
-            const m: Msg = {
-              id: row.id,
-              room_id: row.room_id,
-              author_user_id: known ? row.user_id : null,
-              author_name: row.author_name,
-              author_username: known?.author_username ?? null,
-              // A lounge echo of your OWN message has no id to match, so it can't be
-              // recognised as yours here — the optimistic append in send() already added it
-              // with mine:true, and this dedupes against that by id.
-              mine: !!row.user_id && row.user_id === me,
-              body: row.body,
-              created_at: row.created_at,
-            }
-            return [...prev, m]
-          })
-          // We're looking at it, so keep it read. The bell reloads off this same INSERT,
-          // so without announcing after the write lands it races us and badges a room
-          // you are actively reading — with nothing left to re-read and clear it.
-          void sb.rpc('mark_room_read', { p_room: row.room_id }).then(() => notificationsChanged())
-        },
-      )
-      .subscribe((status, err) => {
-        if (status !== 'SUBSCRIBED' && status !== 'CLOSED')
-          console.warn(
-            `[realtime] chat:<room>: ${status}${err ? ` — ${err.message}` : ''} (not live)`,
-          )
-      })
-    return () => {
-      live = false
-      void sb.removeChannel(ch)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.id, authed])
+  /* the open room's messages, loaded and followed live — shared with the call anchor's panel
+     when that is showing the same conversation, see roomThread.ts */
+  const thread = useThread(room?.id ?? null, room?.kind ?? '')
+  const msgs = thread.msgs
 
   function openRoom(r: Overview) {
     setRoom(r)
@@ -385,7 +286,6 @@ export function Chat({
 
   function backToList() {
     setRoom(null)
-    setMsgs([])
     void loadOverview()
   }
 
@@ -422,53 +322,10 @@ export function Chat({
       setLoungeIn(on)
       if (!on && room?.kind === 'lounge') {
         setRoom(null)
-        setMsgs([])
       }
       await loadOverview()
     }
     setLoungeBusy(false)
-  }
-
-  async function send(e: React.FormEvent) {
-    e.preventDefault()
-    if (!room || !draft.trim() || sending) return
-    if (previewMember) {
-      const fixture = {
-        id: 'pv' + Date.now(),
-        room_id: room.id,
-        user_id: PREVIEW_ME.id,
-        author_name: PREVIEW_ME.name,
-        body: draft.trim(),
-        created_at: new Date().toISOString(),
-      }
-      setMsgs((prev) => [
-        ...prev,
-        { ...fixture, author_user_id: fixture.user_id, author_username: null, mine: true },
-      ])
-      previewMsgs()[room.id] = [...(previewMsgs()[room.id] ?? []), fixture]
-      setDraft('')
-      return
-    }
-    if (!sb) return
-    setSending(true)
-    setErr(null)
-    const { data, error } = await sb.rpc('send_chat_message', {
-      p_room: room.id,
-      p_body: draft.trim(),
-    })
-    setSending(false)
-    if (error) {
-      setErr(error.message)
-      return
-    }
-    setDraft('')
-    // ⚠️ send_chat_message returns a SET now, so this is an array — and it returns the same
-    // shape list_room_messages does rather than the raw row. That shape is the fix for two
-    // things at once: the raw row had no `mine` flag (so your own message rendered as
-    // somebody else's until a reload), and in the lounge it no longer says who wrote it even
-    // to the person who did.
-    const m = (data as unknown as Msg[] | null)?.[0]
-    if (m?.id) setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
   }
 
   if (!authed && !previewMember)
@@ -612,31 +469,17 @@ export function Chat({
 
               <MessageLog msgs={msgs} named={room.kind !== 'dm'} />
 
-              {err && (
-                <p
-                  className="muted"
-                  style={{ margin: 0, fontSize: '0.8rem', color: 'var(--accent-2, #ff5566)' }}
-                >
-                  {err}
+              {(err ?? thread.err) && (
+                <p className="muted cz-chat-err" role="alert">
+                  {err ?? thread.err}
                 </p>
               )}
 
-              <form
-                className="cz-chat-form"
-                onSubmit={send}
-                style={{ display: 'flex', gap: '0.4rem' }}
-              >
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder={`Message ${room.name}`}
-                  maxLength={2000}
-                  style={{ flex: 1, padding: '0.55rem 0.7rem', borderRadius: 10 }}
-                />
-                <button className="btn" disabled={!draft.trim() || sending} type="submit">
-                  {sending ? '…' : 'Send'}
-                </button>
-              </form>
+              <Composer
+                key={room.id}
+                placeholder={`Message ${room.name}`}
+                onSend={(text) => sendToThread(room.id, text)}
+              />
             </>
           ) : (
             <p className="muted cz-thread-empty">Pick a friend or a room to start reading.</p>
