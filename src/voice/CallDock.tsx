@@ -3,6 +3,7 @@ import { useVoiceSession } from './useVoiceSession'
 import type { VoicePeer } from './voiceSession'
 import { callWord, peerWord, speakingNames } from './callWords'
 import { CallRoster } from './CallRoster'
+import { MicSettings } from './MicSettings'
 import { routeIsPrivate } from '../party/party'
 import { together } from '../party/together'
 import { shared } from '../party/shared'
@@ -74,7 +75,16 @@ const devMeter = () => {
 }
 
 export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
-  const [rosterOpen, setRosterOpen] = useState(false)
+  /**
+   * Which of the anchor's panels is open — one slot, never two.
+   *
+   * ⚠️ They all rise from the same place, directly above the dock, so two open at once is one
+   * hidden behind the other. A single value makes opening one the same act as closing the rest.
+   */
+  const [panel, setPanel] = useState<'roster' | 'mic' | null>(null)
+  const rosterOpen = panel === 'roster'
+  const setRosterOpen = (on: boolean | ((was: boolean) => boolean)) =>
+    setPanel((was) => ((typeof on === 'function' ? on(was === 'roster') : on) ? 'roster' : null))
   const {
     inCall,
     roomId,
@@ -146,6 +156,12 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
       delete el.dataset.inCall
       el.style.removeProperty('--dock-h')
     }
+  }, [inCall])
+
+  /* a panel belongs to the call it was opened in: hang up with one showing and the next call
+     would otherwise start with it already open, over whatever page you happen to be on */
+  useEffect(() => {
+    if (!inCall) setPanel(null)
   }, [inCall])
 
   if (!inCall) return null
@@ -315,6 +331,31 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
       >
         {muted ? '🔇' : '🎙'}
       </button>
+      {/* Beside the mic it configures. ⚠️ It was only inside the conversation the call started
+          in, so fixing a too-sensitive mic from any other page meant leaving that page first —
+          the one trip this anchor exists to save. Same panel as the chat's ⚙, see MicSettings. */}
+      <button
+        className={'btn' + (panel === 'mic' ? ' is-on' : '')}
+        onClick={() => setPanel((was) => (was === 'mic' ? null : 'mic'))}
+        aria-expanded={panel === 'mic'}
+        aria-label="Microphone settings"
+        title="Microphone sensitivity, noise removal and how loud each person is"
+      >
+        ⚙
+      </button>
+      {panel === 'mic' && (
+        <div className="call-pop" role="dialog" aria-label="Microphone settings">
+          <div className="callroster-head">
+            <strong>Your microphone</strong>
+            <button className="btn" onClick={() => setPanel(null)} aria-label="Close">
+              ✕
+            </button>
+          </div>
+          <div className="call-pop-body">
+            <MicSettings />
+          </div>
+        </div>
+      )}
       {/* wrapped so the click event isn't passed as leave()'s `silent` flag — see VoiceBar */}
       <button className="btn voice-leave" onClick={() => leave()} title="Leave the call">
         Leave
