@@ -207,10 +207,6 @@ const Pictures = lazyRetry(
   () => import('./pictures/Pictures'),
   (m) => m.Pictures,
 )
-const People = lazyRetry(
-  () => import('./sections/People'),
-  (m) => m.People,
-)
 const InstrumentRoom = lazyRetry(
   () => import('./sections/InstrumentRoom'),
   (m) => m.InstrumentRoom,
@@ -1527,7 +1523,7 @@ export default function App() {
    * Pages that have nothing to show a signed-out visitor but a sign-in prompt. Kept next to
    * singleCanvasTabs because the two have to be read together — see the launcher filter below.
    */
-  const MEMBER_ONLY_TABS: Section[] = ['account-settings', 'chat', 'ratings', 'people', 'profile']
+  const MEMBER_ONLY_TABS: Section[] = ['account-settings', 'chat', 'ratings', 'profile']
   const singleCanvasTabs: Section[] = [
     'investments',
     'account-settings',
@@ -1541,7 +1537,6 @@ export default function App() {
     'signin',
     'chat',
     'ratings',
-    'people',
     'profile',
   ]
   const canvasCapable =
@@ -1572,7 +1567,6 @@ export default function App() {
     signin: '🔑 Sign in',
     chat: '💬 Chat',
     ratings: '📝 Ratings',
-    people: '🧑‍🤝‍🧑 People',
     profile: '🪪 Profile',
   }
   /**
@@ -1625,8 +1619,6 @@ export default function App() {
         return <ChatPage authed={isFinanceAuthed || previewMember} voiceIn={voiceIn} />
       case 'ratings':
         return <Ratings authed={isFinanceAuthed || previewMember} />
-      case 'people':
-        return <People authed={isFinanceAuthed || previewMember} />
       case 'pictures':
         return <Pictures authed={isFinanceAuthed || previewMember} />
       case 'feed':
@@ -2305,19 +2297,6 @@ export default function App() {
                 onOpenCanvasPane={openAndFocus}
               />
             </Suspense>
-          )}
-          {!sharedCanvasShowing && active === 'people' && (
-            <section id="people" className="card reveal">
-              <Suspense
-                fallback={
-                  <div className="card" aria-busy>
-                    Loading People…
-                  </div>
-                }
-              >
-                <People authed={isFinanceAuthed || previewMember} />
-              </Suspense>
-            </section>
           )}
           {!sharedCanvasShowing && active === 'pictures' && (
             <section id="pictures" className="card reveal">
