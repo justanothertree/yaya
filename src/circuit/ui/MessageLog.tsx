@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { challengeRoomOf, challengeText } from '../../game/challenge'
 import { boutCodeOf, boutInviteText } from '../../pets/boutInvite'
 import { circuitInviteText, circuitJoinCodeOf } from '../inviteLink'
 import type { Msg } from '../chatRooms'
+import { atBottom, newMessagesLabel, shouldJump, unseenAfter } from '../logFollow'
 
 const dayOf = (iso: string) => iso.slice(0, 10)
 const timeOf = (iso: string) =>
@@ -52,6 +53,17 @@ export function MessageLog({
   const last = msgs[msgs.length - 1]
 
   const shown = useRef<string | null>(null)
+  /**
+   * The newest message the reader has actually been at the bottom for, and whether they are
+   * away from it now. State, where `pinned` is a ref, because these two are DRAWN: together
+   * they are the "new messages" pill.
+   *
+   * ⚠️ WITHOUT THE PILL, KEEPING YOUR PLACE IS HALF A FEATURE. Not being thrown to the bottom
+   * is right, and on its own it means somebody answers you and nothing on screen changes — the
+   * message exists only below the fold, in a log that looks exactly as it did.
+   */
+  const [seenId, setSeenId] = useState<string | null>(null)
+  const [away, setAway] = useState(false)
 
   /**
    * Follow the newest message — unless the reader has scrolled up to read.
@@ -64,11 +76,18 @@ export function MessageLog({
   useLayoutEffect(() => {
     const el = logRef.current
     if (!el) return
-    if (shown.current !== room) {
+    const roomChanged = shown.current !== room
+    if (roomChanged) {
       shown.current = room
       pinned.current = true
     }
-    if (pinned.current || last?.mine) el.scrollTop = el.scrollHeight
+    if (shouldJump({ pinned: pinned.current, lastIsMine: !!last?.mine, roomChanged })) {
+      el.scrollTop = el.scrollHeight
+      pinned.current = true
+      // at the bottom means everything has been seen, and there is nothing to announce
+      setSeenId(last?.id ?? null)
+      setAway(false)
+    }
   }, [last?.id, last?.mine, room, msgs.length])
 
   /* The log's own box changes under a reader who has not moved: the keyboard opens, a challenge
@@ -84,90 +103,113 @@ export function MessageLog({
     return () => ro.disconnect()
   }, [])
 
+  const unseen = away ? unseenAfter(msgs, seenId) : 0
+
   return (
-    <div
-      className="cz-chat-log"
-      ref={logRef}
-      onScroll={(e) => {
-        const el = e.currentTarget
-        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
-      }}
-    >
-      {msgs.length === 0 && (
-        <p className="muted" style={{ margin: 'auto', fontSize: '0.85rem' }}>
-          {empty ?? 'Nothing here yet — say the first thing.'}
-        </p>
-      )}
-      {msgs.map((m, i) => {
-        const prev = i > 0 ? msgs[i - 1] : null
-        const newDay = !prev || dayOf(m.created_at) !== dayOf(prev.created_at)
-        /* the first of a run: a new day, a new speaker, or a long enough silence to be a new
+    <div className="cz-chat-logwrap">
+      <div
+        className="cz-chat-log"
+        ref={logRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          const bottom = atBottom(el.scrollHeight, el.scrollTop, el.clientHeight)
+          pinned.current = bottom
+          setAway(!bottom)
+          // scrolling down to the end by hand reads them, the same as pressing the pill
+          if (bottom) setSeenId(last?.id ?? null)
+        }}
+      >
+        {msgs.length === 0 && (
+          <p className="muted" style={{ margin: 'auto', fontSize: '0.85rem' }}>
+            {empty ?? 'Nothing here yet — say the first thing.'}
+          </p>
+        )}
+        {msgs.map((m, i) => {
+          const prev = i > 0 ? msgs[i - 1] : null
+          const newDay = !prev || dayOf(m.created_at) !== dayOf(prev.created_at)
+          /* the first of a run: a new day, a new speaker, or a long enough silence to be a new
            thought — ten minutes, after which the time is worth saying again anyway */
-        const first =
-          newDay ||
-          !prev ||
-          speaker(prev) !== speaker(m) ||
-          Date.parse(m.created_at) - Date.parse(prev.created_at) > 10 * 60000
-        const card = challengeRoomOf(m.body)
-          ? {
-              say: challengeText(m.body),
-              href: `#snake?room=${encodeURIComponent(challengeRoomOf(m.body)!)}`,
-              label: '🎮 Join the game',
-            }
-          : boutCodeOf(m.body)
+          const first =
+            newDay ||
+            !prev ||
+            speaker(prev) !== speaker(m) ||
+            Date.parse(m.created_at) - Date.parse(prev.created_at) > 10 * 60000
+          const card = challengeRoomOf(m.body)
             ? {
-                say: boutInviteText(m.body),
-                href: `#games?play=fight&bout=${encodeURIComponent(boutCodeOf(m.body)!)}`,
-                label: '⚔️ Join the scrap',
+                say: challengeText(m.body),
+                href: `#snake?room=${encodeURIComponent(challengeRoomOf(m.body)!)}`,
+                label: '🎮 Join the game',
               }
-            : circuitJoinCodeOf(m.body)
+            : boutCodeOf(m.body)
               ? {
-                  say: circuitInviteText(m.body),
-                  href: `#circuit?join=${encodeURIComponent(circuitJoinCodeOf(m.body)!)}`,
-                  label: '🏆 Join the circuit',
+                  say: boutInviteText(m.body),
+                  href: `#games?play=fight&bout=${encodeURIComponent(boutCodeOf(m.body)!)}`,
+                  label: '⚔️ Join the scrap',
                 }
-              : null
-        return (
-          <div key={m.id} className={'cz-msg-row' + (first ? ' is-first' : '')}>
-            {newDay && <div className="muted cz-msg-day">{dayOf(m.created_at)}</div>}
-            <div className={'cz-msg' + (m.mine ? ' is-mine' : '')}>
-              {named &&
-                !m.mine &&
-                first &&
-                (m.author_username ? (
-                  <a
-                    className="cz-msg-author"
-                    href={'#profile?u=' + encodeURIComponent(m.author_username)}
-                    title={`See ${m.author_name}'s profile`}
-                  >
-                    {m.author_name}
-                  </a>
-                ) : (
-                  // no username means the server withheld it (the Lounge): a name with
-                  // nowhere to go, which is the whole point of the pseudonym
-                  <div className="cz-msg-author cz-msg-author-plain">{m.author_name}</div>
-                ))}
-              {/* A Snake challenge, a scrap invite and a circuit invite are ordinary messages
+              : circuitJoinCodeOf(m.body)
+                ? {
+                    say: circuitInviteText(m.body),
+                    href: `#circuit?join=${encodeURIComponent(circuitJoinCodeOf(m.body)!)}`,
+                    label: '🏆 Join the circuit',
+                  }
+                : null
+          return (
+            <div key={m.id} className={'cz-msg-row' + (first ? ' is-first' : '')}>
+              {newDay && <div className="muted cz-msg-day">{dayOf(m.created_at)}</div>}
+              <div className={'cz-msg' + (m.mine ? ' is-mine' : '')}>
+                {named &&
+                  !m.mine &&
+                  first &&
+                  (m.author_username ? (
+                    <a
+                      className="cz-msg-author"
+                      href={'#profile?u=' + encodeURIComponent(m.author_username)}
+                      title={`See ${m.author_name}'s profile`}
+                    >
+                      {m.author_name}
+                    </a>
+                  ) : (
+                    // no username means the server withheld it (the Lounge): a name with
+                    // nowhere to go, which is the whole point of the pseudonym
+                    <div className="cz-msg-author cz-msg-author-plain">{m.author_name}</div>
+                  ))}
+                {/* A Snake challenge, a scrap invite and a circuit invite are ordinary messages
                   with a link in them — see game/challenge.ts, pets/boutInvite.ts and
                   circuit/inviteLink.ts. One card for all three so they read alike, and each
                   falls back to plain text if its link is malformed. */}
-              <div className="cz-msg-line">
-                {card ? (
-                  <div className="cz-challenge">
-                    {card.say && <div className="cz-challenge-say">{card.say}</div>}
-                    <a className="btn cz-challenge-join" href={card.href}>
-                      {card.label}
-                    </a>
-                  </div>
-                ) : (
-                  <span className="cz-msg-body">{m.body}</span>
-                )}
-                <span className="cz-msg-time">{timeOf(m.created_at)}</span>
+                <div className="cz-msg-line">
+                  {card ? (
+                    <div className="cz-challenge">
+                      {card.say && <div className="cz-challenge-say">{card.say}</div>}
+                      <a className="btn cz-challenge-join" href={card.href}>
+                        {card.label}
+                      </a>
+                    </div>
+                  ) : (
+                    <span className="cz-msg-body">{m.body}</span>
+                  )}
+                  <span className="cz-msg-time">{timeOf(m.created_at)}</span>
+                </div>
               </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
+      {/* A button, and it says how many: it is the only sign that somebody spoke. role=status
+          so a screen reader hears it arrive without the focus being moved off what is being
+          read. */}
+      {unseen > 0 && (
+        <button
+          className="cz-chat-new"
+          role="status"
+          onClick={() => {
+            const el = logRef.current
+            if (el) el.scrollTop = el.scrollHeight
+          }}
+        >
+          ↓ {newMessagesLabel(unseen)}
+        </button>
+      )}
     </div>
   )
 }

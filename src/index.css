@@ -1888,6 +1888,35 @@
   background: var(--b1, rgba(127, 127, 127, 0.08));
   border-radius: 10px;
 }
+/* The log's frame: it takes the height the log used to, so the pill has something to sit on
+   that does not scroll with the messages. */
+.cz-chat-logwrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* "↓ 3 new messages" — over the bottom of the log, where the messages it is about will appear */
+.cz-chat-new {
+  position: absolute;
+  left: 50%;
+  bottom: 0.5rem;
+  transform: translateX(-50%);
+  max-width: calc(100% - 1rem);
+  min-height: 32px;
+  padding: 0.25rem 0.8rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent, #7c6af7);
+  color: var(--btn-text, #fff);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
 /* A short conversation sits at the BOTTOM, against the composer, the way every messenger puts
    it: an auto margin on the first row takes the spare height. (Not justify-content: flex-end,
    which makes the overflowing top of a long conversation unreachable by scrolling.) */
