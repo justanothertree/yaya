@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '../../finance/client'
 import {
   previewMember,
@@ -13,11 +13,9 @@ import {
 import { notificationsChanged } from '../../hooks/notifySignal'
 import { useRoomPresence } from '../../voice/useRoomPresence'
 import { VoiceBar } from '../../voice/VoiceBar'
-import { challengeRoomOf, challengeText } from '../../game/challenge'
-import { boutCodeOf, boutInviteText } from '../../pets/boutInvite'
-import { circuitInviteText, circuitJoinCodeOf } from '../inviteLink'
 import { usePeople, type Person } from '../usePeople'
 import { ChatList, PersonAvatar } from './ChatList'
+import { MessageLog, type Msg } from './MessageLog'
 import { roomIcon, seenWord, type Overview } from '../chatRooms'
 import { ProfileChallenge } from '../../lab/matches/ProfileChallenge'
 
@@ -32,19 +30,6 @@ import { ProfileChallenge } from '../../lab/matches/ProfileChallenge'
  * resolves the author's name server-side so it can't be spoofed. The list comes from
  * list_chat_overview, and opening a room calls mark_room_read to clear its badge.
  */
-
-type Msg = {
-  id: string
-  room_id: string
-  /** null in the Lounge — see list_room_messages. Never read it to decide "is this mine". */
-  author_user_id: string | null
-  author_name: string
-  /** present only when the author's identity is theirs to show; null makes the name unlinkable */
-  author_username: string | null
-  mine: boolean
-  body: string
-  created_at: string
-}
 
 export function Chat({
   authed = false,
@@ -64,7 +49,6 @@ export function Chat({
   const [err, setErr] = useState<string | null>(null)
   /** a refusal that happened in the LIST — shown there, since on a phone the thread is hidden */
   const [listErr, setListErr] = useState<string | null>(null)
-  const endRef = useRef<HTMLDivElement>(null)
   const [me, setMe] = useState<string | null>(previewMember ? PREVIEW_ME.id : null)
   // Your own name, for voice. It used to be the literal string 'You', which meant every
   // participant announced themselves as "You" — so the call read "in call with You", two
@@ -231,10 +215,6 @@ export function Chat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
 
-  const scrollDown = useCallback(() => {
-    endRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [])
-
   // load + live-follow the open room
   useEffect(() => {
     if (previewMember) {
@@ -256,7 +236,6 @@ export function Chat({
             created_at: m.created_at,
           })),
         )
-        setTimeout(scrollDown, 60)
       }
       return
     }
@@ -271,7 +250,6 @@ export function Chat({
       if (error) setErr(error.message)
       else {
         setMsgs(((data as Msg[]) ?? []).reverse())
-        setTimeout(scrollDown, 60)
       }
     })
     const ch = sb
@@ -319,7 +297,6 @@ export function Chat({
             }
             return [...prev, m]
           })
-          setTimeout(scrollDown, 60)
           // We're looking at it, so keep it read. The bell reloads off this same INSERT,
           // so without announcing after the write lands it races us and badges a room
           // you are actively reading — with nothing left to re-read and clear it.
@@ -470,7 +447,6 @@ export function Chat({
       ])
       previewMsgs()[room.id] = [...(previewMsgs()[room.id] ?? []), fixture]
       setDraft('')
-      setTimeout(scrollDown, 60)
       return
     }
     if (!sb) return
@@ -493,7 +469,6 @@ export function Chat({
     // to the person who did.
     const m = (data as unknown as Msg[] | null)?.[0]
     if (m?.id) setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
-    setTimeout(scrollDown, 60)
   }
 
   if (!authed && !previewMember)
@@ -509,10 +484,6 @@ export function Chat({
       ? (ppl.people.find((p) => p.user_id === room.peer_user_id) ?? null)
       : null
   const peerSeen = peer?.user_id ? ppl.online[peer.user_id] : undefined
-
-  const dayOf = (iso: string) => iso.slice(0, 10)
-  const timeOf = (iso: string) =>
-    new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
   return (
     /* ⚠️ THE OUTER BOX IS A SIZE CONTAINER, and that is what decides one pane or two. The rule
@@ -639,114 +610,7 @@ export function Chat({
                 />
               )}
 
-              <div className="cz-chat-log">
-                {msgs.length === 0 && (
-                  <p className="muted" style={{ margin: 'auto', fontSize: '0.85rem' }}>
-                    Nothing here yet — say the first thing.
-                  </p>
-                )}
-                {msgs.map((m, i) => {
-                  const mine = m.mine
-                  const newDay = i === 0 || dayOf(m.created_at) !== dayOf(msgs[i - 1].created_at)
-                  return (
-                    <div key={m.id}>
-                      {newDay && (
-                        <div
-                          className="muted"
-                          style={{ textAlign: 'center', fontSize: '0.7rem', margin: '0.35rem 0' }}
-                        >
-                          {dayOf(m.created_at)}
-                        </div>
-                      )}
-                      <div
-                        style={{
-                          maxWidth: '85%',
-                          marginLeft: mine ? 'auto' : 0,
-                          padding: '0.4rem 0.6rem',
-                          borderRadius: 10,
-                          background: mine
-                            ? 'var(--accent, #7c6af7)'
-                            : 'var(--card2, rgba(127,127,127,0.15))',
-                          color: mine ? 'var(--btn-text, #fff)' : 'var(--text, #eeeef8)',
-                        }}
-                      >
-                        {!mine &&
-                          (m.author_username ? (
-                            <a
-                              className="cz-msg-author"
-                              href={'#profile?u=' + encodeURIComponent(m.author_username)}
-                              title={`See ${m.author_name}'s profile`}
-                            >
-                              {m.author_name}
-                            </a>
-                          ) : (
-                            // no username means the server withheld it (the Lounge): a name with
-                            // nowhere to go, which is the whole point of the pseudonym
-                            <div className="cz-msg-author cz-msg-author-plain">{m.author_name}</div>
-                          ))}
-                        {/* A Snake challenge is an ordinary message with a room link in it. Shown
-                          as a card with a Join button rather than a URL to squint at — and it
-                          still falls back to the plain text if the link is malformed. */}
-                        {challengeRoomOf(m.body) ? (
-                          <div className="cz-challenge">
-                            {challengeText(m.body) && (
-                              <div className="cz-challenge-say">{challengeText(m.body)}</div>
-                            )}
-                            <a
-                              className="btn cz-challenge-join"
-                              href={`#snake?room=${encodeURIComponent(challengeRoomOf(m.body)!)}`}
-                            >
-                              🎮 Join the game
-                            </a>
-                          </div>
-                        ) : boutCodeOf(m.body) ? (
-                          /* A scrap invite is the same idea again, with the bout code in the link —
-                           see src/pets/boutInvite.ts. Same card, so all three read alike. */
-                          <div className="cz-challenge">
-                            {boutInviteText(m.body) && (
-                              <div className="cz-challenge-say">{boutInviteText(m.body)}</div>
-                            )}
-                            <a
-                              className="btn cz-challenge-join"
-                              href={`#games?play=fight&bout=${encodeURIComponent(boutCodeOf(m.body)!)}`}
-                            >
-                              ⚔️ Join the scrap
-                            </a>
-                          </div>
-                        ) : circuitJoinCodeOf(m.body) ? (
-                          /* A circuit invite is the same idea with a different link — see
-                           src/circuit/inviteLink.ts. Same card so both read alike. */
-                          <div className="cz-challenge">
-                            {circuitInviteText(m.body) && (
-                              <div className="cz-challenge-say">{circuitInviteText(m.body)}</div>
-                            )}
-                            <a
-                              className="btn cz-challenge-join"
-                              href={`#circuit?join=${encodeURIComponent(circuitJoinCodeOf(m.body)!)}`}
-                            >
-                              🏆 Join the circuit
-                            </a>
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              fontSize: '0.9rem',
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-word',
-                            }}
-                          >
-                            {m.body}
-                          </div>
-                        )}
-                        <div style={{ fontSize: '0.65rem', opacity: 0.7, textAlign: 'right' }}>
-                          {timeOf(m.created_at)}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-                <div ref={endRef} />
-              </div>
+              <MessageLog msgs={msgs} named={room.kind !== 'dm'} />
 
               {err && (
                 <p

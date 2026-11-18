@@ -1882,10 +1882,72 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  /* tight inside a run of one person's messages; .is-first opens the gap between speakers */
+  gap: 3px;
   padding: 0.5rem;
   background: var(--b1, rgba(127, 127, 127, 0.08));
   border-radius: 10px;
+}
+/* A short conversation sits at the BOTTOM, against the composer, the way every messenger puts
+   it: an auto margin on the first row takes the spare height. (Not justify-content: flex-end,
+   which makes the overflowing top of a long conversation unreachable by scrolling.) */
+.cz-chat-log > .cz-msg-row:first-of-type {
+  margin-top: auto;
+}
+.cz-msg-row {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+.cz-msg-row.is-first:not(:first-of-type) {
+  padding-top: 0.45rem;
+}
+.cz-msg-day {
+  align-self: center;
+  font-size: 0.7rem;
+  margin: 0.25rem 0 0.35rem;
+}
+/* One message. As wide as its words, up to a line length that is still comfortable to read:
+   in PIXELS, because the root size is fluid here and a thread on a 1440 screen is ~950px wide,
+   where "85%" was an 800px line. */
+.cz-msg {
+  align-self: flex-start;
+  max-width: min(85%, 560px);
+  min-width: 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 12px;
+  background: var(--card2, rgba(127, 127, 127, 0.15));
+  color: var(--text, #eeeef8);
+}
+.cz-msg.is-mine {
+  align-self: flex-end;
+  background: var(--accent, #7c6af7);
+  color: var(--btn-text, #fff);
+}
+/* the words, then the time beside the last of them — it wraps under only when there is no room */
+.cz-msg-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  column-gap: 0.6rem;
+}
+.cz-msg-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cz-msg-line > .cz-challenge {
+  flex: 1 1 100%;
+}
+.cz-msg-time {
+  flex: 0 0 auto;
+  font-size: 0.65rem;
+  line-height: 1.6;
+  opacity: 0.7;
+  white-space: nowrap;
 }
 
 /* Phone: the two panes take turns instead of sitting side by side, and the thread grows a
@@ -1932,6 +1994,80 @@
   min-width: 0;
   min-height: 0;
 }
+/* ── HOW TALL A CHAT IS, in the three places one lives ───────────────────────────────────────
+   ⚠️ IT WAS ONE NUMBER FOR ALL OF THEM: `.cz-chat` is clamp(26rem, 100dvh − nav − 13rem, 62rem),
+   a guess at the chrome above and below it made from the viewport. On the page that left the
+   card ending 137px above the bottom of a 900px screen with the footer in the gap. In a canvas
+   window it ignored the window entirely — drag one to 400px tall and the chat was still 605, so
+   the composer was a scroll away; drag it to 1000 and the chat was still 605, with nothing under
+   it. Each place now gives the chat the height it actually has, and the chat fills it. */
+
+/* 1 · The page, wider than a phone (the phone has its own fixed-screen rules above). The card
+   runs from under the nav to the bottom of the window, and the footer waits below the fold:
+   it belongs under a document, and this is a room. Offsets in PIXELS — the root size is fluid.
+   Measured at 1440×900: card 680 → 795 tall. */
+@media (min-width: 641px) {
+  [data-page='chat'] #chat.card {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--nav-h, 60px) - 44px);
+    min-height: 420px;
+  }
+  /* The call anchor floats over the bottom middle of the window, which is now where the
+     composer is. Same answer the phone rule gives: hand that strip back, by the dock's own
+     measured height, so Send is never under Leave. */
+  :root[data-in-call='1'] [data-page='chat'] #chat.card {
+    height: calc(100dvh - var(--nav-h, 60px) - 44px - var(--dock-h) - var(--pin-gap) * 2);
+  }
+  /* ⚠️ AND NO FOOTER, which is not tidiness: with one, the document is taller than the window,
+     and `#chat` in the address bar is also an ANCHOR to this card — so the browser scrolled the
+     page 32px to put the card at the top, sliding its heading under the nav on every load.
+     Measured, not guessed: scrollY was 32 before anything was clicked. With nothing below the
+     card there is nothing to scroll to. Scoped to the card so a canvas keeps its footer. */
+  [data-page='chat']:has(#chat.card) footer {
+    display: none;
+  }
+  [data-page='chat'] #chat.card .cz-tab-chat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  [data-page='chat'] #chat.card .cz-chat-box {
+    flex: 1;
+  }
+  [data-page='chat'] #chat.card .cz-chat {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+}
+
+/* 2 · A canvas window — as the Chat window (.cz-tab-chat) or as the Circuit's Chat pane (the
+   box directly). The window's body is the height; the chat takes all of it and scrolls inside
+   itself, and only a window dragged shorter than a usable chat scrolls as a whole. */
+.cz-body:has(> .cz-tab-chat),
+.cz-body:has(> .cz-chat-box) {
+  display: flex;
+  flex-direction: column;
+}
+.cz-body > .cz-tab-chat {
+  flex: 1 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cz-body > .cz-tab-chat > .cz-chat-box,
+.cz-body > .cz-chat-box {
+  flex: 1 0 300px;
+}
+.cz-body > .cz-tab-chat .cz-chat,
+.cz-body > .cz-chat-box > .cz-chat {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+
 @container chat (max-width: 620px) {
   .cz-chat {
     grid-template-columns: 1fr;
