@@ -3,10 +3,15 @@
 -- realtime.messages policies are written for. Each case is a real call under a real role with real
 -- claims.
 --
--- HOW TO RUN: db-guards.yml runs it on the throwaway stack it builds (`supabase db reset`, every
--- migration plus the seed). Everything is in one transaction that rolls back; it leaves nothing
--- behind. It raises, listing every failed case, if anything is wrong, and says how many cases it
--- asked otherwise.
+-- HOW TO RUN: db-guards.yml runs it on the throwaway stack it builds. ⚠️ `supabase db reset` there
+-- is the 4 Nov dump plus the seed, NOT the migrations directory, and the Lab came later — so the
+-- workflow first applies the three migrations this asks about, as production ran them:
+--   for m in 20261109030613_lab_catalog_and_feedback 20261115002456_lab_matches_and_results \
+--            20261117003350_lab_match_nudge; do
+--     psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/migrations/$m.sql"; done
+--   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-nudge-guards.sql
+-- Everything here is in one transaction that rolls back; it leaves nothing behind. It raises,
+-- listing every failed case, if anything is wrong, and says how many cases it asked otherwise.
 --
 -- ⚠️ WHY A GUEST MATTERS HERE MORE THAN ANYWHERE: the policies are on realtime.messages, a table
 -- the Realtime server reads with the caller's own role. A policy written `to public`, or a function
