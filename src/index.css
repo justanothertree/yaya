@@ -6882,6 +6882,45 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
+/* The anchor's other panels — microphone settings, and the call's chat.
+   ⚠️ `position: fixed` HERE IS RELATIVE TO THE DOCK, NOT THE VIEWPORT: .call-dock carries a
+   transform (it centres itself with one), and a transformed element is the containing block for
+   its fixed descendants. Written as a viewport offset the way the roster above is, this sat 91px
+   above the dock at 390 wide, the whole guard counted twice. So it says what it means instead:
+   one gap above the dock's own top edge, whatever height the dock turns out to be — which on a
+   phone is two rows, where a panel placed for one covers mute and Leave. */
+.call-pop {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(100% + var(--pin-gap));
+  z-index: 900010;
+  width: min(92vw, 24rem);
+  /* never taller than the room above the dock: the head, and with it the ✕, stays on screen */
+  max-height: calc(
+    100dvh - var(--bottom-guard) - var(--kb) - var(--dock-h) - var(--pin-gap) * 3 -
+      var(--nav-h, 52px)
+  );
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  background: var(--card, var(--bg));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.call-pop-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+/* inside the panel the settings need no box of their own — the panel is the box */
+.call-pop-body .voice-audio {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.6rem 0.7rem;
+}
 .callroster-head {
   display: flex;
   align-items: center;
