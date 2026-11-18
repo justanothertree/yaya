@@ -1095,7 +1095,9 @@
    the phone rules above collapse this to one pane at a time via data-view. */
 .cz-chat {
   display: grid;
-  grid-template-columns: minmax(200px, 260px) 1fr;
+  /* the list holds people now, not only room names: an avatar, a name, a line of preview and
+     two buttons on a request row need more than the 260px a list of chips did */
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
   gap: 0.75rem;
   min-height: 0;
   /* Grows with the window instead of sitting at a fixed 26rem, which left a tall screen
@@ -1119,6 +1121,89 @@
   flex-direction: column;
   gap: 0.5rem;
   min-height: 0;
+}
+/* ── the list's own furniture: your status, the search box, and a heading per group ── */
+.cz-chat-list .ppl-me {
+  flex: 0 0 auto;
+  padding: 0 0.2rem;
+}
+.cz-list-search {
+  flex: 0 0 auto;
+  width: 100%;
+  /* a flex child of a column still takes min-width: auto from its `size`; let it be narrow */
+  min-width: 0;
+  margin: 0.3rem 0 0.2rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+}
+.cz-list-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 0.55rem;
+}
+.cz-list-sec > .cz-sec {
+  padding: 0 0.55rem;
+  margin-bottom: 0.15rem;
+}
+.cz-list-note {
+  margin: 0.2rem 0.55rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+/* A request row carries two buttons beside the name. In a 240px list they would crush the name
+   to nothing, so the actions drop to their own line instead — the name keeps a floor in PIXELS
+   (the root size is fluid, so rem is not a length here). */
+.cz-chat-list .cz-person {
+  flex-wrap: wrap;
+  row-gap: 0.3rem;
+}
+.cz-chat-list .cz-person-main {
+  flex: 1 1 120px;
+}
+.cz-chat-list .cz-person-actions {
+  margin-left: auto;
+}
+/* a friend's row is a conversation row with an avatar where a room has an icon */
+.cz-conv-person .cz-person-av {
+  width: 36px;
+  height: 36px;
+}
+.cz-conv:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.cz-conv-seen {
+  color: var(--text);
+  font-weight: 600;
+}
+/* the thread's head when the conversation is a person: avatar, name, and the way to their page */
+.cz-thread-who {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.cz-thread-who:hover .cz-thread-name {
+  text-decoration: underline;
+}
+.cz-thread-act {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 0.82rem;
+}
+.cz-thread-challenge {
+  flex: 0 0 auto;
+  /* a challenge panel is three rows of choices; on a short phone it must not take the thread */
+  max-height: 45%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cz-thread-challenge .profile-challenge {
+  margin-top: 0;
 }
 .cz-thread-empty {
   margin: auto;
@@ -1653,6 +1738,9 @@
     display: flex;
     flex-direction: column;
   }
+  [data-page='chat'] .cz-tab-chat .cz-chat-box {
+    flex: 1;
+  }
   [data-page='chat'] .cz-tab-chat .cz-chat {
     flex: 1;
     min-height: 0;
@@ -1825,6 +1913,37 @@
   }
   .cz-conv {
     min-height: 56px;
+  }
+}
+
+/* ⚠️ AND THE SAME TURN-TAKING WHEREVER THE CHAT'S OWN BOX IS NARROW, WHATEVER THE SCREEN IS.
+   The block above asks the viewport, which is the right question on a phone and the wrong one
+   in a canvas window: that is a box you drag to any width on a 1440px screen, so the media query
+   never matched and both panes stayed — measured in a 430px window, the list took 340 and the
+   conversation was 77px wide, one syllable to a line. A container query asks the box. 620px is
+   where a 240px list leaves a thread under 380, about the width of a phone's.
+   Kept beside the media block rather than replacing it: a browser without container queries
+   still gets the phone layout on a phone. MUST stay after the base rules, same as that block. */
+.cz-chat-box {
+  container-type: inline-size;
+  container-name: chat;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+@container chat (max-width: 620px) {
+  .cz-chat {
+    grid-template-columns: 1fr;
+  }
+  .cz-chat[data-view='list'] .cz-chat-thread {
+    display: none;
+  }
+  .cz-chat[data-view='thread'] .cz-chat-list {
+    display: none;
+  }
+  .cz-thread-back {
+    display: inline-flex;
   }
 }
 
