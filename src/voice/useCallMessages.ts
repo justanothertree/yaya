@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { markThreadRead, useThread } from '../circuit/roomThread'
 import type { Msg } from '../circuit/chatRooms'
-import { useCallChat } from './callChat'
+import { useCallChat } from './callChatStore'
 import type { RoomKind } from './voiceSession'
 
 /**
