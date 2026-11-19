@@ -1,4 +1,5 @@
 import {
+  DEFAULT_RULES,
   LEVELS,
   PIT_CHOICES,
   SEED_CHOICES,
@@ -59,6 +60,18 @@ export function readRules(x: unknown): MancalaRules | null {
   if (!(SEED_CHOICES as readonly unknown[]).includes(o.seeds)) return null
   if (typeof o.captures !== 'boolean') return null
   return { pits: o.pits as number, seeds: o.seeds as number, captures: o.captures }
+}
+
+/**
+ * A match's rules from its settings: the toy's own pits, seeds and captures, each the toy's default
+ * when the challenge did not name it, and null for anything the toy does not offer.
+ */
+export function readMancalaSettings(s: Record<string, unknown>): MancalaRules | null {
+  return readRules({
+    pits: s.pits ?? DEFAULT_RULES.pits,
+    seeds: s.seeds ?? DEFAULT_RULES.seeds,
+    captures: s.captures ?? DEFAULT_RULES.captures,
+  })
 }
 
 /** the game these pits make from these rules, or null at the first that is not a sowing there */
