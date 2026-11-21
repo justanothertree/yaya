@@ -28,6 +28,12 @@
  * nothing. Every push plays one named seed from both chairs, which a level that plays like the one
  * below cannot win twice; the whole games the bars were measured on run nightly. Measured on
  * 16 Nov 2026 under a full run: cribbage 58.5s and hex 51.4s, each against a 60-second limit.
+ *
+ * Two do it differently, and say why where they do it. Fox's two sides are not the same side,
+ * so swapping chairs makes no one game of two; there, one side's level is raised on a seed that
+ * side lost, and the result has to change. Chess's Hard takes three to six seconds a game, so it
+ * is asked at the one place its extra move of depth decides: a mate in two that starts by giving
+ * the queen away. Golf's par is asked of three named deals instead of twenty-five.
  */
 
 /** the exhaustive run: every named match, every position */
