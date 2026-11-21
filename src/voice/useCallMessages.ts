@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { markThreadRead, useThread } from '../circuit/roomThread'
 import type { Msg } from '../circuit/chatRooms'
+import { nextSeen, unseenOf } from './callChatLog'
 import { useCallChat } from './callChatStore'
 import type { RoomKind } from './voiceSession'
 
@@ -27,17 +28,26 @@ export function useCallMessages(roomId: string | null, kind: RoomKind | null, op
   const ready = inRoom ? thread.loaded : true
 
   /**
-   * Everything up to here has been seen. A ref and not state: it only matters at the moment a
-   * message arrives, and moving it must not re-render anything.
+   * Everything up to here has been seen.
    *
-   * ⚠️ `null` UNTIL THE FIRST READ LANDS, which is the difference between "three new messages"
-   * and "the fifty that were already in this room before you rang" — a count that starts at the
-   * room's whole history is a badge that is wrong from the first second of every call.
+   * ⚠️ STATE AND AN EFFECT, NOT A REF WRITTEN DURING RENDER. It was `useRef` moved in the render
+   * body, which React does not promise anything about: a render may be thrown away or run twice
+   * (StrictMode does the second on purpose), and a ref written in it keeps the mark from a render
+   * nobody kept. The decision itself is `nextSeen`, which has no React in it at all and is asked
+   * directly in `callChatLog.test.ts`.
+   *
+   * The visible difference is one frame: opening the panel used to zero the badge during the same
+   * render, and now zeroes it on the next one. The panel is open at that point, so the badge is
+   * not what anybody is looking at — and the two readings that could flash a WRONG number, a
+   * first load and a list that shrank, both answer 0 through `unseenOf` while the mark is still
+   * null or past the end.
    */
-  const seen = useRef<number | null>(null)
-  if (ready && (seen.current === null || open || msgs.length < seen.current))
-    seen.current = msgs.length
-  const unseen = seen.current === null ? 0 : msgs.slice(seen.current).filter((m) => !m.mine).length
+  const [seen, setSeen] = useState<number | null>(null)
+  useEffect(() => {
+    const mark = nextSeen({ ready, open, length: msgs.length, seen })
+    if (mark !== null && mark !== seen) setSeen(mark)
+  }, [ready, open, msgs.length, seen])
+  const unseen = unseenOf(msgs, seen)
 
   /* opening the panel is reading the room: clear its unread for the bell as well */
   useEffect(() => {
