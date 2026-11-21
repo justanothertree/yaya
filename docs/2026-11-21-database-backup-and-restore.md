@@ -70,6 +70,37 @@ source reads as a failure rather than as a clean run over nothing.
 string and on what the dumping role is allowed to read, and it is checked by hand once, the first
 time, per the checklist below.
 
+## ⚠️ A restore needs `auth` to exist first, and that is not obvious
+
+The dump is `public` + `finance`. Objects in those schemas **refer outward**:
+`finance.cost_basis_overrides.updated_by` is `DEFAULT auth.uid()`, and the baseline contains
+**475** calls to `auth.uid()` or `auth.jwt()`. So restoring into a plain Postgres fails on the
+first such column:
+
+```
+pg_restore: error: could not execute query: ERROR:  schema "auth" does not exist
+```
+
+**This was found by the restore test, on its second run, and it is the reason the test exists.**
+The procedure below would otherwise have said "restore it into an empty server", which is wrong
+in exactly this way, and nobody would have discovered that until the day they needed the backup.
+
+Two restore targets, and they differ:
+
+| restoring into                                   | what you need first                                                                                                             |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| a real Supabase project                          | nothing — `auth` is already there                                                                                               |
+| a plain Postgres (a scratch check, a local look) | `psql -f supabase/tests/plain-postgres/00-platform.sql` first, the repository's existing stand-in for those roles and functions |
+
+`scripts/restore-test.sh` does the second, which is why it can run on a bare `postgres:17`
+service container with no Supabase anywhere.
+
+One more thing a fresh server does that an "empty" one would not: it already has a `public`
+schema, and `pg_dump --schema=public` emits `CREATE SCHEMA public`. The target drops it before
+restoring. `pg_restore --clean` is deliberately _not_ used — it issues a DROP for every object in
+the dump, which against a target holding none of them is a wall of errors that `--if-exists`
+silences, and it would silence a real one just as happily.
+
 ## Turning it on
 
 Two things, both yours, and I have deliberately not done either:

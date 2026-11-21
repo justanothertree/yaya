@@ -76,6 +76,22 @@ ls -l "$WORK/probe.dump"
 say "clearing the target's default public schema, which a fresh server already has"
 psql "$DST" -v ON_ERROR_STOP=1 -q -c 'drop schema if exists public cascade'
 
+# ⚠️ AND THE TARGET NEEDS `auth` BEFORE THE RESTORE, WHICH IS A FACT ABOUT THE REAL BACKUP AND
+# NOT A QUIRK OF THIS TEST. The dump is `public` + `finance`, and objects in those schemas REFER
+# OUTWARD: `finance.cost_basis_overrides.updated_by` is `DEFAULT auth.uid()`, and 475 function
+# bodies call `auth.uid()` or `auth.jwt()`. Restoring into a plain Postgres fails on the first
+# such column with `schema "auth" does not exist`.
+#
+# Found by this test on its second run, which is the point of having written it: the documented
+# procedure would have said "restore it into an empty server" and been wrong in exactly this way,
+# and nobody would have found out until the day they needed the backup.
+#
+# `00-platform.sql` is the repository's existing stand-in for those API roles and functions -- the
+# same file `supabase/tests/plain-postgres/build.sh` uses -- so the target gets it first. A
+# restore into a real Supabase project needs nothing here, because `auth` is already there.
+say "giving the target the auth stand-in the dump refers outward to"
+psql "$DST" -v ON_ERROR_STOP=1 -q -f supabase/tests/plain-postgres/00-platform.sql
+
 say "restoring into the empty target"
 # --exit-on-error so a half-restore is a failure rather than a warning nobody reads
 pg_restore --dbname="$DST" --no-owner --no-privileges --exit-on-error "$WORK/probe.dump"
