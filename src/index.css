@@ -16633,6 +16633,20 @@ a.cz-msg-author:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+  /**
+   * ⚠️ A CEILING, BECAUSE `flex: 1 1 auto` BELOW FILLS WHATEVER THE CARD GIVES IT. These two
+   * tiles are meant to be read against each other — money put in, and what it is worth now —
+   * and on a wide screen the card is the full column, so each tile grew to about 580px at 1440
+   * and the pair sat 600px apart with a lake of empty tile between every label and its own
+   * number. Two figures you have to move your eyes across a room to compare are not a glance.
+   *
+   * It is a ceiling and not a width: below 520px this changes nothing at all, so the phone
+   * layout the rest of this block was tuned for is untouched. Measured back to back at each
+   * width, with the ceiling switched off and on again rather than against an older reading:
+   * at 1440 the wrapper goes 1052px -> 520px and the tiles 490/551 -> 224/285; at 390 the
+   * tiles are 125/179 on both sides, byte for byte the same layout.
+   */
+  max-width: 520px;
 }
 .inv-tile {
   display: grid;
@@ -16850,6 +16864,19 @@ a.cz-msg-author:focus-visible {
   .inv-row {
     min-height: 60px;
   }
+}
+
+/**
+ * ⚠️ A CLASS SO A PHONE CAN MAKE IT BIGGER — the same move as `.inv-info` below, and for the
+ * same reason: the padding on these rows is inline and inline beats a stylesheet, but
+ * `min-height` is a different property, so the target grows without touching the look it was
+ * given. Measured at 390 with `scripts/mobile-audit.js`: 314×34, reported under `snug`. 34
+ * clears WCAG 2.5.8's 24 and is well short of the 44 this room gives every other control a
+ * thumb lands on — and this one is how a member opens their own account, so it is among the
+ * most-tapped things on the page. The note on `.inv-row` explains why 44 rather than 24 here.
+ */
+.inv-acct {
+  min-height: 44px;
 }
 
 .inv-info {
