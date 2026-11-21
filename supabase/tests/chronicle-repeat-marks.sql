@@ -1,9 +1,9 @@
 -- Repeating goals moved by hand, one row per window — asked of the real functions as a member.
 --
 -- ⛔ A THROWAWAY DATABASE ONLY, and one the two drafts have been applied to first:
---      docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql          (step 1: table, writer, reader,
+--      docs/applied/2026-11-08-chronicle-repeat-marks.DRAFT.sql          (step 1: table, writer, reader,
 --                                                                  export and import)
---      docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql  (step 3: the profile reader)
+--      docs/applied/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql  (step 3: the profile reader)
 -- Neither is a migration yet, so CI's database does not have them and this file is NOT run by the
 -- `db guards` job. It runs through a scratch branch that applies both drafts and then this, in the
 -- same throwaway database. It writes inside a transaction that always rolls back, and like every
@@ -64,11 +64,11 @@ do $$
 begin
   if to_regclass('public.chronicle_goal_marks') is null
      or to_regprocedure('public.chronicle_goal_marks_for(jsonb)') is null then
-    raise exception 'apply docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-08-chronicle-repeat-marks.DRAFT.sql before this file';
   end if;
   if position('chronicle_goal_marks' in
        pg_get_functiondef('public.get_member_chronicle(text, integer)'::regprocedure)) = 0 then
-    raise exception 'apply docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql before this file';
   end if;
 end $$;
 

@@ -25,14 +25,14 @@ import { TOY_NAMES } from '../lab/names'
  * ⚠️ `comment` AND `made` ARE THE FEED'S OWN, and never `activityLine`'s, on purpose. That module
  * draws the Activity block on a profile page, which a public page shows to signed-out visitors;
  * these two come only from `feed_recent`, which refuses them. See
- * docs/2026-11-14-feed-made-and-comments.DRAFT.sql.
+ * docs/applied/2026-11-14-feed-made-and-comments.DRAFT.sql.
  */
 export type FeedKind = ActivityItem['kind'] | 'sitting' | 'comment' | 'made' | 'match'
 
 /**
  * How a finished Lab match ended, from the side of the person whose row it is: they won, the two
  * of them drew, or the two of them beat the computer together. A loss is never posted, so there
- * is no word for one — see docs/2026-11-16-feed-finished-matches.DRAFT.sql.
+ * is no word for one — see docs/applied/2026-11-16-feed-finished-matches.DRAFT.sql.
  */
 export type MatchOutcome = 'won' | 'drew' | 'together'
 export const MATCH_OUTCOMES: ReadonlySet<string> = new Set<MatchOutcome>([
