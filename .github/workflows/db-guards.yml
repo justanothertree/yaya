@@ -1,7 +1,7 @@
 name: db guards
 
-# Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, against a
-# throwaway local database on every push.
+# Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, then
+# supabase/tests/lab-nudge-guards.sql, against a throwaway local database on every push.
 #
 # ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
 # `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
@@ -44,9 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -177,6 +177,16 @@ jobs:
           # ON_ERROR_STOP turns the suite's own RAISE into a failed job
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chronicle-daily-flow.sql
+          # the nudge's realtime topic: closed to anon by privilege and by calling, open only to a
+          # match's two players, and both realtime.messages policies written for authenticated.
+          # ⚠️ `db reset` builds from the 4 Nov dump, which predates the Lab: its catalog (9 Nov),
+          # its matches (15 Nov) and the nudge (17 Nov) are applied here, each in one transaction,
+          # exactly as production ran them, before the file that asks about them.
+          for m in 20261109030613_lab_catalog_and_feedback 20261115002456_lab_matches_and_results \
+                   20261117003350_lab_match_nudge; do
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/migrations/$m.sql"
+          done
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-nudge-guards.sql
 
       - name: Stop the database
         if: always()

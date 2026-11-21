@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { getSupabaseClient } from '../../finance/client'
 import { useRealtimeLife } from '../../finance/realtimeLife'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -16,6 +16,62 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
  * focus and every so often, as it always has. Nothing waits on a nudge arriving.
  */
 export const nudgeTopic = (id: string) => `labmatch:${id}`
+
+/**
+ * The least time between two nudges sent, and between two looks taken because of nudges heard.
+ *
+ * ⚠️ NOTHING ELSE LIMITS A NUDGE. The realtime.messages policies say only WHO may send on a match's
+ * topic (its two players); Realtime's own caps are per project, far above one person. And every
+ * nudge heard is a call to lab_match_get, so a page that hears a hundred looks a hundred times.
+ * The gap is kept on both sides: sending, so this page never floods its friend, and hearing, so a
+ * friend's page, whatever it sends, costs this one at most a look a second.
+ */
+export const NUDGE_GAP_MS = 1000
+
+/**
+ * `fn` at most once per `gap`: the first call at once, and any made within the gap after it run
+ * together, once, when the gap is up, with the last value given — so the latest seq always goes,
+ * and the latest nudge heard is always looked at, however many came before it.
+ */
+export function coalesce<T>(
+  fn: (v: T) => void,
+  gap: number,
+  clock: {
+    now: () => number
+    set: (f: () => void, ms: number) => unknown
+    clear: (t: unknown) => void
+  } = {
+    now: () => Date.now(),
+    set: (f, ms) => setTimeout(f, ms),
+    clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+  },
+): { call: (v: T) => void; cancel: () => void } {
+  let last = -Infinity
+  let timer: unknown = null
+  let latest: { v: T } | null = null
+  const fire = () => {
+    timer = null
+    if (!latest) return
+    const { v } = latest
+    latest = null
+    last = clock.now()
+    fn(v)
+  }
+  return {
+    call: (v) => {
+      latest = { v }
+      if (timer !== null) return
+      const wait = last + gap - clock.now()
+      if (wait <= 0) fire()
+      else timer = clock.set(fire, wait)
+    },
+    cancel: () => {
+      if (timer !== null) clock.clear(timer)
+      timer = null
+      latest = null
+    },
+  }
+}
 
 /** a nudge's seq, or null for anything that is not exactly a nudge */
 export function readNudge(x: unknown): number | null {
@@ -42,10 +98,12 @@ export function useNudge(id: string | null, on: boolean, heard: () => void) {
   useEffect(() => {
     if (!id || !on) return
     const sb = getSupabaseClient()
+    // however fast the other page nudges, this one looks at most once a gap
+    const hear = coalesce<null>(() => heardRef.current(), NUDGE_GAP_MS)
     const ch = sb
       .channel(nudgeTopic(id), { config: { broadcast: { self: false }, private: true } })
       .on('broadcast', { event: 'moved' }, ({ payload }) => {
-        if (readNudge(payload) !== null) heardRef.current()
+        if (readNudge(payload) !== null) hear.call(null)
       })
       .subscribe((status) => {
         /* ⚠️ A REFUSED JOIN IS LET GO, NOT RETRIED. supabase-js rejoins a refused channel on a
@@ -65,18 +123,23 @@ export function useNudge(id: string | null, on: boolean, heard: () => void) {
       })
     chan.current = ch
     return () => {
+      hear.cancel()
       chan.current = null
       void sb.removeChannel(ch)
     }
   }, [id, on, life])
-  return useCallback(
-    (seq: number) => {
-      const ch = chan.current
-      if (ch && ch.state === 'joined')
-        void ch.send({ type: 'broadcast', event: 'moved', payload: { seq } })
-      // not in yet: said on joining; a refused join never joins, and so never says it
-      else if (id) held.current = { id, seq }
-    },
+  /* sending: at most once a gap, the latest seq last; one per match, made again with the match */
+  const say = useMemo(
+    () =>
+      coalesce<number>((seq) => {
+        const ch = chan.current
+        if (ch && ch.state === 'joined')
+          void ch.send({ type: 'broadcast', event: 'moved', payload: { seq } })
+        // not in yet: said on joining; a refused join never joins, and so never says it
+        else if (id) held.current = { id, seq }
+      }, NUDGE_GAP_MS),
     [id],
   )
+  useEffect(() => () => say.cancel(), [say])
+  return useCallback((seq: number) => say.call(seq), [say])
 }

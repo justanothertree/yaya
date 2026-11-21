@@ -354,6 +354,7 @@ export function PortfolioList({
         return (
           <div key={a.id}>
             <button
+              className="inv-acct"
               onClick={() => setExpanded(open ? null : a.id)}
               aria-expanded={open}
               style={{
@@ -600,6 +601,7 @@ function AllAccounts({
               }}
             >
               <button
+                className="inv-acct"
                 onClick={() => setExpanded(open ? null : a.id)}
                 aria-expanded={open}
                 style={{
