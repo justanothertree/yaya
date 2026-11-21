@@ -258,7 +258,14 @@ const wasFor = (g: Goal): string => {
   }
 }
 
-export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
+export function Chronicle({
+  authed = false,
+  keysOff = false,
+}: {
+  authed?: boolean
+  /** a game pinned over the page has the keyboard — see `keysOff` on Timer */
+  keysOff?: boolean
+} = {}) {
   const [goals, setGoals] = useState<Goal[] | null>(null)
   /**
    * Whether the goals AND the record's answer for them have both arrived at least once.
@@ -1268,6 +1275,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
             }}
             show={half}
             openDay={asked}
+            keysOff={keysOff}
             onRunning={setRunningAct}
             onShow={setHalf}
             onIdea={(text) => {
