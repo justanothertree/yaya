@@ -2365,6 +2365,19 @@ export function Timer({
                 pick || running?.activity || (acts ?? []).find((a) => !a.archived)?.id || '',
               )
             }}
+            /**
+             * ⚠️ AND DRAGGING ONE IS "I DID SOMETHING FROM THEN TO THEN", which is the same form with both
+             * ends drawn rather than typed — see `dragSpan` in week.ts for the snapping.
+             */
+            onSpan={(day, fromMs, toMs) => {
+              setSeeing(day)
+              setGap(true)
+              setGapFrom(forInput(new Date(fromMs).toISOString()))
+              setGapTo(forInput(new Date(toMs).toISOString()))
+              setGapAct(
+                pick || running?.activity || (acts ?? []).find((a) => !a.archived)?.id || '',
+              )
+            }}
           />
         </details>
       )}

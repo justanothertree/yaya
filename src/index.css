@@ -18789,6 +18789,30 @@ a.cz-msg-author:focus-visible {
   box-shadow: 0 0 6px var(--accent);
 }
 
+/* a lane you can drag on draws no text selection and no long-press menu under the finger */
+.chron-week-lane.is-draggable {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+/* the span a drag is drawing — see `dragSpan`; its times sit inside it, small, at the top */
+.chron-week-ghost {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 1;
+  overflow: hidden;
+  border: 1px dashed var(--accent);
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  color: var(--text);
+  font-size: 9px;
+  line-height: 1.15;
+  padding: 1px 2px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── chronicle, why a goal is there — see src/sections/Chronicle.tsx ────────── */
 .chron-whyfor {
   /* the only prose in a row of numbers and chips: it takes the rest of the line and wraps */
