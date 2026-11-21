@@ -18941,6 +18941,73 @@ a.cz-msg-author:focus-visible {
  * pixels so a long one ellipses instead of collapsing to nothing (the root size is fluid, so
  * `rem` is not a length here — see CLAUDE.md §6).
  */
+/**
+ * Feedback you can see — see `useFresh`, and haptics.ts for the half you can feel.
+ *
+ * ⚠️ SMALL AND QUICK, AND EACH ONE IS ABOUT SOMETHING YOU JUST DID: the bar easing in when a timer
+ * starts, the stopped sitting settling into the log once its dialog closes, the count of notes
+ * nudging up, a goal filling. Nothing loops and nothing plays on arrival.
+ *
+ * ⚠️ AND REDUCE MOTION NEEDS NOTHING HERE. `:root[data-motion='reduce']` flattens every animation
+ * on the site to 1ms, and `motion.ts` sets it from the system's prefers-reduced-motion as well as
+ * from the site's own switch — so these are plain keyframes, and the blanket rule is the guard.
+ */
+@keyframes chron-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes chron-settle {
+  from {
+    background: color-mix(in oklab, var(--accent), transparent 72%);
+    transform: translateY(-4px);
+  }
+  to {
+    background: transparent;
+    transform: none;
+  }
+}
+@keyframes chron-nudge {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.14);
+  }
+}
+@keyframes chron-fill {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent), transparent 45%);
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.015);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+    transform: scale(1);
+  }
+}
+.chron-running.is-new {
+  animation: chron-enter 0.26s ease-out both;
+}
+.chron-ent.is-settled > .chron-row-open {
+  border-radius: 8px;
+  animation: chron-settle 0.7s ease-out both;
+}
+.chron-runnote-n.is-up {
+  animation: chron-nudge 0.35s ease-out;
+}
+.chron-goal.is-filled {
+  border-radius: 10px;
+  animation: chron-fill 0.65s ease-out;
+}
 .chron-running {
   display: grid;
   grid-template-columns: auto minmax(64px, 1fr) auto auto;

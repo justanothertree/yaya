@@ -26,6 +26,8 @@ import { Routines } from './Routines'
 import { tilesFor, usualFirst } from './nowTiles'
 import { biggestStretch, isEvening, nextEdge, readWrap, unrated, writeWrap } from './evening'
 import { EveningCard } from './EveningCard'
+import { buzz } from '../ui/haptics'
+import { useFresh } from '../ui/useFresh'
 import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
@@ -696,6 +698,7 @@ export function Timer({
     const bad = await startTimer(id)
     setBusy(false)
     if (bad) return moan(bad.why)
+    buzz('start')
     await after()
   }
 
@@ -723,6 +726,29 @@ export function Timer({
    * some other way (▶ on a goal, or another device) still gets them, through the effect below.
    */
   const runId = running?.id ?? null
+  /**
+   * Feedback you can feel — see src/ui/useFresh.ts and src/ui/haptics.ts.
+   *
+   * ⚠️ ONLY FOR WHAT HAPPENS WHILE YOU WATCH. A page that opens on a running timer, or on a sitting
+   * that already has notes, does not animate any of it; each of these is "this just changed".
+   * Reduce motion (yours or the system's) flattens every animation through the blanket rule in
+   * index.css, so nothing here has to ask.
+   */
+  const barNew = useFresh(running ? [running.id] : [], 'bar')
+  const notesUp = useFresh(running ? running.notes.map((n) => n.id) : [], running?.id ?? '')
+  /* the sitting just stopped settles into the log when its dialog closes, not behind it */
+  const didWas = useRef<string | null>(null)
+  const settleTimer = useRef(0)
+  const [settled, setSettled] = useState<string | null>(null)
+  useEffect(() => {
+    const was = didWas.current
+    didWas.current = sed.justDid
+    if (!was || sed.justDid) return
+    setSettled(was)
+    window.clearTimeout(settleTimer.current)
+    settleTimer.current = window.setTimeout(() => setSettled(null), 900)
+  }, [sed.justDid])
+  useEffect(() => () => window.clearTimeout(settleTimer.current), [])
   const [runNote, setRunNote] = useState('')
   const runNoteFor = useRef<string | null>(null)
   const keepRunNote = async (): Promise<boolean> => {
@@ -732,6 +758,7 @@ export function Timer({
     if (ok) {
       setRunNote('')
       runNoteFor.current = null
+      buzz('tap')
     }
     return ok
   }
@@ -869,6 +896,7 @@ export function Timer({
     const bad = await stopTimer(null)
     setBusy(false)
     if (bad) return moan(bad.why)
+    buzz('stop')
     await after()
     /* ⚠️ the id was read BEFORE the stop — see `was` above — because afterwards the running
        entry is gone and finding it again means guessing which row just ended */
@@ -1119,6 +1147,7 @@ export function Timer({
     const ok = await setQuality(e.id, n)
     setBusy(false)
     if (!ok) return moan('that rating did not save')
+    buzz('tap')
     await after()
   }
   /* the form Log a past session opens, with the stretch already in it */
@@ -1276,7 +1305,7 @@ export function Timer({
            * clock are the things you look for, so they are what stays, and the rest is one tap
            * away under ⋯, named.
            */}
-          <div className="chron-running">
+          <div className={'chron-running' + (barNew.has(running.id) ? ' is-new' : '')}>
             {/* ⚠️ `role="timer"`, which is what this is. Its implicit live setting is already
                 `off` — a clock announcing every second would drown everything else on the page —
                 so the role adds the name a screen reader gives it without adding any noise. */}
@@ -1575,7 +1604,7 @@ export function Timer({
               {running.notes.length ? (
                 <button
                   type="button"
-                  className="btn btn-ghost chron-runnote-n"
+                  className={'btn btn-ghost chron-runnote-n' + (notesUp.size ? ' is-up' : '')}
                   onClick={() => setFixEnt(running.id)}
                 >
                   {countText(running.notes.length)} written
@@ -2088,7 +2117,14 @@ export function Timer({
                a row cannot say it crossed midnight at one width and not at another. */
             const out = straddles(e, bounds.fromMs, bounds.toMs, Date.now())
             return (
-              <li key={e.id} className={'chron-ent' + (e.end == null ? ' is-live' : '')}>
+              <li
+                key={e.id}
+                className={
+                  'chron-ent' +
+                  (e.end == null ? ' is-live' : '') +
+                  (settled === e.id ? ' is-settled' : '')
+                }
+              >
                 {/**
                  * ⚠️ THE ROW IS THE BUTTON, AND › SAYS SO (#298). Every row carried a 34px ✎ of its own, which
                  * is one control per sitting on a list that is the longest thing in the room — and the row
