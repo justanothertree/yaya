@@ -75,8 +75,20 @@ ls -l "$WORK/probe.dump"
 # with pg_restore's own table of contents. That is more precise than `--clean --if-exists`, which
 # issues a DROP for every object in the dump and silences every error those raise -- including a
 # real one.
-say "giving the target the auth stand-in the dump refers outward to"
+# ⚠️ THE TARGET NEEDS THE SAME PLATFORM PREREQUISITES THE SOURCE DOES, and the list is not a
+# guess: a `public` + `finance` dump refers OUTWARD, and the baseline names exactly five schemas
+# it does not carry --
+#
+#     auth 483   extensions 6   vault 1   net 1   cron 1
+#
+# `00-platform.sql` provides auth, cron, net and vault; `01-extensions.sql` provides extensions
+# (plus citext and pgcrypto inside it, which is where `extensions.gen_random_bytes` lives).
+# Loading only the first is how this failed on run three and then again on run four, one schema
+# at a time -- so both go on, and the count above is here so the next person enumerates instead
+# of discovering.
+say "giving the target the platform schemas the dump refers outward to"
 psql "$DST" -v ON_ERROR_STOP=1 -q -f supabase/tests/plain-postgres/00-platform.sql
+psql "$DST" -v ON_ERROR_STOP=1 -q -f supabase/baseline/01-extensions.sql
 
 say "filtering CREATE SCHEMA public out of the restore's table of contents"
 pg_restore --list "$WORK/probe.dump" > "$WORK/toc"

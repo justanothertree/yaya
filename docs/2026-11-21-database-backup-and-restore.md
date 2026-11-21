@@ -87,10 +87,26 @@ in exactly this way, and nobody would have discovered that until the day they ne
 
 Two restore targets, and they differ:
 
-| restoring into                                   | what you need first                                                                                                             |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| a real Supabase project                          | nothing — `auth` is already there                                                                                               |
-| a plain Postgres (a scratch check, a local look) | `psql -f supabase/tests/plain-postgres/00-platform.sql` first, the repository's existing stand-in for those roles and functions |
+And `auth` is not the only one. The baseline names **five** schemas the dump does not carry, and
+the count is the point — enumerate them rather than discovering them one failed restore at a
+time, which is what I did on runs three and four:
+
+| schema       | references in the baseline | provided by                                     |
+| ------------ | -------------------------- | ----------------------------------------------- |
+| `auth`       | **483**                    | `supabase/tests/plain-postgres/00-platform.sql` |
+| `extensions` | 6                          | `supabase/baseline/01-extensions.sql`           |
+| `vault`      | 1                          | `00-platform.sql`                               |
+| `net`        | 1                          | `00-platform.sql`                               |
+| `cron`       | 1                          | `00-platform.sql`                               |
+
+`extensions.gen_random_bytes` is a column default on `profile_rooms.join_code` and
+`extensions.http_get` is used by four functions, so this is not an edge case reachable only by
+odd data — it is the first table the restore touches.
+
+| restoring into                                   | what you need first                                             |
+| ------------------------------------------------ | --------------------------------------------------------------- |
+| a real Supabase project                          | nothing — all five are already there                            |
+| a plain Postgres (a scratch check, a local look) | `00-platform.sql` **and** `supabase/baseline/01-extensions.sql` |
 
 `scripts/restore-test.sh` does the second, which is why it can run on a bare `postgres:17`
 service container with no Supabase anywhere.
