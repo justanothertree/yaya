@@ -64,6 +64,18 @@ pg_dump "$SRC" --schema=public --schema=finance --no-owner --no-privileges \
   --format=custom --compress=9 --file="$WORK/probe.dump"
 ls -l "$WORK/probe.dump"
 
+# ⚠️ A FRESH POSTGRES IS NOT AN EMPTY ONE: it ships with a `public` schema, and `pg_dump
+# --schema=public` emits `CREATE SCHEMA public`, so the restore dies on "schema public already
+# exists". Measured in CI on the first run of this file -- the source built fine (63 tables, 271
+# functions) and the restore fell over on its first statement.
+#
+# Dropping it here rather than reaching for `pg_restore --clean` on purpose: `--clean` issues a
+# DROP for every object in the dump, and against a target that has none of them that is a wall of
+# errors `--if-exists` only silences -- which would also silence a real one. One DROP of the one
+# thing that genuinely pre-exists keeps `--exit-on-error` meaning what it says.
+say "clearing the target's default public schema, which a fresh server already has"
+psql "$DST" -v ON_ERROR_STOP=1 -q -c 'drop schema if exists public cascade'
+
 say "restoring into the empty target"
 # --exit-on-error so a half-restore is a failure rather than a warning nobody reads
 pg_restore --dbname="$DST" --no-owner --no-privileges --exit-on-error "$WORK/probe.dump"
