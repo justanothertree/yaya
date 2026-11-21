@@ -28,9 +28,16 @@ name: db backup
 # Reasoning, the restore procedure, and what is not covered:
 #   docs/2026-11-21-database-backup-and-restore.md
 
+# ⚠️ `pull_request` IS HERE FOR THE RESTORE TEST, NOT FOR THE DUMP. The restore job uses no
+# secret and no production data, so it is worth running on every change; the dump job is pinned
+# off for pull requests below, because once the secret exists a PR must never be able to reach
+# the live database. Without this trigger the restore test would only ever have run on a Sunday,
+# which is the shape of a check nobody finds out about.
 on:
   schedule:
     - cron: '23 9 * * 0' # 09:23 UTC Sunday: 4:23 AM Eastern in winter, 5:23 in summer
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # read-only: this job reads the database and writes an artifact, nothing else
@@ -39,6 +46,9 @@ permissions:
 
 jobs:
   dump:
+    # never on a pull request: a PR must not be able to reach the live database, today (when the
+    # gate below stops it) or after the secret exists (when only this line would)
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
