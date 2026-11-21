@@ -16,7 +16,7 @@ import { bodyOf } from './migration-md5.mjs'
  */
 
 const DUMP = readFileSync('supabase/migrations/00000000000000_baseline.sql', 'utf8')
-const DRAFT = readFileSync('docs/2026-11-14-feed-made-and-comments.DRAFT.sql', 'utf8')
+const DRAFT = readFileSync('docs/applied/2026-11-14-feed-made-and-comments.DRAFT.sql', 'utf8')
 const ROLLBACK = readFileSync('docs/2026-11-14-feed-made-and-comments.ROLLBACK.sql', 'utf8')
 const CHECKS = readFileSync('docs/2026-11-14-feed-made-and-comments.checks.sql', 'utf8')
 const SQL_TEST = readFileSync('supabase/tests/feed-made-and-comments.sql', 'utf8')

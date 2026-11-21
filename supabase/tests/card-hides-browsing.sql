@@ -2,7 +2,7 @@
 -- its owner's side of the profile card, and leaves the Sharing panel's list of activities.
 --
 -- ⛔ NEEDS THE DRAFT APPLIED FIRST, and refuses to run otherwise:
---      docs/2026-11-14-card-hides-browsing.DRAFT.sql
+--      docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql
 -- It is not applied to production. This file runs only where a throwaway database has been built
 -- from the schema baseline and seed -- the `db guards` CI job, by way of a scratch-probe branch --
 -- and it rolls back. NEVER against production: it writes sittings, a profile block and sharing

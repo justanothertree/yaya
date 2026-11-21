@@ -1,4 +1,4 @@
--- A finished Lab match in the Feed (docs/2026-11-16-feed-finished-matches.DRAFT.sql), asked of
+-- A finished Lab match in the Feed (docs/applied/2026-11-16-feed-finished-matches.DRAFT.sql), asked of
 -- feed_recent by every kind of viewer, under real claims, in one transaction that rolls back.
 --
 -- HOW TO RUN: against a database with the Lab catalog, the matches migration
