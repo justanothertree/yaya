@@ -26,6 +26,7 @@ import { Routines } from './Routines'
 import { tilesFor, usualFirst } from './nowTiles'
 import { biggestStretch, isEvening, nextEdge, readWrap, unrated, writeWrap } from './evening'
 import { EveningCard } from './EveningCard'
+import { chronicleKey } from './keys'
 import { buzz } from '../ui/haptics'
 import { useFresh } from '../ui/useFresh'
 import { JournalList } from './JournalList'
@@ -150,6 +151,7 @@ export function Timer({
   onShow,
   onIdea,
   openDay,
+  keysOff,
 }: {
   day: string
   /**
@@ -225,6 +227,11 @@ export function Timer({
    * on `day`, and moves to it again if another link asks for a different one.
    */
   openDay?: string | null
+  /**
+   * A game pinned over the page has the keyboard, so Chronicle's keys are not ours to answer —
+   * the same `gameHasControl` App's own shortcuts already defer to. See keys.ts.
+   */
+  keysOff?: boolean
 }) {
   /**
    * The day being looked at, which is not always the day the room asked for.
@@ -1181,6 +1188,61 @@ export function Timer({
     onShow?.('journal')
   }
 
+  /**
+   * The keyboard — see keys.ts for which key does what and when a key is not the room's.
+   *
+   * ⚠️ ONE LISTENER, READING THE LATEST ROOM THROUGH A REF. The handler needs this render's
+   * `running`, `recent` and `busy`, and the room re-renders every second while a timer runs;
+   * re-adding a window listener on every one of those would be a second for one to go missing in.
+   *
+   * ⚠️ AND A DIALOG BLOCKS IT, found by asking the page rather than tracking every one: the sheets,
+   * a sitting's editor and the ? overlay all carry `aria-modal="true"` through the shared dialog
+   * contract, and none of them is a place where S should stop a timer behind the dialog.
+   */
+  const [noteFocus, setNoteFocus] = useState(0)
+  const onKey = useRef<(e: KeyboardEvent) => void>(() => {})
+  onKey.current = (ev: KeyboardEvent) => {
+    const act = chronicleKey(
+      {
+        key: ev.key,
+        altKey: ev.altKey,
+        ctrlKey: ev.ctrlKey,
+        metaKey: ev.metaKey,
+        repeat: ev.repeat,
+        defaultPrevented: ev.defaultPrevented,
+        target: ev.target as HTMLElement | null,
+      },
+      {
+        running: !!running,
+        chips: recent.length,
+        blocked: !!keysOff || busy || !!document.querySelector('[aria-modal="true"]'),
+      },
+    )
+    if (!act) return
+    ev.preventDefault()
+    if (act.do === 'stop') void halt()
+    else if (act.do === 'start') {
+      setTyped('')
+      setSheet('start')
+    } else if (act.do === 'chip') {
+      const a = recent[act.n - 1]
+      if (a) void go(a.id)
+    } else if (running) {
+      /* the note box is on the Day, under the bar: go there, then put the cursor in it */
+      onShow?.('day')
+      setNoteFocus((n) => n + 1)
+    } else writeNote()
+  }
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => onKey.current(e)
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [])
+  const noteBox = useRef<HTMLTextAreaElement | null>(null)
+  useEffect(() => {
+    if (noteFocus && show === 'day') noteBox.current?.focus()
+  }, [noteFocus, show])
+
   if (acts === null) {
     return (
       <p className="muted" aria-busy>
@@ -1578,6 +1640,7 @@ export function Timer({
                 <label className="chron-runnote-box">
                   <span className="sr-only">A note about {runName}</span>
                   <textarea
+                    ref={noteBox}
                     rows={2}
                     value={runNote}
                     placeholder={`A note about ${runName}…`}

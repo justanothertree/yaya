@@ -6081,6 +6081,19 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   padding: 0 4px;
   font-size: 0.72rem;
 }
+/* the room's own keys, under the site's: a short list, one key and what it does per line */
+.wh-room-keys {
+  margin-top: 0;
+}
+.wh-room-keys p {
+  margin: 0 0 0.25rem;
+}
+.wh-room-keys ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.15rem;
+}
 /* a link, not a button: it sits in the footer beside the copyright and must not shout */
 .wh-open {
   appearance: none;
