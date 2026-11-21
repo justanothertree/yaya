@@ -567,6 +567,32 @@ button[aria-label="The day before"]')` — and before believing a stepped readin
   would have left the job green and fixed nothing. Read the list out of the pinned source
   (`apps/cli/src/command-internal/service-catalog.ts` at the tag), and have the step fail on that
   warning rather than trusting the name.
+- **A `useRef` IS NOT A FIRST-RUN GUARD, BECAUSE A REF SURVIVES THE REMOUNT THE GUARD IS FOR.**
+  `<StrictMode>` is on in `src/main.tsx`, so in development every effect mounts, cleans up and
+  mounts again. A `useRef(false)` that gates an effect's body reads as "do this once" and is
+  really "do this once per PAGE": the second mount finds the ref already set, skips the body, and
+  anything the first mount's cleanup tore down is never rebuilt. Nothing contradicts it — the
+  cleanup ran, the guard is doing what it says, and the only evidence is a feature that is
+  silently dead after a remount.
+  App.tsx already carries the two halves of this, both found the expensive way: a ref guard that
+  let a dev load publish this browser's defaults over a real profile (`already: false` then
+  `already: true`, one write per load), and a first-render flag that let a fresh `#circuit` steal
+  focus on arrival, fixed by **comparing the previous value instead of remembering that it ran**.
+  That is the general repair: a comparison is immune to being run twice, where a flag is not.
+  **The guard is not always wrong, and the distinction is the cleanup.** A guard whose effect has
+  no teardown is usually deliberate and correct — `EightsDemo` and `SpadesDemo` both use one so
+  the opening hand is dealt once rather than twice, which is StrictMode being defended against
+  properly. A guard whose cleanup RESETS the ref is also right: that is a "is it running" flag,
+  as in `HeroPlay`'s rAF loop. The broken shape is specifically **a guard + a cleanup that leaves
+  the ref set**.
+  Swept 21 Nov 2026 and the answer was **zero**, which is worth writing down so the next person
+  does not re-do it: 96 `useRef(false)` in `src/`, four matching guard-and-set inside an effect,
+  and of those three have no teardown and one resets. The query that answers it, rather than a
+  list that rots — a ref assigned `true` inside a `useEffect` with `[]` deps and a cleanup that
+  never assigns it `false`. ⚠️ **Written the obvious way the sweep is useless**: the first pass
+  flagged only "has a cleanup" and reported `HeroPlay` as broken, which it is not, and said
+  nothing about the three that were fine for a different reason. Three false positives out of
+  four is a sweep nobody runs twice.
 - **AND A COUNT USED AS A JUSTIFICATION IS A MEASURED NUMBER — §2 applies to it before it is
   written down, not after.** The figure above went into two comments and a commit message as the
   reason for a restructure while it was still the DOM count. Nothing downstream would have
