@@ -95,11 +95,29 @@ Two restore targets, and they differ:
 `scripts/restore-test.sh` does the second, which is why it can run on a bare `postgres:17`
 service container with no Supabase anywhere.
 
-One more thing a fresh server does that an "empty" one would not: it already has a `public`
-schema, and `pg_dump --schema=public` emits `CREATE SCHEMA public`. The target drops it before
-restoring. `pg_restore --clean` is deliberately _not_ used — it issues a DROP for every object in
-the dump, which against a target holding none of them is a wall of errors that `--if-exists`
-silences, and it would silence a real one just as happily.
+### And the two obvious fixes fight each other
+
+A fresh server already has a `public` schema, and `pg_dump --schema=public` emits
+`CREATE SCHEMA public` — so the restore dies on **"schema public already exists"**. The obvious
+answer, dropping `public` first, then breaks the step above: `00-platform.sql` creates its
+stand-in objects _in_ `public`, so against a server without one it dies on **"schema public does
+not exist"**. Both were real CI failures, in that order.
+
+So `public` is left alone and the one conflicting entry is filtered out of the restore with
+`pg_restore`'s own table of contents:
+
+```bash
+pg_restore --list yaya.dump > toc
+grep -vE '[0-9]+; [0-9]+ [0-9]+ SCHEMA - public ' toc > toc.keep
+pg_restore --use-list=toc.keep --exit-on-error --no-owner --no-privileges -d "$TARGET" yaya.dump
+```
+
+The script asserts that filter removed **exactly one** entry — 0 means the pattern has stopped
+matching and the restore is about to fail the old way, 2+ means it is eating something else.
+
+`pg_restore --clean --if-exists` is deliberately _not_ used: it issues a DROP for every object in
+the dump, which against a target holding none of them is a wall of errors `--if-exists` silences
+— and it would silence a real one just as happily.
 
 ## Turning it on
 

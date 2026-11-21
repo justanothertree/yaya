@@ -64,37 +64,33 @@ pg_dump "$SRC" --schema=public --schema=finance --no-owner --no-privileges \
   --format=custom --compress=9 --file="$WORK/probe.dump"
 ls -l "$WORK/probe.dump"
 
-# ⚠️ A FRESH POSTGRES IS NOT AN EMPTY ONE: it ships with a `public` schema, and `pg_dump
-# --schema=public` emits `CREATE SCHEMA public`, so the restore dies on "schema public already
-# exists". Measured in CI on the first run of this file -- the source built fine (63 tables, 271
-# functions) and the restore fell over on its first statement.
+# ⚠️ A FRESH POSTGRES IS NOT AN EMPTY ONE, AND THE TWO FIXES FOR THAT FIGHT EACH OTHER.
+# A new server already has a `public` schema, and `pg_dump --schema=public` emits
+# `CREATE SCHEMA public` -- so the restore dies on "schema public already exists". The obvious
+# answer, dropping `public` first, then breaks the NEXT step: `00-platform.sql` creates its
+# stand-in objects in `public`, so against a server without one it dies on "schema public does
+# not exist". Both of those were real CI failures, in that order.
 #
-# Dropping it here rather than reaching for `pg_restore --clean` on purpose: `--clean` issues a
-# DROP for every object in the dump, and against a target that has none of them that is a wall of
-# errors `--if-exists` only silences -- which would also silence a real one. One DROP of the one
-# thing that genuinely pre-exists keeps `--exit-on-error` meaning what it says.
-say "clearing the target's default public schema, which a fresh server already has"
-psql "$DST" -v ON_ERROR_STOP=1 -q -c 'drop schema if exists public cascade'
-
-# ⚠️ AND THE TARGET NEEDS `auth` BEFORE THE RESTORE, WHICH IS A FACT ABOUT THE REAL BACKUP AND
-# NOT A QUIRK OF THIS TEST. The dump is `public` + `finance`, and objects in those schemas REFER
-# OUTWARD: `finance.cost_basis_overrides.updated_by` is `DEFAULT auth.uid()`, and 475 function
-# bodies call `auth.uid()` or `auth.jwt()`. Restoring into a plain Postgres fails on the first
-# such column with `schema "auth" does not exist`.
-#
-# Found by this test on its second run, which is the point of having written it: the documented
-# procedure would have said "restore it into an empty server" and been wrong in exactly this way,
-# and nobody would have found out until the day they needed the backup.
-#
-# `00-platform.sql` is the repository's existing stand-in for those API roles and functions -- the
-# same file `supabase/tests/plain-postgres/build.sh` uses -- so the target gets it first. A
-# restore into a real Supabase project needs nothing here, because `auth` is already there.
+# So `public` is left alone and the one conflicting entry is filtered out of the restore instead,
+# with pg_restore's own table of contents. That is more precise than `--clean --if-exists`, which
+# issues a DROP for every object in the dump and silences every error those raise -- including a
+# real one.
 say "giving the target the auth stand-in the dump refers outward to"
 psql "$DST" -v ON_ERROR_STOP=1 -q -f supabase/tests/plain-postgres/00-platform.sql
 
-say "restoring into the empty target"
+say "filtering CREATE SCHEMA public out of the restore's table of contents"
+pg_restore --list "$WORK/probe.dump" > "$WORK/toc"
+grep -vE '[0-9]+; [0-9]+ [0-9]+ SCHEMA - public ' "$WORK/toc" > "$WORK/toc.keep"
+REMOVED=$(( $(wc -l < "$WORK/toc") - $(wc -l < "$WORK/toc.keep") ))
+echo "    dropped $REMOVED entry/entries from the toc"
+# ⚠️ exactly one, or the filter is not doing what it says -- 0 means the pattern stopped
+# matching and the restore is about to fail the way it did before, and 2+ means it is eating
+# something else
+[ "$REMOVED" = "1" ] || { echo "!!! expected to drop exactly 1 toc entry, dropped $REMOVED" >&2; exit 1; }
+
+say "restoring into the target"
 # --exit-on-error so a half-restore is a failure rather than a warning nobody reads
-pg_restore --dbname="$DST" --no-owner --no-privileges --exit-on-error "$WORK/probe.dump"
+pg_restore --dbname="$DST" --no-owner --no-privileges --exit-on-error   --use-list="$WORK/toc.keep" "$WORK/probe.dump"
 
 say "counting the target"
 DST_TABLES=$(psql "$DST" -tAc "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','finance') and c.relkind='r'")
