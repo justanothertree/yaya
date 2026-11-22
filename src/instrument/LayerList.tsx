@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react'
 import {
   MAX_LAYERS,
   clearLayerBars,
@@ -7,15 +15,31 @@ import {
   layerPlan,
   loopLength,
   moveLayerBar,
+  moveTake,
   muteTake,
   seekTo,
   setLayerGain,
   takeBars,
+  takeSound,
   toggleLayerSlot,
   toggleMute,
   type Layer,
   type loopState,
 } from '../audio/looper'
+import { setTakePlace } from '../audio/takes'
+import { peaks } from '../audio/takeEdit'
+import {
+  dragTo,
+  fitBar,
+  heardFor,
+  moveBy,
+  sayWhere,
+  stepFor,
+  whereIs,
+  xAt,
+  type Scale,
+  type Song,
+} from '../audio/timeline'
 import { historyNow, redo, subscribeHistory, undo } from '../audio/history'
 import { hasLyrics, linesFor } from '../audio/lyricLines'
 import { useTouchOnly } from '../ui/pointerKind'
@@ -38,6 +62,27 @@ const pressed = (e: { currentTarget: HTMLElement }) =>
 
 /** every strip of bars in the list, and the ruler over them — the things that scroll together */
 const BAR_STRIPS = '.inst-arrange, .inst-ruler'
+
+/** the space between two bars, which `.inst-arrange` and `.inst-ruler` both set as their gap */
+const GAP = 2
+/** the narrowest a bar is drawn: the bar tile's own size before the timeline (see .inst-bar-cell) */
+const MIN_BAR = 12
+/** and the widest, so a one-bar song is not a single block across a wide screen */
+const MAX_BAR = 400
+const BEATS_PER_BAR = 4
+
+/**
+ * Whether a dragged recording moves a whole beat at a time — on until somebody turns it off, and
+ * remembered on this device, because it is a way of working rather than a property of a song.
+ */
+const SNAP_KEY = 'inst.snap.v1'
+const snapAtFirst = () => {
+  try {
+    return localStorage.getItem(SNAP_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
 
 /**
  * The parts: one line each, with the bar ruler, undo and redo above them and ✎ New part under
@@ -95,6 +140,23 @@ export function LayerList({
   /** the notes are open, which is when the editor has Ctrl+Z and these buttons stand down */
   const editing = open?.tab === 'notes' ? open.id : null
   const anyWords = loop.layers.some(hasLyrics)
+  const [snap, setSnap] = useState(snapAtFirst)
+  const toggleSnap = () =>
+    setSnap((was) => {
+      try {
+        localStorage.setItem(SNAP_KEY, was ? '0' : '1')
+      } catch {
+        /* a private window: it holds for this visit */
+      }
+      return !was
+    })
+  /** one bar line to the next, as drawn — measured, because a thumb's bars are wider (see below) */
+  const [pitch, setPitch] = useState(MIN_BAR + GAP)
+  const barLen = (60 / loop.bpm) * BEATS_PER_BAR
+  const song: Song = { beat: 60 / loop.bpm, len: loopLength(), beatsPerBar: BEATS_PER_BAR }
+  const scale: Scale = { pitch, barLen }
+  const arranged = loop.layers.some((l) => l.play || l.plan)
+  const anything = loop.layers.length > 0 || loop.takes.length > 0
   /** who recorded a part, when it was not you */
   const whoOf = (l: Layer) => (l.from ? (jamNames[l.from] ?? 'Someone') : null)
 
@@ -144,6 +206,73 @@ export function LayerList({
     for (const s of strips) if (s.scrollLeft !== x) s.scrollLeft = x
   }, [loop.layers.length, loop.bars])
 
+  /**
+   * ⚠️ THE BARS FILL THE STRIP, SO THE LIST IS A TIMELINE — Evan, 21 Nov 2026. A bar was a 12px
+   * tile whatever the room, which is a list of switches; a timeline has to be wide enough to put a
+   * recording on a beat. So every bar is drawn as wide as lets the song fill the narrowest strip,
+   * through one variable, `--bar-w`, which the tiles, the ruler, the words and the recordings all
+   * read — the columns line up by construction, the promise the ruler's own CSS note makes.
+   *
+   * ⚠️ AND THE DISTANCE FROM ONE BAR TO THE NEXT IS MEASURED, NOT ASSUMED. On a thumb a tile has a
+   * floor of 1.9rem (see .inst-bar-cell), so a long song's bars are wider than `--bar-w` says;
+   * placing a recording from the variable would put it a few pixels a bar away from the bars it is
+   * drawn under. The tile on the page is asked instead.
+   *
+   * ⚠️ A REARRANGED PART'S STRIP ENDS IN AN "all" BUTTON, so its bars are fitted short of it: filled
+   * to the edge, that one strip would run on by a button and scroll while the others could not,
+   * which is a column that is not a column (see the scroll note above).
+   */
+  useLayoutEffect(() => {
+    const el = list.current
+    if (!el) return
+    const fit = () => {
+      const strips = Array.from(el.querySelectorAll<HTMLElement>('.inst-layers .inst-arrange'))
+      if (!strips.length) return
+      const all = el.querySelector<HTMLElement>('.inst-bar-all')
+      const room = Math.min(...strips.map((x) => x.clientWidth)) - (all ? all.offsetWidth + GAP : 0)
+      const w = fitBar(room, loop.bars, GAP, MIN_BAR, MAX_BAR)
+      el.style.setProperty('--bar-w', `${w}px`)
+      const cell = el.querySelector<HTMLElement>('.inst-bar-cell, .inst-ruler-cell')
+      const next = (cell ? cell.getBoundingClientRect().width : w) + GAP
+      setPitch((was) => (Math.abs(was - next) < 0.01 ? was : next))
+    }
+    fit()
+    const watch = new ResizeObserver(fit)
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [loop.bars, loop.layers.length, loop.takes.length, arranged])
+
+  /**
+   * ⚠️ ONE PLAYHEAD, DOWN THROUGH EVERY ROW — the "one shared playhead" of the request. Each row's
+   * bars scroll inside themselves, so the line is placed over the whole list rather than inside any
+   * one strip, at the playhead's distance into the bars less however far they are scrolled, and it
+   * is hidden when that is outside the strip.
+   *
+   * ⚠️ WRITTEN STRAIGHT TO ITS STYLE, after the render the transport tick already causes — reading
+   * where the strips are during a render would be layout in the middle of React's work.
+   */
+  const playhead = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    const el = list.current
+    const line = playhead.current
+    if (!el || !line) return
+    const strips = el.querySelectorAll<HTMLElement>('.inst-layers .inst-arrange')
+    const first = strips[0]
+    if (!loop.playing || !first) {
+      line.hidden = true
+      return
+    }
+    const box = el.getBoundingClientRect()
+    const at = first.getBoundingClientRect()
+    const x = at.left - box.left + loop.position * loop.bars * pitch - first.scrollLeft
+    const top = (el.querySelector<HTMLElement>('.inst-ruler') ?? first).getBoundingClientRect().top
+    const bottom = strips[strips.length - 1].getBoundingClientRect().bottom
+    line.hidden = x < at.left - box.left - 1 || x > at.right - box.left
+    line.style.transform = `translateX(${x}px)`
+    line.style.top = `${top - box.top}px`
+    line.style.height = `${bottom - top}px`
+  })
+
   return (
     <div className="inst-parts" ref={list}>
       {/**
@@ -154,7 +283,8 @@ export function LayerList({
        * ⚠️ SHOWN WHILE THERE IS ANYTHING TO UNDO, not only while there are parts: after Clear all
        * the room is empty and Undo is the one button that matters.
        */}
-      {(loop.layers.length > 0 || hist.undo > 0 || hist.redo > 0) && (
+      <div className="inst-tl-playhead" ref={playhead} hidden aria-hidden />
+      {(anything || hist.undo > 0 || hist.redo > 0) && (
         <div className="inst-parts-head">
           <span className="muted inst-layers-count">
             {loop.layers.length ? `${loop.layers.length} of ${MAX_LAYERS} parts` : 'No parts yet'}
@@ -171,7 +301,7 @@ export function LayerList({
            * turn this bar off, or pick it up and move it — and a third would make every click a
            * guess. The ruler has nothing else to do.
            */}
-          {loop.layers.length > 0 && loop.bars > 1 ? (
+          {anything && loop.bars > 1 ? (
             <div className="inst-ruler" role="group" aria-label="Jump to a bar">
               {Array.from({ length: loop.bars }, (_, b) => {
                 const at = (loopLength() * b) / Math.max(1, loop.bars)
@@ -185,7 +315,8 @@ export function LayerList({
                     /* ⚠️ A NAME, NOT ONLY A TOOLTIP: the cell reads "·" and a phone has no hover */
                     aria-label={`Jump to bar ${b + 1}`}
                   >
-                    {(b + 1) % 4 === 1 ? b + 1 : '·'}
+                    {/* every number once there is room for one, the first of each four before */}
+                    {(b + 1) % 4 === 1 || pitch >= 24 ? b + 1 : '·'}
                   </button>
                 )
               })}
@@ -232,7 +363,7 @@ export function LayerList({
           </span>
         </div>
       )}
-      {loop.layers.length > 0 && (
+      {anything && (
         <ul className="inst-layers">
           {loop.layers.map((l, i) => {
             /**
@@ -467,6 +598,7 @@ export function LayerList({
                   key={`${l.id}-words`}
                   l={l}
                   bars={loop.bars}
+                  wide={pitch >= 44}
                   singing={singing}
                   showLyrics={showLyrics}
                 />
@@ -480,7 +612,18 @@ export function LayerList({
            * where its sound, its trim and the rest still live.
            */}
           {loop.takes.map((t, k) => (
-            <TakeRow key={t.id} muted={!!t.muted} n={k + 1} openVoice={openVoice} id={t.id} />
+            <TakeRow
+              key={t.id}
+              id={t.id}
+              at={t.at}
+              n={k + 1}
+              muted={!!t.muted}
+              openVoice={openVoice}
+              song={song}
+              scale={scale}
+              bars={loop.bars}
+              snap={snap}
+            />
           ))}
         </ul>
       )}
@@ -536,23 +679,61 @@ export function LayerList({
             All {MAX_LAYERS} parts used — delete one to add another.
           </span>
         )}
+        {/**
+         * ⚠️ SNAP, UNDER THE RECORDINGS IT MOVES, and only while there are some. On, a take moves a
+         * whole beat at a time; off, it goes exactly where it is put. "Snap takes" rather than
+         * "Snap", because the tempo menu already has a snap, for the notes you play — two buttons
+         * called one word that do different things is a guess every time.
+         *
+         * ⚠️ NOT BESIDE UNDO, where it went first: at 375 the ruler's row is a name column, the
+         * ruler and whatever sits at its end, and the button took the ruler from 106px to 53px —
+         * under two bars of a four-bar song, which is a ruler in name only.
+         */}
+        {loop.takes.length > 0 && (
+          <button
+            className={'btn inst-snap' + (snap ? ' is-on' : ' btn-ghost')}
+            aria-pressed={snap}
+            onClick={toggleSnap}
+            title={
+              snap
+                ? 'Takes move a whole beat at a time. Press to put them anywhere.'
+                : 'Takes go exactly where you put them. Press to move them a beat at a time.'
+            }
+          >
+            Snap takes
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
-/** A recording playing in the loop, as a row of the song: its mute, and the door to its controls. */
+/**
+ * A recording playing in the loop, as a row of the song: its mute, the door to its controls, and
+ * the recording itself, drawn where it plays — which is where it is moved from.
+ */
 function TakeRow({
   id,
+  at,
   n,
   muted,
   openVoice,
+  song,
+  scale,
+  bars,
+  snap,
 }: {
   id: string
+  at: number
   n: number
   muted: boolean
   openVoice: () => void
+  song: Song
+  scale: Scale
+  bars: number
+  snap: boolean
 }) {
+  const where = whereIs(at, song)
   return (
     <li className={'inst-part inst-take-row' + (muted ? ' is-muted' : '')}>
       <button
@@ -562,10 +743,18 @@ function TakeRow({
         title="Its sound and its trim, in 🎤 Voice"
       >
         <span className="inst-part-line">🎤 Take {n}</span>
-        <small className="inst-part-line inst-part-detail">in the loop</small>
+        <small className="inst-part-line inst-part-detail">
+          bar {where.bar} · beat {where.beat}
+        </small>
       </button>
-      {/* no bars: a take plays from where it was placed, every time round */}
-      <span className="inst-arrange" aria-hidden />
+      <span className="inst-arrange inst-take-lane">
+        <span
+          className="inst-take-track"
+          style={{ width: bars * scale.pitch - GAP, ['--pitch' as string]: `${scale.pitch}px` }}
+        >
+          <TakeClip id={id} at={at} n={n} song={song} scale={scale} snap={snap} />
+        </span>
+      </span>
       <span className="inst-part-vol" aria-hidden />
       <button
         className="btn inst-icon"
@@ -576,9 +765,141 @@ function TakeRow({
       >
         {muted ? '🔇' : '🔊'}
       </button>
-      <span aria-hidden />
+      <span className="inst-icon-slot" aria-hidden />
     </li>
   )
+}
+
+/**
+ * A recording on the timeline: as long as what it plays, with its sound drawn in it, and moved by
+ * dragging it or with the arrow keys.
+ *
+ * ⚠️ POINTER EVENTS, NOT HTML5 DRAG, because a finger never starts an HTML5 drag (the bar tiles
+ * above have a second, tap-to-lift path for exactly that reason). One handler serves a mouse, a pen
+ * and a thumb; `touch-action: pan-y` in the CSS leaves the page's own scrolling to a finger moving
+ * up and down.
+ *
+ * ⚠️ THE MOVE IS SHOWN WHILE IT HAPPENS AND MADE WHEN IT ENDS. Moving the take on the loop at every
+ * pixel would stop and restart its sound under the pointer the whole way across; it is moved once,
+ * on release, and where it goes is kept on the recording too, so taking it off the loop and putting
+ * it back returns it there (setTakePlace).
+ *
+ * ⚠️ AND THE CAPTURE IS ALLOWED TO FAIL. `setPointerCapture` throws for a pointer the browser does
+ * not consider live — CLAUDE.md has it measured — and it is only there so a drag that leaves the
+ * clip keeps going. The move must not depend on it.
+ */
+function TakeClip({
+  id,
+  at,
+  n,
+  song,
+  scale,
+  snap,
+}: {
+  id: string
+  at: number
+  n: number
+  song: Song
+  scale: Scale
+  snap: boolean
+}) {
+  const [drag, setDrag] = useState<{ x0: number; to: number } | null>(null)
+  const sound = takeSound(id)
+  const shown = drag ? drag.to : at
+  const secs = heardFor(shown, sound?.duration ?? 0, song.len)
+  const width = Math.max(6, xAt(secs, scale))
+  const put = (to: number) => {
+    if (to === at) return
+    moveTake(id, to)
+    void setTakePlace(id, to)
+  }
+  /* Alt places it freely for one move, the way most music programs do */
+  const snapping = (e: { altKey: boolean }) => snap && !e.altKey
+  const down = (e: PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      /* a pointer the browser does not count as live — the move still works inside the clip */
+    }
+    setDrag({ x0: e.clientX, to: at })
+  }
+  const move = (e: PointerEvent<HTMLButtonElement>) => {
+    if (!drag) return
+    const to = dragTo(at, e.clientX - drag.x0, { ...song, snap: snapping(e), scale })
+    if (to !== drag.to) setDrag({ ...drag, to })
+  }
+  const up = () => {
+    if (!drag) return
+    put(drag.to)
+    setDrag(null)
+  }
+  const key = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    const how = { ...song, snap: snapping(e) }
+    if (e.key === 'Home') put(moveBy(at, -at, how))
+    else if (dir) put(moveBy(at, dir * stepFor(how, e.shiftKey), how))
+    else return
+    e.preventDefault()
+  }
+  return (
+    <button
+      className={'inst-take-clip' + (drag ? ' is-moving' : '')}
+      style={{ left: xAt(shown, scale), width }}
+      role="slider"
+      aria-label={`Take ${n}, where it plays`}
+      aria-valuemin={0}
+      aria-valuemax={Math.round(song.len * 1000) / 1000}
+      aria-valuenow={shown}
+      aria-valuetext={`Starts at ${sayWhere(shown, song)}`}
+      title={
+        snap
+          ? 'Drag to move it a beat at a time (hold Alt to place it freely), or use the arrow keys'
+          : 'Drag to move it, or use the arrow keys'
+      }
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={() => setDrag(null)}
+      onKeyDown={key}
+    >
+      <TakeWave sound={sound} width={width} />
+    </button>
+  )
+}
+
+/**
+ * The recording's sound, drawn small — the picture that says where in it the singing is, which is
+ * what anybody placing it is actually lining up.
+ *
+ * ⚠️ DRAWN WHEN THE SOUND OR THE WIDTH CHANGES, never on the transport's tick: `peaks` looks at
+ * every sample (see takeEdit.ts) and the list re-renders forty times a second while the song plays.
+ */
+function TakeWave({ sound, width }: { sound: AudioBuffer | undefined; width: number }) {
+  const ref = useRef<HTMLCanvasElement | null>(null)
+  const w = Math.max(1, Math.round(width))
+  useEffect(() => {
+    const c = ref.current
+    if (!c) return
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    const h = c.clientHeight || 16
+    c.width = Math.round(w * dpr)
+    c.height = Math.round(h * dpr)
+    const g = c.getContext('2d')
+    if (!g) return
+    g.clearRect(0, 0, c.width, c.height)
+    if (!sound) return
+    const cols = c.width
+    const p = peaks(sound.getChannelData(0), cols)
+    const mid = c.height / 2
+    g.fillStyle = getComputedStyle(c).color
+    for (let i = 0; i < cols; i++) {
+      const lo = Math.max(-1, p[i * 2])
+      const hi = Math.min(1, p[i * 2 + 1])
+      g.fillRect(i, mid - hi * mid, 1, Math.max(1, (hi - lo) * mid))
+    }
+  }, [sound, w])
+  return <canvas ref={ref} className="inst-take-wave" style={{ width: w }} aria-hidden />
 }
 
 /**
@@ -592,11 +913,14 @@ function TakeRow({
 function LyricsRow({
   l,
   bars,
+  wide,
   singing,
   showLyrics,
 }: {
   l: Layer
   bars: number
+  /** a bar is wide enough to show its words rather than a mark that it has some */
+  wide: boolean
   singing: boolean
   showLyrics: (bar?: number) => void
 }) {
@@ -630,7 +954,7 @@ function LyricsRow({
             aria-label={`Bar ${b + 1}: ${w.trim() || 'no words'}`}
             title={w.trim() ? `Bar ${b + 1}: ${w.trim()}` : `Bar ${b + 1}: no words — tap to add`}
           >
-            {w.trim() ? '♪' : ''}
+            {w.trim() ? wide ? <span className="inst-word-text">{w.trim()}</span> : '♪' : ''}
           </button>
         ))}
       </span>
@@ -645,7 +969,7 @@ function LyricsRow({
       >
         {singing ? '■' : '▶'}
       </button>
-      <span aria-hidden />
+      <span className="inst-icon-slot" aria-hidden />
     </li>
   )
 }

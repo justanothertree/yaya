@@ -106,8 +106,9 @@ export type TakeRow = {
   voice?: Partial<VoiceFx>
   /**
    * Seconds into the song where this recording belongs: where the playhead was when it was sung
-   * (punchIn.ts), written once, when the take is kept. Absent for a recording made with the song
-   * stopped and for a file opened from disk, which go to the top as they always did.
+   * (punchIn.ts), written when the take is kept, and again wherever it is dragged on the timeline
+   * (`setTakePlace`). Absent for a recording made with the song stopped and for a file opened from
+   * disk until somebody moves it, which go to the top as they always did.
    *
    * ⚠️ NOT `at`, WHICH THIS ROW ALREADY HAS AND WHICH MEANS SOMETHING ELSE: `at` is when it was
    * recorded, in ms since 1970, and the list shows the date from it. A placement's `at` is a
@@ -306,6 +307,20 @@ export async function setTakeVoice(id: string, voice: VoiceFx | null): Promise<b
     }
   else delete row.voice
   const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
+  return done !== null
+}
+
+/**
+ * Keep where this recording goes on the song, once it has been moved there by hand.
+ *
+ * ⚠️ THE SAME READ-MODIFY-WRITE AS `setTakeLog`: the stored row is spread and one field changed.
+ * Called once when a drag ends, never while it moves — this rewrites the whole row, blob included.
+ */
+export async function setTakePlace(id: string, songAt: number): Promise<boolean> {
+  if (!Number.isFinite(songAt) || songAt < 0) return false
+  const had = await getTake(id)
+  if (!had) return false
+  const done = await run('readwrite', (s) => s.put({ ...had, songAt }) as IDBRequest<IDBValidKey>)
   return done !== null
 }
 

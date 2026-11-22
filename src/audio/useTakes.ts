@@ -5,6 +5,7 @@ import { audioSeconds, decodeTake, recordTake, type Recording } from './recordTa
 import {
   allTakes,
   dropTake,
+  getTake,
   putTake,
   setTakeLog,
   setTakeVoice,
@@ -474,7 +475,8 @@ export function useTakes() {
       await flushSound(row.id)
       /* where it was sung; the top for one that never had a place, or whose place is past the
          end of the song as it is now (fewer bars, or a faster tempo, since it was sung) */
-      const at = row.songAt
+      /* ⚠️ READ AGAIN, NOT FROM THE LIST: a drag on the timeline moves it without this list knowing */
+      const at = (await getTake(row.id))?.songAt ?? row.songAt
       const place = typeof at === 'number' && at >= 0 && at < loopLength() ? at : 0
       if (!(await placeTake(row.id, place))) setSay('That take will not play in this browser.')
     },

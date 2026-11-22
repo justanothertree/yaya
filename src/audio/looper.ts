@@ -291,6 +291,8 @@ const heard = new Map<string, AudioBuffer>()
 const chains = new Map<string, VoiceChain>()
 /* named apart from `sounding`, which is the note voices — two different things being kept alive */
 const playing = new Set<AudioBufferSourceNode>()
+/* which take a sounding source belongs to, so one recording can be stopped without the rest */
+const takeOfSource = new WeakMap<AudioBufferSourceNode, string>()
 
 const listeners = new Set<() => void>()
 let snapshot = state
@@ -554,6 +556,7 @@ function scheduleWindow(from: number, to: number) {
         done()
       }
       playing.add(src)
+      takeOfSource.set(src, take.id)
       const room = base + len - at
       const ends = at + Math.min(buf.duration, room)
 
@@ -609,6 +612,7 @@ function scheduleWindow(from: number, to: number) {
             done()
           }
           playing.add(echo)
+          takeOfSource.set(echo, take.id)
           echo.start(when, into, Math.min(rep.len, buf.duration - into))
         }
       }
@@ -1390,6 +1394,19 @@ function hushTakes() {
   playing.clear()
 }
 
+/** Stop one take where it is sounding or scheduled, and leave the others singing. */
+function hushTake(id: string) {
+  for (const src of playing) {
+    if (takeOfSource.get(src) !== id) continue
+    try {
+      src.stop()
+    } catch {
+      /* already finished, or never started */
+    }
+    playing.delete(src)
+  }
+}
+
 function restart() {
   releaseAllLayers()
   hushTakes()
@@ -2155,6 +2172,25 @@ export function muteTake(id: string) {
   hushTakes()
   set({ takes: state.takes.map((t) => (t.id === id ? { ...t, muted: !t.muted } : t)) })
 }
+
+/**
+ * Move a recording on the song — the timeline's drag (timeline.ts works out where to).
+ *
+ * ⚠️ WHAT IS SOUNDING OF IT STOPS, AND ONLY IT. A take is scheduled a moment ahead, so one dragged
+ * while it plays would otherwise go on singing from where it used to be, over the top of itself
+ * arriving at the new place. The other recordings are left alone: muting does hush them all, but
+ * a drag is made while listening to everything else, which is the point of making it there.
+ */
+export function moveTake(id: string, at: number) {
+  if (!Number.isFinite(at) || at < 0) return
+  const was = state.takes.find((t) => t.id === id)
+  if (!was || was.at === at) return
+  hushTake(id)
+  set({ takes: state.takes.map((t) => (t.id === id ? { ...t, at } : t)) })
+}
+
+/** The sound a placed take plays, as the loop holds it — for drawing it on the timeline. */
+export const takeSound = (id: string): AudioBuffer | undefined => heard.get(id)
 
 /** Which takes are on the loop, for a song file and for the panel. */
 export const placedTakes = (): SongTake[] => state.takes
