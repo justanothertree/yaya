@@ -1,12 +1,12 @@
 -- Lab matches by turns, asked as every kind of caller: a guest, the two players, a stranger, a
 -- suspended friend, and the edge function (the service role). Each case is a real call under a
--- real role with real claims, against the functions as docs/2026-11-14-lab-matches.DRAFT.sql
+-- real role with real claims, against the functions as docs/applied/2026-11-14-lab-matches.DRAFT.sql
 -- defines them.
 --
 -- HOW TO RUN: on the throwaway stack db-guards.yml builds (`supabase db reset`), which is the 4 Nov
 -- dump and so has no Lab catalog yet — that arrived on 9 Nov as its own migration —
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -1 -f supabase/migrations/20261109030613_lab_catalog_and_feedback.sql
---   psql "$DB_URL" -v ON_ERROR_STOP=1 -1 -f docs/2026-11-14-lab-matches.DRAFT.sql
+--   psql "$DB_URL" -v ON_ERROR_STOP=1 -1 -f docs/applied/2026-11-14-lab-matches.DRAFT.sql
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-matches.sql
 -- Everything is in one transaction that rolls back; it leaves nothing behind. It raises, listing
 -- every failed case, if anything is wrong, and says how many cases it asked otherwise.

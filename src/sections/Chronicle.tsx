@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { moveTab } from '../ui/tabStrip'
+import { buzz } from '../ui/haptics'
+import { useFresh } from '../ui/useFresh'
 import {
   finished,
   arrange,
@@ -256,7 +258,14 @@ const wasFor = (g: Goal): string => {
   }
 }
 
-export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
+export function Chronicle({
+  authed = false,
+  keysOff = false,
+}: {
+  authed?: boolean
+  /** a game pinned over the page has the keyboard — see `keysOff` on Timer */
+  keysOff?: boolean
+} = {}) {
   const [goals, setGoals] = useState<Goal[] | null>(null)
   /**
    * Whether the goals AND the record's answer for them have both arrived at least once.
@@ -661,6 +670,20 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   )
 
   /**
+   * Goals finished while you watch: the row fills, and the phone buzzes if that is turned on.
+   *
+   * ⚠️ NOT THE ONES ALREADY DONE WHEN YOU ARRIVE. `useFresh` takes its first look once the room
+   * has loaded (the tally with it), and again on every new horizon or day, so only a goal that
+   * becomes finished on this screen counts — a tick, a + that reaches the target, or the record
+   * filling one after a Stop.
+   */
+  const filledIds = useMemo(
+    () => [...mine, ...overdue].filter((g) => finished(g, got, on)).map((g) => g.id),
+    [mine, overdue, got, on],
+  )
+  const filled = useFresh(loaded ? filledIds : [], `${view}|${on}|${loaded}`, () => buzz('done'))
+
+  /**
    * Write one window of a repeating goal, and show it at once.
    *
    * ⚠️ THE ROOM IS TOLD BEFORE THE RELOAD, so the box changes under the thumb that pressed it
@@ -721,6 +744,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       showToast(bad.why.charAt(0).toUpperCase() + bad.why.slice(1))
       return
     }
+    buzz('start')
     /* the stopwatch is the Timer's, and `beat` is how this room tells it the record moved */
     setBeat((n) => n + 1)
     await load()
@@ -853,7 +877,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                        press, and "opens tomorrow" on it was a line about a control it never had */
     const notYet = !auto && !markOpen(g, on, todayISO())
     return (
-      <li key={g.id} className={'chron-goal' + (done ? ' is-done' : '')}>
+      <li
+        key={g.id}
+        className={'chron-goal' + (done ? ' is-done' : '') + (filled.has(g.id) ? ' is-filled' : '')}
+      >
         <div className="chron-goal-top">
           {/**
            * ⚠️ THE TITLE AND ITS CHIPS WRAP AMONG THEMSELVES, AND THE BUTTONS KEEP A COLUMN. They
@@ -1248,6 +1275,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
             }}
             show={half}
             openDay={asked}
+            keysOff={keysOff}
             onRunning={setRunningAct}
             onShow={setHalf}
             onIdea={(text) => {
