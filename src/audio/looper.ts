@@ -2051,6 +2051,8 @@ export function soleDrumPiece(l: Layer): number | null {
  * to another machine, which is the cost takes.ts documents.
  */
 export async function placeTake(id: string, at = 0): Promise<boolean> {
+  /* a place that is not a number of seconds into the song is the top, never a scheduler that throws */
+  if (!Number.isFinite(at) || at < 0) at = 0
   const row = await getTake(id)
   if (!heard.has(id)) {
     if (!row) return false
@@ -2156,6 +2158,15 @@ export function muteTake(id: string) {
 
 /** Which takes are on the loop, for a song file and for the panel. */
 export const placedTakes = (): SongTake[] => state.takes
+
+/** Each placed take's place and the length of what it plays, for working out what a new take is sung over. */
+export const placedSpans = () =>
+  state.takes.map((t) => ({
+    id: t.id,
+    at: t.at,
+    muted: t.muted,
+    dur: heard.get(t.id)?.duration ?? 0,
+  }))
 
 /** Change how a take is cut up — see chop.ts. */
 export function takeChop(id: string, chop: Partial<Chop>) {

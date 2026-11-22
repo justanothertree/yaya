@@ -6,6 +6,7 @@ import {
   allTakes,
   dropTake,
   putTake,
+  setTakeLog,
   setTakeVoice,
   takenBytes,
   TAKE_CAP,
@@ -13,10 +14,21 @@ import {
   type PutResult,
   type TakeRow,
 } from './takes'
-import { liftTake, placeTake, subscribeLoop, loopState, takeFx } from './looper'
+import {
+  liftTake,
+  loopLength,
+  loopOrigin,
+  muteTake,
+  placeTake,
+  placedSpans,
+  subscribeLoop,
+  loopState,
+  takeFx,
+} from './looper'
+import { landing, sungOver, type Transport } from './punchIn'
 import { makeAudition, PLAIN_VOICE, readVoiceFx, type Audition, type VoiceFx } from './takeFx'
 import { bounceStems, type SingLap, type Stem, type StemProgress } from './stems'
-import { logNow, readLog } from './takeEdit'
+import { logDo, logNow, readLog, startLog, trimTo, wholeEdit } from './takeEdit'
 import { editedBuffer } from './takeAudio'
 
 const fxOf = (fx: Partial<VoiceFx> | undefined): VoiceFx => ({ ...PLAIN_VOICE, ...fx })
@@ -25,19 +37,58 @@ export const mb = (n: number) => (n / (1024 * 1024)).toFixed(1)
 export const secs = (n: number) =>
   `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`
 
+/** a recording and the song's transport as it began, which together say where it belongs */
+type Going = { rec: Recording; transport: Transport }
+
+/** the transport now: whether the song is playing, where its loop began, a pass and a beat */
+const transportNow = (): Transport => ({
+  playing: loopState().playing,
+  origin: loopOrigin(),
+  len: loopLength(),
+  beat: 60 / loopState().bpm,
+})
+
+type Kept = {
+  kept: PutResult
+  /** whether it went on the song where it was sung (punchIn.ts) */
+  placed: boolean
+  /** how many takes it was sung over, muted so it is heard alone */
+  muted: number
+  /** it should have gone on the song and this browser would not play it */
+  failed: boolean
+}
+
 /**
- * Close a recording and keep what it caught.
+ * Close a recording, keep what it caught, and put it on the song where it was sung.
  *
  * ⚠️ OUTSIDE THE COMPONENT ON PURPOSE, so the unmount path can call it. Leaving the room while
  * a recording is going has two jobs — let the microphone go, and do not throw away what was
  * sung — and neither may touch component state, because by then there is no component to set.
  * Returns null when nothing usable arrived, which is the one case with nothing to keep.
+ *
+ * ⚠️ AND IT PLACES THE TAKE ON BOTH PATHS. Sung over the playing song, a take goes on the song where
+ * it was sung (punchIn.landing), with any pre-roll before the downbeat left out through the take's
+ * own edit, so the editor shows it and Undo there gives it back. A take recorded with the song
+ * stopped has no place and waits in the list, as every take used to. The takes it was sung over
+ * are muted rather than lifted, so the attempts stay on the loop to compare.
  */
-async function keepWhatWasCaught(r: Recording): Promise<PutResult | null> {
-  const got = await r.stop()
+async function keepWhatWasCaught(g: Going): Promise<Kept | null> {
+  const got = await g.rec.stop()
   if (!got) return null
   const id = `take_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
-  return putTake(id, got.blob, got.len)
+  const land = landing(g.rec.start(), g.transport, got.len)
+  const kept = await putTake(id, got.blob, got.len, land?.at)
+  const out: Kept = { kept, placed: false, muted: 0, failed: false }
+  if (!kept.ok || !land) return out
+  if (land.skip > 0) {
+    const buf = await decodeTake(got.blob)
+    const edit = buf ? trimTo(wholeEdit(buf.duration), 'start', land.skip, buf.duration) : null
+    if (buf && edit) await setTakeLog(id, logDo(startLog(wholeEdit(buf.duration)), edit))
+  }
+  const over = sungOver(placedSpans(), land.at, land.at + got.len - land.skip)
+  if (!(await placeTake(id, land.at))) return { ...out, failed: true }
+  for (const other of over) muteTake(other)
+  return { ...out, placed: true, muted: over.length }
 }
 
 /**
@@ -81,7 +132,7 @@ export function useTakes() {
    * written against a variable it could not see move. Written at each of the three places that
    * change, rather than mirrored by an effect, so it is never a render behind.
    */
-  const goingRef = useRef<Recording | null>(null)
+  const goingRef = useRef<Going | null>(null)
   /** false from the moment this room is taken off the screen — see `begin` */
   const alive = useRef(true)
   /* which takes are on the loop, straight from the transport so the two cannot disagree */
@@ -311,7 +362,9 @@ export function useTakes() {
      */
     if (!alive.current) return r.drop()
     setHeld(0)
-    goingRef.current = r
+    /* ⚠️ READ NOW, beside the recorder's own start rather than at the press: the microphone
+       prompt can have been open for seconds, and the song has played on meanwhile */
+    goingRef.current = { rec: r, transport: transportNow() }
     setGoing(r)
   }, [stopPlaying])
 
@@ -321,13 +374,19 @@ export function useTakes() {
     /* ⚠️ cleared before the await, or an unmount in that window stops the same recorder twice */
     goingRef.current = null
     setGoing(null)
-    const kept = await keepWhatWasCaught(r)
-    if (!kept) return setSay('Nothing came through the microphone.')
+    const got = await keepWhatWasCaught(r)
+    if (!got) return setSay('Nothing came through the microphone.')
+    const kept = got.kept
     if (!kept.ok)
       setSay(
         kept.why === 'full'
           ? `Full — ${mb(TAKE_CAP)}MB of takes already. Delete one to make room.`
           : 'This browser will not keep recordings.',
+      )
+    else if (got.failed) setSay('That take will not play in this browser.')
+    else if (got.muted)
+      setSay(
+        `On the song where you sang it. The take${got.muted === 1 ? '' : 's'} under it ${got.muted === 1 ? 'is' : 'are'} muted.`,
       )
     await refresh()
   }, [refresh])
@@ -413,7 +472,11 @@ export function useTakes() {
       if (on) return liftTake(row.id)
       /* the placement starts from the recording's sound, so one still settling is written first */
       await flushSound(row.id)
-      if (!(await placeTake(row.id))) setSay('That take will not play in this browser.')
+      /* where it was sung; the top for one that never had a place, or whose place is past the
+         end of the song as it is now (fewer bars, or a faster tempo, since it was sung) */
+      const at = row.songAt
+      const place = typeof at === 'number' && at >= 0 && at < loopLength() ? at : 0
+      if (!(await placeTake(row.id, place))) setSay('That take will not play in this browser.')
     },
     [onLoop, flushSound],
   )
