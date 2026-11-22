@@ -2,6 +2,9 @@
 // its own thing: you come here to talk, not to look at fitness numbers, and on a phone the
 // conversation list wants the whole screen. The cz-tab-chat class carries the full-height
 // mobile treatment the chat already had as a Circuit tab.
+//
+// It is also where People went: the directory is this room's list now (circuit/ui/ChatList),
+// so the heading names both halves.
 import { Chat } from '../circuit/ui/Chat'
 
 export function ChatPage({
@@ -19,10 +22,10 @@ export function ChatPage({
         style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}
       >
         <h2 className="section-title" style={{ margin: 0 }}>
-          Chat
+          Friends &amp; chat
         </h2>
         <span className="muted cz-subtitle" style={{ fontSize: '0.85rem' }}>
-          your circles, your crew, your DMs
+          your friends, your circles, and everyone you can add
         </span>
       </div>
       <Chat authed={authed} voiceIn={voiceIn} />

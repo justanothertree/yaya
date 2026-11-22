@@ -5,6 +5,8 @@ import {
   loopState,
   muteTake,
   placeTake,
+  setTakeGain,
+  settleTakes,
   subscribeLoop,
   takeChop,
   takeFx,
@@ -74,6 +76,8 @@ export type PlacedTake = {
   id: string
   at: number
   muted?: boolean
+  /** its volume on the song, 0 to 2 — clamped by setTakeGain, which is the only way it is put back */
+  gain?: number
   fx?: Partial<VoiceFx>
   chop?: Partial<Chop>
 }
@@ -147,6 +151,7 @@ export function packWork(bench: Bench): StoredWork {
       id: t.id,
       at: t.at,
       ...(t.muted ? { muted: true } : {}),
+      ...(t.gain !== undefined && t.gain !== 1 ? { gain: t.gain } : {}),
       ...(t.fx ? { fx: t.fx } : {}),
       ...(t.chop ? { chop: t.chop } : {}),
     }))
@@ -201,10 +206,12 @@ function readTakes(v: unknown): PlacedTake[] {
     seen.add(o.id)
     const fx = readVoiceFx(o.fx)
     const chop = readChop(o.chop)
+    const gain = fin(o.gain)
     out.push({
       id: o.id,
       at,
       ...(o.muted === true ? { muted: true } : {}),
+      ...(gain !== null ? { gain } : {}),
       ...(fx ? { fx } : {}),
       ...(chop ? { chop } : {}),
     })
@@ -382,6 +389,13 @@ async function putTakesBack(takes: PlacedTake[]) {
       carried = carried.filter((c) => c.id !== t.id)
       if (t.fx) takeFx(t.id, t.fx)
       if (t.chop) takeChop(t.id, t.chop)
+      /* ⚠️ THE BENCH DECIDES, including at 100%, which it writes as no gain at all. A new placement
+         starts at the level its recording last kept, which can be older than the bench: a fader
+         moved back to 100% just before the page went away. Only a level that differs is set, so a
+         reload does not rewrite every recording it puts back. */
+      const want = t.gain ?? 1
+      if ((loopState().takes.find((p) => p.id === t.id)?.gain ?? 1) !== want)
+        setTakeGain(t.id, want)
       if (t.muted) muteTake(t.id)
       continue
     }
@@ -465,7 +479,11 @@ export function openWorkbench(onTrouble?: (t: BenchTrouble) => void): () => void
     /* ⚠️ pagehide rather than beforeunload, for the reason useVisits gives: it fires when a
        phone puts the browser away, which is the commonest way a session ends there — and a
        settling write that never landed is a part somebody loses. */
-    window.addEventListener('pagehide', flush)
+    window.addEventListener('pagehide', () => {
+      flush()
+      /* and what the placed takes' recordings are owed — their place and volume (looper, `owe`) */
+      settleTakes()
+    })
   }
   if (!restored) {
     restored = true
