@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Liar's dice by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_liars_by_turns`, version 20261122124724:
+-- md5(statements[1]) = 089dc215f80282c675c245bdb5fb23ee, this file's body. The record is
+-- supabase/migrations/20261122124724_lab_liars_by_turns.sql.
+--
+-- (as drafted) Liar's dice by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
