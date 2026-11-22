@@ -25,11 +25,16 @@ import {
 } from './fences'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
-import { fencesRules, isMove } from './fencesRoom'
+import { fencesRules, isMove, type FencesGame } from './fencesRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const THEME_NAMES: Record<Saved['theme'], string> = {
@@ -81,18 +86,32 @@ export function FencesDemo() {
   const pointer = useRef('mouse')
   const recorded = useRef(false)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A move
+     shows at once and waits for Send; the server plays it and the board comes back. */
+  const lm = useLabMatch('fences')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as FencesGame | null) : null
+
   /* ── the call's room: the host's size starts each game, which travels as its moves */
   const roomRules = useMemo(() => fencesRules(saved.size), [saved.size])
   const lab = useLabRoom('fences', roomRules)
   const words = tableSeats(lab, roomRules)
-  const room = mode === 'call' ? lab.room : null
-  /** the game on screen: the call's in a call, else this one */
-  const view = room ? room.game.g : game
-  const viewLast = room ? room.game.last : last
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** the game on screen: the match's, the call's in a call, else this one */
+  const view = matchGame ? matchGame.g : room ? room.game.g : game
+  const viewLast = matchGame ? matchGame.last : room ? room.game.last : last
 
   const n = view.n
-  /** the side you race for: the top one only in seat 1 of a versus game in a call */
-  const you: Who = room?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+  /** the side you race for: the top one only in seat 1 of a versus game, in a call or a match */
+  const you: Who = (
+    inMatch
+      ? lm.view?.mode === 'versus' && lm.view.you === 1
+      : room?.mode === 'versus' && words.mySeat === 1
+  )
+    ? 1
+    : 0
   const them: Who = you === 0 ? 1 : 0
   /**
    * ⚠️ THE BOARD TURNS HALF ROUND FOR WHOEVER RACES FROM THE TOP, so their pawn starts at the
@@ -103,9 +122,11 @@ export function FencesDemo() {
   const flip = you === 1
   const sq = (r: number, c: number): [number, number] => (flip ? [n - 1 - r, n - 1 - c] : [r, c])
   const cross = (r: number, c: number): [number, number] => (flip ? [n - 2 - r, n - 2 - c] : [r, c])
-  const yourTurn = room
-    ? lab.live && myTurn(roomRules, room)
-    : mode === 'bot' && game.winner === null && game.turn === you
+  const yourTurn = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(roomRules, room)
+      : mode === 'bot' && game.winner === null && game.turn === you
   const lit = yourTurn && !fencing ? steps(view) : []
   const litSet = new Set(lit.map(([r, c]) => r * n + c))
   const yourWay = saved.guide ? new Set(path(view, you).map(([r, c]) => r * n + c)) : new Set()
@@ -113,15 +134,23 @@ export function FencesDemo() {
   const aimOk = yourTurn && fencing && fenceOk(view, aim.o, aim.r, aim.c)
   /** who a side is, on the cards and the squares */
   const nameOf = (w: Who) =>
-    room
-      ? room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 0
-          ? 'Together'
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[w])
-      : w === you
-        ? 'You'
-        : `The computer · ${LEVEL_NAMES[level]}`
+        : w === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? w === 0
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[w])
+        : w === you
+          ? 'You'
+          : `The computer · ${LEVEL_NAMES[level]}`
 
   const describeMove = (m: Move, by: Who) => {
     const who = by === you ? 'You' : 'The computer'
@@ -131,6 +160,14 @@ export function FencesDemo() {
   }
 
   const apply = (m: Move) => {
+    if (inMatch) {
+      // the move shows at once and waits for Send; the server plays it
+      if (!yourTurn || !isMove(view, m)) return false
+      lm.play(m)
+      setFencing(false)
+      setArmed(false)
+      return true
+    }
     if (room) {
       // in the call the host decides: this asks it, and the board comes back with everybody's
       if (!yourTurn || !isMove(view, m)) return false
@@ -189,7 +226,7 @@ export function FencesDemo() {
   }
 
   useEffect(() => {
-    if (mode !== 'bot' || game.winner !== null || game.turn === you) return
+    if (mode !== 'bot' || inMatch || game.winner !== null || game.turn === you) return
     const t = window.setTimeout(() => apply(choose(game, level)), reduced() ? 150 : 550)
     return () => window.clearTimeout(t)
     // the game is what starts the computer's move
@@ -216,6 +253,17 @@ export function FencesDemo() {
     )
   }
   const untouched = game.plies === 0 || game.winner !== null
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) {
+      setMode('bot')
+      fresh()
+    }
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
   /**
    * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer, which always races from the
    * top: the board on screen comes with you when yours is the bottom side, else a new game.
@@ -315,73 +363,83 @@ export function FencesDemo() {
 
   return (
     <div className={`lab-keys fe-room is-${saved.theme}`}>
-      <div className="lab-controls">
-        {(lab.live || mode === 'call') && (
-          <div className="lab-group" role="group" aria-label="Opponent">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={mode === 'bot'}
-              onClick={() => {
-                setMode('bot')
-                fresh()
-              }}
-            >
-              Against the computer
-            </button>
-            <button
-              className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                setMode('call')
-                setFencing(false)
-                setArmed(false)
-              }}
-            >
-              👥 With the call
-            </button>
-          </div>
-        )}
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
+      {inMatch && <MatchBar lm={lm} sides={['the bottom', 'the top']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          {(lab.live || mode === 'call') && (
+            <div className="lab-group" role="group" aria-label="Opponent">
               <button
-                key={l}
                 className="btn btn-ghost"
-                aria-pressed={saved.level === l}
+                aria-pressed={mode === 'bot'}
                 onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (untouched) fresh(saved.size, l)
+                  setMode('bot')
+                  fresh()
                 }}
               >
-                {LEVEL_NAMES[l]}
+                Against the computer
               </button>
-            ))}
-          </div>
-        )}
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="Board size">
-            {SIZES.map((s) => (
               <button
-                key={s}
                 className="btn btn-ghost"
-                aria-pressed={saved.size === s}
+                aria-pressed={mode === 'call'}
                 onClick={() => {
-                  setSaved((x) => ({ ...x, size: s }))
-                  if (untouched) fresh(s, saved.level)
+                  setMode('call')
+                  setFencing(false)
+                  setArmed(false)
                 }}
               >
-                {s}×{s}
+                👥 With the call
               </button>
-            ))}
-          </div>
-        )}
-        {mode === 'bot' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+            </div>
+          )}
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (untouched) fresh(saved.size, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="Board size">
+              {SIZES.map((s) => (
+                <button
+                  key={s}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.size === s}
+                  onClick={() => {
+                    setSaved((x) => ({ ...x, size: s }))
+                    if (untouched) fresh(s, saved.level)
+                  }}
+                >
+                  {s}×{s}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === 'bot' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
+            </button>
+          )}
+          {signedIn && mode === 'bot' && !inMatch && (
+            <MatchChallenge
+              demo="fences"
+              settings={{ size: saved.size }}
+              levelNames={LEVEL_NAMES}
+            />
+          )}
+        </div>
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={roomRules}
@@ -406,7 +464,7 @@ export function FencesDemo() {
           </div>
         ))}
       </div>
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="mc-line" aria-live="polite">
           {line}
         </p>
@@ -458,12 +516,18 @@ export function FencesDemo() {
             const at = here(you) ? you : here(them) ? them : null
             // against the computer the words stay as they were; in a call, the seat's own name
             const who =
-              at === null ? '' : !room ? (at === you ? 'you' : 'the computer') : nameOf(at)
+              at === null
+                ? ''
+                : !room && !inMatch
+                  ? at === you
+                    ? 'you'
+                    : 'the computer'
+                  : nameOf(at)
             const notes = [
               litSet.has(i) ? 'you can step here' : '',
               yourWay.has(i) ? 'on your shortest way' : '',
               theirWay.has(i)
-                ? `on ${room ? 'the other side’s' : 'the computer’s'} shortest way`
+                ? `on ${room || inMatch ? 'the other side’s' : 'the computer’s'} shortest way`
                 : '',
             ].filter(Boolean)
             return (
@@ -524,7 +588,8 @@ export function FencesDemo() {
         </p>
       )}
 
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -532,7 +597,7 @@ export function FencesDemo() {
           </span>
         </p>
       )}
-      {mode === 'bot' && !untouched && (level !== saved.level || n !== saved.size) && (
+      {mode === 'bot' && !inMatch && !untouched && (level !== saved.level || n !== saved.size) && (
         <p className="muted mc-note">The new choice starts with the next game.</p>
       )}
 
