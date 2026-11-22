@@ -7,6 +7,8 @@ import { MessagesPanel } from '../components/MessagesPanel'
 import { ImportPanel } from '../components/ImportPanel'
 import { ReconcilePanel } from '../components/ReconcilePanel'
 import { AgeBandNotice, type AgeBand } from '../components/AgeBandNotice'
+import { readWaitingClaims, type WaitingClaim } from '../circuit/claims'
+import { CircuitClaimsList } from '../circuit/ui/ClaimsAdmin'
 
 type Invite = {
   id: string
@@ -93,6 +95,7 @@ export function AdminPanel() {
     | 'messages'
     | 'usage'
     | 'bugs'
+    | 'claims'
   >('invites')
   const [invites, setInvites] = useState<Invite[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -143,18 +146,25 @@ export function AdminPanel() {
    * handle and nothing else.
    */
   const [ageUnset, setAgeUnset] = useState<string[]>([])
+  /**
+   * Requests for a Circuit person that only an admin can answer (§19e). Asked with everything
+   * else so the tab can say how many are waiting before anybody opens it: until it is answered,
+   * nobody can log on that board, so a request sitting unseen is somebody locked out of their own.
+   */
+  const [claims, setClaims] = useState<WaitingClaim[]>([])
 
   /* ⚠️ MEMOISED SO THE MOUNT EFFECT CAN NAME IT. A plain function here is a new identity every
      render, which is why the effect below listed nothing -- and a dep list that omits the only
      thing the effect calls is one nobody can read. It closes over `sb` (a memoised singleton)
      and the setters, so this is stable for the life of the panel and the effect still runs once. */
   const loadAll = useCallback(async () => {
-    const [invRes, memRes, snakeRes, attnRes, ageRes] = await Promise.all([
+    const [invRes, memRes, snakeRes, attnRes, ageRes, claimRes] = await Promise.all([
       sb.rpc('list_invites'),
       sb.rpc('list_members'),
       sb.rpc('admin_list_snake_handles'),
       sb.rpc('admin_attention'),
       sb.rpc('admin_members_without_age_band'),
+      sb.rpc('admin_list_person_claims'),
     ])
     if (invRes.error) throw invRes.error
     if (memRes.error) throw memRes.error
@@ -176,6 +186,8 @@ export function AdminPanel() {
     // the answer would appear. If this ever starts failing quietly, the guard block in
     // supabase/tests/visibility-guards.sql is what still asks the question.
     setAgeUnset(ageRes.error ? [] : ((ageRes.data as { handles?: string[] } | null)?.handles ?? []))
+    // Not fatal, like the handles: an empty list is a better failure than losing the panel.
+    setClaims(claimRes.error ? [] : readWaitingClaims(claimRes.data))
   }, [sb])
 
   /**
@@ -461,6 +473,7 @@ export function AdminPanel() {
          * teach the people who use them that telling you is pointless.
          */}
         {tabBtn('bugs', `Bugs${bugsWaiting ? ` (${bugsWaiting})` : ''}`)}
+        {tabBtn('claims', `Circuit claims${claims.length ? ` (${claims.length})` : ''}`)}
       </div>
 
       {tab === 'bugs' && <BugsPanel onCount={setBugsWaiting} />}
@@ -474,6 +487,26 @@ export function AdminPanel() {
       {tab === 'messages' && <MessagesPanel />}
 
       {tab === 'usage' && <UsagePanel />}
+
+      {tab === 'claims' && (
+        <div>
+          <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+            Somebody asked for a Circuit board that no account owns. Approving gives them the board
+            and every day logged on it.
+          </p>
+          <CircuitClaimsList
+            rows={claims}
+            onDecide={async (id, approve) => {
+              const { error } = await sb.rpc('admin_decide_person_claim', {
+                p_claim: id,
+                p_approve: approve,
+              })
+              if (error) throw error
+              await loadAll()
+            }}
+          />
+        </div>
+      )}
 
       {tab === 'snake' && (
         <div>
