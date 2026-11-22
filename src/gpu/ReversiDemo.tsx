@@ -547,6 +547,8 @@ export function ReversiDemo() {
             return `, ${Math.max(dd, ll)} to ${Math.min(dd, ll)}`
           }}
           onCarryOn={carryOn}
+          // a rematch by turns is on the board the call was playing
+          matchSettings={(gm) => ({ size: gm.b.n })}
         />
       )}
 

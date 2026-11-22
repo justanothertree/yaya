@@ -103,6 +103,43 @@ export function coveredSoFar(
   }
 }
 
+/** a drag on the grid snaps to this many minutes, which is also the shortest span it makes */
+export const DRAG_SNAP_MIN = 15
+
+/**
+ * The span a drag down one day's lane describes, or null when it describes none.
+ *
+ * `a` and `b` are where the drag began and where it is now, as fractions down the lane (0 at the
+ * top of the day, 1 at the bottom); either order, since dragging up is the same gesture.
+ *
+ * ⚠️ FRACTIONS OF THE DAY'S REAL LENGTH, then snapped from the day's start, so the clock-change
+ * days come out right: a 23-hour day is 23 hours of lane, and fifteen-minute steps from its
+ * midnight are still on the quarter hours, because a clock change moves by whole hours.
+ *
+ * ⚠️ NEVER IN THE FUTURE, because nothing can have happened then and Log a past session refuses
+ * it — so the end stops at `nowMs` rather than opening a form that will only say no.
+ *
+ * ⚠️ NULL UNDER ONE STEP, which is how a drag that barely moved stays a tap: the lane's tap opens
+ * the hour, and a drag has to describe at least a quarter of an hour to mean something else.
+ */
+export function dragSpan(
+  fromMs: number,
+  toMs: number,
+  a: number,
+  b: number,
+  nowMs: number,
+  snapMin: number = DRAG_SNAP_MIN,
+): { fromMs: number; toMs: number } | null {
+  const step = snapMin * 60_000
+  const at = (f: number) => {
+    const t = fromMs + Math.min(1, Math.max(0, f)) * (toMs - fromMs)
+    return Math.min(toMs, fromMs + Math.round((t - fromMs) / step) * step)
+  }
+  const lo = at(Math.min(a, b))
+  const hi = Math.min(at(Math.max(a, b)), nowMs)
+  return hi - lo >= step ? { fromMs: lo, toMs: hi } : null
+}
+
 /** that figure as the sentence both places print */
 export const coveredLine = (c: { pct: number; days: number }): string =>
   `${c.pct}% of ${c.days === 1 ? 'today' : `these ${c.days} days`} is written down`

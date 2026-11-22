@@ -1,5 +1,12 @@
+import { useState } from 'react'
 import { idle, type Mode, type Rules, type Seat } from './room'
-import { tableLine, tableSeats, type Table, type TableWords } from './table'
+import { rematchOf, tableLine, tableSeats, type Table, type TableWords } from './table'
+import { challenge } from '../matches/cloud'
+import { MATCH_NAMES } from '../matches/names'
+import { matchHash } from '../matches/words'
+
+/** whether a toy has matches by turns: from the names, never the rules (names.ts says why) */
+const byTurns = (sub: string) => Object.hasOwn(MATCH_NAMES, sub)
 
 /**
  * The lobby and the line under the board for any toy played in a call (room.ts): versus or
@@ -20,6 +27,8 @@ type Props<G, M> = TableWords<G> & {
   levelNames?: Record<string, string>
   /** the toy's carry-on, offered only to a seated player left alone */
   onCarryOn?: () => void
+  /** a finished game's settings for a rematch by turns — the board's size, say; none by default */
+  matchSettings?: (g: G) => Record<string, unknown>
 }
 
 export function CallTable<G, M>(p: Props<G, M>) {
@@ -32,6 +41,28 @@ export function CallTable<G, M>(p: Props<G, M>) {
     room?.mode === 'together' ? (s === 0 ? 'Join first' : 'Join second') : `Sit as ${sides[s]}`
 
   const line = () => tableLine(table, rules, p)
+
+  /* a finished game's rematch by turns: the other seat, challenged to the same toy */
+  const rematch = rematchOf(table, rules, byTurns)
+  const [asking, setAsking] = useState(false)
+  const [refused, setRefused] = useState<string | null>(null)
+  const askRematch = async () => {
+    if (!rematch || !room) return
+    setAsking(true)
+    setRefused(null)
+    try {
+      const settings = {
+        ...(p.matchSettings?.(room.game) ?? {}),
+        ...(rematch.level ? { level: rematch.level } : {}),
+      }
+      const v = await challenge(rematch.friend, room.sub, rematch.mode, settings)
+      location.hash = matchHash(room.sub, v.id)
+    } catch (e) {
+      setRefused(e instanceof Error ? e.message : 'The rematch could not be sent.')
+    } finally {
+      setAsking(false)
+    }
+  }
 
   const pick = (mode: Mode, level = room?.level ?? 0) => table.act({ t: 'mode', mode, level })
 
@@ -106,6 +137,14 @@ export function CallTable<G, M>(p: Props<G, M>) {
           <button className="btn" onClick={p.onCarryOn}>
             Carry on {rules.computer ? 'against the computer' : 'alone'}
           </button>
+        </div>
+      )}
+      {rematch && (
+        <div className="lab-controls">
+          <button className="btn btn-ghost" disabled={asking} onClick={() => void askRematch()}>
+            {asking ? 'Sending…' : `🎲 Rematch ${who(rematch.friend)} by turns`}
+          </button>
+          {refused && <span className="muted">{refused}</span>}
         </div>
       )}
       <p className="mc-line" aria-live="polite">
