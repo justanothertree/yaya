@@ -1172,6 +1172,14 @@ being claimed confirms it from their own account. Until that is decided, sets st
 for a person `owner_user_id` already names (#85), `circuit_logs` stays canonical for everybody
 else, and nothing is migrated.
 
+✅ **ANSWERED 22 Nov (§24) and DRAFTED in #456, not applied.** Admin approval first. Counting the
+write paths found four doors, not one: This is me, Add me with a typed name, joining with a code
+when your first name matches, and an owner's own UPDATE of `owner_user_id`. The draft makes the
+first three a request and refuses the fourth; only an admin's approval sets an owner. The plan,
+with what CI measured and the steps to apply it, is `docs/2026-11-22-circuit-claims-plan.md`. The
+claimed person confirming from their own account is a later step, and existing links are left as
+they are.
+
 ### 19f. Device and signed-in checks, for whenever you are on the site
 
 None of this can be exercised signed in from here, by instruction. Once the drafts are applied and
@@ -1322,7 +1330,7 @@ reasoning.
 | 19b | A friend's view of a Tuesdays goal on a Wednesday: leave it, or store a zone?  | Leave it. No stored time zone                                                       |
 | 19c | Apply the weekday draft?                                                       | Yes, as part of the release plan                                                    |
 | 19d | Apply the sets draft (step 1)?                                                 | Yes, as part of the release plan                                                    |
-| 19e | What makes claiming a Circuit person verified?                                 | An admin approves it, or the person confirms from their own account. Not yet built  |
+| 19e | What makes claiming a Circuit person verified?                                 | An admin approves it. Drafted in #456, not applied; the confirming step comes later |
 | 20a | A set counted in Chronicle shows in that person's Circuit column. OK?          | Yes: the number only; the session's details stay private                            |
 | 20b | The board does not see Chronicle's sets until it reloads. Realtime, or reload? | Reload the board when the Circuit opens again; no realtime. Built as a draft (#100) |
 | 20c | Apply the links draft, then the grid draft?                                    | Yes, after 19d, links then grid, as part of the release plan                        |
@@ -1438,12 +1446,12 @@ Swept against the code and `git log` rather than this file, because this file ha
 branch was missed. Everything in §14–§20 not listed here is answered and built, or answered and
 released. Nothing below can move without you.
 
-| §   | What it needs from you                                                                                                                                                                                                               | State                                |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
-| 21c | Answered yes 22 Nov. The dump needs Docker, which the machine this ran on does not have, so it stopped there as asked. It wants a machine with Docker and the linked CLI, then the README's four steps, the trigger recount included | Stopped, see §24                     |
-| 19e | Answered 22 Nov: admin approval first; the claimed person confirming is a separate step, not through `claim_person`; nothing moves on an unverified claim; any production SQL is asked first                                         | Not built                            |
-| 20d | Answered 22 Nov: no cutover date, no conversion, no freeze. The dry-run counts are in §24                                                                                                                                            | Not converting                       |
-| 19f | The signed-in device checks, which grow with each build. The PRs since carry their own phone checklists (#434, #437, #440, #441, #444, #451)                                                                                         | Only a signed-in phone can make them |
+| §   | What it needs from you                                                                                                                                                                                                               | State                                 |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| 21c | Answered yes 22 Nov. The dump needs Docker, which the machine this ran on does not have, so it stopped there as asked. It wants a machine with Docker and the linked CLI, then the README's four steps, the trigger recount included | Stopped, see §24                      |
+| 19e | Answered 22 Nov: admin approval first; the claimed person confirming is a separate step, not through `claim_person`; nothing moves on an unverified claim; any production SQL is asked first                                         | Drafted in #456; applying needs a yes |
+| 20d | Answered 22 Nov: no cutover date, no conversion, no freeze. The dry-run counts are in §24                                                                                                                                            | Not converting                        |
+| 19f | The signed-in device checks, which grow with each build. The PRs since carry their own phone checklists (#434, #437, #440, #441, #444, #451)                                                                                         | Only a signed-in phone can make them  |
 
 ---
 
@@ -1462,4 +1470,4 @@ flow, and the live result asked of production as a member in a transaction that 
 | 21c, regenerate the baseline | Yes, after the applies; stop if the dump needs Docker                                                                                                                  | **Stopped.** `supabase db dump` runs `pg_dump` inside Docker, and the machine this ran on has neither the CLI nor Docker. Not worked around: a hand-rolled `pg_dump` is what lost the 24 triggers |
 | 22d, who gave a kudos        | Yes, as recommended                                                                                                                                                    | Shipped in #451: a line above the open comments, and the names in each chip's accessible name                                                                                                     |
 | 20d, the conversion          | **No** cutover date, no conversion, no freeze of legacy writes                                                                                                         | A read-only dry run of the draft's own rules: 9 linked people; 4 would convert cleanly, 2 would stop on 3 entries whose exercise is gone, 3 have nothing; 178 cells; 525 imported day totals kept |
-| 19e, verifying a claim       | Not approval to apply. Admin approval first; the claimed person confirming is a separate step, never through `claim_person`; nobody's log moves on an unverified claim | Not built. Proposed as a draft of its own, starting with admin approval; any production SQL is asked first                                                                                        |
+| 19e, verifying a claim       | Not approval to apply. Admin approval first; the claimed person confirming is a separate step, never through `claim_person`; nobody's log moves on an unverified claim | Drafted in #456: the three claim doors write a request, an owner's own UPDATE is refused, an admin's approval is the one way an owner is set. Proved in CI; not applied                           |
