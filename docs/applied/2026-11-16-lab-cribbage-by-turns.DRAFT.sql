@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Cribbage by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_cribbage_by_turns`, version 20261122025520:
+-- md5(statements[1]) = 29b05d08398c68774e7761d2decc2618, this file's body. The record is
+-- supabase/migrations/20261122025520_lab_cribbage_by_turns.sql.
+--
+-- (as drafted) Cribbage by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
