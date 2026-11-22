@@ -4688,7 +4688,7 @@ export function ParkRoom({
                   label="👥 Invite a friend"
                   title="Let a friend into this park"
                   verb="invite"
-                  emptyHint="No friends yet — add someone on the People page and you can invite them here."
+                  emptyHint="No friends yet — add someone in Chat and you can invite them here."
                   hint="They can walk in from 👥 Friends’ parks whenever your park is open."
                   /* ⚠️ the link on its own line, exactly as challengeMessage does it: if this
                      ever renders as raw text — an old client, a notification preview, a paste

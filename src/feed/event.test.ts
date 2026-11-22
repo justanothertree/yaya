@@ -11,6 +11,7 @@ import {
   type FeedKind,
   type FeedScope,
 } from './event'
+import { previewFeed, toEvent } from './cloud'
 
 /**
  * ⚠️ EVERY KIND, LISTED ONCE. A kind added to `FeedKind` and forgotten here is the failure this
@@ -25,6 +26,7 @@ const KINDS: FeedKind[] = [
   'snake_trophy',
   'comment',
   'made',
+  'match',
 ]
 
 /** a local instant, built from parts so the test never depends on the runner's timezone */
@@ -237,7 +239,7 @@ describe('feed scopes', () => {
 })
 
 /**
- * Comments and things made — docs/2026-11-14-feed-made-and-comments.DRAFT.sql, not applied yet.
+ * Comments and things made — docs/applied/2026-11-14-feed-made-and-comments.DRAFT.sql, not applied yet.
  * The server sends where a comment was left and on whose; the words are written here, once.
  */
 describe('a comment and a thing made, in words', () => {
@@ -372,5 +374,82 @@ describe('one thing made per person, kind and day', () => {
     expect(many('art')).toBe('Put 2 drawings on their page')
     expect(many('pet')).toBe('Put 2 pets on their page')
     expect(many('looks')).toBe('Put 2 looks on their page')
+  })
+})
+
+/**
+ * A finished match, as the server's row arrives and as the line reads (step 3 of the matches
+ * plan). The row is the one `feed_recent` builds in docs/applied/2026-11-16-feed-finished-matches.DRAFT.sql,
+ * every field something other than its default, so a field the reader drops shows up as a failure.
+ */
+describe('a finished match', () => {
+  const at = local(2026, 11, 16, 9, 0)
+  const ROW = {
+    kind: 'match',
+    id: '10000000-0000-4000-8000-000000000002',
+    who: 'seedfriend',
+    name: 'Bo',
+    at,
+    detail: 'reversi',
+    score: null,
+    outcome: 'won',
+    how: 'resigned',
+    result: '24–12',
+    other: 'Ann',
+    other_who: 'seedowner',
+    other_mine: true,
+    mine: true,
+  }
+
+  it('keeps every field the server sends', () => {
+    expect(toEvent(ROW)).toMatchObject({
+      kind: 'match',
+      id: ROW.id,
+      who: 'seedfriend',
+      name: 'Bo',
+      at,
+      detail: 'reversi',
+      outcome: 'won',
+      how: 'resigned',
+      result: '24–12',
+      other: 'Ann',
+      otherWho: 'seedowner',
+      otherMine: true,
+      mine: true,
+    })
+  })
+
+  it('drops a row with no toy or an ending it has no words for, rather than guessing', () => {
+    expect(toEvent({ ...ROW, detail: null })).toBeNull()
+    expect(toEvent({ ...ROW, outcome: 'lost' })).toBeNull()
+    expect(toEvent({ ...ROW, outcome: undefined })).toBeNull()
+  })
+
+  it("reads a row whose other player is not this reader's to know as nobody named", () => {
+    const e = toEvent({ ...ROW, other: null, other_who: null, other_mine: false })!
+    expect([e.other, e.otherWho, e.otherMine]).toEqual([null, null, false])
+    expect(feedSentence(e)).toBe('Beat a friend at Reversi · 24–12, by resignation')
+  })
+
+  it('says who it was against, at what, and how it ended', () => {
+    const line = (p: Partial<FeedEvent>) =>
+      feedSentence(ev({ kind: 'match', id: 'm', at, detail: 'chess', outcome: 'won', ...p }))
+    expect(line({ other: 'Quill', how: 'played' })).toBe('Beat Quill at Chess')
+    expect(line({ other: 'Quill', otherMine: true })).toBe('Beat you at Chess')
+    expect(line({ other: 'Quill', how: 'timeout' })).toBe('Beat Quill at Chess · on time')
+    expect(line({ outcome: 'drew', other: 'Quill', result: '32–32' })).toBe(
+      'Drew with Quill at Chess · 32–32',
+    )
+    expect(line({ outcome: 'together', other: 'Marlow', detail: 'pool' })).toBe(
+      'Beat the computer with Marlow at Pool',
+    )
+    expect(line({ detail: 'a-game-from-next-week' })).toBe('Beat a friend at a-game-from-next-week')
+  })
+
+  it('is in the workbench feed in every shape the room draws', () => {
+    const rows = previewFeed('all_members').filter((e) => e.kind === 'match')
+    expect(new Set(rows.map((e) => e.outcome))).toEqual(new Set(['won', 'drew', 'together']))
+    expect(rows.some((e) => e.otherMine)).toBe(true)
+    expect(rows.some((e) => e.other == null)).toBe(true)
   })
 })

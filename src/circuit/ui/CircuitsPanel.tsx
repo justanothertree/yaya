@@ -298,7 +298,7 @@ export function CircuitsPanel() {
                           label="✉️ Invite a friend"
                           title="Send a friend an invite to this circuit"
                           verb="invite"
-                          emptyHint="No friends yet — add someone on the People page and you can invite them here."
+                          emptyHint="No friends yet — add someone in Chat and you can invite them here."
                           hint="They’ll get it in your messages, with a button that puts them straight into this circuit."
                         />
                       </>

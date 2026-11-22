@@ -18,6 +18,7 @@ import {
   type Round,
   type Saved,
 } from './cribbage'
+import { NIGHTLY } from './testMatches'
 
 /** cards written the poker way: 5h, Js, Td, Ac */
 const cs = (s: string) => s.split(' ').map(card)
@@ -176,7 +177,25 @@ describe('the computer', () => {
     const thrown = chooseDiscard(r, 1, 'fair')
     expect(thrown.sort()).toEqual([card('9c'), card('Kh')].sort())
   })
-  it('is stronger level by level, from both seats', () => {
+  // A seed deals the same cards whichever chair each level sits in, so if the two levels played
+  // alike, its two games would be one game with the chairs swapped and the level under test would
+  // lose one of them (measured too: Fair against Fair and Hard against Hard split all twelve
+  // seeds tried). Winning one deal from BOTH chairs is the claim in four games, then, and a level
+  // that plays like the one below cannot pass it. Deal 1 is the first on which both pairs do;
+  // over the first twelve, Fair wins 11 that way and Hard 8.
+  it('wins the same deal from both chairs, level by level', () => {
+    for (const [hi, lo] of [
+      ['fair', 'easy'],
+      ['hard', 'fair'],
+    ] as const) {
+      expect(match(hi, lo, 1).winner).toBe(0)
+      expect(match(lo, hi, 1).winner).toBe(1)
+    }
+  })
+  // How much stronger is a hundred and thirty games: sixteen seconds alone, and nearly the whole
+  // 60-second limit under a full run, so it runs nightly.
+  it('is stronger level by level, from both seats', ({ skip }) => {
+    skip(!NIGHTLY, 'runs nightly: see testMatches.ts')
     /** the share of games won and the average winning margin, playing each seed from both chairs */
     const play = (a: 'easy' | 'fair' | 'hard', b: 'easy' | 'fair' | 'hard', n: number) => {
       let won = 0
