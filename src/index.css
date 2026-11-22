@@ -8699,11 +8699,14 @@ a.cz-msg-author:focus-visible {
   min-width: 0;
 }
 .inst-bar-cell {
-  width: 12px;
+  /* ⚠️ `--bar-w` IS SET BY THE PARTS LIST so a song's bars fill the strip (LayerList.tsx, the
+     timeline): every bar-wide thing reads it, which is what keeps the columns columns. 12px, the
+     tile's own size, wherever nothing has set it. */
+  width: var(--bar-w, 12px);
   height: 18px;
   /* ⚠️ fixed basis: the strip no longer wraps, so without this flex would squeeze the cells
      to fit and the columns would stop lining up between layers with different bar counts */
-  flex: 0 0 12px;
+  flex: 0 0 var(--bar-w, 12px);
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 2px;
@@ -14064,10 +14067,10 @@ a.cz-msg-author:focus-visible {
   padding-left: calc(var(--layer-pad) + var(--layer-line));
 }
 .inst-ruler-cell {
-  width: 12px;
+  width: var(--bar-w, 12px);
   height: 14px;
   padding: 0;
-  flex: 0 0 12px;
+  flex: 0 0 var(--bar-w, 12px);
   border: 0;
   border-radius: 2px;
   background: none;
@@ -21403,7 +21406,12 @@ button.chron-runnote-n {
 /* a control whose face is one glyph, named in its aria-label: Panic, mute, ⋯, undo, redo.
    ⚠️ TWO CLASSES, because `.inst-layers .btn` sets a 24px floor on a touch screen at two classes'
    weight and was winning — a part's mute measured 31×24 and its ⋯ 26×24 at 375. */
-.btn.inst-icon {
+/* ⚠️ .inst-icon-slot IS THE EMPTY PLACE A ROW KEEPS WHERE ANOTHER ROW HAS AN ICON BUTTON (a take and
+   the words have no ⋯), and it takes the button's own width rule so every row's bars are the same
+   width — the timeline's bars scroll as one, and a strip 36px wider than the others could not
+   follow them (LayerList.tsx). */
+.btn.inst-icon,
+.inst-icon-slot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -21420,7 +21428,8 @@ button.chron-runnote-n {
    a glyph-only button is all target, so it gets the floor the touch rules give the rest */
 @media (hover: none) and (pointer: coarse) {
   .btn.inst-icon,
-  .inst-layers li .btn.inst-icon {
+  .inst-layers li .btn.inst-icon,
+  .inst-icon-slot {
     min-width: 36px;
     min-height: 36px;
   }
@@ -21463,6 +21472,8 @@ button.chron-runnote-n {
   flex-direction: column;
   gap: 0.35rem;
   min-width: 0;
+  /* the playhead is placed over the whole list — see .inst-tl-playhead */
+  position: relative;
   /* ⚠️ ONE WIDTH FOR THE NAME, shared by every row and by the ruler's label above them. It is
      what lines the bars up into columns — bar 3 of one part over bar 3 of the next — which the
      strip got from having a line of its own before. */
@@ -21542,10 +21553,133 @@ button.chron-runnote-n {
   }
   .inst-part-vol input[type='range'] {
     width: 7rem;
+    /* no default margin, so the column is 7rem whether a row has a slider or keeps its room */
+    margin: 0;
   }
 }
 .inst-parts-foot {
   gap: 0.6rem;
+}
+/* Snap, at the end of the row under the takes it moves */
+.inst-snap {
+  margin-left: auto;
+}
+/**
+ * 🎚 Volume, a phone's: every row's bars give their place to its fader, and take it back. A desktop
+ * row shows both, so the button is not there. The ruler keeps its room, hidden, so undo and redo
+ * stay where a thumb left them.
+ */
+@media (min-width: 701px) {
+  .inst-levels-toggle {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .inst-parts.is-levels .inst-layers .inst-arrange {
+    display: none;
+  }
+  .inst-parts.is-levels .inst-ruler {
+    visibility: hidden;
+  }
+  .inst-parts.is-levels .inst-part-vol {
+    display: flex;
+    min-width: 0;
+    margin: 0;
+  }
+  .inst-parts.is-levels .inst-part-vol input[type='range'] {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+}
+
+/* ── THE TIMELINE: one playhead through every row, and the recordings drawn where they play ──── */
+.inst-tl-playhead {
+  position: absolute;
+  left: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text);
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 2;
+}
+.inst-tl-playhead[hidden] {
+  display: none;
+}
+/**
+ * A recording's lane: as long as the song's bars, with a line at every bar and a fainter one at
+ * every beat, so where Snap will put it can be seen before it is let go. `--pitch` is the measured
+ * distance from one bar to the next, set on the track by LayerList — not `--bar-w`, which a thumb's
+ * wider tiles outgrow (see the fit's note there).
+ */
+.inst-take-lane {
+  align-self: stretch;
+}
+.inst-take-track {
+  position: relative;
+  flex: 0 0 auto;
+  height: 18px;
+  border-radius: 2px;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size:
+    var(--pitch, 14px) 100%,
+    calc(var(--pitch, 14px) / 4) 100%;
+}
+.inst-take-clip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 6px;
+  padding: 0;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  /* the waveform is drawn in this colour (TakeWave reads it) */
+  color: var(--text);
+  overflow: hidden;
+  cursor: grab;
+  /* a finger moving sideways moves the take; up and down still scrolls the page */
+  touch-action: pan-y;
+}
+.inst-take-clip.is-moving {
+  cursor: grabbing;
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.inst-take-clip:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.inst-take-row.is-muted .inst-take-clip {
+  opacity: 0.45;
+}
+.inst-take-wave {
+  display: block;
+  height: 100%;
+  pointer-events: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  .inst-take-track {
+    height: 1.9rem;
+  }
+  /* a short sound is still something a thumb can land on */
+  .inst-take-clip {
+    min-width: 24px;
+  }
+}
+/* the words themselves, once a bar is wide enough to hold some of them */
+.inst-word-text {
+  display: block;
+  min-width: 0;
+  padding-inline: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
 }
 
 /* THE TOOLS: four doors in a row, and whichever one is open under them */
@@ -21635,10 +21769,6 @@ button.chron-runnote-n {
 .inst-mix-pct {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
-}
-.inst-mix-as {
-  grid-column: 2 / 4;
   font-size: 0.8rem;
 }
 .inst-mix-row.is-muted .inst-mix-name {

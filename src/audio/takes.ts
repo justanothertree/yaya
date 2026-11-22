@@ -106,8 +106,9 @@ export type TakeRow = {
   voice?: Partial<VoiceFx>
   /**
    * Seconds into the song where this recording belongs: where the playhead was when it was sung
-   * (punchIn.ts), written once, when the take is kept. Absent for a recording made with the song
-   * stopped and for a file opened from disk, which go to the top as they always did.
+   * (punchIn.ts), written when the take is kept, and again wherever it is dragged on the timeline
+   * (`keepOnTake`). Absent for a recording made with the song stopped and for a file opened from
+   * disk until somebody moves it, which go to the top as they always did.
    *
    * ⚠️ NOT `at`, WHICH THIS ROW ALREADY HAS AND WHICH MEANS SOMETHING ELSE: `at` is when it was
    * recorded, in ms since 1970, and the list shows the date from it. A placement's `at` is a
@@ -118,6 +119,11 @@ export type TakeRow = {
    * forgets the placement, and putting it back used to start it from the top.
    */
   songAt?: number
+  /**
+   * How loud it was last set on the song, 0 to 2 — kept here for the same reason as `songAt`: so
+   * taking it off the song and putting it back does not reset its fader (keepOnTake).
+   */
+  gain?: number
 }
 
 let open: Promise<IDBDatabase | null> | null = null
@@ -305,6 +311,29 @@ export async function setTakeVoice(id: string, voice: VoiceFx | null): Promise<b
       space: voice.space,
     }
   else delete row.voice
+  const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
+  return done !== null
+}
+
+/**
+ * Keep where this recording goes on the song and how loud, once they have been set by hand — so
+ * taking it off the song and putting it back brings it back as it was left (looper.ts, `owe`).
+ *
+ * ⚠️ THE SAME READ-MODIFY-WRITE AS `setTakeLog`: the stored row is spread and only these fields
+ * change. One write for both, and none at all when neither moved, because each write rewrites the
+ * whole row, recording included.
+ */
+export async function keepOnTake(
+  id: string,
+  patch: { songAt?: number; gain?: number },
+): Promise<boolean> {
+  const had = await getTake(id)
+  if (!had) return false
+  const row: TakeRow = { ...had }
+  const ok = (v: number | undefined): v is number => v !== undefined && Number.isFinite(v) && v >= 0
+  if (ok(patch.songAt)) row.songAt = patch.songAt
+  if (ok(patch.gain)) row.gain = patch.gain
+  if (row.songAt === had.songAt && row.gain === had.gain) return true
   const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
   return done !== null
 }

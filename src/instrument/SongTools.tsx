@@ -14,6 +14,7 @@ import {
   loadSong,
   muteTake,
   setLayerGain,
+  setTakeGain,
   toggleMute,
   type loopState,
 } from '../audio/looper'
@@ -28,7 +29,14 @@ import { motionReduced } from '../ui/motion'
 import { KeysVolume } from './KeysVolume'
 import { partLines } from './partName'
 import { ExportSong } from './ExportSong'
-import { singOneLap, singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
+import {
+  setWordsLevel,
+  singOneLap,
+  singingNow,
+  startSinging,
+  stopSinging,
+  subscribeSinging,
+} from './singAlong'
 
 export type Tool = 'beats' | 'mix' | 'voice' | 'songs'
 
@@ -222,9 +230,10 @@ function SingDoor({
  * on a desktop), and the floating player keeps its own, because that one follows you off the page.
  * Every slider here writes the same value the others do, so none of them can disagree.
  *
- * ⚠️ A TAKE HAS A MUTE AND NO VOLUME, here as in 🎤 Voice, because it has never had one: the loop
- * plays it at its stored gain and nothing sets it. Listing it anyway is what makes this the one
- * place to silence anything in the song.
+ * ⚠️ AND EVERY PART OF THE SONG HAS ONE NOW, the takes and the words included (Evan, 21 Nov 2026:
+ * "easy volume for every part of a song"). A take had a mute here and "as recorded", because the
+ * loop played it at a gain nothing set; the words had no row at all. Both are the same 0–2 fader
+ * the parts have, and write the same values as the timeline's rows.
  */
 function Mix({ loop }: { loop: Loop }) {
   return (
@@ -257,10 +266,35 @@ function Mix({ loop }: { loop: Loop }) {
           </div>
         )
       })}
+      {loop.layers.filter(hasLyrics).map((l) => (
+        <div key={`${l.id}-words`} className="inst-mix-row">
+          <span className="inst-mix-name">🎤 Lyrics</span>
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={0.05}
+            value={l.wordsGain ?? 1}
+            aria-label="Volume of the lyrics"
+            onChange={(e) => setWordsLevel(l.id, Number(e.target.value))}
+          />
+          <span className="muted inst-mix-pct">{Math.round((l.wordsGain ?? 1) * 100)}%</span>
+          <span className="inst-icon-slot" aria-hidden />
+        </div>
+      ))}
       {loop.takes.map((t, i) => (
         <div key={t.id} className={'inst-mix-row' + (t.muted ? ' is-muted' : '')}>
           <span className="inst-mix-name">🎤 Take {i + 1}</span>
-          <span className="muted inst-mix-as">as recorded</span>
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={0.05}
+            value={t.gain ?? 1}
+            aria-label={`Volume of take ${i + 1}`}
+            onChange={(e) => setTakeGain(t.id, Number(e.target.value))}
+          />
+          <span className="muted inst-mix-pct">{Math.round((t.gain ?? 1) * 100)}%</span>
           <button
             className="btn inst-icon"
             onClick={() => muteTake(t.id)}
