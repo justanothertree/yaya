@@ -58,6 +58,31 @@ select '#### ROLLED BACK claim_person ' || (md5(pg_get_functiondef('public.claim
 \set ON_ERROR_STOP 1
 \echo '#### APPLY ONCE MORE, so the standing guards below run with the draft in place'
 \i /tmp/claims-draft.sql
+\echo '#### CPG LEAK PROBE: can a circuit creator read a private person by adding it to their own circuit?'
+begin;
+insert into public.circuit_logs (id, person_id, date, entries) values
+  ('leak-log-1', 'seed-person-2', date '2026-11-01', '[]'),
+  ('leak-log-2', 'seed-person-2', date '2026-11-02', '[]');
+select '#### LEAK fixture: seed-person-2 visibility ' || visibility || ', owner is the friend ' ||
+       (owner_user_id = '00000000-0000-4000-a000-000000000002') ||
+       ', stranger in a circuit with it ' || exists (
+         select 1 from public.circuit_person_groups pg join public.circuit_group_members gm on gm.group_id = pg.group_id
+          where pg.person_id = 'seed-person-2' and gm.user_id = '00000000-0000-4000-a000-000000000003')
+  from public.circuit_people where id = 'seed-person-2';
+select set_config('request.jwt.claims',
+  json_build_object('sub', '00000000-0000-4000-a000-000000000003', 'role', 'authenticated')::text, true) is not null;
+set local role authenticated;
+select '#### LEAK before: the stranger sees ' || (select count(*) from public.circuit_logs where person_id = 'seed-person-2')
+       || ' logs, person row visible ' || exists (select 1 from public.circuit_people where id = 'seed-person-2');
+do $$
+declare v uuid;
+begin
+  select c.id into v from public.create_circuit('leak probe') c;
+  insert into public.circuit_person_groups (person_id, group_id) values ('seed-person-2', v);
+end $$;
+select '#### LEAK after: the stranger sees ' || (select count(*) from public.circuit_logs where person_id = 'seed-person-2')
+       || ' logs, person row visible ' || exists (select 1 from public.circuit_people where id = 'seed-person-2');
+rollback;
 \pset format aligned
 \pset tuples_only off
 \echo '#### STANDING GUARDS'
