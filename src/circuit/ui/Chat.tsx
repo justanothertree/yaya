@@ -467,7 +467,7 @@ export function Chat({
                 />
               )}
 
-              <MessageLog msgs={msgs} named={room.kind !== 'dm'} />
+              <MessageLog msgs={msgs} named={room.kind !== 'dm'} songs={thread.songs} />
 
               {(err ?? thread.err) && (
                 <p className="muted cz-chat-err" role="alert">

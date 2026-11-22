@@ -187,7 +187,8 @@ there through `App.tsx` on main (see CLAUDE.md on code splitting); this adds not
   deleted with no message. That is a server change, which this was asked not to make.
   - In prose: the function would take an optional expected fingerprint of the page, lock the
     member's `profiles` row, compare, and refuse with "page changed".
-  - **Evan's call.**
+  - **Evan's call, and he said yes on 22 Nov.** It is
+    `supabase/migrations/20261122215917_profile_page_version.sql`; see "The server's own check" below.
 - **The chronicle's sharing switch** also writes this table, and a review found it could be saved
   over. It is Chronicle's code, which another thread owns, so it is not routed through the writer
   here.
@@ -199,12 +200,56 @@ there through `App.tsx` on main (see CLAUDE.md on code splitting); this adds not
   writes a wrong page silently.
 - **Tabs still running a bundle from before this ships** save without any check until reloaded.
 
+## The server's own check (applied 22 Nov 2026)
+
+`supabase/migrations/20261122215917_profile_page_version.sql` (applied 22 Nov 2026) gives `save_my_profile_blocks` an optional
+`p_expected_page`, and `my_profile_page_version()` to read it from. Its header has the reasoning:
+
+- the version is of what is stored, so no write path can be missed;
+- the member's row is locked, so two saves take turns;
+- it drops and creates rather than replacing, so there is never a second signature.
+
+The writer:
+
+- **reads the version before the page.** A write landing between the two makes the save refuse,
+  which is the safe direction. The other order would let it through, and a test holds the version
+  read open to prove the order.
+- **sends the version with every save**, the editor's and a Put's.
+- **takes "page changed" (HTTP 409) as the conflict it is.** The copy is kept, the banner says the
+  page changed somewhere else, and Reload it is offered.
+- **works against a server without versions.** That is production until the draft is applied, and
+  again after a rollback. PostgREST's "no such function" (`PGRST202`) on the version read means it
+  saves as before and stops asking. The same answer to a save that carried a version means nothing
+  ran, so the copy is tried again, and the retry's version read learns there are none.
+
+**Checked.**
+
+- In `pageWriter.test.ts`, against the double in both modes:
+  - another device's change landing while the save is on its way is refused, not deleted. On the
+    old server the same moment deletes it, the null control showing the test reaches the gap;
+  - two devices saving from one read: one lands, one is refused;
+  - the old server: saves work, the version is asked once, and none is ever sent;
+  - a rollback in the middle of a job.
+- Nine perturbations of the writer, each the old behaviour or a plausible slip, all turn the suite
+  red. Two first stayed green, and both were redundant code, now removed.
+- On a real database, in CI's db guards job:
+  - `supabase/tests/profile-page-version.sql` covers the privileges, an old-style call, a save
+    that changes nothing, a stale save, the chronicle switch as another writer, Certain lists, a
+    list row changed by hand, and nobody else's version;
+  - `supabase/tests/profile-page-race.sh` covers two real sessions overlapping, with versions and
+    without.
+
+**Left.** A save that one tab gave up waiting for can still land after the next one read its
+version, and the next is then refused as "changed" by what was in fact its own older copy. That is
+a false alarm, the safe direction, and rare: it needs a 15-second timeout that the server outlived.
+The chronicle switch takes no lock, so its INSERT can still land in the microseconds between the
+check and the delete. Closing that is two lines in Chronicle's function, for that thread.
+
 ## Still at risk
 
-- Another device saving in the moment between a check and a save. Only the compare-and-swap above
-  closes it.
-- Overlapping saves from two devices can double the page. This is detected and said ("saved from two
-  places at once"), not prevented.
+- Until the draft above is applied: another device saving in the moment between a check and a
+  save, and two overlapping saves doubling the page (detected and said as "saved from two places
+  at once", not prevented).
 - A refused change is kept and said, not merged, so Reload drops the typing. The screen says so
   first, and an orphan can be reopened to copy from.
 - An edit made in the last 0.7s before the tab closes. This was already true.

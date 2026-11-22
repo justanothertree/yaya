@@ -1,5 +1,10 @@
 # Sharing an exported song with a friend on the site: a plan, not built
 
+> **Since built, as songs in chat** — `docs/2026-11-22-chat-songs.md`, PR #453, not yet live
+> (the SQL waits to be applied and the function to be deployed). The four questions below were
+> answered by Evan on 21 Nov 2026, and the names changed on the way: the table is
+> `chat_song_files`. What follows is the plan as it was written on 17 Nov.
+
 Evan, 17 Nov 2026: make "Share…" also offer sharing to a friend inside evancook.dev **if a simple
 path already exists** (e.g. attaching it to a post or message). If it would need new tables,
 production SQL or storage changes, don't build it: write a short plan and stop.

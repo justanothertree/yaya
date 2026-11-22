@@ -388,7 +388,7 @@ function Songs({
           </button>
         )}
       </div>
-      <ExportSong loop={loop} busy={!!bouncing} setBusy={setExporting} />
+      <ExportSong loop={loop} busy={!!bouncing} setBusy={setExporting} member={!!username} />
       <ProfileSong loop={loop} username={username} askName={askName} confirmIt={confirmIt} />
       {stems.length > 0 && (
         <div className="inst-row inst-takes-stems">
