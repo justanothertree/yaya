@@ -1,8 +1,15 @@
--- ROLLBACK for `20261115_correction_follows_ownership`.
+-- ROLLBACK for `20261116020828_correction_follows_ownership`, applied 16 Nov 2026 02:08:28 UTC.
+--
+-- ⚠️ This file was written on 15 Nov, before the apply was refused and then approved, so it named
+-- the migration `20261115_correction_follows_ownership` — a version that never existed. Corrected
+-- here rather than left to be discovered by somebody following it in a hurry, which is the only
+-- time anybody reads a rollback.
 --
 -- This is the EXACT text of `public.admin_correct_position` as production ran it before that
 -- migration, captured from `pg_get_functiondef` at 2026-11-15 14:03 UTC (09:03 Eastern) and
--- fingerprinted so it can be proved to be that text rather than a retyping of it:
+-- fingerprinted so it can be proved to be that text rather than a retyping of it. The forward
+-- migration left the function at md5 `5f10f7e40e747bc4294b3c634a95ea57`, so the two are
+-- distinguishable by a single query before and after either direction:
 --
 --   md5(pg_get_functiondef(oid)) = b209b089d5a5da4d563f6303a7a124ba
 --   octet_length                 = 2816 bytes  (length() says 2812 — CHARACTERS, not bytes:

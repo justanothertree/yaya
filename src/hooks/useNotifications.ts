@@ -121,7 +121,7 @@ export function useNotifications(authed: boolean): Notifications {
           kind: 'friend' as const,
           text: `${p.name} wants to be friends`,
           detail: '@' + p.username,
-          href: '#people',
+          href: '#chat',
         })),
         ...(seenRef.current ? [] : PREVIEW_ACTIVITY.map(activityNotice)),
       ])
@@ -170,7 +170,7 @@ export function useNotifications(authed: boolean): Notifications {
         kind: 'friend' as const,
         text: `${f.name} wants to be friends`,
         detail: '@' + f.username,
-        href: '#people',
+        href: '#chat',
       })),
       /* ⚠️ A MATCH WAITING ON YOU IS A STATE, LIKE AN UNREAD MESSAGE: it stays until you move or
          answer, and opening the bell does not clear it. Only matches that wait on you are here;
