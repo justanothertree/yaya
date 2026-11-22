@@ -272,10 +272,10 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
   hearts: (s) => {
     const set = readHeartsSettings(s)
     if (set === null) return null
-    // versus, the two friends' points; together, the pairs' — the friends' first; lower wins
+    // the two friends' points, the challenger's first; lower wins
     const score = (g: HeartsGame) => {
       const t = heartsTotals(g)
-      return (g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]]).join('–')
+      return [t[0], t[2]].join('–')
     }
     return { rules: heartsRules(set.end, set.level), score }
   },

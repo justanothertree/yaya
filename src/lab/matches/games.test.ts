@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { GAMES } from '../../../supabase/functions/lab-move/core'
 import { MATCH_TOYS } from './games'
-import { MATCH_LEVELS, MATCH_NAMES, VERSUS_ONLY } from './names'
+import { MATCH_LEVELS, MATCH_NAMES, VERSUS_ONLY, modeWords } from './names'
 
 /**
  * The browser's list of match toys against the server's. A toy the server can play and the
@@ -155,6 +155,25 @@ describe('the match toys', () => {
   it('all offer the levels a profile’s challenge lists without loading the rules', () => {
     for (const [demo, toy] of Object.entries(MATCH_TOYS))
       if (!VERSUS_ONLY.has(demo)) expect(toy.levels, demo).toEqual(MATCH_LEVELS)
+  })
+})
+
+describe('how a challenge names the modes', () => {
+  it('offers Spades partners first, the two friends against two computers, as Evan called it', () => {
+    const w = modeWords('spades')
+    expect(w.first).toBe('together')
+    expect(w.together).toMatch(/Partners/)
+    expect(w.versus).toMatch(/computer partner/)
+    // the partnership it names is the one the rules seat: together, the friends at 0 and 2
+    expect(GAMES.spades({})!.rules.modes).toEqual(['versus', 'together'])
+  })
+
+  it('leaves every other toy on Versus first, and names a mode only a toy has', () => {
+    for (const demo of Object.keys(MATCH_TOYS)) {
+      const w = modeWords(demo)
+      if (demo !== 'spades') expect(w.first, demo).toBe('versus')
+      if (w.first === 'together') expect(VERSUS_ONLY.has(demo), demo).toBe(false)
+    }
   })
 })
 

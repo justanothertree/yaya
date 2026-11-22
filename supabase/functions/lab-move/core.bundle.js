@@ -9779,7 +9779,7 @@ function totals$1(g) {
   return t;
 }
 const matchOver$1 = (g) => Math.max(...totals$1(g)) >= g.end || g.past.length >= MAX_HANDS$3;
-const sideOf$1 = (g, seat) => g.together ? 0 : seat === 0 ? 0 : 1;
+const sideOf$1 = (seat) => seat === 0 ? 0 : 1;
 function humanUp$1(g) {
   if (g.phase === "pass") return g.passed[0] ? g.passed[1] ? null : 2 : 0;
   if (g.phase === "play") return isHuman$1(g.h.turn) ? g.h.turn : null;
@@ -9787,12 +9787,11 @@ function humanUp$1(g) {
 }
 const whoseMove$6 = (g) => {
   const s = humanUp$1(g);
-  return s === null ? null : sideOf$1(g, s);
+  return s === null ? null : sideOf$1(s);
 };
-const fresh$6 = (end, level, mode) => ({
+const fresh$6 = (end, level) => ({
   end,
   level,
-  together: mode === "together",
   past: [],
   phase: "between",
   passed: [false, false],
@@ -9836,7 +9835,7 @@ function settle$3(g) {
 const known$2 = (g) => !!g.dealt;
 function moved$5(g, m, s) {
   const seat = humanUp$1(g);
-  if (seat === null || sideOf$1(g, seat) !== s) return null;
+  if (seat === null || sideOf$1(seat) !== s) return null;
   if ("pass" in m) {
     if (g.phase !== "pass" || !cards$1(m.pass, 3)) return null;
     const passed = [...g.passed];
@@ -9865,7 +9864,7 @@ function roll$2(g, rand) {
   }
   return cur;
 }
-function replayPublic$6(end, level, together, x) {
+function replayPublic$6(end, level, x) {
   const o = x;
   if (!o || typeof o !== "object" || !Array.isArray(o.past) || o.past.length > MAX_HANDS$3)
     return null;
@@ -9884,7 +9883,7 @@ function replayPublic$6(end, level, together, x) {
   if (!cards$1(played) || played.length > 52) return null;
   if (first !== null && (!Number.isInteger(first) || first < 0 || first > 3))
     return null;
-  const g = fresh$6(end, level, together ? "together" : "versus");
+  const g = fresh$6(end, level);
   const base = { ...g, past, passed: [passed[0], passed[1]] };
   if (phase === "over") {
     if (!matchOver$1(base) || played.length || first !== null) return null;
@@ -9904,12 +9903,8 @@ function replayPublic$6(end, level, together, x) {
 }
 function heartsRules(end, level) {
   return {
-    fresh: (mode) => fresh$6(end, level, mode),
+    fresh: () => fresh$6(end, level),
     turn: whoseMove$6,
-    friendTurn: (g) => {
-      const s = humanUp$1(g);
-      return s === null ? null : s === 0 ? 0 : 1;
-    },
     legal: (g, m, by) => {
       const s = whoseMove$6(g);
       return s !== null && (by === void 0 || by === s) && moved$5(g, m, s) !== null;
@@ -9924,14 +9919,9 @@ function heartsRules(end, level) {
       phase: g.phase,
       passed: g.passed,
       played: g.phase === "play" ? g.h.played : [],
-      first: g.phase === "play" ? g.first : null,
-      // the mode decides who wins, so it travels with the state, which only lab-move writes
-      together: g.together
+      first: g.phase === "play" ? g.first : null
     }),
-    decode: (x) => {
-      const o = x;
-      return replayPublic$6(end, level, !!o && o.together === true, x);
-    },
+    decode: (x) => replayPublic$6(end, level, x),
     readMove: (x) => {
       const o = x;
       if (!o || typeof o !== "object" || Object.keys(o).length !== 1) return null;
@@ -9939,18 +9929,12 @@ function heartsRules(end, level) {
       if ("play" in o && isCard$3(o.play)) return { play: o.play };
       return null;
     },
-    modes: ["versus", "together"],
-    // the computers are played in `roll`; this is what they would play, never asked by lab-move
-    computer: {
-      side: 1,
-      levels: ["easy", "fair", "hard"],
-      choose: (g) => ({ play: chooseCard$1(g.h, g.level, Math.random) })
-    },
+    // versus alone: the computers only fill seats 1 and 3, played in `roll` at the match's level
+    modes: ["versus"],
     result: (g) => {
       if (whoseMove$6(g) !== null || g.phase !== "over") return null;
       const t = totals$1(g);
-      const [a, b] = g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]];
-      return a < b ? 0 : b < a ? 1 : "draw";
+      return t[0] < t[2] ? 0 : t[2] < t[0] ? 1 : "draw";
     },
     begun: (g) => g.past.length > 0 || g.passed.some(Boolean),
     hidden: {
@@ -9988,8 +9972,8 @@ function heartsRules(end, level) {
           return null;
         return { ...ready, h, first: g.first };
       },
-      mine: (g, side, seat) => {
-        const at2 = (seat ?? side) === 0 ? 0 : 2;
+      mine: (g, side) => {
+        const at2 = side === 0 ? 0 : 2;
         const way = PASS[g.past.length % 4];
         if (g.phase === "pass")
           return { hand: g.dealt?.[at2] ?? null, passed: g.passes[at2], got: null };
@@ -12056,7 +12040,7 @@ const GAMES = {
     if (set === null) return null;
     const score2 = (g) => {
       const t = totals$1(g);
-      return (g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]]).join("–");
+      return [t[0], t[2]].join("–");
     };
     return { rules: heartsRules(set.end, set.level), score: score2 };
   },

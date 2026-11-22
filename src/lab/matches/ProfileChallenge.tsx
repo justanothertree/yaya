@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { challenge, challengeableFriends } from './cloud'
-import { LEVEL_NAMES, MATCH_LEVELS, MATCH_NAMES, VERSUS_ONLY } from './names'
+import { LEVEL_NAMES, MATCH_LEVELS, MATCH_NAMES, VERSUS_ONLY, modeWords } from './names'
 import { matchHash } from './words'
 
 /**
@@ -59,7 +59,8 @@ export function ProfileChallenge({
     friendId ? { id: friendId } : undefined,
   )
   const [demo, setDemo] = useState<string>(Object.keys(MATCH_NAMES)[0])
-  const [mode, setMode] = useState<'versus' | 'together'>('versus')
+  const [mode, setMode] = useState<'versus' | 'together'>(modeWords(demo).first)
+  const words = modeWords(demo)
   const [level, setLevel] = useState<string>(MATCH_LEVELS[1])
   const [busy, setBusy] = useState(false)
   // a duel has no computer: versus alone, whatever was picked for the toy before it
@@ -112,7 +113,11 @@ export function ProfileChallenge({
                     key={id}
                     className="btn btn-ghost"
                     aria-pressed={demo === id}
-                    onClick={() => setDemo(id)}
+                    onClick={() => {
+                      setDemo(id)
+                      // each toy starts on the mode it offers first: Spades on the partners
+                      setMode(modeWords(id).first)
+                    }}
                   >
                     {toy}
                   </button>
@@ -125,14 +130,14 @@ export function ProfileChallenge({
                     aria-pressed={mode === 'versus'}
                     onClick={() => setMode('versus')}
                   >
-                    ⚔️ Versus
+                    {words.versus}
                   </button>
                   <button
                     className="btn btn-ghost"
                     aria-pressed={mode === 'together'}
                     onClick={() => setMode('together')}
                   >
-                    🤝 Together against the computer
+                    {words.together}
                   </button>
                 </div>
               )}

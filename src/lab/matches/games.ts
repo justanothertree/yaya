@@ -271,7 +271,8 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
       const set = readHeartsSettings(s)
       return set === null ? null : heartsRules(set.end, set.level)
     },
-    levels: ['easy', 'fair', 'hard'],
+    // versus alone: the computers fill the table at the level the toy is set to, not a side to beat
+    levels: [],
   },
   spades: {
     name: MATCH_NAMES.spades,

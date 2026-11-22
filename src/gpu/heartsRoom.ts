@@ -14,17 +14,17 @@ import {
   type Level,
 } from './hearts'
 import type { Card } from './poker'
-import type { Mode, Rules, Seat } from '../lab/social/room'
+import type { Rules, Seat } from '../lab/social/room'
 
 /**
  * Hearts as a match by turns (src/lab/matches): the toy's own game for four, to fifty or a hundred.
  * The two friends sit across the table from each other, seats 0 and 2, and the computer takes
  * the seats between, 1 and 3, at the level asked for.
  *
- * ⚠️ WHO WINS WITH FOUR AT THE TABLE AND TWO PLAYERS — A CHOICE, AND WRITTEN DOWN AS ONE. Versus,
- * the two computers only fill the table: the friend with the lower score wins, whoever else is
- * lower. Together, the friends are partners and the pairs' points are added, theirs against the
- * computers'. Hearts has no partners of its own; this is the plainest reading of each mode.
+ * ⚠️ WHO WINS WITH FOUR AT THE TABLE AND TWO PLAYERS — EVAN'S CALL (17 Nov 2026): the friends
+ * take their seats, the computers fill the empty ones, and the winner is the lowest score among
+ * the friends, whatever the computers score. Hearts has no partners, so there is no Together: an
+ * earlier draft added the friends' points against the computers', which is a game Hearts is not.
  *
  * ⚠️ THE HANDS ARE KEPT BACK (Rules.hidden): the deal and every pass live in the match's secret.
  * What travels is the order each hand's cards were played in; tricks, leads, points taken, voids
@@ -36,7 +36,6 @@ import type { Mode, Rules, Seat } from '../lab/social/room'
 export type HeartsGame = {
   end: number
   level: Level
-  together: boolean
   /** every finished hand: who led the two of clubs, and its fifty-two cards in the order played */
   past: Played[]
   phase: 'pass' | 'play' | 'between' | 'over'
@@ -146,8 +145,8 @@ export function totals(g: HeartsGame): number[] {
 }
 const matchOver = (g: HeartsGame) => Math.max(...totals(g)) >= g.end || g.past.length >= MAX_HANDS
 
-/** the side moving: versus, the friend at seat 0 or 2; together, the team */
-const sideOf = (g: HeartsGame, seat: number): Seat => (g.together ? 0 : seat === 0 ? 0 : 1)
+/** the side moving: the friend at seat 0 (the challenger) or 2 */
+const sideOf = (seat: number): Seat => (seat === 0 ? 0 : 1)
 /** the friend whose move it is, as a table seat, or null */
 function humanUp(g: HeartsGame): number | null {
   if (g.phase === 'pass') return g.passed[0] ? (g.passed[1] ? null : 2) : 0
@@ -156,13 +155,12 @@ function humanUp(g: HeartsGame): number | null {
 }
 export const whoseMove = (g: HeartsGame): Seat | null => {
   const s = humanUp(g)
-  return s === null ? null : sideOf(g, s)
+  return s === null ? null : sideOf(s)
 }
 
-const fresh = (end: number, level: Level, mode?: Mode): HeartsGame => ({
+const fresh = (end: number, level: Level): HeartsGame => ({
   end,
   level,
-  together: mode === 'together',
   past: [],
   phase: 'between',
   passed: [false, false],
@@ -213,7 +211,7 @@ const known = (g: HeartsGame) => !!g.dealt
 /** the move, or null if it is not one; on the server, with the hands known, every rule */
 function moved(g: HeartsGame, m: HeartsMove, s: Seat): HeartsGame | null {
   const seat = humanUp(g)
-  if (seat === null || sideOf(g, seat) !== s) return null
+  if (seat === null || sideOf(seat) !== s) return null
   if ('pass' in m) {
     if (g.phase !== 'pass' || !cards(m.pass, 3)) return null
     const passed: [boolean, boolean] = [...g.passed]
@@ -248,12 +246,7 @@ function roll(g: HeartsGame, rand: () => number): HeartsGame {
 /* ---------------------------------------------------------------- the wire ------------------ */
 
 /** the match anybody in it may see; every finished hand replayed card by card */
-export function replayPublic(
-  end: number,
-  level: Level,
-  together: boolean,
-  x: unknown,
-): HeartsGame | null {
+export function replayPublic(end: number, level: Level, x: unknown): HeartsGame | null {
   const o = x as Record<string, unknown> | null
   if (!o || typeof o !== 'object' || !Array.isArray(o.past) || o.past.length > MAX_HANDS)
     return null
@@ -275,7 +268,7 @@ export function replayPublic(
     (!Number.isInteger(first) || (first as number) < 0 || (first as number) > 3)
   )
     return null
-  const g = fresh(end, level, together ? 'together' : 'versus')
+  const g = fresh(end, level)
   const base = { ...g, past, passed: [passed[0], passed[1]] as [boolean, boolean] }
   if (phase === 'over') {
     if (!matchOver(base) || played.length || first !== null) return null
@@ -304,12 +297,8 @@ export function heartsRules(
   roll: (g: HeartsGame, rand: () => number) => HeartsGame
 } {
   return {
-    fresh: (mode) => fresh(end, level, mode),
+    fresh: () => fresh(end, level),
     turn: whoseMove,
-    friendTurn: (g) => {
-      const s = humanUp(g)
-      return s === null ? null : s === 0 ? 0 : 1
-    },
     legal: (g, m, by) => {
       const s = whoseMove(g)
       return s !== null && (by === undefined || by === s) && moved(g, m, s) !== null
@@ -325,13 +314,8 @@ export function heartsRules(
       passed: g.passed,
       played: g.phase === 'play' ? g.h.played : [],
       first: g.phase === 'play' ? g.first : null,
-      // the mode decides who wins, so it travels with the state, which only lab-move writes
-      together: g.together,
     }),
-    decode: (x) => {
-      const o = x as Record<string, unknown> | null
-      return replayPublic(end, level, !!o && (o as { together?: unknown }).together === true, x)
-    },
+    decode: (x) => replayPublic(end, level, x),
     readMove: (x) => {
       const o = x as Record<string, unknown> | null
       if (!o || typeof o !== 'object' || Object.keys(o).length !== 1) return null
@@ -339,18 +323,13 @@ export function heartsRules(
       if ('play' in o && isCard(o.play)) return { play: o.play }
       return null
     },
-    modes: ['versus', 'together'],
-    // the computers are played in `roll`; this is what they would play, never asked by lab-move
-    computer: {
-      side: 1,
-      levels: ['easy', 'fair', 'hard'],
-      choose: (g) => ({ play: chooseCard(g.h, g.level, Math.random) }),
-    },
+    // versus alone: the computers only fill seats 1 and 3, played in `roll` at the match's level
+    modes: ['versus'],
     result: (g) => {
       if (whoseMove(g) !== null || g.phase !== 'over') return null
+      // the lower of the two friends' scores wins
       const t = totals(g)
-      const [a, b] = g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]]
-      return a < b ? 0 : b < a ? 1 : 'draw'
+      return t[0] < t[2] ? 0 : t[2] < t[0] ? 1 : 'draw'
     },
     begun: (g) => g.past.length > 0 || g.passed.some(Boolean),
     hidden: {
@@ -390,8 +369,8 @@ export function heartsRules(
           return null
         return { ...ready, h, first: g.first }
       },
-      mine: (g, side, seat) => {
-        const at = (seat ?? side) === 0 ? 0 : 2
+      mine: (g, side) => {
+        const at = side === 0 ? 0 : 2
         const way = PASS[g.past.length % 4]
         if (g.phase === 'pass')
           return { hand: g.dealt?.[at] ?? null, passed: g.passes[at], got: null }
