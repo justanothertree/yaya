@@ -2,6 +2,12 @@
 -- the baseline: the test against the functions as they are (must fail), the draft applied, the
 -- test (must pass), the draft again (must refuse), the rollback (must restore all three texts),
 -- and the draft once more so the standing guards below run with it in place.
+select to_regclass('public.circuit_person_claims') is null as probe_fresh \gset
+\if :probe_fresh
+\echo '#### PRODUCTION DEFAULT PRIVILEGES BACK FIRST, so a missing revoke would show'
+alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role;
 \pset format unaligned
 \pset tuples_only on
 \echo '#### claims PLAN'
@@ -56,6 +62,13 @@ select '#### ROLLED BACK claim_person ' || (md5(pg_get_functiondef('public.claim
 \set ON_ERROR_STOP 0
 \ir circuit-claims.sql
 \set ON_ERROR_STOP 1
+\echo '#### PERTURB: the draft without two of its revokes, which the test must name'
+\! grep -v -e '^revoke all on table public.circuit_person_claims' -e '^revoke all on function public.my_person_claims' /tmp/claims-draft.sql > /tmp/claims-draft-broken.sql && echo "#### PERTURB lines removed: $(( $(wc -l < /tmp/claims-draft.sql) - $(wc -l < /tmp/claims-draft-broken.sql) ))"
+\i /tmp/claims-draft-broken.sql
+\set ON_ERROR_STOP 0
+\ir circuit-claims.sql
+\set ON_ERROR_STOP 1
+\ir ../../docs/2026-11-22-circuit-claims-need-approval.ROLLBACK.sql
 \echo '#### APPLY ONCE MORE, so the standing guards below run with the draft in place'
 \i /tmp/claims-draft.sql
 \echo '#### STAPLE PLAN'
@@ -91,6 +104,9 @@ select '#### STAPLE ROLLED BACK policies ' || string_agg(polname || ':' || polcm
 \set ON_ERROR_STOP 1
 \echo '#### STAPLE APPLY ONCE MORE, so the standing guards below run with it in place'
 \ir ../../docs/2026-11-22-circuit-creator-staple.DRAFT.sql
+\else
+\echo '#### PROBE: second pass, both drafts already in place, skipped'
+\endif
 \pset format aligned
 \pset tuples_only off
 \echo '#### STANDING GUARDS'
