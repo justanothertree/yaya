@@ -7,7 +7,10 @@ name: Nightly
 # - each `*Room.test.ts` plays every match it ever played and decodes it at every position, where
 #   a push plays the few it names plus one drawn at random and decodes a sample;
 # - each "level by level" test plays the dozens of whole games its bars were measured on, where a
-#   push plays one named seed from both chairs (cribbage, curling, hex);
+#   push asks one short question a level no better than the one below cannot answer: one seed
+#   from both chairs (cribbage, curling, hex, spades, chess's Fair), one side's level changed on a
+#   seed (fox), or a mate in two at Fair's depth plus one (chess's Hard);
+# - golf's par is checked against plain play on all twenty-five deals, where a push asks three;
 # - the lamps solver is also checked on 5 × 5 against trying every set of presses.
 #
 # The whole suite rather than a list of files, so a test that grows a nightly half is covered the
