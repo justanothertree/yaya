@@ -31,6 +31,7 @@ import { morrisRules } from '../../../src/gpu/morrisRoom'
 import { hexRules, readHexSettings } from '../../../src/gpu/hexRoom'
 import { ultimateRules } from '../../../src/gpu/ultimateRoom'
 import { breakthroughRules, readBreakthroughSize } from '../../../src/gpu/breakthroughRoom'
+import { fencesRules, readFencesSize } from '../../../src/gpu/fencesRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -91,6 +92,10 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
   breakthrough: (s) => {
     const size = readBreakthroughSize(s)
     return size === null ? null : { rules: breakthroughRules(size) }
+  },
+  fences: (s) => {
+    const size = readFencesSize(s)
+    return size === null ? null : { rules: fencesRules(size) }
   },
 }
 
