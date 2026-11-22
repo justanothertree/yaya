@@ -3776,3 +3776,71 @@ describe('spades by turns: partnerships at a table of four', () => {
     expect(status(decide({ ...row, secret: twice }, A, move(row.seq, { bid: 3 })))).toBe(500)
   })
 })
+
+describe('crazy eights by turns: the hands, the stock and a drawn card kept back', () => {
+  const ce = (over: Partial<Row> = {}) => invite({ demo_id: 'eights', settings: {}, ...over })
+  type Mine = { hand: number[]; drew: number | null }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as Mine
+  }
+  type Sec = { hands: number[][]; stock: number[]; drew: number | null }
+
+  it('deals with the yes, and shows each player their own hand only', () => {
+    const p0 = decide(ce(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    const sec = p0.secret as Sec
+    expect(JSON.stringify(p0.state)).not.toMatch(/hands|"stock"|"drew"/)
+    const row = after(ce(), p0)
+    expect(mine(row, A).hand).toEqual(sec.hands[0])
+    expect(mine(row, B).hand).toEqual(sec.hands[1])
+  })
+
+  it('takes a card Ann holds that fits, and refuses one she does not', () => {
+    for (let k = 0; k < 40; k++) {
+      let row = after(ce(), decide(ce(), B, { op: 'accept' }))
+      const sec = row.secret as Sec
+      const st = row.state as { suit: number; pile: number[] }
+      const top = st.pile[st.pile.length - 1]
+      const fit = sec.hands[0].find(
+        (c) => c >> 2 !== 6 && ((c & 3) === st.suit || c >> 2 === top >> 2),
+      )
+      if (fit === undefined) continue
+      expect(status(decide(row, A, move(row.seq, { play: sec.hands[1][0] })))).toBe(400)
+      const p = decide(row, A, move(row.seq, { play: fit }))
+      if (p.kind !== 'commit') throw new Error('refused')
+      row = after(row, p)
+      expect(row.turn).toBe(1)
+      expect((row.state as { pile: number[] }).pile.at(-1)).toBe(fit)
+      return
+    }
+    throw new Error('no deal gave Ann a plain card that fits')
+  })
+
+  it('refuses a stored hand that is not one deck', () => {
+    const row = after(ce(), decide(ce(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    const twice = { ...sec, stock: [...sec.stock.slice(1), sec.hands[1][0]] }
+    expect(status(decide({ ...row, secret: twice }, A, move(row.seq, { draw: true })))).toBe(500)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      for (let k = 0; k < 40; k++) {
+        const start = ce({ mode: 'together', settings: { level } })
+        const row = after(start, decide(start, B, { op: 'accept' }))
+        const hand = mine(row, A).hand
+        const st = row.state as { suit: number; pile: number[] }
+        const top = st.pile[st.pile.length - 1]
+        const fit = hand.find((c) => c >> 2 !== 6 && ((c & 3) === st.suit || c >> 2 === top >> 2))
+        if (fit === undefined) continue
+        const p = decide(row, A, move(row.seq, { play: fit }))
+        if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+        expect(((p.move as { then?: unknown[] }).then ?? []).length).toBeGreaterThanOrEqual(1)
+        expect(after(row, p).turn).toBe(1)
+        break
+      }
+    }
+  })
+})
