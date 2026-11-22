@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Draughts by turns: step 4 of the Lab multiplayer plan, the second of
+-- ✅ APPLIED to production 17 Nov 2026 (UTC) as migration `lab_draughts_by_turns`, version 20261117044859:
+-- md5(statements[1]) = 871cceacb47a409328ac4fa8d39450ab, this file's body. The record is
+-- supabase/migrations/20261117044859_lab_draughts_by_turns.sql.
+--
+-- (as drafted) Draughts by turns: step 4 of the Lab multiplayer plan, the second of
 -- the remaining versus toys (Five in a row, Draughts, Dots, Four in a row).
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and Draughts

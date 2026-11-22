@@ -16,7 +16,7 @@ export function ChallengeFriend({ roomId, roomLabel }: { roomId: string; roomLab
       label="⚔️ Challenge a friend"
       title="Send a friend an invite to this game"
       verb="challenge"
-      emptyHint="No friends yet — add someone on the People page and you can challenge them here."
+      emptyHint="No friends yet — add someone in Chat and you can challenge them here."
       hint="They’ll get it in your messages, with a button that drops them straight into this room."
     />
   )

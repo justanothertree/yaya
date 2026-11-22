@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../finance/client'
+import { todayMonth } from '../circuit/dates'
 import { callSounds } from './callSounds'
 import { registerTap } from '../audio/audioTap'
 import { broadcastBus, sharedCtx } from '../audio/context'
@@ -250,7 +251,13 @@ const ICE: RTCConfiguration = {
 const USAGE_KEY = 'voice.turnUsage.v1'
 const seenBytes = new Map<string, number>()
 
-const monthKey = () => new Date().toISOString().slice(0, 7)
+/* ⚠️ THE LOCAL MONTH, NOT THE UTC ONE. `dates.ts` opens with the rule this used to break:
+   `toISOString()` is UTC, so for every timezone behind it the last evening of a month already
+   reads as the next one. A call at 8pm on 30 November was filed under December, and the panel
+   below — which asked the same wrong question — agreed with it, so the two were consistent and
+   both wrong. The figure answers "am I about to be charged this month", and the month somebody
+   means is the one on their own calendar. */
+const monthKey = () => todayMonth()
 
 function readUsage(): Record<string, number> {
   try {

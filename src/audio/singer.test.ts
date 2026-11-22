@@ -15,6 +15,7 @@ import {
   planPhrases,
   TAIL,
   voicesFor,
+  glideStretch,
   type Burst,
   type Phrase,
   type SingOpts,
@@ -259,6 +260,123 @@ describe('pitch', () => {
     const [p] = plan('o', [{ t: 0.2, dur: 0.6, midi: 72 }], v)
     expect(cents(valueAt(p.pitch, 0.19), hz(72))).toBeCloseTo(-v.scoop * 100, 0)
     expect(Math.abs(cents(valueAt(p.pitch, 0.3), hz(72)))).toBeLessThan(1)
+  })
+})
+
+describe('a glide like a voice', () => {
+  /** where the pitch is between two notes, as a share of the way from the first to the second */
+  const share = (p: Phrase, t: number, a: number, b: number) =>
+    cents(valueAt(p.pitch, t), hz(a)) / cents(hz(b), hz(a))
+  const leap = (to: number) => [
+    { t: 0, dur: 0.48, midi: 60 },
+    { t: 0.5, dur: 0.48, midi: to },
+  ]
+
+  it('leaves slowly, moves fastest between the notes, and settles slowly into the new one', () => {
+    const v = exact(PRESETS.clean)
+    const [p] = plan('o o', leap(64), v)
+    const arrive = 0.5 + v.glide * 0.35
+    const leave = arrive - v.glide * glideStretch(4)
+    const at = (u: number) => share(p, leave + (arrive - leave) * u, 60, 64)
+    /* a straight line in cents would be at 10% and 90% here: an S is well short of both */
+    expect(at(0.1)).toBeLessThan(0.05)
+    expect(at(0.9)).toBeGreaterThan(0.95)
+    expect(at(0.5)).toBeCloseTo(0.5, 1)
+    /* and the middle fifth of the time covers more than twice the way of the first (a line: as much) */
+    expect(at(0.6) - at(0.4)).toBeGreaterThan(2 * (at(0.2) - at(0)))
+  })
+
+  it('takes a leap a little longer than a step, arriving at the same place after the beat', () => {
+    const v = exact(PRESETS.clean)
+    const start = (to: number) => {
+      const [p] = plan('o o', leap(to), v)
+      let t = 0.3
+      while (share(p, t, 60, to) < 0.02) t += 0.001
+      return t
+    }
+    expect(start(67)).toBeLessThan(start(62) - 0.015)
+    for (const to of [62, 67])
+      expect(share(plan('o o', leap(to), v)[0], 0.5 + v.glide * 0.35 + 0.002, 60, to)).toBeCloseTo(
+        1,
+        2,
+      )
+  })
+})
+
+describe('a word heard to begin', () => {
+  /** one syllable on one note, said as a word's start or not */
+  const said = (text: string, start: boolean, ns = [{ t: 0.4, dur: 0.5, midi: 69 }]) =>
+    planPhrases(
+      planLine(
+        ns.map((n) => ({ ...n, text, hold: false, start })),
+        0,
+        opts(),
+      ),
+      exact(PRESETS.clean),
+      0.5,
+    )[0]
+
+  it("a word's first consonant is louder than the same one inside a word", () => {
+    for (const text of ['pa', 'ta', 'ka', 'sa', 'fa', 'ha', 'cha']) {
+      const loud = said(text, true).bursts.map((b) => b.level)
+      const inside = said(text, false).bursts.map((b) => b.level)
+      expect(loud.length, text).toBeGreaterThan(0)
+      /* about 3.5dB: heard as leaning on it, never as a shout */
+      loud.forEach((l, k) => {
+        const db = 20 * Math.log10(l / inside[k])
+        expect(db, text).toBeGreaterThan(3)
+        expect(db, text).toBeLessThan(6)
+      })
+    }
+  })
+
+  it('the voice sinks further under an m or an l that starts a word', () => {
+    const two = [
+      { t: 0, dur: 0.45, midi: 69 },
+      { t: 0.5, dur: 0.45, midi: 69 },
+    ]
+    for (const text of ['ma', 'la']) {
+      const low = (start: boolean) => {
+        const p = planPhrases(
+          planLine(
+            two.map((n, i) => ({
+              ...n,
+              text: i ? text : 'a',
+              hold: false,
+              start: i ? start : true,
+            })),
+            0,
+            opts(),
+          ),
+          exact(PRESETS.clean),
+          0.5,
+        )[0]
+        let m = Infinity
+        for (let t = 0.4; t < 0.5; t += 0.001) m = Math.min(m, valueAt(p.voicing, t))
+        return m
+      }
+      expect(low(true), text).toBeLessThan(low(false) * 0.85)
+    }
+  })
+
+  it('between two vowels the voice holds until just before the second, dips, and comes back up', () => {
+    const [p] = plan('o o', notes.slice(0, 2), exact(PRESETS.clean))
+    /* full through the first vowel: it is not fading out under the second's dip */
+    for (let t = 0.1; t < 0.46; t += 0.01) expect(valueAt(p.voicing, t)).toBeGreaterThan(0.99)
+    /* a dip a word deep, just before the second */
+    let low = 1
+    for (let t = 0.46; t < 0.5; t += 0.001) low = Math.min(low, valueAt(p.voicing, t))
+    /* deeper than the half a syllable inside a word gets, and never down to silence */
+    expect(low).toBeLessThan(0.35)
+    expect(low).toBeGreaterThan(0.1)
+    /* and back up without a step: no two readings a millisecond apart differ by more than a ramp */
+    for (let t = 0.46; t < 0.56; t += 0.001)
+      expect(Math.abs(valueAt(p.voicing, t + 0.001) - valueAt(p.voicing, t))).toBeLessThan(0.05)
+    /* inside a word the same dip is half as deep */
+    const [inWord] = plan('o-o', notes.slice(0, 2), exact(PRESETS.clean))
+    let half = 1
+    for (let t = 0.46; t < 0.5; t += 0.001) half = Math.min(half, valueAt(inWord.voicing, t))
+    expect(half).toBeCloseTo(0.5, 2)
   })
 })
 
@@ -598,6 +716,17 @@ describe('the late vibrato', () => {
     expect(depth).toBeLessThan(PRESETS.clean.vibrato.cents * 0.75)
     expect(late.vibrato.rate).toBeLessThan(PRESETS.clean.vibrato.rate)
     expect(valueAt(p.vibrato, 1.61)).toBe(0)
+  })
+
+  it('leaves alone a note too short for it to grow to half its depth', () => {
+    /* 0.7s: it would start at 0.5 and have 0.15s, not the 0.275s half its rise needs */
+    const [p] = plan('o', [{ t: 0, dur: 0.7, midi: 72 }], late)
+    for (let t = 0; t < 0.72; t += 0.005) expect(valueAt(p.vibrato, t)).toBe(0)
+    /* and 0.85s is long enough */
+    const [q] = plan('o', [{ t: 0, dur: 0.85, midi: 72 }], late)
+    let most = 0
+    for (let t = 0; t < 0.85; t += 0.005) most = Math.max(most, valueAt(q.vibrato, t))
+    expect(most).toBeGreaterThan(4)
   })
 
   it('the hard-tuned voice, which has none today, gets a light one, so the switch is never silent', () => {
