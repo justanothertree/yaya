@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Ultimate noughts by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_ultimate_by_turns`, version 20261122023855:
+-- md5(statements[1]) = 6523248745316a16131a29fb3fe7811c, this file's body. The record is
+-- supabase/migrations/20261122023855_lab_ultimate_by_turns.sql.
+--
+-- (as drafted) Ultimate noughts by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
