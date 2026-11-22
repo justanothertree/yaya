@@ -162,7 +162,7 @@ begin
          version is read past that uncommitted update, matches, and the delete then takes the row.
      ⚠️ The other order is not covered and is the switch's own: a switch that arrives while this
      save holds the rows waits, then finds its row deleted and re-inserted under a new id, updates
-     nothing, and still answers as if it had. That was true before this change too. */
+     nothing, and still answers as if it had. That was true before this change too.
 
      `p_expected_page` is what `my_profile_page_version()` said when the caller read the page.
      NULL is a caller that does not know about versions -- every bundle before this one --
