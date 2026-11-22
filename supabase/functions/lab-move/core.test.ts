@@ -3726,3 +3726,53 @@ describe('hearts by turns: four at the table, two of them friends', () => {
     ).toBe(500)
   })
 })
+
+describe('spades by turns: partnerships at a table of four', () => {
+  const sp = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'spades', settings: { target: 200 }, ...over })
+  type Mine = { hand: number[]; seat: number }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as Mine
+  }
+  type Sec = { dealt: number[][] }
+
+  it('versus: each friend beside a computer partner; the computers bid in the same call', () => {
+    let row = after(sp(), decide(sp(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(mine(row, A)).toEqual({ hand: sec.dealt[0], seat: 0 })
+    expect(mine(row, B)).toEqual({ hand: sec.dealt[1], seat: 1 })
+    row = after(row, decide(row, A, move(row.seq, { bid: 3 })))
+    expect(row.turn).toBe(1)
+    const p = decide(row, B, move(row.seq, { bid: 4 }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    row = after(row, p)
+    // seats 2 and 3 bid with Bo's call, and Ann, left of the dealer, leads
+    const bids = (row.state as { bids: (number | null)[] }).bids
+    expect(bids.slice(0, 2)).toEqual([3, 4])
+    expect(bids.every((b) => b !== null)).toBe(true)
+    expect(row.turn).toBe(0)
+    expect(JSON.stringify(row.state)).not.toMatch(/dealt|hands/)
+  })
+
+  it('together: the friends are partners across the table, each seeing their own hand', () => {
+    const start = sp({ mode: 'together', settings: { target: 200, level: 'fair' } })
+    let row = after(start, decide(start, B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(mine(row, B)).toEqual({ hand: sec.dealt[2], seat: 2 })
+    row = after(row, decide(row, A, move(row.seq, { bid: 2 })))
+    // the computer at seat 1 has bid in the same call: Bo, at seat 2, is next
+    expect((row.state as { bids: (number | null)[] }).bids[1]).not.toBeNull()
+    expect(row.turn).toBe(1)
+  })
+
+  it('refuses a stored deal that is not one deck', () => {
+    const row = after(sp(), decide(sp(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    const twice = {
+      dealt: sec.dealt.map((h, i) => (i === 0 ? [sec.dealt[1][0], ...h.slice(1)] : h)),
+    }
+    expect(status(decide({ ...row, secret: twice }, A, move(row.seq, { bid: 3 })))).toBe(500)
+  })
+})

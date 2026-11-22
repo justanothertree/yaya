@@ -58,6 +58,7 @@ import { ginRules, readGinSettings } from '../../gpu/ginRoom'
 import { cribRules } from '../../gpu/cribbageRoom'
 import { dominoRules, readDominoSettings } from '../../gpu/dominoesRoom'
 import { heartsRules, readHeartsSettings } from '../../gpu/heartsRoom'
+import { readSpadesSettings, spadesRules } from '../../gpu/spadesRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -264,6 +265,14 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     rulesFor: (s) => {
       const set = readHeartsSettings(s)
       return set === null ? null : heartsRules(set.end, set.level)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  spades: {
+    name: MATCH_NAMES.spades,
+    rulesFor: (s) => {
+      const set = readSpadesSettings(s)
+      return set === null ? null : spadesRules(set.target, set.level)
     },
     levels: ['easy', 'fair', 'hard'],
   },
