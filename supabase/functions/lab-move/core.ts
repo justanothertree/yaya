@@ -84,6 +84,12 @@ import {
   teams as spadesTeams,
   type SpadesGame,
 } from '../../../src/gpu/spadesRoom'
+import {
+  eightsRules,
+  readEightsSettings,
+  totals as eightsTotals,
+  type EightsGame,
+} from '../../../src/gpu/eightsRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -273,6 +279,12 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
         .map((t) => t.score)
         .join('–')
     return { rules: spadesRules(set.target, set.level), score }
+  },
+  eights: (s) => {
+    const set = readEightsSettings(s)
+    if (set === null) return null
+    // each side's points over the hands, the challenger's first
+    return { rules: eightsRules(set.target), score: (g: EightsGame) => eightsTotals(g).join('–') }
   },
 }
 
