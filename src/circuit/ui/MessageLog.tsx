@@ -1,8 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { challengeRoomOf, challengeText } from '../../game/challenge'
 import { boutCodeOf, boutInviteText } from '../../pets/boutInvite'
 import { circuitInviteText, circuitJoinCodeOf } from '../inviteLink'
 import type { Msg } from '../chatRooms'
+import type { ChatSong } from '../chatSongs'
+import { ChatSongPlayer } from './ChatSongPlayer'
 import { atBottom, newMessagesLabel, shouldJump, unseenAfter } from '../logFollow'
 
 const dayOf = (iso: string) => iso.slice(0, 10)
@@ -36,9 +38,16 @@ export function MessageLog({
   msgs,
   empty,
   named = true,
+  songs,
 }: {
   msgs: Msg[]
   empty?: string
+  /**
+   * The songs sent into this room, by message id (roomThread's `songs`). A message named here is
+   * drawn as a player; one that is not is drawn as its text, whatever its text says — see
+   * chatSongs.ts. Absent for the call's loose chat, which has no room to hold a song.
+   */
+  songs?: Record<string, ChatSong>
   /**
    * Whether to put a name on the other side's messages. False for a DM: there are two of you,
    * the head of the thread already says who the other one is, and their name over every run
@@ -90,18 +99,57 @@ export function MessageLog({
     }
   }, [last?.id, last?.mine, room, msgs.length])
 
-  /* The log's own box changes under a reader who has not moved: the keyboard opens, a challenge
-     panel unfolds above it, a window is dragged shorter. If they were at the bottom they still
-     should be — otherwise the newest message slides out from under the composer. */
-  useEffect(() => {
+  /**
+   * The log's own box changes under a reader who has not moved: the keyboard opens, a challenge
+   * panel unfolds above it, a window is dragged shorter. If they were at the bottom they still
+   * should be — otherwise the newest message slides out from under the composer.
+   *
+   * ⚠️ AND SO DOES WHAT IS IN IT, WHICH THE LOG'S OWN BOX NEVER SHOWS. A player grows when its
+   * controls appear or it says something, under a reader who may be at the bottom — and a scrolling
+   * box keeps its size while its content grows, so observing the box saw none of it. Each row is
+   * observed too. (The bigger growth, text turning into a player, is the songs effect below.)
+   */
+  const follow = useRef<ResizeObserver | null>(null)
+  useLayoutEffect(() => {
     const el = logRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(() => {
       if (pinned.current) el.scrollTop = el.scrollHeight
     })
     ro.observe(el)
-    return () => ro.disconnect()
+    follow.current = ro
+    return () => {
+      ro.disconnect()
+      follow.current = null
+    }
   }, [])
+  /* every row as it is drawn — started afresh each time, so a row that has left (another room's)
+     is not held on to */
+  useLayoutEffect(() => {
+    const el = logRef.current
+    const ro = follow.current
+    if (!el || !ro) return
+    ro.disconnect()
+    ro.observe(el)
+    for (const row of Array.from(el.children)) ro.observe(row)
+  }, [msgs, songs])
+
+  /**
+   * ⚠️ A SONG'S MESSAGE IS TEXT UNTIL THE ROOM'S SONGS ARE READ, and that read is its own round trip
+   * that often lands AFTER the jump above. The bubble then grows into a player under a reader who
+   * is at the bottom: the newest message slides below the fold, and no new message arrived to put
+   * up the pill — so nothing on screen says anything happened. Measured at 375px on a thread whose
+   * newest message is a song: that row ended 51px past the log's bottom edge, its ▶ out of sight.
+   *
+   * ⚠️ IN A LAYOUT EFFECT ON THE ANSWER ITSELF, not left to the observer above, because an observer
+   * only reports at the browser's next rendering step, and a page that is not being drawn has none
+   * (the Browser pane, hidden, delivered no callback at all). This runs with the commit that grew
+   * the bubble, before anything is painted, whatever the browser is doing.
+   */
+  useLayoutEffect(() => {
+    const el = logRef.current
+    if (el && pinned.current) el.scrollTop = el.scrollHeight
+  }, [songs])
 
   const unseen = away ? unseenAfter(msgs, seenId) : 0
 
@@ -134,6 +182,7 @@ export function MessageLog({
             !prev ||
             speaker(prev) !== speaker(m) ||
             Date.parse(m.created_at) - Date.parse(prev.created_at) > 10 * 60000
+          const song = songs?.[m.id]
           const card = challengeRoomOf(m.body)
             ? {
                 say: challengeText(m.body),
@@ -178,7 +227,9 @@ export function MessageLog({
                   circuit/inviteLink.ts. One card for all three so they read alike, and each
                   falls back to plain text if its link is malformed. */}
                 <div className="cz-msg-line">
-                  {card ? (
+                  {song ? (
+                    <ChatSongPlayer song={song} roomId={m.room_id} />
+                  ) : card ? (
                     <div className="cz-challenge">
                       {card.say && <div className="cz-challenge-say">{card.say}</div>}
                       <a className="btn cz-challenge-join" href={card.href}>

@@ -10,6 +10,8 @@ type Insert = (payload: { new: Record<string, unknown> }) => void
 const made: { topic: string; fire: Insert }[] = []
 const removed: string[] = []
 const rpcs: string[] = []
+/** what chat_songs_in answers — rows, as PostgREST returns them */
+let songRows: Record<string, unknown>[] = []
 
 vi.mock('../dev/previewMember', () => ({
   previewMember: false,
@@ -24,7 +26,7 @@ vi.mock('../finance/client', () => ({
     auth: { getSession: async () => ({ data: { session: { user: { id: 'me' } } } }) },
     rpc: (name: string) => {
       rpcs.push(name)
-      return Promise.resolve({ data: [], error: null })
+      return Promise.resolve({ data: name === 'chat_songs_in' ? songRows : [], error: null })
     },
     channel: (topic: string) => {
       const ch = {
@@ -47,7 +49,7 @@ vi.mock('../finance/client', () => ({
   }),
 }))
 
-const { watchThread } = await import('./roomThread')
+const { threadNow, watchThread } = await import('./roomThread')
 
 const row = (id: string) => ({
   new: { id, room_id: 'r1', user_id: 'them', author_name: 'Them', body: 'hi', created_at: 'now' },
@@ -58,6 +60,7 @@ beforeEach(() => {
   made.length = 0
   removed.length = 0
   rpcs.length = 0
+  songRows = []
 })
 afterEach(() => {
   vi.runAllTimers()
@@ -117,6 +120,70 @@ describe('a conversation watched from two places', () => {
     made[0].fire(row('m1'))
     made[0].fire(row('m1'))
     expect(pings).toBe(1)
+    off()
+  })
+})
+
+describe('the songs in a conversation', () => {
+  /* a room id the database could have made; the call's loose chat is 'call' */
+  const ROOM = '7d1c2f3e-0a4b-4c5d-8e6f-123456789abc'
+  const asked = () => rpcs.filter((n) => n === 'chat_songs_in').length
+  /** let the reads' promises settle — microtasks, which fake timers do not hold back */
+  const settle = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+  }
+  const songRow = (message_id: string) => ({
+    message_id,
+    file_id: 'f-' + message_id,
+    name: 'Sunday',
+    seconds: 125,
+    mime: 'audio/webm',
+    mine: false,
+    removed: false,
+  })
+  const said = (id: string, body: string) => ({
+    new: { id, room_id: ROOM, user_id: 'them', author_name: 'Them', body, created_at: 'now' },
+  })
+
+  it('are read beside the first read, and kept by message', async () => {
+    songRows = [songRow('m1')]
+    const off = watchThread(ROOM, 'circuit', true, () => {})
+    expect(rpcs).toContain('list_room_messages')
+    expect(asked()).toBe(1)
+    await settle()
+    expect(Object.keys(threadNow(ROOM).songs)).toEqual(['m1'])
+    expect(threadNow(ROOM).songs.m1.file_id).toBe('f-m1')
+    off()
+  })
+
+  it('are asked again when a message that could be a song arrives, and only then', async () => {
+    const off = watchThread(ROOM, 'circuit', true, () => {})
+    await settle()
+    const before = asked()
+    made[0].fire(said('m2', 'just words'))
+    expect(asked()).toBe(before)
+
+    // typed by hand, so the server names no song for it: it stays a message, not a song
+    made[0].fire(said('m3', '🎵 Not a song (1:00)'))
+    expect(asked()).toBe(before + 1)
+    await settle()
+    expect(threadNow(ROOM).songs.m3).toBeUndefined()
+
+    // sent by send_chat_song: the answer names it
+    songRows = [songRow('m4')]
+    made[0].fire(said('m4', '🎵 Sunday (2:05)'))
+    expect(asked()).toBe(before + 2)
+    await settle()
+    expect(threadNow(ROOM).songs.m4?.name).toBe('Sunday')
+    off()
+  })
+
+  it('are never asked of the call’s own chat, which is no room', async () => {
+    const off = watchThread('call', 'dm', true, () => {})
+    made[0].fire({ new: { ...said('c1', '🎵 Sunday (2:05)').new, room_id: 'call' } })
+    await settle()
+    expect(asked()).toBe(0)
+    expect(threadNow('call').songs).toEqual({})
     off()
   })
 })

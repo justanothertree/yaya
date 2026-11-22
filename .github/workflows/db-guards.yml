@@ -1,8 +1,9 @@
 name: db guards
 
 # Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, then
-# supabase/tests/lab-nudge-guards.sql, then the profile page version checks and race, then the phone
-# alerts draft and its checks, against a throwaway local database on every push.
+# supabase/tests/lab-nudge-guards.sql, then the profile page version checks and race, then the chat
+# songs checks, then the phone alerts draft and its checks, against a throwaway local database on
+# every push.
 #
 # ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
 # `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
@@ -215,11 +216,41 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.ROLLBACK.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-rollback.sql
 
+      # Songs sent into a chat room, kept in R2 and decided here (docs/2026-11-22-chat-songs.md) —
+      # applied 22 Nov 2026 as 20261122221602. The migration is loaded in one transaction, as
+      # production ran it, and then asked about. chat_song_files stays out of block B of the
+      # guards, which run on the 4 Nov dump before it exists; its own test asks the same question
+      # per privilege.
+      - name: Run the chat songs checks
+        run: |
+          DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
+          if [ -z "$DB_URL" ]; then
+            DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          fi
+          # ⚠️ A DRAFT GOES INTO THE WORLD IT WILL MEET. This stack's baseline revokes the schema's
+          # default grants, while production's default ACL hands anon EXECUTE on every new function
+          # and arwdDxtm on every new table — so here a draft that forgot `revoke … from anon` would
+          # pass its own privilege checks. Production's defaults go back first, as
+          # supabase/tests/plain-postgres/build.sh does; they touch only what is created after them,
+          # and saying them twice (another draft's step may already have) changes nothing.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q \
+            -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role" \
+            -c "alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role" \
+            -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f supabase/migrations/20261122221602_chat_songs.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chat-songs.sql
+          bash supabase/tests/chat-songs-race.sh "$DB_URL"
+          # ⚠️ AND THE STANDING GUARDS AGAIN, WITH THE MIGRATION IN PLACE. The first step ran them
+          # before it existed, so block H (no new anon-callable definer) and block K (a writer must
+          # refuse a suspended member, chat_song_remove exempted) have never seen these functions.
+          # This is the only run in which they do.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+
       # ⏳ A DRAFT, NOT YET APPLIED TO PRODUCTION: phone alerts, step 2 — the device, prefs and
       # outbox tables, their RPCs, and the kick (docs/2026-11-22-phone-alerts.md). It is loaded from
       # docs/ in one transaction, the way apply_migration will run it, then asked about by its test
       # file, and then the visibility guards run a SECOND time so their checks H and K see the new
-      # functions too: the first run above is before the draft exists. When it is applied this
+      # functions too: the first run is before the draft exists. When it is applied this
       # line moves to its migration, like the Lab's three above.
       - name: Run the phone alerts checks
         run: |
