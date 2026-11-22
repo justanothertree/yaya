@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Shut the box by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_shut_by_turns`, version 20261122025404:
+-- md5(statements[1]) = a1595798fac9dff3d20e4098487659b0, this file's body. The record is
+-- supabase/migrations/20261122025404_lab_shut_by_turns.sql.
+--
+-- (as drafted) Shut the box by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
