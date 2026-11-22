@@ -222,6 +222,24 @@ that render nothing at zero first**.
   `dist/` cannot tell the two apart. **So a `:4173` check is sound about code and says nothing
   about anything env-dependent**, and `grep dist/` for a suspicious constant wants the deploy
   workflow read before it is believed.
+- **A CHANGED CHUNK NAME PROVES ONLY THAT SOME DEPLOY HAPPENED, NEVER THAT IT CARRIED YOUR
+  CHANGE.** `vite.config.ts` defines `import.meta.env.VITE_APP_VERSION` as
+  `GITHUB_SHA?.slice(0, 7)`, so the commit is IN the bundle — every deploy from a new commit
+  rewrites whichever chunk holds it, that hash cascades through `__vite__mapDeps`, and the entry
+  chunk and most others are renamed. Measured 17 Nov 2026 on a CI-only commit that touched no
+  `src/` file at all: the live entry chunk came back byte-for-byte the same SIZE, 385,060, with
+  **547 differing bytes, every one of them a chunk-filename reference**. "The chunk name changed"
+  had been quoted that day as evidence for two releases and is worth nothing; its companion claim,
+  that a non-code change must not change the bundle, is simply false here.
+  **The bundle states its own commit, so the check is one grep**: `VITE_APP_VERSION:"<7 chars>"`
+  must equal `git rev-parse origin/main | cut -c1-7`. That answers _did it deploy_. For _did it
+  carry my change_, grep the chunk for a string only the change introduces, **with a control
+  string that must go to 0** — three new sentences arriving while a false one leaves is a reading
+  no broken grep can fake, and it is what made that day's two releases provable anyway.
+  ⚠️ **And re-discover the asset URL from `index.html` every time.** An entry-chunk URL captured
+  ten minutes earlier 404s after the next deploy, and grepping a 404 BODY answers 0 for every
+  string — which reads exactly like the change having been reverted. Same day, same hour: three
+  sentences read 0 and the honest-looking conclusion was a regression that had not happened.
 - **AN EDGE-FUNCTION DEPLOY SENDS THE WHOLE FILE AS ONE ARGUMENT, AND THERE IS NO DIFF TO
   LOOK AT.** Every other way code reaches production here goes through `git`, where a wrong
   file announces itself as a diff and the pre-push hook builds it. `deploy_edge_function`
@@ -529,6 +547,52 @@ button[aria-label="The day before"]')` — and before believing a stepped readin
   A 16×16 control in a row and a 600px child in a 120px box, appended to the live room, give
   `tooSmall: 3` and `spills: 4` with each named by size — and both return to `0` when removed.
   A sweep that has not been made to fail this session is a sweep reporting that it ran.
+- **AND A CHECK WHOSE ONLY OUTPUT IS SILENCE CANNOT BE TOLD FROM A CHECK THAT NEVER RAN —
+  `if cmd | grep -q …` is the shape that does it.** The bullet above wants the fault injected,
+  which is the right move when the checker is in the pane; in CI you often cannot, so the checker
+  has to speak on SUCCESS instead. Written the obvious way, a missing `cmd` fails the pipeline,
+  leaves the `if` false, skips the error branch and takes the step **green having asserted
+  nothing** — `bash -e` never fires, because the failure is inside an `if` condition. Measured
+  17 Nov 2026 while adding exactly such a guard to `db-guards.yml`: **two of its three test cases
+  "passed"** because the stub `docker` was not on PATH, a `C:/…` PATH entry splitting on its own
+  colon. Two lines fix it — capture the output once and make a failure to capture it fatal, then
+  PRINT what was examined, so the proof is readable afterwards instead of inferred from nothing
+  having been said. That job now logs the eleven containers it found and which one is absent.
+  ⚠️ **And when the thing asserted is a tool's FLAG VALUE, the valid names are version-specific
+  and a wrong one may only WARN.** `supabase start -x` takes `mailpit`, while the container it
+  stops is `supabase_inbucket_yaya` and the published docs say `mail` — those docs describe a
+  later CLI, and against the pinned 2.122.0 seven of their nine names are wrong (`storage` is
+  `storage-api`, `rest` is `postgrest`, `auth` is `gotrue`). An unrecognised value prints
+  `WARNING: … not valid to exclude` to stderr and the command **proceeds**, so the obvious guess
+  would have left the job green and fixed nothing. Read the list out of the pinned source
+  (`apps/cli/src/command-internal/service-catalog.ts` at the tag), and have the step fail on that
+  warning rather than trusting the name.
+- **A `useRef` IS NOT A FIRST-RUN GUARD, BECAUSE A REF SURVIVES THE REMOUNT THE GUARD IS FOR.**
+  `<StrictMode>` is on in `src/main.tsx`, so in development every effect mounts, cleans up and
+  mounts again. A `useRef(false)` that gates an effect's body reads as "do this once" and is
+  really "do this once per PAGE": the second mount finds the ref already set, skips the body, and
+  anything the first mount's cleanup tore down is never rebuilt. Nothing contradicts it — the
+  cleanup ran, the guard is doing what it says, and the only evidence is a feature that is
+  silently dead after a remount.
+  App.tsx already carries the two halves of this, both found the expensive way: a ref guard that
+  let a dev load publish this browser's defaults over a real profile (`already: false` then
+  `already: true`, one write per load), and a first-render flag that let a fresh `#circuit` steal
+  focus on arrival, fixed by **comparing the previous value instead of remembering that it ran**.
+  That is the general repair: a comparison is immune to being run twice, where a flag is not.
+  **The guard is not always wrong, and the distinction is the cleanup.** A guard whose effect has
+  no teardown is usually deliberate and correct — `EightsDemo` and `SpadesDemo` both use one so
+  the opening hand is dealt once rather than twice, which is StrictMode being defended against
+  properly. A guard whose cleanup RESETS the ref is also right: that is a "is it running" flag,
+  as in `HeroPlay`'s rAF loop. The broken shape is specifically **a guard + a cleanup that leaves
+  the ref set**.
+  Swept 21 Nov 2026 and the answer was **zero**, which is worth writing down so the next person
+  does not re-do it: 96 `useRef(false)` in `src/`, four matching guard-and-set inside an effect,
+  and of those three have no teardown and one resets. The query that answers it, rather than a
+  list that rots — a ref assigned `true` inside a `useEffect` with `[]` deps and a cleanup that
+  never assigns it `false`. ⚠️ **Written the obvious way the sweep is useless**: the first pass
+  flagged only "has a cleanup" and reported `HeroPlay` as broken, which it is not, and said
+  nothing about the three that were fine for a different reason. Three false positives out of
+  four is a sweep nobody runs twice.
 - **AND A COUNT USED AS A JUSTIFICATION IS A MEASURED NUMBER — §2 applies to it before it is
   written down, not after.** The figure above went into two comments and a commit message as the
   reason for a restructure while it was still the DOM count. Nothing downstream would have

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { voiceSession } from '../voice/voiceSession'
+import { todayMonth } from '../circuit/dates'
 import { previewMember } from '../dev/previewMember'
 /* the prices, the allowances and the arithmetic -- lifted out so a test can ask it, because this
    is money on a screen and the Browser pane cannot answer any of it. See r2Cost.ts. */
@@ -401,7 +402,8 @@ export function UsagePanel() {
   const usage = voiceSession.turnUsage()
   const { data, loading } = useAccountUsage()
   const months = Object.keys(usage).sort().slice(-6).reverse()
-  const deviceMonth = usage[new Date().toISOString().slice(0, 7)] ?? 0
+  /* the same local month voiceSession files it under — see the note on `monthKey` there */
+  const deviceMonth = usage[todayMonth()] ?? 0
   /**
    * Cloudflare's figure when we have it, this device's measurement when we don't. Which one is
    * on screen is stated outright — a usage number whose SOURCE is ambiguous is worse than no

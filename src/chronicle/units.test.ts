@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fit, fitText, unitOf, UNIT_WORDS } from './units'
-import draft from '../../docs/2026-11-09-chronicle-sets-links.DRAFT.sql?raw'
+import draft from '../../docs/applied/2026-11-09-chronicle-sets-links.DRAFT.sql?raw'
 
 /**
  * ⚠️ THE TWO TABLES ARE ONE TABLE, AND THIS IS WHAT MAKES THEM SO. The server decides whether a

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { peekPersistedUserId } from '../../finance/auth'
 import { TOY_EVENT, hashParam } from '../links'
+import { SIGN_IN_TO_SEE } from './errors'
 import {
   MatchError,
   acceptMatch,
@@ -13,6 +15,7 @@ import {
   type Seat,
 } from './cloud'
 import { matchToy } from './games'
+import { useNudge } from './nudge'
 import { matchHash } from './words'
 
 /**
@@ -50,6 +53,8 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
   const [id, setId] = useState<string | null>(() => idFor(demo))
   const [view, setView] = useState<MatchView | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** the match is closed to whoever is looking because they are not signed in */
+  const [needsSignIn, setNeedsSignIn] = useState(false)
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<unknown>(null)
   const [hasPending, setHasPending] = useState(false)
@@ -69,6 +74,14 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
   const load = useCallback(async () => {
     if (!id) return
     const g = gen.current
+    /* signed out, nothing to ask: every match function is closed to anon, and the answer would be
+       Postgres's own "permission denied", so say what would open it instead */
+    if (!peekPersistedUserId()) {
+      setView(null)
+      setError(SIGN_IN_TO_SEE)
+      setNeedsSignIn(true)
+      return
+    }
     try {
       const v = await getMatch(id)
       if (g !== gen.current) return
@@ -79,10 +92,13 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
       }
       setView(v)
       setError(null)
+      setNeedsSignIn(false)
     } catch (e) {
       if (g !== gen.current) return
       setError(e instanceof Error ? e.message : 'The match could not be loaded.')
-      if (e instanceof MatchError && e.status === 404) setView(null)
+      const status = e instanceof MatchError ? e.status : 0
+      setNeedsSignIn(status === 401)
+      if (status === 404 || status === 401) setView(null)
     }
   }, [id, demo])
 
@@ -90,6 +106,7 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
     gen.current++
     setView(null)
     setError(null)
+    setNeedsSignIn(false)
     setPending(null)
     setHasPending(false)
     void load()
@@ -116,6 +133,10 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
       window.clearInterval(t)
     }
   }, [id, load, waiting])
+
+  /* ── the nudge: the other player's page looks again the moment this one acts, while both have
+     the match open (nudge.ts); the looks above stay, since a nudge is never relied on */
+  const tell = useNudge(id, !!view, () => void load())
 
   /* ── the game, by the toy's own rules */
   const rules = useMemo(
@@ -155,6 +176,8 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
       const v = await fn()
       if (g !== gen.current) return
       setView(v)
+      // this match changed: tell the other player's open page (a rematch is a different match)
+      if (v.id === id) tell(v.seq)
       after?.(v)
     } catch (e) {
       if (g !== gen.current) return
@@ -196,6 +219,7 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
     id,
     view,
     error,
+    needsSignIn,
     busy,
     rules,
     game,

@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-14-card-hides-browsing.DRAFT.sql. ⛔ Not applied, like the draft.
+-- ROLLBACK for docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql. ⛔ Not applied, like the draft.
 --
 -- The draft's three substitutions with old and new swapped, so it takes the filter back out of
 -- `get_member_chronicle` and `chronicle_sharing_mine` and leaves each body byte for byte as it was
