@@ -18,6 +18,7 @@ import {
   type Side,
 } from './chess'
 import { rng } from './bricks'
+import { NIGHTLY } from './testMatches'
 
 const byName = (p: Pos, name: string) => {
   const m = moves(p).find((x) => san(p, x).replace(/[+#]$/, '') === name.replace(/[+#]$/, ''))
@@ -26,6 +27,19 @@ const byName = (p: Pos, name: string) => {
 }
 const line = (fen: string, names: string[]) =>
   names.reduce((p, n) => play(p, byName(p, n)), fromFen(fen))
+/** one game from the start, `hi` playing `side`: 1 for a win, ½ for a draw, 0 for a loss */
+function points(hi: Level, lo: Level, seed: number, side: Side) {
+  const rand = rng(seed)
+  let p = fromFen(START)
+  const seen = [posKey(p)]
+  let o = outcome(p, seen)
+  for (let k = 0; k < 300 && !o; k++) {
+    p = play(p, choose(p, p.turn === side ? hi : lo, rand, seen))
+    seen.push(posKey(p))
+    o = outcome(p, seen)
+  }
+  return !o || o.winner === null ? 0.5 : o.winner === side ? 1 : 0
+}
 
 describe('every legal move, counted', () => {
   // the published figures for these positions, which every correct move generator reproduces —
@@ -124,23 +138,42 @@ describe('the computer', () => {
     }
     expect(outcome(p, seen)).not.toBeNull()
   })
-  // measured over twelve games from both seats: fair beat easy 12–0, hard scored 7½ of 12 against fair
-  it('fair beats easy and hard outscores fair, from either side of the board', () => {
+  // A seed plays the same game whichever side each level takes, so if the two levels played alike
+  // its two games would be one game with the seats swapped and the level under test would score
+  // exactly one point of the two. Winning both is the claim in two games, then, and a level that
+  // plays like the one below cannot. Seed 1 is the first; Fair wins all of the first four that way.
+  it('fair beats easy from both sides of the board on the same seed', () => {
+    expect(points('fair', 'easy', 1, 'w') + points('fair', 'easy', 1, 'b')).toBe(2)
+  })
+  // Hard looks three moves deep and Fair two (DEPTH), and a whole game between them is three to
+  // six seconds alone. So every push asks it where the depth decides it: a mate in two whose first
+  // move gives the queen away. Two moves deep that is a lost queen; three moves deep it is mate.
+  // Whether it IS a mate in two is asked of the rules, by trying every reply, never of the search.
+  it('hard finds a mate in two that fair, a move shallower, cannot see', () => {
+    const p = fromFen('6rk/6pp/8/5P1Q/8/3R4/5PPP/6K1 w - - 0 1')
+    const mated = (q: Pos) => outcome(q)?.why === 'checkmate'
+    expect(moves(p).filter((m) => mated(play(p, m)))).toEqual([])
+    const keys = moves(p).filter((m) => {
+      const a = play(p, m)
+      return (
+        !outcome(a) &&
+        moves(a).every((r) => moves(play(a, r)).some((x) => mated(play(play(a, r), x))))
+      )
+    })
+    expect(keys.map((m) => san(p, m))).toEqual(['Qxh7+'])
+    for (const s of [1, 2, 3]) {
+      expect(san(p, choose(p, 'hard', rng(s)))).toBe('Qxh7+')
+      expect(san(p, choose(p, 'fair', rng(s)))).not.toBe('Qxh7+')
+    }
+  })
+  // measured over twelve games from both seats: fair beat easy 12–0, hard scored 7½ of 12 against
+  // fair. Two minutes under a full run, so it runs nightly (testMatches.ts).
+  it('fair beats easy and hard outscores fair, from either side of the board', ({ skip }) => {
+    skip(!NIGHTLY, 'runs nightly: see testMatches.ts')
     const score = (hi: Level, lo: Level, games: number) => {
       let pts = 0
       for (let s = 1; s <= games; s++)
-        for (const side of ['w', 'b'] as Side[]) {
-          const rand = rng(s)
-          let p = fromFen(START)
-          const seen = [posKey(p)]
-          let o = outcome(p, seen)
-          for (let k = 0; k < 300 && !o; k++) {
-            p = play(p, choose(p, p.turn === side ? hi : lo, rand, seen))
-            seen.push(posKey(p))
-            o = outcome(p, seen)
-          }
-          pts += !o || o.winner === null ? 0.5 : o.winner === side ? 1 : 0
-        }
+        for (const side of ['w', 'b'] as Side[]) pts += points(hi, lo, s, side)
       return pts
     }
     expect(score('fair', 'easy', 3)).toBeGreaterThanOrEqual(5)

@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-16-lab-eights-by-turns.DRAFT.sql: back to the list before Crazy eights.
+-- ROLLBACK for docs/applied/2026-11-16-lab-eights-by-turns.DRAFT.sql: back to the list before Crazy eights.
 -- Crazy eights matches already open stay readable and finishable; only new challenges are refused.
 create or replace function public.lab_match_playable(p_demo text)
 returns boolean

@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { profileServerDouble } from './profileServerDouble'
+import { createPageWriter } from '../profile/pageWriter'
+import { payloadOf } from '../profile/newBlock'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -108,6 +111,46 @@ export function ProfileLookPreview() {
   const [blocks, setBlocks] = useState<ProfileBlock[]>(SAMPLE_BLOCKS)
   const [who, setWho] = useState('ada')
   const [editing, setEditing] = useState(true)
+  /**
+   * ⚠️ THE EDITOR SAVES THROUGH THE PAGE WRITER NOW, so the workbench gives it one — over the same
+   * faithful double the writer's tests use, seeded with the workbench's page each time the editor
+   * opens. What it saves comes back through the writer's own "written" event, as on the real page.
+   */
+  const [bench] = useState(() => {
+    const srv = profileServerDouble()
+    const token = srv.member('look-bench', 'bench')
+    const writer = createPageWriter({
+      uid: 'look-bench',
+      rpc: (fn, args, t) => srv.rpc(fn, args, t),
+      session: async () => ({ uid: 'look-bench', token }),
+      lock: (_, fn) => fn(),
+      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+      clearTimeout: (t) => window.clearTimeout(t as number),
+    })
+    return { srv, token, writer }
+  })
+  const [seed, setSeed] = useState<{ page: ProfileBlock[]; rev: number } | null>(null)
+  useEffect(() => {
+    if (!editing) return setSeed(null)
+    let live = true
+    void (async () => {
+      await bench.srv.rpc('save_my_profile_blocks', { p_blocks: payloadOf(blocks) }, bench.token)
+      const r = await bench.writer.load('bench')
+      if (live && !('failed' in r)) setSeed({ page: r.page, rev: r.rev })
+    })()
+    return () => {
+      live = false
+    }
+    /* seeded when the editor opens, from the page as it is then */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, bench])
+  useEffect(
+    () =>
+      bench.writer.subscribe((e) => {
+        if (e.type === 'written') setBlocks(e.page)
+      }),
+    [bench],
+  )
   /* the read view's audience — the workbench's stand-in for the "Seen by" row on a real page */
   const [asTier, setAsTier] = useState<Tier | null>(null)
   /* the workbench's stand-in for the page-shape row, which on a real page needs a signed-in owner */
@@ -245,16 +288,21 @@ export function ProfileLookPreview() {
         </button>
       </div>
 
-      {editing ? (
+      {editing && !seed ? (
+        <p className="muted">Opening the bench…</p>
+      ) : editing && seed ? (
         <ProfileBlocksEditor
+          key={seed.rev}
+          writer={bench.writer}
+          seedRev={seed.rev}
+          onReload={() => setSeed(null)}
           page={page}
           onPage={setPage}
-          initial={blocks}
+          initial={seed.page}
           username={who}
           activity={SAMPLE_ACTIVITY}
           trophies={SAMPLE_TROPHIES}
           snakeBest={{ score: 812, game_mode: 'classic' }}
-          onSaved={setBlocks}
           /* ⚠️ the workbench takes the same door the real page does, so the footer it shows is
              the footer somebody actually gets — a preview missing a control is a preview that
              cannot be used to check that control */
