@@ -14,7 +14,10 @@ import { readLines, sayLine } from './cloud'
  * chat cannot be read shows none, and one that can shows it from its first answer, empty or not.
  *
  * ⚠️ WHAT IS SHOWN IS WHAT THE SERVER KEPT. A line sent is shown once lab_match_say answers with it,
- * not before, so a refused one (twenty a minute, a declined challenge) is never shown as said.
+ * not before, so a refused one is never shown as said: twenty a minute or five hundred in one match,
+ * thirty a minute or five hundred in a rolling 24 hours across all of a player's matches, a
+ * declined challenge, a suspended account (chat.ts has each refusal in the words the player is
+ * shown).
  */
 export function useMatchChat(id: string | null, on: boolean, said: (line: number) => void) {
   const [lines, setLines] = useState<ChatLine[]>([])

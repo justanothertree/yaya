@@ -4,10 +4,18 @@
 -- defines them.
 --
 -- HOW TO RUN: on the throwaway stack db-guards.yml builds (`supabase db reset`), which is the 4 Nov
--- dump and so has no Lab catalog yet — that arrived on 9 Nov as its own migration —
---   psql "$DB_URL" -v ON_ERROR_STOP=1 -1 -f supabase/migrations/20261109030613_lab_catalog_and_feedback.sql
---   psql "$DB_URL" -v ON_ERROR_STOP=1 -1 -f docs/applied/2026-11-14-lab-matches.DRAFT.sql
+-- dump and so has no Lab yet — the catalog, the matches and the nudge each arrived as a migration —
+--   for m in 20261109030613_lab_catalog_and_feedback 20261115002456_lab_matches_and_results \
+--            20261117003350_lab_match_nudge; do
+--     psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/migrations/$m.sql"; done
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-matches.sql
+-- (Case 2 names every function these leave; with docs/2026-11-18-lab-match-chat.DRAFT.sql applied
+-- as well, it expects the chat's two beside them.) The toys by turns that came after change nothing
+-- here. Measured 22 Nov 2026, built by supabase/tests/plain-postgres/build.sh (plus a stand-in for
+-- the realtime.messages and realtime.topic() the nudge names, which plain Postgres lacks): all 49
+-- hold, with and without the chat draft, on Postgres 16 with exactly these three migrations, with
+-- all of main's and with every Lab migration through dominoes, and on Postgres 17 with all of
+-- main's. Before case 2 was brought up to date, the same builds failed it, and only it.
 -- Everything is in one transaction that rolls back; it leaves nothing behind. It raises, listing
 -- every failed case, if anything is wrong, and says how many cases it asked otherwise.
 --
@@ -81,8 +89,18 @@ begin
   where s2.nspname = 'public'
     and (p.proname like 'lab\_match%' or p.proname in ('lab_my_turns', 'lab_pair_friends'));
   -- the service role keeps execute on everything, as it does throughout this schema; what matters
-  -- is that a member can reach only the seven member functions, and never the three that write games
-  if t is distinct from 'lab_match_begin: lab_match_challenge:+auth lab_match_claim:+auth lab_match_commit: lab_match_decline:+auth lab_match_get:+auth lab_match_json: lab_match_list:+auth lab_match_load: lab_match_mine: lab_match_playable: lab_match_record: lab_match_resign:+auth lab_match_suspended: lab_match_timeout: lab_my_turns:+auth lab_pair_friends:' then
+  -- is that a member can reach only the member functions — the seven that play, the nudge's realtime
+  -- topic check (lab_match_topic_member, 17 Nov) and, once docs/2026-11-18-lab-match-chat.DRAFT.sql
+  -- is applied, the chat's say and lines — and never the three that write games. ⚠️ THIS IS THE
+  -- WHOLE LIST, NOT A FLOOR: a function added under these names, callable or not, or a grant that
+  -- changes, fails here until it is written in. It went stale once already, failing on main from the
+  -- nudge on, and a case that always fails guards nothing. The chat's two are expected exactly when
+  -- its table is there, so this holds both before that draft is applied and after.
+  if t is distinct from ('lab_match_begin: lab_match_challenge:+auth lab_match_claim:+auth lab_match_commit: lab_match_decline:+auth lab_match_get:+auth lab_match_json: '
+       || case when to_regclass('public.lab_match_chat') is not null then 'lab_match_lines:+auth ' else '' end
+       || 'lab_match_list:+auth lab_match_load: lab_match_mine: lab_match_playable: lab_match_record: lab_match_resign:+auth '
+       || case when to_regclass('public.lab_match_chat') is not null then 'lab_match_say:+auth ' else '' end
+       || 'lab_match_suspended: lab_match_timeout: lab_match_topic_member:+auth lab_my_turns:+auth lab_pair_friends:') then
     fails := array_append(fails, '2: callable match functions are ' || coalesce(t, 'none'));
   end if;
   asked := asked + 1;

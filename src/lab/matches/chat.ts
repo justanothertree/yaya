@@ -2,8 +2,13 @@
  * Chat for a match by turns: the rules of a line.
  *
  * Lines are kept with the match (docs/2026-11-18-lab-match-chat.DRAFT.sql) and the server is the
- * judge: lab_match_say refuses anything this would, and more (twenty a minute, five hundred a
- * match, a declined challenge). Only the match's two players see the chat or can write in it.
+ * judge: lab_match_say refuses anything this would, and more, in a sentence the player is shown as
+ * it stands (errors.ts passes it on). Per match, from each seat: "slow down: twenty lines a minute
+ * is the most", and at five hundred lines "this match's chat is full". Per member, across every
+ * match they play — from whichever seat, and counting the lines in declined ones: "slow down:
+ * thirty lines a minute across your matches is the most" and "five hundred lines a day across your
+ * matches is the most", the day a rolling 24 hours. And "this challenge was declined", "this
+ * account cannot chat". Only the match's two players see the chat or can write in it.
  *
  * A live game in a call has no chat of its own: it uses the call's (src/voice/CallChat.tsx, opened
  * from the dock or from the table's "Call chat" button), which is not limited to the two players —
