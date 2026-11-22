@@ -58,6 +58,7 @@ import {
   type CodeGame,
 } from '../../../src/gpu/codebreakerRoom'
 import { boxRules, readBoxSettings, totals, type BoxGame } from '../../../src/gpu/shadowboxRoom'
+import { readRpsSettings, rpsRules, wins, type RpsGame } from '../../../src/gpu/rpsRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -204,6 +205,12 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     if (set === null) return null
     // each side's blocks over par, the challenger's first
     return { rules: boxRules(set.rounds), score: (g: BoxGame) => totals(g).join('–') }
+  },
+  rps: (s) => {
+    const set = readRpsSettings(s)
+    if (set === null) return null
+    // rounds won, the challenger's first
+    return { rules: rpsRules(set.firstTo), score: (g: RpsGame) => wins(g).join('–') }
   },
 }
 
