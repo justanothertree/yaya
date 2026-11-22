@@ -193,30 +193,54 @@ jobs:
       # here (docs/2026-11-22-chat-songs.md). It is loaded from docs/ in one transaction, the way
       # apply_migration will run it, and then asked about. When it is applied this line moves to its
       # migration, like the Lab's three above, and chat_song_files joins block B of the guards.
-      - name: Run the chat songs checks
+      # ⚠️ A THROWAWAY BRANCH, NEVER MERGED: every rule of the chat songs draft broken in turn, each
+      # expected to turn its test red. Each variant is made from the REAL draft by sed, loaded, asked,
+      # and undone with the real ROLLBACK file before the next.
+      - name: Break each rule of the chat songs draft, and expect red
         run: |
           DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
           if [ -z "$DB_URL" ]; then
             DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           fi
-          # ⚠️ A DRAFT GOES INTO THE WORLD IT WILL MEET. This stack's baseline revokes the schema's
-          # default grants, while production's default ACL hands anon EXECUTE on every new function
-          # and arwdDxtm on every new table — so here a draft that forgot `revoke … from anon` would
-          # pass its own privilege checks. Production's defaults go back first, as
-          # supabase/tests/plain-postgres/build.sh does; they touch only what is created after them,
-          # and saying them twice (another draft's step may already have) changes nothing.
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q \
             -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-chat-songs.DRAFT.sql
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chat-songs.sql
-          bash supabase/tests/chat-songs-race.sh "$DB_URL"
-          # ⚠️ AND THE STANDING GUARDS AGAIN, WITH THE DRAFT IN PLACE. The step above ran them before
-          # any draft existed, so block H (no new anon-callable definer) and block K (a writer must
-          # refuse a suspended member, chat_song_remove exempted) have never seen these functions.
-          # This is the only run in which they do.
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+          D=docs/2026-11-22-chat-songs.DRAFT.sql
+          R=docs/2026-11-22-chat-songs.ROLLBACK.sql
+          bad=0
+          # the real draft first: it must load, pass, and roll back cleanly
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$D"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/tests/chat-songs.sql > /tmp/real.out 2>&1 || { echo "::error::the REAL draft fails its test"; cat /tmp/real.out; bad=1; }
+          bash supabase/tests/chat-songs-race.sh "$DB_URL" > /tmp/real.r 2>&1 || { echo "::error::the REAL draft fails its race"; cat /tmp/real.r; bad=1; }
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$R"
+          try() {
+            name="$1"; shift
+            sed "$@" "$D" > "/tmp/$name.sql"
+            if cmp -s "$D" "/tmp/$name.sql"; then echo "::error::$name: the sed changed nothing"; bad=1; return; fi
+            if ! psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "/tmp/$name.sql" > "/tmp/$name.load" 2>&1; then
+              echo "::error::$name: the variant did not load"; cat "/tmp/$name.load"; bad=1; return
+            fi
+            ok=1
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/tests/chat-songs.sql > "/tmp/$name.v" 2>&1 || ok=0
+            bash supabase/tests/chat-songs-race.sh "$DB_URL" > "/tmp/$name.r" 2>&1 || ok=0
+            if [ "$ok" = 1 ]; then echo "::error::GREEN $name -- neither the test nor the race noticed"; bad=1; else echo "RED   $name"; fi
+            grep -hE "FAILED|^ *[0-9]+: |ERROR|FAIL:" "/tmp/$name.v" "/tmp/$name.r" | sed 's/^/      /' | head -8
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$R"
+          }
+          try claim-skips-membership -e '/^create function public.chat_song_claim/,/^end \$\$;/{/chat_room_member(p_room)/d;}'
+          try in-skips-membership -e '/^create function public.chat_songs_in/,/^end \$\$;/{/chat_room_member(p_room)/d;}'
+          try get-skips-membership -e 's/or not public.chat_room_member(v_f.room_id) then/then/'
+          try no-account-cap -e 's/if v_held + p_bytes > 26214400 then/if false then/'
+          try anon-forgotten -e 's/chat_songs_in(uuid) from public, anon;/chat_songs_in(uuid) from public;/'
+          try ready-for-members -e 's/chat_song_ready(uuid, uuid) from public, anon, authenticated;/chat_song_ready(uuid, uuid) from public, anon;/'
+          try mine-not-owner-only -e 's/^   where f.owner = auth.uid() and f.deleted_at is null$/   where f.deleted_at is null/'
+          try cascade-not-let-go -e 's/new.deleted_at := coalesce(new.deleted_at, now());/null;/'
+          try mine-always-true -e 's/f.mime, f.owner = auth.uid(), f.deleted_at is not null/f.mime, true, f.deleted_at is not null/'
+          try sweep-takes-sent -e 's/f.owner = v_me and f.sent_at is null and f.deleted_at is null/f.owner = v_me and f.deleted_at is null/'
+          try no-claim-lock -e "/pg_advisory_xact_lock(hashtextextended('chat_song_claim:'/d"
+          try remove-not-owner-only -e 's/where f.id = p_id and f.owner = auth.uid() and f.deleted_at is null/where f.id = p_id and f.deleted_at is null/'
+          exit $bad
 
       - name: Stop the database
         if: always()
