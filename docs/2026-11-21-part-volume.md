@@ -23,7 +23,9 @@ track, and each instrument part), shown on that timeline. It should be saved wit
   that lives as long as the take is on the song, ramped where it stands. Before, a take's gain was
   read when each pass was scheduled, so it could only ever change from the next time round.
 - **The words' volume is heard at once too.** Each part's words now have a bus of their own, so two
-  singing parts can be set apart, and the fader ramps it while the song is being sung.
+  singing parts can be set apart, and the fader ramps it while the song is being sung. A level
+  changed any other way (an undo, a jam partner) reaches the singing within the sing-along's own
+  tick, rather than at the next lap.
 
 ## Where it is kept
 
@@ -35,9 +37,9 @@ track, and each instrument part), shown on that timeline. It should be saved wit
 - **A recording's volume is on its placement**, beside its place, mute, sound and chop, so the bench
   a reload puts back has it. Kept songs don't carry recordings at all (they hold the note parts; the
   audio lives in this browser), so they don't carry a recording's volume either. That's unchanged.
-- **Taking a recording off the song and putting it back** returns it at full volume. Its place and
-  its sound are kept on the recording itself and come back; its volume is part of how it sits in
-  this song.
+- **Taking a recording off the song and putting it back** brings it back as loud as it was. The
+  volume is also kept on the recording itself, like its place and its sound. It's written once the
+  fader stops, not as it moves, because each write rewrites the stored recording.
 
 ## Checked
 
@@ -60,3 +62,21 @@ track, and each instrument part), shown on that timeline. It should be saved wit
 - **Phone, 375, touch:** 🎚 Volume put a 105×36 fader in every row's place, with the ruler hidden but
   undo and redo where they were. mobile-audit over the song found nothing in 27 controls. Switched
   back, the bars came back at their size with each recording over its place.
+
+## After review
+
+An independent review before release found four things here, all fixed and checked:
+
+- **The take fader's ramp started at the audio clock's current time**, which is behind the render
+  head, so each move landed half its distance in one sample. It starts `SAFE_START` ahead now, the
+  house rule in synth.ts. The test's stand-in records when a ramp begins, and stamping it at the
+  clock turns it red.
+- **A take came back at full volume after being taken off and put back.** The volume is now kept
+  on the recording (above). Lifted and put back in the test it returns at 0.3; never written, or
+  written on every move, or ignored on the way back, each turns it red.
+- **The phone Volume view could leave the bars and the ruler out of step**, because hiding the bars
+  drops their scroll. Scrolled 22px, switched to Volume and back at 375, every strip and the ruler
+  read 22 again, with bar 2 and its ruler mark on the same pixel.
+- **A words level changed by an undo or the jam was only heard from the next lap.** Changed at 30%
+  into a lap without the fader, the rest of that lap peaked at 0.26 of the lap before, against
+  0.94 before the change.

@@ -2,10 +2,10 @@ import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
 import { makeVoiceChain, PLAIN_VOICE, readVoiceFx, type VoiceChain, type VoiceFx } from './takeFx'
 import { chopEnvelope, stutterAt, NO_CHOP, type Chop } from './chop'
-import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
+import { fxSnapshot, noteOff, noteOn, SAFE_START, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
-import { getTake } from './takes'
+import { getTake, setTakeLevel } from './takes'
 import { decodeTake } from './recordTake'
 import { followLastBar, growPlan, partAt, partsIn } from './arrange'
 import { tidyLyrics } from './lyricLines'
@@ -2140,17 +2140,21 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
     chain.set(fx)
     chains.set(id, chain)
   }
+  const had = state.takes.find((t) => t.id === id)
+  /* a new placement comes back as loud as the recording was last left (setTakeGain keeps it on the
+     row); one already placed keeps the volume it has */
+  const kept = typeof row?.gain === 'number' && Number.isFinite(row.gain) ? row.gain : 1
+  const gain = had ? (had.gain ?? 1) : Math.max(0, Math.min(2, kept))
   if (!levels.has(id)) {
     const level = sharedCtx().createGain()
-    level.gain.value = state.takes.find((t) => t.id === id)?.gain ?? 1
+    level.gain.value = gain
     level.connect(chains.get(id)!.in)
     levels.set(id, level)
   }
-  const had = state.takes.some((t) => t.id === id)
   set({
     takes: had
       ? state.takes.map((t) => (t.id === id ? { ...t, at } : t))
-      : [...state.takes, { id, at, fx }],
+      : [...state.takes, { id, at, fx, ...(gain !== 1 ? { gain } : {}) }],
   })
   return true
 }
@@ -2221,9 +2225,31 @@ export function setTakeGain(id: string, gain: number) {
   if (!Number.isFinite(gain) || !state.takes.some((t) => t.id === id)) return
   const v = Math.max(0, Math.min(2, gain))
   const level = levels.get(id)
-  /* ⚠️ ramped, never set outright: a step in a gain that is sounding is a click */
-  if (level) level.gain.setTargetAtTime(v, sharedCtx().currentTime, 0.015)
+  /* ⚠️ ramped, never set outright: a step in a gain that is sounding is a click. And from
+     SAFE_START ahead, the house rule (synth.ts): currentTime is behind the render head, so a ramp
+     stamped there begins in the past and lands half its distance in one sample */
+  if (level) level.gain.setTargetAtTime(v, sharedCtx().currentTime + SAFE_START, 0.015)
   set({ takes: state.takes.map((t) => (t.id === id ? { ...t, gain: v } : t)) })
+  keepLevel(id, v)
+}
+
+/**
+ * A take's volume, kept on its recording once the fader stops, so taking it off the song and
+ * putting it back brings it back as loud as it was — as its place and its sound already come back.
+ *
+ * ⚠️ NOT ON EVERY MOVE OF THE FADER: it rewrites the whole stored row, recording included, and a
+ * slider dragged across its travel is dozens of changes. The loop has the value at once.
+ */
+const keeping = new Map<string, ReturnType<typeof setTimeout>>()
+function keepLevel(id: string, v: number) {
+  clearTimeout(keeping.get(id))
+  keeping.set(
+    id,
+    setTimeout(() => {
+      keeping.delete(id)
+      void setTakeLevel(id, v)
+    }, 400),
+  )
 }
 
 export function muteTake(id: string) {

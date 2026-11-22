@@ -10,20 +10,27 @@ import type { Layer } from './looper'
 
 const fake = vi.hoisted(() => {
   type Node = {
-    gain: { value: number; target: number | null; setTargetAtTime: (v: number) => void }
+    gain: {
+      value: number
+      target: number | null
+      from: number | null
+      setTargetAtTime: (v: number, at: number) => void
+    }
     connect: () => void
     disconnect: () => void
   }
   const made: Node[] = []
   const ctx = {
-    currentTime: 0,
+    currentTime: 12.5,
     createGain(): Node {
       const n: Node = {
         gain: {
           value: 1,
           target: null,
-          setTargetAtTime: (v: number) => {
+          from: null,
+          setTargetAtTime: (v: number, at: number) => {
             n.gain.target = v
+            n.gain.from = at
           },
         },
         connect: () => {},
@@ -37,8 +44,20 @@ const fake = vi.hoisted(() => {
 })
 vi.mock('./context', () => ({ sharedCtx: () => fake.ctx, resumeAudio: () => {} }))
 vi.mock('./takeBus', () => ({ takeBus: () => ({}) }))
+/* the recordings store, remembering what is written to it the way IndexedDB would */
+const kept = vi.hoisted(() => new Map<string, { gain?: number }>())
 vi.mock('./takes', () => ({
-  getTake: async (id: string) => ({ id, blob: new Blob(['voice']), len: 2, at: 0 }),
+  getTake: async (id: string) => ({
+    id,
+    blob: new Blob(['voice']),
+    len: 2,
+    at: 0,
+    ...kept.get(id),
+  }),
+  setTakeLevel: async (id: string, gain: number) => {
+    kept.set(id, { ...kept.get(id), gain })
+    return true
+  },
   hasTake: async () => true,
   TAKE_MAX_SECONDS: 600,
 }))
@@ -81,6 +100,8 @@ describe("a recording's volume", () => {
     expect(level.gain.target, 'ramped on the node that stays, not saved for the next pass').toBe(
       0.4,
     )
+    /* from a moment ahead of the clock, never from it: currentTime is behind the render head */
+    expect(level.gain.from!).toBeGreaterThan(fake.ctx.currentTime)
   })
 
   it('stays between silent and twice as loud, like a part', async () => {
@@ -92,6 +113,21 @@ describe("a recording's volume", () => {
     expect(take('take-b')?.gain).toBe(0)
     setTakeGain('take-b', Number.NaN)
     expect(take('take-b')?.gain, 'not a number changes nothing').toBe(0)
+  })
+
+  it('comes back as loud as it was left when it is taken off the song and put back', async () => {
+    loadSong(120, 2, [])
+    await placeTake('take-c', 2)
+    setTakeGain('take-c', 0.3)
+    /* kept on the recording once the fader stops, not as it moves */
+    expect(kept.get('take-c')?.gain).toBeUndefined()
+    await new Promise((r) => setTimeout(r, 450))
+    expect(kept.get('take-c')?.gain).toBe(0.3)
+    liftTake('take-c')
+    const before = fake.made.length
+    await placeTake('take-c', 2)
+    expect(take('take-c')?.gain).toBe(0.3)
+    expect(fake.made[before].gain.value, 'and heard that way from its first note').toBe(0.3)
   })
 
   it('is nothing to set on a take that is not on the song', () => {

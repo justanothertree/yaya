@@ -119,6 +119,11 @@ export type TakeRow = {
    * forgets the placement, and putting it back used to start it from the top.
    */
   songAt?: number
+  /**
+   * How loud it was last set on the song, 0 to 2 — kept here for the same reason as `songAt`: so
+   * taking it off the song and putting it back does not reset its fader (setTakeLevel).
+   */
+  gain?: number
 }
 
 let open: Promise<IDBDatabase | null> | null = null
@@ -321,6 +326,18 @@ export async function setTakePlace(id: string, songAt: number): Promise<boolean>
   const had = await getTake(id)
   if (!had) return false
   const done = await run('readwrite', (s) => s.put({ ...had, songAt }) as IDBRequest<IDBValidKey>)
+  return done !== null
+}
+
+/**
+ * Keep how loud this recording was last set on the song. The same read-modify-write as
+ * `setTakeLog`; the looper calls it once the fader has stopped, never as it moves.
+ */
+export async function setTakeLevel(id: string, gain: number): Promise<boolean> {
+  if (!Number.isFinite(gain) || gain < 0) return false
+  const had = await getTake(id)
+  if (!had) return false
+  const done = await run('readwrite', (s) => s.put({ ...had, gain }) as IDBRequest<IDBValidKey>)
   return done !== null
 }
 

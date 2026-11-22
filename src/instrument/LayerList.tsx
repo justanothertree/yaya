@@ -234,7 +234,9 @@ export function LayerList({
     if (!strips?.length) return
     const x = Math.max(...Array.from(strips, (s) => s.scrollLeft))
     for (const s of strips) if (s.scrollLeft !== x) s.scrollLeft = x
-  }, [loop.layers.length, loop.bars, loop.takes.length, anyWords])
+    /* ⚠️ levelsOn too: the phone's volume view hides the bars, which drops their scroll, while the
+       ruler only goes invisible and keeps its own — so coming back they would disagree */
+  }, [loop.layers.length, loop.bars, loop.takes.length, anyWords, levelsOn])
 
   /**
    * ⚠️ THE BARS FILL THE STRIP, SO THE LIST IS A TIMELINE — Evan, 21 Nov 2026. A bar was a 12px
