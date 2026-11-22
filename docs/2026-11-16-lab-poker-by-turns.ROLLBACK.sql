@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-16-lab-poker-by-turns.DRAFT.sql: back to the list before Hold’em.
+-- ROLLBACK for docs/applied/2026-11-16-lab-poker-by-turns.DRAFT.sql: back to the list before Hold’em.
 -- Hold’em matches already open stay readable and finishable; only new challenges are refused.
 create or replace function public.lab_match_playable(p_demo text)
 returns boolean

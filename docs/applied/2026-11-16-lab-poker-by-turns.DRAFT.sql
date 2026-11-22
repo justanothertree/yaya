@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Hold’em by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_poker_by_turns`, version 20261122124737:
+-- md5(statements[1]) = bf4b0dd3e094e15a4ee78bd88325d7a1, this file's body. The record is
+-- supabase/migrations/20261122124737_lab_poker_by_turns.sql.
+--
+-- (as drafted) Hold’em by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
