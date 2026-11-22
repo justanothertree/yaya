@@ -1,7 +1,15 @@
 import type { Song } from '../audio/songFile'
 import type { ProfileBlock } from '../sections/ProfileBlocks'
 import { payloadOf, withSong, type WithSong } from './newBlock'
-import { classify, duplicatePositions, expectStored, ownerOf, sameStored } from './pageStore'
+import {
+  classify,
+  duplicatePositions,
+  expectStored,
+  ownerOf,
+  sameStored,
+  missingFunction,
+  pageChanged,
+} from './pageStore'
 import { proveEmpty } from './seedGate'
 
 /**
@@ -123,7 +131,15 @@ type Lineage = {
 /** a save whose answer never came: the page it would have made, and whose it was */
 type Alt = { page: Block[]; json: string; by: number | null }
 
-type Read = { kind: 'owner'; page: Block[] } | { kind: 'not-yours' } | { kind: 'unverified' }
+/**
+ * An owner-proven read. `version` is the server's word for the page as stored, read just BEFORE
+ * the page — so anything written after it was read makes a save carrying it refuse — or null from
+ * a server without versions, where a save checks nothing.
+ */
+type Read =
+  | { kind: 'owner'; page: Block[]; version: string | null }
+  | { kind: 'not-yours' }
+  | { kind: 'unverified' }
 
 const json = (blocks: readonly Block[]) => JSON.stringify(payloadOf(blocks))
 const DEBOUNCE = 700
@@ -136,6 +152,13 @@ export function createPageWriter(deps: Deps) {
   const lineages = new Map<number, Lineage>()
   const listeners = new Set<(e: Event) => void>()
   let orphan: { blocks: Block[]; why: string } | null = null
+  /**
+   * The server has no page versions: before the migration that adds them, or after its rollback.
+   * Learned from PostgREST's "no such function" and kept, so a save there costs no extra request —
+   * until an editor next opens (`load`), which asks again, so a tab that saw the server before the
+   * migration does not go on saving unprotected for as long as it stays open.
+   */
+  let versionless = false
 
   const emit = (e: Event) => {
     for (const fn of [...listeners]) fn(e)
@@ -171,17 +194,27 @@ export function createPageWriter(deps: Deps) {
    * and for a name nobody has; `get_member_profile` asked after it says which, from the session
    * making the call.
    */
-  async function readMine(name: string, token: string): Promise<Read> {
+  async function readMine(name: string, token: string, withVersion = false): Promise<Read> {
+    /* ⚠️ THE VERSION FIRST, THEN THE PAGE. A write landing between the two leaves a version older
+       than the page that was read, so the save refuses — a false alarm at worst, never a pass over
+       a change nobody here saw. The other order would be exactly that pass. */
+    let version: string | null = null
+    if (withVersion && !versionless) {
+      const v = await deps.rpc('my_profile_page_version', {}, token)
+      if (missingFunction(v)) versionless = true
+      else if (classify(v) !== 'ok' || typeof v.data !== 'string') return { kind: 'unverified' }
+      else version = v.data
+    }
     const b = await deps.rpc('get_profile_blocks', { p_username: name }, token)
     if (classify(b) !== 'ok') return { kind: 'unverified' }
     const whose = ownerOf(b.data)
     if (whose === 'invalid') return { kind: 'unverified' }
     if (whose === 'not-yours') return { kind: 'not-yours' }
-    if (whose === 'owner') return { kind: 'owner', page: b.data as Block[] }
+    if (whose === 'owner') return { kind: 'owner', page: b.data as Block[], version }
     const m = await deps.rpc('get_member_profile', { p_username: name }, token)
     const proof = proveEmpty({ data: m.data, error: classify(m) === 'ok' ? null : m.error })
     if (proof === 'failed') return { kind: 'unverified' }
-    return proof === 'yours' ? { kind: 'owner', page: [] } : { kind: 'not-yours' }
+    return proof === 'yours' ? { kind: 'owner', page: [], version } : { kind: 'not-yours' }
   }
 
   /** a read that differs from `known` is a new version: every copy descended from the old one is stale */
@@ -324,7 +357,7 @@ export function createPageWriter(deps: Deps) {
         L.conflict = 'stale'
         return done({ kind: 'stale' }, true)
       }
-      const r = await readMine(known.name, p.token)
+      const r = await readMine(known.name, p.token, true)
       if (r.kind === 'unverified') return later({ kind: 'unverified' })
       if (r.kind === 'not-yours') {
         L.conflict = 'not-yours'
@@ -343,8 +376,14 @@ export function createPageWriter(deps: Deps) {
       } else if (alt?.by === L.id) alt = null
       L.tries = 0
       if (d.json === L.sentJson) return done({ kind: 'saved', narrowed: [] }, false)
-      const out = await send(L, d.blocks, d.json, p.token)
-      if (out.kind === 'unacknowledged') return later(out)
+      const out = await send(L, d.blocks, d.json, p.token, r.version)
+      if (out.kind === 'unacknowledged' || out.kind === 'unverified') return later(out)
+      /* ⚠️ THE SERVER'S OWN CHECK: something wrote the page between the read above and this save.
+         That is the moment no read can cover, and the copy is kept and said, like any conflict. */
+      if (out.kind === 'changed') {
+        L.conflict = 'changed'
+        return done(out, true)
+      }
       return done(out, false)
     } catch {
       /* ⚠️ A THROW IS A CHECK THAT COULD NOT BE MADE, never a jammed queue: without this a job that
@@ -359,8 +398,16 @@ export function createPageWriter(deps: Deps) {
     blocks: Block[],
     sentJson: string,
     token: string,
+    expected: string | null,
   ): Promise<Outcome> {
-    const res = await deps.rpc('save_my_profile_blocks', { p_blocks: payloadOf(blocks) }, token)
+    const args: Record<string, unknown> = { p_blocks: payloadOf(blocks) }
+    if (expected !== null) args.p_expected_page = expected
+    const res = await deps.rpc('save_my_profile_blocks', args, token)
+    /* a version was sent to a server that has none (rolled back while this tab was open): nothing
+       ran, so it is a check that could not be made — and the next job's version read learns that
+       there are no versions, and sends the copy without one */
+    if (expected !== null && missingFunction(res)) return { kind: 'unverified' }
+    if (pageChanged(res)) return { kind: 'changed' }
     const c = classify(res)
     if (c === 'refused')
       return {
@@ -417,6 +464,7 @@ export function createPageWriter(deps: Deps) {
      */
     load(name: string) {
       flushAll()
+      versionless = false
       return run(async () => {
         try {
           const p = await pin()
@@ -579,10 +627,10 @@ export function createPageWriter(deps: Deps) {
           /* the name this tab last proved, then the one the app holds — a handle renamed elsewhere
              leaves one of them behind, and a page found under neither is not written */
           let name = known?.name ?? o.name
-          let r = await readMine(name, p.token)
+          let r = await readMine(name, p.token, true)
           if (r.kind === 'not-yours' && o.name !== name) {
             name = o.name
-            r = await readMine(name, p.token)
+            r = await readMine(name, p.token, true)
           }
           if (r.kind !== 'owner') return { kind: r.kind }
           if (!known) {
@@ -592,7 +640,7 @@ export function createPageWriter(deps: Deps) {
           const ws = withSong(r.page, o.song)
           if (!ws.ok) return { kind: 'cannot', why: ws.why }
           if (ws.how === 'updated' && ws.name !== o.approved) return { kind: 'ask', name: ws.name }
-          const out = await send(null, ws.blocks, json(ws.blocks), p.token)
+          const out = await send(null, ws.blocks, json(ws.blocks), p.token, r.version)
           /* a save from outside every editor: their copies descend from the page before it */
           if (out.kind === 'saved')
             for (const L of lineages.values())

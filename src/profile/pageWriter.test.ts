@@ -243,16 +243,20 @@ describe('whose page it is', () => {
     const w = t.writer()
     const { L } = await open(w)
     t.srv.hold('get_profile_blocks')
+    const before = t.srv.log.length
     w.stage(L, [bio('two')])
     t.tick()
-    await Promise.resolve()
-    await Promise.resolve()
+    for (let i = 0; i < 10; i++) await Promise.resolve()
     /* the session changes while the job's check is in flight */
     t.signIn({ uid: 'B', token: t.bob })
     t.srv.release('get_profile_blocks')
     await w.idle()
-    const job = t.srv.log.slice(-2)
-    expect(job.map((c) => c.fn)).toEqual(['get_profile_blocks', 'save_my_profile_blocks'])
+    const job = t.srv.log.slice(before)
+    expect(job.map((c) => c.fn)).toEqual([
+      'my_profile_page_version',
+      'get_profile_blocks',
+      'save_my_profile_blocks',
+    ])
     expect(job.every((c) => c.uid === 'A')).toBe(true)
     expect(t.page('B')).toEqual([])
   })
@@ -376,10 +380,10 @@ describe('two writers at once', () => {
     expect(kinds).toEqual(['conflict', 'saved'])
   })
 
-  it('two devices saving at the same instant double the page, and it is said rather than hidden', async () => {
+  it('on the server before page versions, two devices saving at once double the page, and it is said', async () => {
     const t = world()
     await t.seed([bio('one')])
-    t.srv.unlock()
+    t.srv.legacy()
     const tab1 = t.writer()
     const tab2 = t.writer()
     const a = await open(tab1)
@@ -392,6 +396,171 @@ describe('two writers at once', () => {
     const outs = (await Promise.all([one, two])).map((o) => o.kind)
     expect(t.page()).toHaveLength(2)
     expect(outs).toContain('collided')
+  })
+})
+
+describe("the server's own check: a page version read before the page, sent with the save", () => {
+  /** wait until the job's save has reached the server (it is logged before any hold) */
+  const reached = async (t: ReturnType<typeof world>, n: number) => {
+    for (let i = 0; i < 200 && t.srv.calls('save_my_profile_blocks').length < n; i++)
+      await Promise.resolve()
+    expect(t.srv.calls('save_my_profile_blocks')).toHaveLength(n)
+  }
+
+  it('a change from another device between the check and the save is refused, not deleted', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    const saves = t.srv.calls('save_my_profile_blocks').length
+    t.srv.hold('save_my_profile_blocks')
+    w.stage(L, [bio('mine')])
+    t.tick()
+    await reached(t, saves + 1)
+    /* the moment no read can cover: the job has checked the page and its save is on the way */
+    await t.srv.rpc('chronicle_share_timeline', { p_on: true }, t.ann2)
+    t.srv.release('save_my_profile_blocks')
+    await w.idle()
+    expect(t.page()).toEqual(['one', 'chronicle'])
+    expect(w.statusOf(L)).toEqual({ kind: 'conflict', why: 'changed', unsaved: true })
+    /* the refused copy is kept: leaving offers it back */
+    w.release(L)
+    await w.idle()
+    expect(w.takeOrphan()?.blocks.map((b) => b.config.text)).toEqual(['mine'])
+  })
+
+  it('a change landing while the version is being read is never passed over', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    t.srv.hold('my_profile_page_version')
+    const asked = t.srv.calls('my_profile_page_version').length
+    w.stage(L, [bio('mine')])
+    t.tick()
+    for (let i = 0; i < 200 && t.srv.calls('my_profile_page_version').length === asked; i++)
+      await Promise.resolve()
+    /* the version is read first, so whatever lands while it is in flight shows in the page read
+       after it; read the other way round, this change would be in the version and not the page */
+    await t.srv.rpc('chronicle_share_timeline', { p_on: true }, t.ann2)
+    t.srv.release('my_profile_page_version')
+    await w.idle()
+    expect(t.page()).toEqual(['one', 'chronicle'])
+    expect(w.statusOf(L).kind).toBe('conflict')
+  })
+
+  it('…and the same moment on the server before versions deletes that change, which is why', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    t.srv.legacy()
+    const w = t.writer()
+    const { L } = await open(w)
+    const saves = t.srv.calls('save_my_profile_blocks').length
+    t.srv.hold('save_my_profile_blocks')
+    w.stage(L, [bio('mine')])
+    t.tick()
+    await reached(t, saves + 1)
+    await t.srv.rpc('chronicle_share_timeline', { p_on: true }, t.ann2)
+    t.srv.release('save_my_profile_blocks')
+    await w.idle()
+    /* the null control: this is the gap, reached — the chronicle card went with no message */
+    expect(t.page()).toEqual(['mine'])
+    expect(w.statusOf(L).kind).toBe('saved')
+  })
+
+  it('on the server before versions, saves still work, ask for the version once, and never send one', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    t.srv.legacy()
+    const w = t.writer()
+    const { L } = await open(w)
+    w.stage(L, [bio('two')])
+    t.tick()
+    await w.idle()
+    w.stage(L, [bio('three')])
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['three'])
+    expect(t.srv.calls('my_profile_page_version')).toHaveLength(1)
+    expect(t.srv.calls('save_my_profile_blocks').some((c) => 'p_expected_page' in c.args)).toBe(
+      false,
+    )
+  })
+
+  it('a rollback while a tab is open costs that tab one retry, not its saves', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    w.stage(L, [bio('two')])
+    t.tick()
+    await w.idle()
+    expect(t.srv.calls('save_my_profile_blocks').at(-1)?.args).toHaveProperty('p_expected_page')
+    /* the migration is rolled back under the open tab, between a job's version read and its save */
+    const saves = t.srv.calls('save_my_profile_blocks').length
+    t.srv.hold('save_my_profile_blocks')
+    w.stage(L, [bio('three')])
+    t.tick()
+    await reached(t, saves + 1)
+    t.srv.legacy()
+    t.srv.release('save_my_profile_blocks')
+    await w.idle()
+    expect(w.statusOf(L).kind).toBe('unverified')
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['three'])
+    expect(w.statusOf(L).kind).toBe('saved')
+  })
+
+  it('two devices saving from the same read: one lands, the other is refused as changed', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const tab1 = t.writer()
+    const tab2 = t.writer()
+    const a = await open(tab1)
+    const b = await open(tab2)
+    t.srv.hold('save_my_profile_blocks:write')
+    const one = tab1.flushNow(a.L, [bio('device 1')])
+    const two = tab2.flushNow(b.L, [bio('device 2')])
+    for (let i = 0; i < 40; i++) await Promise.resolve()
+    t.srv.release('save_my_profile_blocks:write')
+    const outs = (await Promise.all([one, two])).map((o) => o.kind).sort()
+    expect(outs).toEqual(['changed', 'saved'])
+    expect([['device 1'], ['device 2']]).toContainEqual(t.page())
+  })
+
+  it('a Put whose page changes between its read and its save says so and writes nothing', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const saves = t.srv.calls('save_my_profile_blocks').length
+    t.srv.hold('save_my_profile_blocks')
+    const put = w.put({ song: song('Tune'), name: 'ann', approved: null, uid0: 'A' })
+    await reached(t, saves + 1)
+    await t.srv.rpc('chronicle_share_timeline', { p_on: true }, t.ann2)
+    t.srv.release('save_my_profile_blocks')
+    expect(await put).toMatchObject({ kind: 'changed' })
+    expect(t.page()).toEqual(['one', 'chronicle'])
+  })
+
+  it('a tab that saw the server before the migration asks again when an editor next opens', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    t.srv.legacy()
+    const w = t.writer()
+    const first = await open(w)
+    w.stage(first.L, [bio('two')])
+    t.tick()
+    await w.idle()
+    w.release(first.L)
+    /* the migration is applied while the tab stays open */
+    t.srv.legacy(false)
+    const again = await open(w)
+    w.stage(again.L, [bio('three')])
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['three'])
+    expect(t.srv.calls('save_my_profile_blocks').at(-1)?.args).toHaveProperty('p_expected_page')
   })
 })
 
