@@ -2,8 +2,8 @@
  * `push`: delivers what `push_outbox` holds to each member's phones, as Web Push.
  *
  * Step 2 of docs/2026-11-22-phone-alerts.md, on top of the SQL in
- * supabase/migrations/20261122223957_phone_alerts.sql. Deploy it as it is in git, this file and webpush.ts, and
- * then diff `get_edge_function` against both (CLAUDE.md §2).
+ * supabase/migrations/20261122223957_phone_alerts.sql. Deploy it as it is in git, this file and
+ * webpush.ts, and then diff `get_edge_function` against both (CLAUDE.md §2).
  *
  *   POST { op: 'send' }   claim the rows that are due, seal each for each of its member's devices
  *                         still waiting for it, POST them to the push services, and record what
