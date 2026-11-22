@@ -17,6 +17,7 @@ export function CallChat({
   msgs,
   inRoom,
   err,
+  focusBox = false,
   onClose,
 }: {
   roomId: string | null
@@ -24,6 +25,9 @@ export function CallChat({
   msgs: Msg[]
   inRoom: boolean
   err: string | null
+  /** put the focus in the box on opening — asked from the page, where the panel is far away in
+   *  the tab order (callChatOpen.ts); not from the dock's 💬, which it sits straight after */
+  focusBox?: boolean
   onClose: () => void
 }) {
   return (
@@ -56,6 +60,7 @@ export function CallChat({
         </p>
       )}
       <Composer
+        autoFocus={focusBox}
         placeholder={inRoom ? `Message ${roomName}` : 'Message the call'}
         onSend={(text) => (inRoom && roomId ? sendToThread(roomId, text) : sendCallChat(text))}
       />

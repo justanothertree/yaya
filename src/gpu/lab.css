@@ -1367,6 +1367,19 @@ html:has(.lab) {
   height: 76px;
   font-size: 1.25rem;
 }
+/* a match by turns: the last hand, with the hands turned up at its showdown */
+.pk-last p {
+  margin: 0.25rem 0;
+}
+.pk-shown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: center;
+}
+.pk-shown .pk-hole {
+  align-items: center;
+}
 .pk-raise {
   flex: 1 1 10rem;
   min-width: 140px;
@@ -2423,6 +2436,19 @@ html:has(.lab) {
 }
 .tw-hint {
   font-weight: 700;
+}
+/* a duel by turns, at its end: every round, both sides, side by side */
+.tw-duel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.tw-duel th,
+.tw-duel td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.25));
+  text-align: left;
 }
 .tw-acts .btn {
   min-height: 44px;
@@ -7034,6 +7060,104 @@ html:has(.lab) {
 .your-game.is-yours .your-game-state {
   color: inherit;
   font-weight: 600;
+}
+
+/* ── a match's chat by turns (src/lab/matches/ChatHud.tsx); a live game uses the call's ─────────
+   In the page on a phone, under the match bar; floating in the corner from 700px up, like the
+   snake games' chat, and faded there until something happens. */
+.lab-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.lab-chat.is-floating {
+  position: fixed;
+  /* ⚠️ THE RIGHT-HAND CORNER, NOT THE SNAKE GAMES' LEFT: a Lab board sits on the left of a wide
+     page, and the left corner covered the first player's back rank (chess, measured at 1440). Raised
+     clear of the back-to-top button below it, and of the call's dock (--dock-h) when there is one. */
+  right: var(--pin-gap, 0.75rem);
+  bottom: calc(
+    var(--bottom-guard, 0px) + var(--kb, 0px) + var(--pin-gap, 0.75rem) + var(--dock-h, 0px) +
+      3.5rem
+  );
+  z-index: 55;
+  width: min(22rem, calc(100vw - 1.5rem));
+  margin: 0;
+  border-color: transparent;
+  background: transparent;
+  /* idle: legible but recessive, never invisible — a chat you cannot find is worse than one that
+     is slightly in the way */
+  opacity: 0.45;
+  transition:
+    opacity 0.25s ease,
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+}
+.lab-chat.is-floating.is-live,
+.lab-chat.is-floating:hover,
+.lab-chat.is-floating:focus-within {
+  opacity: 1;
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.lab-chat-log {
+  /* a fixed height: a box that grew as lines arrived would push the board down mid-game */
+  height: 7rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lab-chat-line,
+.lab-chat-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.lab-chat.is-floating .lab-chat-line,
+.lab-chat.is-floating .lab-chat-empty {
+  /* readable over the page while the panel behind it is transparent */
+  text-shadow: 0 1px 2px var(--bg);
+}
+.lab-chat-line.is-mine {
+  color: var(--acc, var(--accent));
+}
+.lab-chat-form {
+  display: flex;
+  gap: 6px;
+}
+.lab-chat-form input {
+  flex: 1;
+  /* an input's min-width is its size attribute's worth of characters: without this it runs off a
+     narrow panel (CLAUDE.md §6, "flex: 1 does not shrink an input") */
+  min-width: 0;
+}
+.lab-chat-error {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+/* ⚠️ A LIVE GAME'S CHAT IS THE CALL'S (src/voice/CallChat.tsx, opened from the table by
+   CallChatButton.tsx), AND ON A PHONE IT HID THE BOARD. The dock's panel is sized to all the room
+   above the dock — at 375×667 about 352px wide from just under the nav down to the dock, with the
+   board entirely under it until its ✕ — which suits a page you are only reading and not a game,
+   where the board is the one part you cannot afford to lose (why ChatHud sits in the flow below
+   700px). So on a page showing the Lab it takes the bottom part of that room only, and the board
+   can be scrolled into the part left above it. Floored in px (the root size is fluid) so a short
+   landscape phone still has a log to read; index.css's `height` keeps it under the room above the
+   dock either way, so this can only ever make it shorter. Below the width ChatHud floats at. */
+@media (max-width: 699.98px) {
+  html:has(.lab) .call-chat {
+    max-height: max(40dvh, 240px);
+  }
 }
 
 /* Shadow box by turns: each round's score over par, and the boxes shown once it is over */

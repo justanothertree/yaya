@@ -8,6 +8,7 @@ import { catColor } from '../catColors'
 import { GoalBar } from './GoalBar'
 import { dayOfMonth, todayISO as isoToday, localISO } from '../dates'
 import { useFeedSocial, KUDOS, COMMENT_MAX, type FeedSocial } from '../social'
+import { kudosGroups, kudosLine } from '../kudos'
 import type { DayLog, Person } from '../types'
 import { useSeenPicture } from '../../pictures/seen'
 import { useBigPicture } from '../../pictures/useBigPicture'
@@ -224,13 +225,7 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
   const [draft, setDraft] = useState('')
   const reactions = social.reactionsByLog[logId] ?? []
   const comments = social.commentsByLog[logId] ?? []
-  const byEmoji: Record<string, { count: number; mine: boolean; who: string[] }> = {}
-  for (const r of reactions) {
-    const e = (byEmoji[r.emoji] ||= { count: 0, mine: false, who: [] })
-    e.count++
-    e.who.push(r.author_name || 'Member')
-    if (r.user_id === social.uid) e.mine = true
-  }
+  const kudos = kudosGroups(reactions, social.uid)
   const stop = (e: React.MouseEvent) => e.stopPropagation()
   const chip: React.CSSProperties = {
     fontSize: '0.74rem',
@@ -259,12 +254,16 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-        {Object.entries(byEmoji).map(([emoji, info]) => (
+        {kudos.map((info) => (
           <button
-            key={emoji}
+            key={info.emoji}
             className="cz-tap"
-            onClick={() => void social.toggleReaction(logId, emoji, me)}
-            title={info.who.join(', ')}
+            onClick={() => void social.toggleReaction(logId, info.emoji, me)}
+            title={info.names.join(', ')}
+            /* the names in the accessible name too: a screen reader on a phone may not read a
+               title, and the chip's own text is an emoji and a number (OPEN-DECISIONS §22d) */
+            aria-label={`${info.emoji} ${info.count}: ${info.names.join(', ')}`}
+            aria-pressed={info.mine}
             style={{
               ...chip,
               border: `1px solid ${info.mine ? 'var(--accent, #7c6af7)' : 'var(--b2, rgba(127,127,127,0.3))'}`,
@@ -272,7 +271,7 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
               fontWeight: info.mine ? 700 : 400,
             }}
           >
-            {emoji} {info.count}
+            {info.emoji} {info.count}
           </button>
         ))}
         <span style={{ position: 'relative' }}>
@@ -341,6 +340,12 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
       </div>
       {open && (
         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {/* who gave which kudos, which a chip only said in a tooltip (OPEN-DECISIONS §22d) */}
+          {kudos.length > 0 && (
+            <div className="muted" style={{ fontSize: '0.74rem', overflowWrap: 'anywhere' }}>
+              {kudosLine(kudos)}
+            </div>
+          )}
           {comments.map((c) => (
             /* ⚠️ `overflowWrap: 'anywhere'`, or one pasted link takes the page sideways: a map
                link with no hyphen in it ran 31px past the card at 375, and a 1000-character word

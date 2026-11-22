@@ -582,6 +582,77 @@ describe('saying what the session you are in is about', () => {
   })
 })
 
+describe('an activity name and unit, refused in words (chronicle_activity_refusals, #144)', () => {
+  const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+
+  it('refuses a blank name in words, before anything else is asked', () => {
+    expect(why(pvSaveActivity('', 'free', null))).toBe('an activity needs a name')
+    expect(why(pvSaveActivity('   ', 'free', null))).toBe('an activity needs a name')
+    /* the server checks the name before it looks for the row, so an unknown id still hears this */
+    expect(why(pvSaveActivity('', 'free', null, 'no-such-id'))).toBe('an activity needs a name')
+  })
+
+  it('takes a name of 60 characters and refuses 61, counting characters as char_length does', () => {
+    expect(why(pvSaveActivity('a'.repeat(60), 'free', null))).toBe('accepted')
+    expect(why(pvSaveActivity('b'.repeat(61), 'free', null))).toBe(
+      'that is longer than a name — 60 characters',
+    )
+    expect(why(pvSaveActivity('🏃'.repeat(60), 'free', null))).toBe('accepted') // 120 UTF-16 units
+    expect(why(pvSaveActivity('  ' + 'c'.repeat(60) + '  ', 'free', null))).toBe('accepted') // trimmed
+  })
+
+  it('takes a unit of 16 characters and refuses 17', () => {
+    expect(why(pvSaveActivity('Reading', 'free', null, undefined, 'p'.repeat(16)))).toBe('accepted')
+    expect(why(pvSaveActivity('Running', 'free', null, undefined, 'q'.repeat(17)))).toBe(
+      'that is longer than a unit — 16 characters',
+    )
+  })
+})
+
+describe('a goal title, target, unit and note, refused in words (chronicle_goal_refusals, #145)', () => {
+  const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+  const save = (over: Partial<Parameters<typeof pvSaveGoal>[0]>) =>
+    why(
+      pvSaveGoal({
+        title: 'Read',
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+        ...over,
+      }),
+    )
+
+  it('refuses a blank title in words, before it looks for the goal', () => {
+    expect(save({ title: '' })).toBe('a goal needs a title')
+    expect(save({ title: '   ' })).toBe('a goal needs a title')
+    expect(save({ title: '', id: 'no-such-goal' })).toBe('a goal needs a title')
+  })
+
+  it('takes a 120-character title and refuses 121, in characters', () => {
+    expect(save({ title: 't'.repeat(120) })).toBe('accepted')
+    expect(save({ title: '📚'.repeat(120) })).toBe('accepted') // 240 UTF-16 units
+    expect(save({ title: 'u'.repeat(121) })).toBe('that is longer than a title — 120 characters')
+  })
+
+  it('takes a target above 0 up to a billion, and no target at all', () => {
+    expect(save({ target: 1e9 })).toBe('accepted')
+    expect(save({ target: 0.5 })).toBe('accepted')
+    expect(save({ target: null })).toBe('accepted')
+    for (const target of [0, -3, 1e9 + 1]) {
+      expect(save({ target })).toBe('a target is more than 0 and at most a billion')
+    }
+  })
+
+  it('takes a 16-character unit and a 2000-character note, and refuses one more of each', () => {
+    expect(save({ unit: 'p'.repeat(16) })).toBe('accepted')
+    expect(save({ unit: 'p'.repeat(17) })).toBe('that is longer than a unit — 16 characters')
+    expect(save({ note: 'n'.repeat(2000) })).toBe('accepted')
+    expect(save({ note: 'n'.repeat(2001) })).toBe('that is longer than a note — 2000 characters')
+  })
+})
+
 describe('the ceilings an account has', () => {
   it('refuses a two hundred and first activity, in the words the server uses', () => {
     for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)
@@ -652,6 +723,24 @@ describe('the ceilings an account has', () => {
 
 describe('the ceilings a routine has', () => {
   const stepsOf = (n: number) => Array.from({ length: n }, () => ({ activity: draw, mins: 10 }))
+
+  it('refuses a blank or 61-character name in words, before it counts the steps (#146)', () => {
+    expect(pvSaveRoutine('', [])).toEqual({ why: 'a routine needs a name' })
+    expect(pvSaveRoutine('   ', stepsOf(41))).toEqual({ why: 'a routine needs a name' })
+    expect(pvSaveRoutine('r'.repeat(61), [])).toEqual({
+      why: 'that is longer than a name — 60 characters',
+    })
+    expect('id' in pvSaveRoutine('r'.repeat(60), [])).toBe(true)
+    expect('id' in pvSaveRoutine('🌅'.repeat(60), [])).toBe(true) // 120 UTF-16 units
+  })
+
+  it('holds a step of 99,999,999,999 minutes at 600 and saves the routine (#146)', () => {
+    /* production on 22 Nov, before the fix: `value "99999999999" is out of range for type integer`
+       and nothing saved; after it, the step is least(mins, 600) taken as a numeric */
+    const r = pvSaveRoutine('Long', [{ activity: draw, mins: 99_999_999_999 }])
+    if (!('id' in r)) throw new Error('refused: ' + r.why)
+    expect(pvRoutines().find((x) => x.id === r.id)?.steps).toEqual([{ activity: draw, mins: 600 }])
+  })
 
   it('takes forty steps, which is what the server allows', () => {
     const r = pvSaveRoutine('Morning', stepsOf(40))

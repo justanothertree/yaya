@@ -6,6 +6,7 @@ import { CallRoster } from './CallRoster'
 import { MicSettings } from './MicSettings'
 import { CallChat } from './CallChat'
 import { useCallMessages } from './useCallMessages'
+import { onCallChatAsk, setCallChatShown } from './callChatOpen'
 import { routeIsPrivate } from '../party/party'
 import { together } from '../party/together'
 import { shared } from '../party/shared'
@@ -84,6 +85,9 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
    * hidden behind the other. A single value makes opening one the same act as closing the rest.
    */
   const [panel, setPanel] = useState<'roster' | 'mic' | 'chat' | null>(null)
+  /** the control on the page the chat was opened from (callChatOpen.ts), which gets the focus back
+   *  when the panel's ✕ closes it; null when it was the dock's own 💬, right beside the panel */
+  const [chatFrom, setChatFrom] = useState<HTMLElement | null>(null)
   const rosterOpen = panel === 'roster'
   const setRosterOpen = (on: boolean | ((was: boolean) => boolean)) =>
     setPanel((was) => ((typeof on === 'function' ? on(was === 'roster') : on) ? 'roster' : null))
@@ -169,6 +173,22 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
     if (!inCall) setPanel(null)
   }, [inCall])
 
+  /* the chat can also be opened from the page — a live Lab game's "Call chat" (callChatOpen.ts) —
+     and only while there is a call to open it for; that button is a toggle, so it can close it too */
+  useEffect(() => {
+    if (!inCall) return
+    return onCallChatAsk(
+      (from) => {
+        setChatFrom(from)
+        setPanel('chat')
+      },
+      () => setPanel((was) => (was === 'chat' ? null : was)),
+    )
+  }, [inCall])
+  /* and the button on the page says whether it is open, so it is published for it */
+  useEffect(() => setCallChatShown(panel === 'chat'), [panel])
+  useEffect(() => () => setCallChatShown(false), [])
+
   if (!inCall) return null
 
   return (
@@ -234,7 +254,10 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
           somebody and only want to paste them a link. This opens the same conversation here. */}
       <button
         className={'btn call-dock-chat' + (panel === 'chat' ? ' is-on' : '')}
-        onClick={() => setPanel((was) => (was === 'chat' ? null : 'chat'))}
+        onClick={() => {
+          setChatFrom(null)
+          setPanel((was) => (was === 'chat' ? null : 'chat'))
+        }}
         aria-expanded={panel === 'chat'}
         aria-label={
           chat.unseen > 0 ? `Chat for this call, ${chat.unseen} new` : 'Chat for this call'
@@ -250,7 +273,12 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
           msgs={chat.msgs}
           inRoom={chat.inRoom}
           err={chat.err}
-          onClose={() => setPanel(null)}
+          focusBox={chatFrom !== null}
+          onClose={() => {
+            // back to where it was opened from, before the ✕ holding the focus goes
+            if (chatFrom?.isConnected) chatFrom.focus()
+            setPanel(null)
+          }}
         />
       )}
       {/* A refusal has to be SEEN. This lived only in the button's tooltip, so hitting share
