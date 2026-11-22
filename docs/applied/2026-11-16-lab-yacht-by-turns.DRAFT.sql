@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Yacht by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_yacht_by_turns`, version 20261122025350:
+-- md5(statements[1]) = a49b068b7c97789d9dad564b59a2ae78, this file's body. The record is
+-- supabase/migrations/20261122025350_lab_yacht_by_turns.sql.
+--
+-- (as drafted) Yacht by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
