@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Darts by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_darts_by_turns`, version 20261122025254:
+-- md5(statements[1]) = a0a8d7c8c69bdc228258295554d6c5cc, this file's body. The record is
+-- supabase/migrations/20261122025254_lab_darts_by_turns.sql.
+--
+-- (as drafted) Darts by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
