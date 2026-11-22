@@ -137,6 +137,14 @@ test as `verdict.ts`, asked without a deployment.
 - **The public half is a constant in the source** (`src/notify/vapid.ts`), empty until then. The
   📱 Phone alerts section stays hidden while it is empty, so everything else can ship first and
   show nothing.
+- **How it is done (22 Nov 2026).** The pair was generated locally and checked with the function's
+  own `vapidKeysAgree`, which a mismatched control pair failed. The machine that built this has no
+  Supabase CLI or access token, and the connector cannot set function secrets, so BOTH halves are
+  added in the dashboard by hand — `push` reads `VAPID_PUBLIC_KEY` as well as
+  `VAPID_PRIVATE_KEY`. The private half was written to a file outside the repository and never
+  printed. The public half goes into `vapid.ts` in a release of its own, merged only once the
+  function answers a `send` with `{"ok":true}` rather than "not sent", so the switch never
+  appears before it can work.
 - **Nothing else is new.** The function reads the project's existing `SUPABASE_*` values, and the
   trigger uses the public anon key.
 
