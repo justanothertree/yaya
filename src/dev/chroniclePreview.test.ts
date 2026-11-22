@@ -724,6 +724,24 @@ describe('the ceilings an account has', () => {
 describe('the ceilings a routine has', () => {
   const stepsOf = (n: number) => Array.from({ length: n }, () => ({ activity: draw, mins: 10 }))
 
+  it('refuses a blank or 61-character name in words, before it counts the steps (#146)', () => {
+    expect(pvSaveRoutine('', [])).toEqual({ why: 'a routine needs a name' })
+    expect(pvSaveRoutine('   ', stepsOf(41))).toEqual({ why: 'a routine needs a name' })
+    expect(pvSaveRoutine('r'.repeat(61), [])).toEqual({
+      why: 'that is longer than a name — 60 characters',
+    })
+    expect('id' in pvSaveRoutine('r'.repeat(60), [])).toBe(true)
+    expect('id' in pvSaveRoutine('🌅'.repeat(60), [])).toBe(true) // 120 UTF-16 units
+  })
+
+  it('holds a step of 99,999,999,999 minutes at 600 and saves the routine (#146)', () => {
+    /* production on 22 Nov, before the fix: `value "99999999999" is out of range for type integer`
+       and nothing saved; after it, the step is least(mins, 600) taken as a numeric */
+    const r = pvSaveRoutine('Long', [{ activity: draw, mins: 99_999_999_999 }])
+    if (!('id' in r)) throw new Error('refused: ' + r.why)
+    expect(pvRoutines().find((x) => x.id === r.id)?.steps).toEqual([{ activity: draw, mins: 600 }])
+  })
+
   it('takes forty steps, which is what the server allows', () => {
     const r = pvSaveRoutine('Morning', stepsOf(40))
     expect('id' in r).toBe(true)
