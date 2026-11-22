@@ -68,6 +68,12 @@ export type Rules<G, M> = {
   result?: (g: G) => Seat | 'draw' | null
   /** whether a game has had a move; when absent, a game is begun if it differs from a fresh one */
   begun?: (g: G) => boolean
+  /**
+   * For a toy with dice, played only by turns: the server's roll. lab-move calls it as a match
+   * begins, after every move and before the computer chooses, so no roll is known before the
+   * server makes it. Never called in a browser; a call room has no toy that rolls.
+   */
+  roll?: (g: G, rand: () => number) => G
 }
 
 export type Room<G> = {
