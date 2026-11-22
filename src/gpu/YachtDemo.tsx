@@ -24,6 +24,12 @@ import {
 import { motionReduced as reduced } from '../ui/motion'
 import { DieFace } from './DieFace'
 import { useKept } from './kept'
+import { type YachtGame } from './yachtRoom'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 type Mode = 'bot' | 'alone'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
@@ -136,6 +142,24 @@ export function YachtDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.over])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). The server
+     rolls every die (yachtRoom.ts): a hold, or a box, is chosen on the dice it rolled, proposed and
+     sent, and the next roll comes back with the board. */
+  const lm = useLabMatch('yacht')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const mg = inMatch ? (lm.shown as YachtGame | null) : null
+  const [mHeld, setMHeld] = useState([false, false, false, false, false])
+  const rollKey = mg ? `${mg.log.length}|${lm.hasPending}` : ''
+  useEffect(() => setMHeld(mg ? [...mg.g.held] : [false, false, false, false, false]), [rollKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   const fresh = (m: Mode = mode, lv: Level = saved.level) => {
     recorded.current = false
     setMode(m)
@@ -190,6 +214,136 @@ export function YachtDemo() {
     e.preventDefault()
   }
 
+  if (inMatch) {
+    const v = lm.view
+    const together = v?.mode === 'together'
+    const me: 0 | 1 = together ? 0 : v?.you === 1 ? 1 : 0
+    const them: 0 | 1 = me === 0 ? 1 : 0
+    const theirName = !v ? 'They' : together ? 'The computer' : otherName(v)
+    const g = mg?.g ?? null
+    const rolledM = !!g && g.rolls < 3 && !mg!.need
+    const canDecide = lm.canPlay && rolledM
+    const myCard = g?.cards[me] ?? {}
+    const theirCard = g?.cards[them] ?? {}
+    /* what the other side last scored, from the log: the dice as they lay, and the box */
+    let lastTheirs: string | null = null
+    if (mg) {
+      let side = 0
+      const filled = [0, 0]
+      let dice: number[] = []
+      for (const e of mg.log) {
+        if ('roll' in e) dice = e.roll
+        else if ('box' in e) {
+          if (side === them)
+            lastTheirs = `${theirName} scored ${score(dice, e.box)} in ${BOXES[e.box][0].toLowerCase()}.`
+          filled[side]++
+          side = filled[1 - side] < 12 ? 1 - side : side
+        }
+      }
+    }
+    return (
+      <div className={`lab-keys yt-room is-${saved.look}`}>
+        <MatchBar lm={lm} sides={['the first card', 'the second card']} />
+        {g && (
+          <div className="dice-scores">
+            {([me, them] as (0 | 1)[]).map((s) => (
+              <div key={s} className={`dice-score${!g.over && g.turn === s ? ' is-up' : ''}`}>
+                <span>{s === me ? (together ? 'You two' : 'You') : theirName}</span>
+                <strong>{total(g.cards[s])}</strong>
+                <span className="muted">{12 - open(g.cards[s]).length} of 12 boxes</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {lastTheirs && <p className="muted yt-said">{lastTheirs}</p>}
+        {g && (
+          <div className="yt-play">
+            <div className="yt-table">
+              <div className="dice-row" role="group" aria-label="The dice: press a die to keep it">
+                {g.dice.map((d, i) => (
+                  <button
+                    key={i}
+                    className={`die${mHeld[i] ? ' is-picked' : ''}`}
+                    aria-pressed={mHeld[i]}
+                    aria-label={
+                      rolledM
+                        ? `Die ${i + 1} showing ${d}${mHeld[i] ? ', kept' : ''}`
+                        : `Die ${i + 1}, not rolled yet`
+                    }
+                    disabled={!canDecide || g.rolls === 0}
+                    onClick={() => setMHeld((h) => h.map((x, k) => (k === i ? !x : x)))}
+                    style={rolledM ? undefined : { opacity: 0.45 }}
+                  >
+                    <DieFace face={d} />
+                  </button>
+                ))}
+              </div>
+              <div className="lab-controls yt-roll">
+                <button
+                  className="btn"
+                  onClick={() => lm.play({ hold: mHeld })}
+                  disabled={!canDecide || g.rolls === 0 || mHeld.every(Boolean)}
+                >
+                  🎲 Roll again ({g.rolls} left)
+                </button>
+              </div>
+            </div>
+            <table className="yt-card">
+              <caption className="sr-only">The score cards</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Box</th>
+                  <th scope="col">{together ? 'You two' : 'You'}</th>
+                  <th scope="col">{theirName}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {CATS.map((k) => {
+                  const could = canDecide && g.turn === me && myCard[k] === undefined
+                  return (
+                    <tr key={k} className={k === 'full' ? 'yt-split' : undefined}>
+                      <th scope="row">
+                        {BOXES[k][0]}
+                        <span className="muted yt-rule">{BOXES[k][1]}</span>
+                      </th>
+                      <td>
+                        {myCard[k] !== undefined ? (
+                          <span className="yt-done">{myCard[k]}</span>
+                        ) : (
+                          <button
+                            className="yt-box"
+                            disabled={!could}
+                            aria-label={
+                              could
+                                ? `Score ${score(g.dice, k)} in ${BOXES[k][0].toLowerCase()}`
+                                : `${BOXES[k][0]}: open`
+                            }
+                            onClick={() => lm.play({ box: k })}
+                          >
+                            {could ? score(g.dice, k) : '·'}
+                          </button>
+                        )}
+                      </td>
+                      <td>
+                        <span className="yt-done">{theirCard[k] ?? ''}</span>
+                      </td>
+                    </tr>
+                  )
+                })}
+                <tr className="yt-total">
+                  <th scope="row">Total</th>
+                  <td>{total(myCard)}</td>
+                  <td>{total(theirCard)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+        <MatchSend lm={lm} />
+      </div>
+    )
+  }
+
   const record = saved.record[saved.level]
   const meTotal = total(mine)
   return (
@@ -232,6 +386,9 @@ export function YachtDemo() {
         <button className="btn btn-ghost" onClick={() => fresh()}>
           ↻ New game
         </button>
+        {signedIn && mode === 'bot' && (
+          <MatchChallenge demo="yacht" settings={{}} levelNames={LEVEL_NAMES} />
+        )}
       </div>
       <div className="dice-scores">
         <div className={`dice-score${yours ? ' is-up' : ''}`}>

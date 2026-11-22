@@ -94,6 +94,12 @@ import { MAX_TURNS as BG_MAX_TURNS, replay as bgReplay } from '../../../src/gpu/
 import { FLEETS, randomFleet } from '../../../src/gpu/seabattle'
 import { chooseKeep, scoreOf as tenScore } from '../../../src/gpu/dice'
 import { replay as tenReplay } from '../../../src/gpu/diceRoom'
+import {
+  CATS as YACHT_CATS,
+  chooseBox as yachtBox,
+  chooseKeep as yachtKeep,
+} from '../../../src/gpu/yacht'
+import { replay as yachtReplay } from '../../../src/gpu/yachtRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -2859,6 +2865,112 @@ describe('ten thousand by turns: the server rolls, a turn is a run of decisions'
           A,
           move(row.seq, { keep: [0], bank: true }),
         ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('yacht by turns: the server rolls, twelve boxes each', () => {
+  const yt = (over: Partial<Row> = {}) => invite({ demo_id: 'yacht', settings: {}, ...over })
+  const game = (state: unknown) => yachtReplay(state)!
+  const decisionFor = (state: unknown) => {
+    const { dice, cards, rolls, turn } = game(state).g
+    const keep = rolls > 0 ? yachtKeep(dice, cards[turn], rolls, 'fair') : null
+    return keep && !keep.every(Boolean)
+      ? { hold: keep }
+      : { box: yachtBox(dice, cards[turn], 'fair') }
+  }
+  /** what five dice score in a box, by the classic rules, written here rather than taken from yacht.ts */
+  const boxScore = (d: number[], box: string) => {
+    const c = [1, 2, 3, 4, 5, 6].map((f) => d.filter((x) => x === f).length)
+    const sum = d.reduce((a, b) => a + b, 0)
+    const faces = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
+    if (faces.includes(box)) return (faces.indexOf(box) + 1) * c[faces.indexOf(box)]
+    const sorted = [...d].sort().join('')
+    if (box === 'full') return c.includes(3) && c.includes(2) ? sum : 0
+    if (box === 'four') {
+      const f = c.findIndex((n) => n >= 4)
+      return f < 0 ? 0 : (f + 1) * 4
+    }
+    if (box === 'little') return sorted === '12345' ? 30 : 0
+    if (box === 'big') return sorted === '23456' ? 30 : 0
+    if (box === 'choice') return sum
+    return c.includes(5) ? 50 : 0
+  }
+  /** each side's total, from the log: the dice as they lay when a box was chosen, scored above */
+  const totals = (log: number[][]) => {
+    const t = [0, 0]
+    let side = 0
+    let dice: number[] = []
+    const filled = [0, 0]
+    for (const e of log) {
+      if (e.length === 5) dice = e
+      else if (e[0] === 9) {
+        t[side] += boxScore(dice, YACHT_CATS[e[1]])
+        filled[side]++
+        side = filled[1 - side] < 12 ? 1 - side : side
+      }
+    }
+    return t
+  }
+
+  it('plays versus to the end, the winner the higher card, every box what its dice score', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(seed * 17))
+      const { row, plans } = playOut(yt(), (r) => decisionFor(r.state), 400)
+      vi.restoreAllMocks()
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const [a, b] = totals((last.state as { log: number[][] }).log)
+      expect(last.result!.score).toBe(`${a}–${b}`)
+      expect(last.result!.winner).toBe(a > b ? 0 : b > a ? 1 : 'draw')
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.size).toBeGreaterThan(1)
+  }, 60000)
+
+  it('together: the computer plays its whole turn in the same call, and the team’s dice come back rolled', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(3))
+      const start = yt({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      let replied = 0
+      for (let k = 0; k < 12 && replied < 2; k++) {
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, decisionFor(row.state)))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        row = after(row, p)
+        const h = p.move as { then?: unknown[]; replies?: number }
+        if (h.then || h.replies) {
+          replied++
+          const g = game(row.state).g
+          expect(g.turn).toBe(0)
+          expect(g.rolls).toBe(2)
+          expect(Object.keys(g.cards[1])).toHaveLength(replied)
+        }
+      }
+      vi.restoreAllMocks()
+      expect(replied).toBe(2)
+    }
+  })
+
+  it('refuses a box filled, a hold with no roll to come, out of turn, and a stored log no rolls could make', () => {
+    vi.spyOn(Math, 'random').mockImplementation(() => 0.99)
+    const row = after(yt(), decide(yt(), B, { op: 'accept' }))
+    vi.restoreAllMocks()
+    // five sixes on the table
+    expect(game(row.state).g.dice).toEqual([6, 6, 6, 6, 6])
+    expect(status(decide(row, A, move(row.seq, { hold: [true, true, true, true, true] })))).toBe(
+      400,
+    )
+    expect(status(decide(row, A, move(row.seq, { box: 'bonus' })))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, { box: 'yacht' })))).toBe(409)
+    expect(status(decide(row, A, move(row.seq, { box: 'yacht' })))).toBe('commit')
+    expect(
+      status(
+        decide({ ...row, state: { log: [[7, 6, 6, 6, 6]] } }, A, move(row.seq, { box: 'yacht' })),
       ),
     ).toBe(500)
   })
