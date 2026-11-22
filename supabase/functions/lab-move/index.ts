@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
     return json({ error: 'that was not json' }, 400, origin)
   }
   const asked = readAsk(body)
-  if (!asked) return json({ error: 'say accept or move, and which match' }, 400, origin)
+  if (!asked) return json({ error: 'say accept, move or mine, and which match' }, 400, origin)
 
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
     auth: { persistSession: false },
@@ -127,6 +127,8 @@ Deno.serve(async (req) => {
     if (plan.status >= 500) console.error('lab-move:', asked.match, plan.error)
     return json({ error: plan.error }, plan.status, origin)
   }
+  // a player's own side of what the toy keeps hidden: read, never written
+  if (plan.kind === 'mine') return json({ mine: plan.data }, 200, origin)
   const { data, error } =
     plan.kind === 'begin'
       ? await service.rpc('lab_match_begin', {
@@ -134,6 +136,7 @@ Deno.serve(async (req) => {
           p_by: me,
           p_state: plan.state,
           p_turn: plan.turn,
+          p_secret: plan.secret ?? null,
         })
       : await service.rpc('lab_match_commit', {
           p_match: asked.match,
@@ -143,6 +146,7 @@ Deno.serve(async (req) => {
           p_state: plan.state,
           p_turn: plan.turn,
           p_result: plan.result,
+          p_secret: plan.secret ?? null,
         })
   if (error) return fail(error)
   return json(data, 200, origin)

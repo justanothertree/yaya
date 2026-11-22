@@ -44,6 +44,8 @@ import { LEVELS as DARTS_LEVELS } from '../../gpu/darts'
 import { dartsMatchRules } from '../../gpu/dartsRoom'
 import { LEVELS as BACKGAMMON_LEVELS } from '../../gpu/backgammon'
 import { backgammonRules } from '../../gpu/backgammonRoom'
+import { LEVELS as SEA_LEVELS, SIZES as SEA_SIZES } from '../../gpu/seabattle'
+import { readSeaSettings, seaRules } from '../../gpu/seabattleRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -187,6 +189,15 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     name: MATCH_NAMES.backgammon,
     rulesFor: () => backgammonRules,
     levels: BACKGAMMON_LEVELS,
+  },
+  seabattle: {
+    name: MATCH_NAMES.seabattle,
+    rulesFor: (s) => {
+      const set = readSeaSettings(s)
+      return set === null ? null : seaRules(set)
+    },
+    levels: SEA_LEVELS,
+    sizes: SEA_SIZES,
   },
 }
 
