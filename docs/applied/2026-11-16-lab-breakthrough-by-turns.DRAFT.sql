@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Breakthrough by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_breakthrough_by_turns`, version 20261122024817:
+-- md5(statements[1]) = e77a60c7ff8c9381b89afd197c153721, this file's body. The record is
+-- supabase/migrations/20261122024817_lab_breakthrough_by_turns.sql.
+--
+-- (as drafted) Breakthrough by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
