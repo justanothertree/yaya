@@ -32,6 +32,7 @@ import { hexRules, readHexSettings } from '../../../src/gpu/hexRoom'
 import { ultimateRules } from '../../../src/gpu/ultimateRoom'
 import { breakthroughRules, readBreakthroughSize } from '../../../src/gpu/breakthroughRoom'
 import { fencesRules, readFencesSize } from '../../../src/gpu/fencesRoom'
+import { halmaRules } from '../../../src/gpu/halmaRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -97,6 +98,7 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     const size = readFencesSize(s)
     return size === null ? null : { rules: fencesRules(size) }
   },
+  halma: () => ({ rules: halmaRules }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
