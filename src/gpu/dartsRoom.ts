@@ -134,3 +134,23 @@ export const dartsRules: Rules<DartsGame, Pt> = {
   result: (g) => (!done(g) ? null : g.legs[0] > g.legs[1] ? 0 : g.legs[1] > g.legs[0] ? 1 : 'draw'),
   begun: (g) => g.darts.length > 0,
 }
+
+/**
+ * ⚠️ A MATCH BY TURNS IS KEPT, IN A STATE CAPPED AT 16 KB. The room above takes any landing near
+ * the board, as a call keeps nothing; a match keeps every dart. The toy sends its darts tidied to
+ * a tenth of a millimetre, and at that the longest match there can be, MAX_DARTS darts at the
+ * widest, is 16,211 bytes — inside the cap, measured on 16 Nov 2026. A dart sent to seventeen
+ * places could take a match past it, so in a match only a tidied dart is a dart.
+ */
+const tidied = (p: Pt) => {
+  const t = tidy(p)
+  return t.x === p.x && t.y === p.y
+}
+export const dartsMatchRules: Rules<DartsGame, Pt> = {
+  ...dartsRules,
+  legal: (g, p, by) => dartsRules.legal(g, p, by) && tidied(p),
+  readMove: (x) => {
+    const p = readDart(x)
+    return p && tidied(p) ? p : null
+  },
+}

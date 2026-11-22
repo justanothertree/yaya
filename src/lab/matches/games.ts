@@ -40,6 +40,8 @@ import { LEVELS as CURLING_LEVELS } from '../../gpu/curling'
 import { curlingMatchRules } from '../../gpu/curlingRoom'
 import { LEVELS as PUTT_LEVELS } from '../../gpu/putt'
 import { puttRules } from '../../gpu/puttRoom'
+import { LEVELS as DARTS_LEVELS } from '../../gpu/darts'
+import { dartsMatchRules } from '../../gpu/dartsRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -178,6 +180,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
   bowling: { name: MATCH_NAMES.bowling, rulesFor: () => bowlingRules, levels: BOWLING_LEVELS },
   curling: { name: MATCH_NAMES.curling, rulesFor: () => curlingMatchRules, levels: CURLING_LEVELS },
   putt: { name: MATCH_NAMES.putt, rulesFor: () => puttRules, levels: PUTT_LEVELS },
+  darts: { name: MATCH_NAMES.darts, rulesFor: () => dartsMatchRules, levels: DARTS_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
