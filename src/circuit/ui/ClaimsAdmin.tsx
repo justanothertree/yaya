@@ -81,7 +81,7 @@ export function CircuitClaimsList({
             </div>
             {c.addedByThem && (
               <div style={{ fontSize: '0.78rem' }}>
-                ⚠️ They added this board to that circuit themselves
+                ⚠️ They added this board to a circuit themselves
               </div>
             )}
             {open ? (
@@ -110,12 +110,17 @@ export function CircuitClaimsList({
               </div>
             ) : (
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <button className="btn" onClick={() => setAsking({ id: c.id, approve: true })}>
+                <button
+                  className="btn"
+                  onClick={() => setAsking({ id: c.id, approve: true })}
+                  aria-label={`Approve: ${c.personName}`}
+                >
                   Approve
                 </button>
                 <button
                   className="btn btn-ghost"
                   onClick={() => setAsking({ id: c.id, approve: false })}
+                  aria-label={`Decline: ${c.personName}`}
                 >
                   Decline
                 </button>
