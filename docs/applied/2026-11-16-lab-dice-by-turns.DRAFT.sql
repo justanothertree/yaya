@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Ten thousand by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_dice_by_turns`, version 20261122025336:
+-- md5(statements[1]) = 5cd0ea2912c2a0ba7fd62b6908098703, this file's body. The record is
+-- supabase/migrations/20261122025336_lab_dice_by_turns.sql.
+--
+-- (as drafted) Ten thousand by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
