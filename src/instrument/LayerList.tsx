@@ -19,6 +19,7 @@ import {
   muteTake,
   seekTo,
   setLayerGain,
+  setTakeGain,
   takeBars,
   takeSound,
   toggleLayerSlot,
@@ -45,7 +46,7 @@ import { hasLyrics, linesFor } from '../audio/lyricLines'
 import { useTouchOnly } from '../ui/pointerKind'
 import { partLines } from './partName'
 import type { PartTab } from './PartPanel'
-import { singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
+import { setWordsLevel, singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
 
 /**
  * A button that opens a panel takes focus as it is pressed, so the panel can give it back.
@@ -140,6 +141,14 @@ export function LayerList({
   /** the notes are open, which is when the editor has Ctrl+Z and these buttons stand down */
   const editing = open?.tab === 'notes' ? open.id : null
   const anyWords = loop.layers.some(hasLyrics)
+  /**
+   * ⚠️ ON A PHONE THE ROWS SHOW THEIR BARS OR THEIR VOLUME, ONE AT A TIME — Evan, 21 Nov 2026:
+   * "easy volume for every part … shown on that timeline". A desktop row has room for both and
+   * keeps both. A phone row is a name, about three bars and two buttons, and a fader beside those
+   * would leave the bars a sliver; so 🎚 Volume swaps every row's bars for its fader, in the same
+   * place, and swaps them back. Every row — parts, words and recordings — in one tap.
+   */
+  const [levelsOn, setLevelsOn] = useState(false)
   const [snap, setSnap] = useState(snapAtFirst)
   const toggleSnap = () =>
     setSnap((was) => {
@@ -229,6 +238,8 @@ export function LayerList({
       const strips = Array.from(el.querySelectorAll<HTMLElement>('.inst-layers .inst-arrange'))
       if (!strips.length) return
       const all = el.querySelector<HTMLElement>('.inst-bar-all')
+      /* the bars are put away while a phone shows the volumes: keep what they measured */
+      if (!strips[0].getClientRects().length) return
       const room = Math.min(...strips.map((x) => x.clientWidth)) - (all ? all.offsetWidth + GAP : 0)
       const w = fitBar(room, loop.bars, GAP, MIN_BAR, MAX_BAR)
       el.style.setProperty('--bar-w', `${w}px`)
@@ -240,7 +251,7 @@ export function LayerList({
     const watch = new ResizeObserver(fit)
     watch.observe(el)
     return () => watch.disconnect()
-  }, [loop.bars, loop.layers.length, loop.takes.length, arranged])
+  }, [loop.bars, loop.layers.length, loop.takes.length, arranged, levelsOn])
 
   /**
    * ⚠️ ONE PLAYHEAD, DOWN THROUGH EVERY ROW — the "one shared playhead" of the request. Each row's
@@ -258,7 +269,7 @@ export function LayerList({
     if (!el || !line) return
     const strips = el.querySelectorAll<HTMLElement>('.inst-layers .inst-arrange')
     const first = strips[0]
-    if (!loop.playing || !first) {
+    if (!loop.playing || !first || !first.getClientRects().length) {
       line.hidden = true
       return
     }
@@ -274,7 +285,7 @@ export function LayerList({
   })
 
   return (
-    <div className="inst-parts" ref={list}>
+    <div className={'inst-parts' + (levelsOn ? ' is-levels' : '')} ref={list}>
       {/**
        * ⚠️ THE RULER'S ROW CARRIES THE COUNT AND UNDO TOO — the #311 layout, 14 Nov 2026. Undo and
        * redo sit beside the parts they undo, and the count says the ceiling before you reach it:
@@ -554,7 +565,8 @@ export function LayerList({
 
                 {/* ⚠️ ON THE ROW ON A DESKTOP, where there is room (Evan, 14 Nov 2026). Balancing
                     parts is done BY EAR, which means moving one while the others play. On a phone
-                    it is one tap further, in 🎚 Mix and in the part's ⋯ — see `.inst-part-vol`. */}
+                    it takes the bars' place under 🎚 Volume (see `levelsOn`), and is in 🎚 Mix and
+                    the part's ⋯ as well — see `.inst-part-vol`. */}
                 <label className="inst-layer-vol inst-part-vol" title="How loud this part is">
                   <span className="sr-only">Volume of part {i + 1}</span>
                   <input
@@ -616,6 +628,7 @@ export function LayerList({
               key={t.id}
               id={t.id}
               at={t.at}
+              gain={t.gain ?? 1}
               n={k + 1}
               muted={!!t.muted}
               openVoice={openVoice}
@@ -679,6 +692,17 @@ export function LayerList({
             All {MAX_LAYERS} parts used — delete one to add another.
           </span>
         )}
+        {/* a phone's way to the volumes on the rows — see `levelsOn`; a desktop shows both */}
+        {anything && (
+          <button
+            className={'btn inst-levels-toggle' + (levelsOn ? ' is-on' : ' btn-ghost')}
+            aria-pressed={levelsOn}
+            onClick={() => setLevelsOn((v) => !v)}
+            title={levelsOn ? 'Show the bars again' : 'Show a volume for every row'}
+          >
+            🎚 Volume
+          </button>
+        )}
         {/**
          * ⚠️ SNAP, UNDER THE RECORDINGS IT MOVES, and only while there are some. On, a take moves a
          * whole beat at a time; off, it goes exactly where it is put. "Snap takes" rather than
@@ -715,6 +739,7 @@ export function LayerList({
 function TakeRow({
   id,
   at,
+  gain,
   n,
   muted,
   openVoice,
@@ -725,6 +750,8 @@ function TakeRow({
 }: {
   id: string
   at: number
+  /** its volume on the song, 0 to 2 */
+  gain: number
   n: number
   muted: boolean
   openVoice: () => void
@@ -755,7 +782,17 @@ function TakeRow({
           <TakeClip id={id} at={at} n={n} song={song} scale={scale} snap={snap} />
         </span>
       </span>
-      <span className="inst-part-vol" aria-hidden />
+      <label className="inst-layer-vol inst-part-vol" title="How loud this take is">
+        <span className="sr-only">Volume of take {n}</span>
+        <input
+          type="range"
+          min={0}
+          max={2}
+          step={0.05}
+          value={gain}
+          onChange={(e) => setTakeGain(id, Number(e.target.value))}
+        />
+      </label>
       <button
         className="btn inst-icon"
         onClick={() => muteTake(id)}
@@ -958,8 +995,18 @@ function LyricsRow({
           </button>
         ))}
       </span>
-      {/* the desktop row has a volume column; the words have none, so it is left empty */}
-      <span className="inst-part-vol" aria-hidden />
+      {/* how loud the words are sung — saved on the part with them (Layer.wordsGain) */}
+      <label className="inst-layer-vol inst-part-vol" title="How loud the words are sung">
+        <span className="sr-only">Volume of the lyrics</span>
+        <input
+          type="range"
+          min={0}
+          max={2}
+          step={0.05}
+          value={l.wordsGain ?? 1}
+          onChange={(e) => setWordsLevel(l.id, Number(e.target.value))}
+        />
+      </label>
       <button
         className={'btn inst-icon' + (singing ? ' is-on' : '')}
         onClick={() => (singing ? stopSinging() : startSinging())}

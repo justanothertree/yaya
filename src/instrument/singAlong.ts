@@ -6,6 +6,7 @@ import {
   loopOrigin,
   loopState,
   seekTo,
+  setLayerWordsGain,
   startLoop,
   subscribeLoop,
 } from '../audio/looper'
@@ -39,6 +40,26 @@ const SOUND = { vibrato: 'late', space: 'room' } as const
 /* the voice brings its own vibrato, glide and breath — and its own light room, which REPLACES the
    bus's reverb, so the bus adds none (two rooms on one voice is the smear the A/B measured) */
 const DRY: Fx = { echo: 0, echoTime: 0.26, space: 0, vibrato: 0, glide: 0, tone: 0.5 }
+/** how loud the voice comes, before a part's own words fader */
+const WORDS = 0.9
+/**
+ * ⚠️ EACH PART'S WORDS ON A BUS OF THEIR OWN, so each can have its own fader. They shared one
+ * ('sing') while nothing could set a level; with two singing parts on one bus, the second part's
+ * level would simply overwrite the first's.
+ */
+const wordsBus = (id: string) => `sing:${id}`
+
+/**
+ * How loud a part's words are sung — the lyrics row's fader. Kept on the part, and heard at once
+ * if the song is being sung: the bus is ramped where it stands, rather than waiting for the next
+ * lap to be scheduled with the new level.
+ */
+export function setWordsLevel(id: string, gain: number) {
+  setLayerWordsGain(id, gain)
+  const part = loopState().layers.find((l) => l.id === id)
+  if (singing && part) partInput(wordsBus(id), DRY, WORDS * (part.wordsGain ?? 1))
+}
+
 /** how far ahead of a lap its line is scheduled */
 const AHEAD = 1
 const TICK_MS = 150
@@ -125,7 +146,7 @@ function singLap(top: number, from: number): () => void {
     const sung = fitSongLyrics(part, s).sung.filter((n) => n.t >= from - 1e-6)
     if (!sung.length) continue
     stops.push(
-      singInto(c, partInput('sing', DRY, 0.9), sung, top, {
+      singInto(c, partInput(wordsBus(part.id), DRY, WORDS * (part.wordsGain ?? 1)), sung, top, {
         ...SOUND,
         preset: v.preset,
         double: v.double,

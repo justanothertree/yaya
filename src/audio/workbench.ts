@@ -5,6 +5,7 @@ import {
   loopState,
   muteTake,
   placeTake,
+  setTakeGain,
   subscribeLoop,
   takeChop,
   takeFx,
@@ -74,6 +75,8 @@ export type PlacedTake = {
   id: string
   at: number
   muted?: boolean
+  /** its volume on the song, 0 to 2 — clamped by setTakeGain, which is the only way it is put back */
+  gain?: number
   fx?: Partial<VoiceFx>
   chop?: Partial<Chop>
 }
@@ -147,6 +150,7 @@ export function packWork(bench: Bench): StoredWork {
       id: t.id,
       at: t.at,
       ...(t.muted ? { muted: true } : {}),
+      ...(t.gain !== undefined && t.gain !== 1 ? { gain: t.gain } : {}),
       ...(t.fx ? { fx: t.fx } : {}),
       ...(t.chop ? { chop: t.chop } : {}),
     }))
@@ -201,10 +205,12 @@ function readTakes(v: unknown): PlacedTake[] {
     seen.add(o.id)
     const fx = readVoiceFx(o.fx)
     const chop = readChop(o.chop)
+    const gain = fin(o.gain)
     out.push({
       id: o.id,
       at,
       ...(o.muted === true ? { muted: true } : {}),
+      ...(gain !== null ? { gain } : {}),
       ...(fx ? { fx } : {}),
       ...(chop ? { chop } : {}),
     })
@@ -382,6 +388,7 @@ async function putTakesBack(takes: PlacedTake[]) {
       carried = carried.filter((c) => c.id !== t.id)
       if (t.fx) takeFx(t.id, t.fx)
       if (t.chop) takeChop(t.id, t.chop)
+      if (t.gain !== undefined) setTakeGain(t.id, t.gain)
       if (t.muted) muteTake(t.id)
       continue
     }

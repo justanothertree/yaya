@@ -76,5 +76,5 @@ grid already, so for those it is the same thing as snapping to the grid.
   time, because a part is notes that repeat to fill the song, not a sound placed once.
 - **The view doesn't follow the playhead** on a long song that scrolls. The line hides when it's
   outside the visible bars.
-- **Volume for each recording and for the words** is item 7, next. A recording's row keeps an empty
-  volume column on a desktop until then.
+- **Volume for each recording and for the words** came in the next change, item 7, and every row
+  has a fader now: see `docs/2026-11-21-part-volume.md`.

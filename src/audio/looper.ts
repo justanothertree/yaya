@@ -146,6 +146,15 @@ export type Layer = {
    * round trip in songFile.test.ts, which fills this in.
    */
   lyrics?: string[]
+  /**
+   * How loud the words are sung, 0 to 2, 1 being as the voice comes — the lyrics row's own fader
+   * (Evan, 21 Nov 2026: "easy volume for every part … the lyrics track"). Absent means 1.
+   *
+   * ⚠️ ON THE PART, BESIDE ITS WORDS, for the same reason the words are: the undo, the bench, a
+   * kept song and the jam already copy a part's fields, so it travels without any of them learning
+   * a thing. It moves with the words (moveLyrics), because it is how loud THEY are.
+   */
+  wordsGain?: number
 }
 
 type State = {
@@ -289,6 +298,15 @@ let state: State = {
 const heard = new Map<string, AudioBuffer>()
 /* one voice chain per placed take, living as long as the take is on the loop — see takeFx */
 const chains = new Map<string, VoiceChain>()
+/**
+ * Each placed take's volume, as a node in front of its chain that lives as long as the chain does.
+ *
+ * ⚠️ A NODE THAT STAYS, NOT THE GAIN EACH PASS IS SCHEDULED WITH. A take is scheduled once a pass,
+ * so a volume read when it is scheduled is heard from the next time round — a fader that answers
+ * a pass late, which for a long take is no fader at all. This one is ramped where it stands, so
+ * the take already singing gets quieter under your finger, the way a part's does.
+ */
+const levels = new Map<string, GainNode>()
 /* named apart from `sounding`, which is the note voices — two different things being kept alive */
 const playing = new Set<AudioBufferSourceNode>()
 /* which take a sounding source belongs to, so one recording can be stopped without the rest */
@@ -525,12 +543,14 @@ function scheduleWindow(from: number, to: number) {
       const src = ctx.createBufferSource()
       src.buffer = buf
       /* ⚠️ the takes' own bus, NOT makeGain — see takeBus for what that costs */
+      /* this pass's own gain carries the chop's shape and nothing else: the take's volume is its
+         level node, which outlives the pass (see `levels`) */
       const g = ctx.createGain()
-      g.gain.value = take.gain ?? 1
+      g.gain.value = 1
       src.connect(g)
-      /* ⚠️ through its own chain if it has one, and straight to the bus if it does not.
-         The chain outlives the source: it is per TAKE, and a new source is made every pass. */
-      g.connect(chains.get(take.id)?.in ?? takeBus())
+      /* ⚠️ through its level and its own chain if it has them, and straight to the bus if not.
+         Both outlive the source: they are per TAKE, and a new source is made every pass. */
+      g.connect(levels.get(take.id) ?? chains.get(take.id)?.in ?? takeBus())
       /**
        * ⚠️ THE GAIN OUTLIVES THE SOURCE THAT MADE IT, and this cost an hour. `g` used to be
        * disconnected when the main source ended — which is correct right up until a stutter,
@@ -575,14 +595,14 @@ function scheduleWindow(from: number, to: number) {
         if (pts.length) {
           /* ⚠️ an anchor first, or the first linearRamp has nothing to ramp FROM and the
              browser is entitled to start it at whatever the value happened to be */
-          g.gain.setValueAtTime(take.gain ?? 1, at)
+          g.gain.setValueAtTime(1, at)
           for (let b = 0; b < state.bars; b++) {
             const barAt = base + b * barLen
             if (barAt + barLen < at || barAt > ends) continue
             for (const pt of pts) {
               const when = barAt + pt.t
               if (when < at + 1e-6 || when > ends) continue
-              const v = (take.gain ?? 1) * pt.v
+              const v = pt.v
               if (pt.snap) g.gain.setValueAtTime(v, when)
               else g.gain.linearRampToValueAtTime(v, when)
             }
@@ -1707,17 +1727,34 @@ export function setLayerLyrics(id: string, lines: readonly string[] | undefined)
  * Whatever the other part had is replaced: a song is sung on one part at a time from the box.
  */
 export function moveLyrics(from: string, to: string) {
-  const words = state.layers.find((l) => l.id === from)?.lyrics
+  const was = state.layers.find((l) => l.id === from)
+  const words = was?.lyrics
   if (from === to || !words || !state.layers.some((l) => l.id === to)) return
+  /* how loud they are sung goes with them, and the part they leave keeps no level for words it
+     no longer has */
+  const level = was.wordsGain
   set({
     layers: state.layers.map((l) => {
-      if (l.id === to) return { ...l, lyrics: words }
+      if (l.id === to) {
+        const next = { ...l, lyrics: words }
+        if (level === undefined) delete next.wordsGain
+        else next.wordsGain = level
+        return next
+      }
       if (l.id !== from) return l
       const next = { ...l }
       delete next.lyrics
+      delete next.wordsGain
       return next
     }),
   })
+}
+
+/** How loud a part's words are sung, 0 to 2 — see Layer.wordsGain. */
+export function setLayerWordsGain(id: string, gain: number) {
+  if (!Number.isFinite(gain)) return
+  const v = Math.max(0, Math.min(2, gain))
+  set({ layers: state.layers.map((l) => (l.id === id ? { ...l, wordsGain: v } : l)) })
 }
 
 /**
@@ -2103,6 +2140,12 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
     chain.set(fx)
     chains.set(id, chain)
   }
+  if (!levels.has(id)) {
+    const level = sharedCtx().createGain()
+    level.gain.value = state.takes.find((t) => t.id === id)?.gain ?? 1
+    level.connect(chains.get(id)!.in)
+    levels.set(id, level)
+  }
   const had = state.takes.some((t) => t.id === id)
   set({
     takes: had
@@ -2165,7 +2208,22 @@ export function liftTake(id: string) {
      render quantum whether or not anything feeds it — see the note in takeFx. */
   chains.get(id)?.dispose()
   chains.delete(id)
+  levels.get(id)?.disconnect()
+  levels.delete(id)
   set({ takes: state.takes.filter((t) => t.id !== id) })
+}
+
+/**
+ * How loud a placed take is, 0 to 2, 1 being as recorded — the same scale and the same travel as
+ * a part's fader, so the two sit side by side on the timeline and mean the same thing.
+ */
+export function setTakeGain(id: string, gain: number) {
+  if (!Number.isFinite(gain) || !state.takes.some((t) => t.id === id)) return
+  const v = Math.max(0, Math.min(2, gain))
+  const level = levels.get(id)
+  /* ⚠️ ramped, never set outright: a step in a gain that is sounding is a click */
+  if (level) level.gain.setTargetAtTime(v, sharedCtx().currentTime, 0.015)
+  set({ takes: state.takes.map((t) => (t.id === id ? { ...t, gain: v } : t)) })
 }
 
 export function muteTake(id: string) {
