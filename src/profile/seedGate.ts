@@ -22,26 +22,6 @@
 /** A read of `get_profile_blocks`, as the client gets it back. */
 export type BlocksRead = { data: unknown; error: unknown }
 
-export type Seed<B> = { ok: true; blocks: B[] } | { ok: false; why: 'failed' | 'not-yours' }
-
-/**
- * The blocks the editor may start from, or why it may not.
- *
- * ⚠️ AN EMPTY PAGE PROVES NOTHING, so `ok` with no blocks still needs `proveEmpty`. `[]` carries no
- * `certain` to say whose it is, and the server answers `[]` for a name nobody has and for a page
- * that shows this viewer nothing. It was first taken on the profile's `is_me`, and a review found
- * two ways that word goes stale: a late answer from the activity picker putting your profile on
- * another member's page, and an account switched in another tab before Try again.
- */
-export function seedFrom<B>(read: BlocksRead): Seed<B> {
-  if (read.error || !Array.isArray(read.data)) return { ok: false, why: 'failed' }
-  for (const b of read.data as unknown[]) {
-    if (!b || typeof b !== 'object' || !Array.isArray((b as { certain?: unknown }).certain))
-      return { ok: false, why: 'not-yours' }
-  }
-  return { ok: true, blocks: read.data as B[] }
-}
-
 /**
  * Whether an empty page is yours, from `get_member_profile` asked AFTER the empty read — so a name
  * that stopped being yours in between answers no. `is_me` is worked out from the session making
@@ -57,7 +37,7 @@ export function proveEmpty(answer: {
 }
 
 /** What stands where the editor goes on your own page. */
-export type Door = 'editor' | 'opening' | 'failed' | 'not-yours'
+export type Door = 'editor' | 'opening' | 'failed' | 'not-yours' | 'not-you'
 
 /**
  * The editor, or what stands in its place until it may open.
@@ -69,7 +49,7 @@ export type Door = 'editor' | 'opening' | 'failed' | 'not-yours'
 export function doorFor(
   u: string,
   seededFor: string | null,
-  refused: { for: string; why: 'failed' | 'not-yours' } | null,
+  refused: { for: string; why: 'failed' | 'not-yours' | 'not-you' } | null,
 ): Door {
   if (seededFor === u) return 'editor'
   if (refused && refused.for === u) return refused.why

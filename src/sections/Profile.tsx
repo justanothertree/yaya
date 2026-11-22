@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient, getSupabaseClientOrNull } from '../finance/client'
 import { tierSees, avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
-import { previewMember, PREVIEW_PROFILES, previewMyBlocks } from '../dev/previewMember'
+import { previewMember, PREVIEW_ME, PREVIEW_PROFILES, previewMyBlocks } from '../dev/previewMember'
 import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
 import { isFxStyle, previewClickFx, setClickFxScope } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
@@ -11,7 +11,8 @@ import { SiteBackdrop } from '../profile/SiteBackdrop'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { setPaneLook } from '../circuit/ui/paneLook'
 import { ProfileCall } from '../voice/ProfileCall'
-import { doorFor, proveEmpty, seedFrom, type BlocksRead } from '../profile/seedGate'
+import { doorFor, type BlocksRead } from '../profile/seedGate'
+import { writerFor } from '../profile/pageWriterLive'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -76,6 +77,19 @@ const editFromHash = () =>
  * default is edit; the preference is yours.
  */
 const EDIT_PREF = 'profile_open_in_edit_v1'
+
+/** why an editor's last changes did not save on its way out (profile/pageWriter.ts, orphan) */
+const ORPHAN_SAYS: Record<string, string> = {
+  stale: 'your page changed in another window first',
+  changed: 'your page changed somewhere else first',
+  'not-yours': 'the page is no longer under your name',
+  'not-you': 'you were signed in as someone else',
+  'signed-out': 'you were signed out',
+  unverified: 'the page couldn’t be reached to check it',
+  unacknowledged: 'the server never answered',
+  collided: 'it was saved from two places at once',
+  error: 'the server refused it',
+}
 const opensInEdit = (): boolean => {
   try {
     return localStorage.getItem(EDIT_PREF) !== 'view'
@@ -120,13 +134,18 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
   // why the EDITOR does not start from it: see `seed` below.
   const [blocks, setBlocks] = useState<ProfileBlock[]>([])
   /**
-   * The page the editor may start from: a good, owner-proven read of it, and after that only what
-   * the editor's own saves confirmed — null while the read is on its way. And whose read could not
-   * be one, and why.
+   * The page the editor starts from, and the version of it (`rev`) — from the page writer's `load`,
+   * which reads the page, proves it is yours, and waits behind any save of yours still in flight.
+   * Null while that is on its way. And whose page could not be opened, and why.
    *
    * ⚠️ ITS OWN COPY, NOT `blocks`. `blocks` is what the read view shows, and other things write it:
-   * the demo view puts the demo page there, and a save landing after you moved on used to put your
-   * page under somebody else's name. The editor starting from `blocks` would start from those.
+   * the demo view puts the demo page there, and the writer's own events keep it up to date. The
+   * editor starting from `blocks` would start from those.
+   *
+   * ⚠️ AND FROM THE WRITER (22 Nov 2026), not from the blocks read the gate below first used. The
+   * writer is the one thing that writes this page (profile/pageWriter.ts), so the version the
+   * editor starts from has to be one the writer knows — that is how a copy is later checked against
+   * everything written since: another tab, the Instrument's 🎵 Put it on my profile, the chronicle.
    *
    * ⚠️ THE EDITOR WAITS FOR THIS (22 Nov 2026), AND ON main IT DID NOT. Your own page opens
    * straight into the editor when the profile answers, the blocks are a separate request that
@@ -135,20 +154,34 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * showing, and the first thing added saved a page of only that: `save_my_profile_blocks`
    * replaces the whole page. See profile/seedGate.ts.
    */
-  const [seed, setSeed] = useState<{
-    for: string
-    blocks: ProfileBlock[]
-    /** an empty read is only a seed once it has been proved yours — see the proof below */
-    proven: boolean
-  } | null>(null)
+  const [seed, setSeed] = useState<{ for: string; page: ProfileBlock[]; rev: number } | null>(null)
   /* the page shown now, for an answer that arrives after it changed */
   const shownU = useRef(u)
   useEffect(() => {
     shownU.current = u
   }, [u])
-  const [refused, setRefused] = useState<{ for: string; why: 'failed' | 'not-yours' } | null>(null)
-  /** bumped by "Try again", to read the blocks once more */
-  const [blocksTry, setBlocksTry] = useState(0)
+  const [refused, setRefused] = useState<{
+    for: string
+    why: 'failed' | 'not-yours' | 'not-you'
+  } | null>(null)
+  /** what an editor could not save on its way out, for the page to offer back (pageWriter, orphan) */
+  const [orphan, setOrphan] = useState<{ blocks: ProfileBlock[]; why: string } | null>(null)
+  /** whose session this is: the page writer is per member (the preview's own id in the harness) */
+  const [writerUid, setWriterUid] = useState<string | null>(null)
+  useEffect(() => {
+    if (!authed) return setWriterUid(null)
+    if (import.meta.env.DEV && previewMember) return setWriterUid(PREVIEW_ME.id)
+    let live = true
+    void getSupabaseClient()
+      .auth.getSession()
+      .then(({ data }) => {
+        if (live) setWriterUid(data.session?.user.id ?? null)
+      })
+    return () => {
+      live = false
+    }
+  }, [authed])
+  const writer = writerUid ? writerFor(writerUid) : null
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [trophies, setTrophies] = useState<ProfileTrophy[]>([])
   /* every module's achievements, earned and locked, derived server-side — see
@@ -369,12 +402,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
   }, [u, authed])
 
   /**
-   * The page's blocks — for showing, and, when they are a good read of your own page, for the
-   * editor to start from (`seed`). Its own effect so "Try again" can ask once more without clearing
-   * everything else on the page.
-   *
-   * ⚠️ AN EMPTY PAGE IS PROVED YOURS BY ASKING AFTER IT WAS READ (proveEmpty), never taken on the
-   * profile already on screen — a review found two ways that goes stale (see seedGate.ts).
+   * The page's blocks, for the read view. The editor does not start from these — see `seed`.
    */
   useEffect(() => {
     if (!authed || !u) return
@@ -383,38 +411,17 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     setRefused(null)
     const preview = previewMember && !!PREVIEW_PROFILES[u]?.is_me
     const take = (read: BlocksRead) => {
-      if (!live) return
-      setBlocks(Array.isArray(read.data) ? (read.data as ProfileBlock[]) : [])
-      const got = seedFrom<ProfileBlock>(read)
-      if (!got.ok) return setRefused({ for: u, why: got.why })
-      /* an owner-shaped page proves itself; an empty one waits for the proof below (the preview's
-         stand-in is its own answer to it) */
-      setSeed({ for: u, blocks: got.blocks, proven: got.blocks.length > 0 || preview })
+      if (live) setBlocks(Array.isArray(read.data) ? (read.data as ProfileBlock[]) : [])
     }
     /* ⚠️ A STAND-IN FOR YOUR OWN PAGE, because without one the "Seen by" row filters an
        empty list and reports success at every level. `previewMember` has no session, so this RPC
        answers nothing here -- which is CLAUDE.md's "a room with nothing in it passes every
        check" in the one place whose whole job is showing what somebody else was sent. Only your
-       own page: a visitor's blocks come from the server and are not the thing being previewed.
-       ⚠️ Answered LATER, like the real read, and slow or failing on request
-       (localStorage `dev_profile_blocks` = 'slow' | 'fail' | 'empty'): answered at once, it could never
-       show the editor opening before its page had arrived, which is the bug the gate is for. */
+       own page: a visitor's blocks come from the server and are not the thing being previewed. */
     if (preview) {
-      const how = localStorage.getItem('dev_profile_blocks')
-      const t = window.setTimeout(
-        () =>
-          take(
-            how === 'fail'
-              ? { data: null, error: new Error('the preview read was asked to fail') }
-              : how === 'empty'
-                ? { data: [], error: null }
-                : { data: previewMyBlocks(), error: null },
-          ),
-        how === 'slow' ? 1500 : 0,
-      )
+      take({ data: previewMyBlocks(), error: null })
       return () => {
         live = false
-        window.clearTimeout(t)
       }
     }
     void getSupabaseClient()
@@ -423,31 +430,54 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     return () => {
       live = false
     }
-  }, [u, authed, blocksTry])
+  }, [u, authed])
 
   /**
-   * ⚠️ AN EMPTY PAGE IS PROVED YOURS BY ASKING AFTER IT WAS READ (proveEmpty), never taken on the
-   * profile on screen, which a review found two ways of going stale (see seedGate.ts). And only
-   * when the editor is about to open on it, on a page that claims to be yours: asked after every
-   * empty read, it doubled a heavy request on every member whose page shows you nothing.
+   * The editor's starting page, from the writer: read, proved yours (an empty page by asking whose
+   * it is after it was read), and queued behind any save of yours still in flight — so Done then
+   * Edit starts from what that save wrote. Only while editing your own page.
    */
-  const claimsMine = state.kind === 'ok' && state.p.is_me
+  const mine = state.kind === 'ok' && state.p.is_me
   useEffect(() => {
-    if (!seed || seed.proven || seed.for !== u || !claimsMine || !editing) return
+    if (!mine || !editing || !writer || !u) return
+    if (seed?.for === u || refused?.for === u) return
     let live = true
-    void getSupabaseClient()
-      .rpc('get_member_profile', { p_username: u })
-      .then((answer) => {
-        if (!live) return
-        const whose = proveEmpty(answer)
-        if (whose === 'yours')
-          setSeed((was) => (was && was.for === u ? { ...was, proven: true } : was))
-        else setRefused({ for: u, why: whose })
-      })
+    void writer.load(u).then((r) => {
+      if (!live) return
+      if ('failed' in r)
+        setRefused({
+          for: u,
+          why:
+            r.failed === 'not-yours' ? 'not-yours' : r.failed === 'not-you' ? 'not-you' : 'failed',
+        })
+      else setSeed({ for: u, page: r.page, rev: r.rev })
+    })
     return () => {
       live = false
     }
-  }, [seed, u, claimsMine, editing])
+  }, [mine, editing, writer, u, seed, refused])
+  /* done editing: the next Edit loads the page afresh */
+  useEffect(() => {
+    if (editing) return
+    setSeed(null)
+    setRefused(null)
+  }, [editing])
+
+  /**
+   * The read view follows what the writer wrote or read — a song put on from the Instrument room,
+   * an editor's last save, another tab's — so it is never a version behind what is stored.
+   */
+  useEffect(() => {
+    if (!writer) return
+    return writer.subscribe((e) => {
+      if (e.type === 'orphan') setOrphan({ blocks: e.blocks, why: e.why })
+      else if (
+        (e.type === 'written' || e.type === 'advanced') &&
+        shownU.current.toLowerCase() === e.name.toLowerCase()
+      )
+        setBlocks(e.page)
+    })
+  }, [writer])
 
   useEffect(() => {
     if (!authed || !u) return
@@ -1196,24 +1226,52 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       {/* Optional customization -- only exists on the page at all once there's something to
           show. The editor and the read view are never both mounted: editing shows the working
           copy being arranged, done-editing shows what was actually saved. */}
-      {p.is_me && editing && doorFor(u, seed?.proven ? seed.for : null, refused) !== 'editor' ? (
+      {/* ⚠️ WHAT AN EDITOR COULD NOT SAVE ON ITS WAY OUT, offered back rather than lost with it */}
+      {p.is_me && orphan && (
+        <p className="muted profile-door" role="status">
+          Your last changes didn’t save: {ORPHAN_SAYS[orphan.why] ?? 'something went wrong'}.{' '}
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              /* the copy, in an editor that can be read and copied from; its version is not the
+                 page's, so it will not save over what is there — it says so, with Reload it */
+              setSeed({ for: u, page: orphan.blocks, rev: -1 })
+              setOrphan(null)
+              setEditing(true)
+            }}
+          >
+            Open them again
+          </button>{' '}
+          <button className="btn btn-ghost" onClick={() => setOrphan(null)}>
+            Let them go
+          </button>
+        </p>
+      )}
+      {p.is_me && editing && doorFor(u, seed?.for ?? null, refused) !== 'editor' ? (
         /* ⚠️ NOT THE EDITOR UNTIL ITS PAGE HAS ARRIVED — see `seed` */
         <p className="muted profile-door" role="status">
-          {doorFor(u, seed?.proven ? seed.for : null, refused) === 'opening' ? (
+          {doorFor(u, seed?.for ?? null, refused) === 'opening' ? (
             'Opening your page…'
-          ) : doorFor(u, seed?.proven ? seed.for : null, refused) === 'not-yours' ? (
+          ) : doorFor(u, seed?.for ?? null, refused) === 'not-yours' ? (
             'Your page isn’t under this name any more. Reload the site to open it.'
+          ) : doorFor(u, seed?.for ?? null, refused) === 'not-you' ? (
+            'You’re signed in as someone else now.'
           ) : (
             <>
               Your page didn’t open.{' '}
-              <button className="btn btn-ghost" onClick={() => setBlocksTry((n) => n + 1)}>
+              <button className="btn btn-ghost" onClick={() => setRefused(null)}>
                 Try again
               </button>
             </>
           )}
         </p>
-      ) : p.is_me && editing && seed ? (
+      ) : p.is_me && editing && seed && writer ? (
         <ProfileBlocksEditor
+          /* a new starting point is a new editor */
+          key={`${u}:${seed.rev}`}
+          writer={writer}
+          seedRev={seed.rev}
+          onReload={() => setSeed(null)}
           page={pageStyle}
           onPage={(next) => {
             /* ⚠️ Shown immediately, saved in the background. The page redrawing a beat after you
@@ -1225,22 +1283,12 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                 if (!error) setPageStyle(data)
               })
           }}
-          initial={seed.blocks}
+          initial={seed.page}
           username={p.username}
           activity={activity}
           trophies={trophies}
           achievements={achievements}
           snakeBest={p.snake_best}
-          /* Called after every autosave now, not once at the end — so leaving edit mode shows
-             what is actually stored. It no longer closes the editor: you are done when you say
-             you are done, not when the last keystroke lands. */
-          onSaved={(saved) => {
-            /* ⚠️ a save that lands after you moved to somebody else's page is not theirs to show,
-               and it is the editor's next starting point only on the page it was saved from */
-            if (shownU.current !== u) return
-            setBlocks(saved)
-            setSeed((was) => (was && was.for === u ? { for: u, blocks: saved, proven: true } : was))
-          }}
           /* ⚠️ THE SAME ACTION THE HEAD BUTTON TAKES, through one function, because two copies
              of "stop editing" is two places to forget rememberEditPref — see stopEditing. */
           onDone={stopEditing}

@@ -183,7 +183,14 @@ const SWING_KEY = 'instrument_swing_v1'
  * full pipelines drawing at once (measured: two .viz-wrap mounted on one screen), for the second
  * copy of a thing the user has already put somewhere better.
  */
-export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}) {
+export function InstrumentRoom({
+  inCanvas = false,
+  username = null,
+}: {
+  inCanvas?: boolean
+  /** the member's username, for 🎵 Put it on my profile; null when signed out or not yet a member */
+  username?: string | null
+} = {}) {
   const [inst, setInst] = useState<InstrumentId>(() => {
     try {
       const v = localStorage.getItem(INST_KEY)
@@ -541,7 +548,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * song with one layer — which is what lets a drum pattern you kept last week be dropped under
    * a bassline you are writing now.
    */
-  const keep = (kind: 'song' | 'loop', layerId?: string) => {
+  const askName = (question: string, offered = '') => {
     /**
      * ⚠️ BEFORE THE PROMPT, NOT AFTER IT. window.prompt blocks this thread while the audio clock
      * runs on, so the loop's scheduler stops extending its look-ahead and every note still
@@ -554,8 +561,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      */
     hushScheduled()
     hush()
-    const name =
-      window.prompt(kind === 'loop' ? 'Name this loop' : 'Name this song', '')?.trim() ?? ''
+    return window.prompt(question, offered)?.trim() ?? ''
+  }
+  /** a yes-or-no, asked the same way, for the same reasons */
+  const confirmIt = (question: string) => {
+    hushScheduled()
+    hush()
+    return window.confirm(question)
+  }
+  const keep = (kind: 'song' | 'loop', layerId?: string) => {
+    /* the prompt lets go of everything sounding first — see askName */
+    const name = askName(kind === 'loop' ? 'Name this loop' : 'Name this song')
     if (!name) return
     /**
      * ⚠️ WHICH OF THE THREE, because "Nothing to keep — record something first" was the
@@ -1771,6 +1787,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           loop={loop}
           setEditing={setEditing}
           keep={keep}
+          username={username}
+          askName={askName}
+          confirmIt={confirmIt}
           beats={
             <BackingPanel
               loop={loop}

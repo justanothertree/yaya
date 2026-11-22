@@ -19,6 +19,7 @@ import {
   type loopState,
 } from '../audio/looper'
 import { setSongName } from './songName'
+import { ProfileSong } from './ProfileSong'
 import { library, removeFromLibrary, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { songNotes, songToLayers } from '../audio/songFile'
 import { hasLyrics } from '../audio/lyricLines'
@@ -74,6 +75,9 @@ export function SongTools({
   loop,
   setEditing,
   keep,
+  username,
+  askName,
+  confirmIt,
   beats,
   showLyrics,
 }: {
@@ -82,6 +86,12 @@ export function SongTools({
   loop: Loop
   setEditing: Dispatch<SetStateAction<string | null>>
   keep: (kind: 'song' | 'loop', layerId?: string) => void
+  /** the member's username, for 🎵 Put it on my profile; null hides it */
+  username: string | null
+  /** the room's name prompt, which lets go of every sounding note first */
+  askName: (question: string, offered?: string) => string
+  /** the room's yes-or-no, which does the same */
+  confirmIt: (question: string) => boolean
   /** the beats panel, built by the room, which owns the backing's picks */
   beats: ReactNode
   /** open the song's lyrics box */
@@ -172,7 +182,15 @@ export function SongTools({
       {pane(
         'songs',
         'Songs',
-        <Songs loop={loop} takes={takes} keep={keep} setEditing={setEditing} />,
+        <Songs
+          loop={loop}
+          takes={takes}
+          keep={keep}
+          setEditing={setEditing}
+          username={username}
+          askName={askName}
+          confirmIt={confirmIt}
+        />,
       )}
     </>
   )
@@ -325,11 +343,17 @@ function Songs({
   takes,
   keep,
   setEditing,
+  username,
+  askName,
+  confirmIt,
 }: {
   loop: Loop
   takes: ReturnType<typeof useTakes>
   keep: (kind: 'song' | 'loop', layerId?: string) => void
   setEditing: Dispatch<SetStateAction<string | null>>
+  username: string | null
+  askName: (question: string, offered?: string) => string
+  confirmIt: (question: string) => boolean
 }) {
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
   const { parts, bouncing, doBounce, stems } = takes
@@ -365,6 +389,7 @@ function Songs({
         )}
       </div>
       <ExportSong loop={loop} busy={!!bouncing} setBusy={setExporting} />
+      <ProfileSong loop={loop} username={username} askName={askName} confirmIt={confirmIt} />
       {stems.length > 0 && (
         <div className="inst-row inst-takes-stems">
           {stems.map((st, k) => (
