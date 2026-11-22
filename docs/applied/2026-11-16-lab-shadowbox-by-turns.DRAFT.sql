@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Shadow box by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_shadowbox_by_turns`, version 20261122025435:
+-- md5(statements[1]) = 5ef60209bc0b954cec3da3a9146b0eb5, this file's body. The record is
+-- supabase/migrations/20261122025435_lab_shadowbox_by_turns.sql.
+--
+-- (as drafted) Shadow box by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
