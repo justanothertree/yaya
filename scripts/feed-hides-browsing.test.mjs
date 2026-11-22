@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
  */
 
 const DUMP = readFileSync('supabase/migrations/00000000000000_baseline.sql', 'utf8')
-const DRAFT = readFileSync('docs/2026-11-13-feed-hides-browsing.DRAFT.sql', 'utf8')
+const DRAFT = readFileSync('docs/applied/2026-11-13-feed-hides-browsing.DRAFT.sql', 'utf8')
 const ROLLBACK = readFileSync('docs/2026-11-13-feed-hides-browsing.ROLLBACK.sql', 'utf8')
 const CHECKS = readFileSync('docs/2026-11-13-feed-hides-browsing.checks.sql', 'utf8')
 

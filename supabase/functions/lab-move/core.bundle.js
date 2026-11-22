@@ -2583,7 +2583,7 @@ function place$1(b, i, p) {
   cells[i] = p;
   return { n: b.n, cells };
 }
-function swap(b) {
+function swap$1(b) {
   const at2 = b.cells.findIndex((c2) => c2 !== 0);
   if (at2 < 0 || b.cells.filter((c2) => c2 !== 0).length !== 1)
     throw new Error("swap only after one stone");
@@ -2774,7 +2774,7 @@ function isLegal(g, m) {
 }
 function after$7(g, m) {
   const p = g.turn;
-  const b = m === SWAP ? swap(g.b) : place$1(g.b, m, p);
+  const b = m === SWAP ? swap$1(g.b) : place$1(g.b, m, p);
   const last = m === SWAP ? b.cells.findIndex((c) => c) : m;
   return { ...g, b, turn: winner$2(b) ? null : other$b(p), moves: [...g.moves, m], last };
 }
@@ -4147,6 +4147,30 @@ const foxRules = {
   result: (d) => !over$4(d.g) ? null : d.g.drawn ? "draw" : d.g.winner === "geese" ? 0 : 1,
   begun: (d) => d.list.length > 0
 };
+function readFoxSide(s) {
+  const side = s.side ?? "geese";
+  return side === "geese" || side === "fox" ? side : null;
+}
+const swap = (s) => s === 0 ? 1 : 0;
+function foxMatchRules(side) {
+  if (side === "geese") return foxRules;
+  const turn = (d) => {
+    const t = foxRules.turn(d);
+    return t === 0 || t === 1 ? swap(t) : t;
+  };
+  return {
+    ...foxRules,
+    turn,
+    legal: (d, m, by) => foxRules.legal(d, m, by === void 0 ? void 0 : swap(by)),
+    apply: (d, m, by) => foxRules.apply(d, m, by === void 0 ? void 0 : swap(by)),
+    modes: ["versus"],
+    computer: void 0,
+    result: (d) => {
+      const r = foxRules.result(d);
+      return r === 0 || r === 1 ? swap(r) : r;
+    }
+  };
+}
 const other$6 = (s) => s === 1 ? 2 : 1;
 const idx = (l, r, c) => l * 16 + r * 4 + c;
 const LINES = (() => {
@@ -11938,7 +11962,10 @@ const GAMES = {
       return `${s.black}–${s.white}`;
     }
   }),
-  fox: () => ({ rules: foxRules }),
+  fox: (s) => {
+    const side = readFoxSide(s);
+    return side ? { rules: foxMatchRules(side) } : null;
+  },
   cube: () => ({ rules: cubeRules }),
   artillery: () => ({
     rules: artilleryRules,
@@ -12158,7 +12185,11 @@ function decide(row, me, ask, games = GAMES) {
         secret: hidden.secret(g2)
       };
     }
-    if (!rules.roll) return { kind: "begin", state: rules.encode(g2), turn: 0 };
+    if (!rules.roll) {
+      const t2 = rules.turn(g2);
+      const first = row.mode === "versus" && (t2 === 0 || t2 === 1) ? t2 : 0;
+      return { kind: "begin", state: rules.encode(g2), turn: first };
+    }
     const opened = answer(rules.roll(g2, Math.random));
     if (!opened) return refuse(500, "the computer could not move");
     const t = rules.turn(opened.g);

@@ -225,9 +225,9 @@ export function AcceptInvite() {
             Take a look around
           </a>
           <a
-            href="#people"
+            href="#chat"
             onClick={() => {
-              window.location.hash = 'people'
+              window.location.hash = 'chat'
             }}
             className="btn"
           >

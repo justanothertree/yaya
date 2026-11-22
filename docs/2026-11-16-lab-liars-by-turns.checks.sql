@@ -1,4 +1,4 @@
--- READ-ONLY CHECKS for docs/2026-11-16-lab-liars-by-turns.DRAFT.sql, to run against production. Each statement only reads;
+-- READ-ONLY CHECKS for docs/applied/2026-11-16-lab-liars-by-turns.DRAFT.sql, to run against production. Each statement only reads;
 -- run block A before applying and block B after. If any answer differs, stop.
 --
 -- lab_match_playable's body (`prosrc`) by md5, measured on 16 Nov 2026 by applying each draft and

@@ -80,18 +80,24 @@ describe('peg drop path', () => {
     expect(x).toBeCloseTo(slotX(d.slot), 9)
   })
   it('never passes through a peg on the way down', () => {
+    /* every drop, every frame, every peg, asked once per drop of its closest approach: the same
+       question, where an expect for each of about two million distances took 22 seconds under
+       a full run, past the ceiling */
     for (let seed = 1; seed < 40; seed++) {
       const d = drop(seeded(seed))
+      let near = { gap: Infinity, t: 0, r: 0, i: 0 }
       for (let t = 0; t < FALL; t += 1 / 240) {
         const [x, y] = at(d, t)
         for (let r = 0; r < ROWS; r++)
           for (let i = 0; i < r + 3; i++) {
             const [px, py] = peg(r, i)
-            expect(Math.hypot(x - px, y - py), `seed ${seed} t ${t}`).toBeGreaterThan(
-              (PEG_R + BALL_R) * 0.97,
-            )
+            const gap = Math.hypot(x - px, y - py)
+            if (gap < near.gap) near = { gap, t, r, i }
           }
       }
+      expect(near.gap, `seed ${seed} t ${near.t} peg ${near.r},${near.i}`).toBeGreaterThan(
+        (PEG_R + BALL_R) * 0.97,
+      )
     }
   })
   it('the slots sit between the bottom pegs, one gap apart', () => {
