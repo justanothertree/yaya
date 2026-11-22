@@ -41,8 +41,23 @@ export function ProfileChallengeButton({
  * ⚠️ THE PANEL LIVES UNDER THE HEAD, NOT IN IT: the head's buttons sit in a flex row that does not
  * wrap, and a panel inside it pushed the whole card 42px past a 375px screen. Measured, then moved.
  */
-export function ProfileChallenge({ username, name }: { username: string; name: string }) {
-  const [friend, setFriend] = useState<{ id: string } | null | undefined>(undefined)
+export function ProfileChallenge({
+  username,
+  name,
+  friendId,
+}: {
+  username: string
+  name: string
+  /**
+   * Their id, when the caller already holds it as an accepted friend's — a conversation does,
+   * a profile page does not. It only saves the directory read below; it grants nothing, because
+   * `lab_match_challenge` asks the server whether the two of you are friends either way.
+   */
+  friendId?: string
+}) {
+  const [friend, setFriend] = useState<{ id: string } | null | undefined>(
+    friendId ? { id: friendId } : undefined,
+  )
   const [demo, setDemo] = useState<string>(Object.keys(MATCH_NAMES)[0])
   const [mode, setMode] = useState<'versus' | 'together'>(modeWords(demo).first)
   const words = modeWords(demo)

@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-14-feed-made-and-comments.DRAFT.sql. ⛔ Not applied, like the draft.
+-- ROLLBACK for docs/applied/2026-11-14-feed-made-and-comments.DRAFT.sql. ⛔ Not applied, like the draft.
 --
 -- In the reverse order of the draft, because feed_recent reads both new objects:
 --   1. feed_recent loses the block the draft put in front of its final `return`, byte for byte

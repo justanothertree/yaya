@@ -17,11 +17,17 @@ export function MatchChallenge({
   demo,
   settings,
   levelNames,
+  sides,
 }: {
   demo: string
   /** what the challenge plays on, from the toy's own settings: a board size, say */
   settings: Record<string, unknown>
   levelNames: Record<string, string>
+  /**
+   * A lopsided game's sides, for versus: the challenger picks theirs (sent as `side`), the first
+   * being the default, and the friend plays the other. Together, the team plays the toy's own side.
+   */
+  sides?: readonly { value: string; name: string }[]
 }) {
   const toy = matchToy(demo)
   const [open, setOpen] = useState(false)
@@ -30,6 +36,7 @@ export function MatchChallenge({
   const words = modeWords(demo)
   const [mode, setMode] = useState<'versus' | 'together'>(words.first)
   const [level, setLevel] = useState<string>(toy?.levels[1] ?? toy?.levels[0] ?? '')
+  const [side, setSide] = useState<string | null>(sides?.[0]?.value ?? null)
   const [busy, setBusy] = useState(false)
   // a duel has no computer: versus alone, and nothing to choose
   const together = !VERSUS_ONLY.has(demo)
@@ -56,7 +63,11 @@ export function MatchChallenge({
         who,
         demo,
         together ? mode : 'versus',
-        together && mode === 'together' ? { ...settings, level } : settings,
+        together && mode === 'together'
+          ? { ...settings, level }
+          : side === null
+            ? settings
+            : { ...settings, side },
       )
       setOpen(false)
       location.hash = matchHash(demo, v.id)
@@ -86,7 +97,7 @@ export function MatchChallenge({
           {friends === null && !error && <p className="muted">Loading your friends…</p>}
           {friends?.length === 0 && (
             <p className="muted">
-              You have no friends here yet. Add some on <a href="#people">People</a>, then challenge
+              You have no friends here yet. Add some in <a href="#chat">Chat</a>, then challenge
               them.
             </p>
           )}
@@ -120,6 +131,20 @@ export function MatchChallenge({
                   >
                     {words.together}
                   </button>
+                </div>
+              )}
+              {!(together && mode === 'together') && sides && sides.length > 1 && (
+                <div className="lab-controls" role="group" aria-label="Your side">
+                  {sides.map((s) => (
+                    <button
+                      key={s.value}
+                      className="btn btn-ghost"
+                      aria-pressed={side === s.value}
+                      onClick={() => setSide(s.value)}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
                 </div>
               )}
               {together && mode === 'together' && (

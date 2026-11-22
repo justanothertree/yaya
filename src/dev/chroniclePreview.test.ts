@@ -582,6 +582,77 @@ describe('saying what the session you are in is about', () => {
   })
 })
 
+describe('an activity name and unit, refused in words (chronicle_activity_refusals, #144)', () => {
+  const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+
+  it('refuses a blank name in words, before anything else is asked', () => {
+    expect(why(pvSaveActivity('', 'free', null))).toBe('an activity needs a name')
+    expect(why(pvSaveActivity('   ', 'free', null))).toBe('an activity needs a name')
+    /* the server checks the name before it looks for the row, so an unknown id still hears this */
+    expect(why(pvSaveActivity('', 'free', null, 'no-such-id'))).toBe('an activity needs a name')
+  })
+
+  it('takes a name of 60 characters and refuses 61, counting characters as char_length does', () => {
+    expect(why(pvSaveActivity('a'.repeat(60), 'free', null))).toBe('accepted')
+    expect(why(pvSaveActivity('b'.repeat(61), 'free', null))).toBe(
+      'that is longer than a name — 60 characters',
+    )
+    expect(why(pvSaveActivity('🏃'.repeat(60), 'free', null))).toBe('accepted') // 120 UTF-16 units
+    expect(why(pvSaveActivity('  ' + 'c'.repeat(60) + '  ', 'free', null))).toBe('accepted') // trimmed
+  })
+
+  it('takes a unit of 16 characters and refuses 17', () => {
+    expect(why(pvSaveActivity('Reading', 'free', null, undefined, 'p'.repeat(16)))).toBe('accepted')
+    expect(why(pvSaveActivity('Running', 'free', null, undefined, 'q'.repeat(17)))).toBe(
+      'that is longer than a unit — 16 characters',
+    )
+  })
+})
+
+describe('a goal title, target, unit and note, refused in words (chronicle_goal_refusals, #145)', () => {
+  const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+  const save = (over: Partial<Parameters<typeof pvSaveGoal>[0]>) =>
+    why(
+      pvSaveGoal({
+        title: 'Read',
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+        ...over,
+      }),
+    )
+
+  it('refuses a blank title in words, before it looks for the goal', () => {
+    expect(save({ title: '' })).toBe('a goal needs a title')
+    expect(save({ title: '   ' })).toBe('a goal needs a title')
+    expect(save({ title: '', id: 'no-such-goal' })).toBe('a goal needs a title')
+  })
+
+  it('takes a 120-character title and refuses 121, in characters', () => {
+    expect(save({ title: 't'.repeat(120) })).toBe('accepted')
+    expect(save({ title: '📚'.repeat(120) })).toBe('accepted') // 240 UTF-16 units
+    expect(save({ title: 'u'.repeat(121) })).toBe('that is longer than a title — 120 characters')
+  })
+
+  it('takes a target above 0 up to a billion, and no target at all', () => {
+    expect(save({ target: 1e9 })).toBe('accepted')
+    expect(save({ target: 0.5 })).toBe('accepted')
+    expect(save({ target: null })).toBe('accepted')
+    for (const target of [0, -3, 1e9 + 1]) {
+      expect(save({ target })).toBe('a target is more than 0 and at most a billion')
+    }
+  })
+
+  it('takes a 16-character unit and a 2000-character note, and refuses one more of each', () => {
+    expect(save({ unit: 'p'.repeat(16) })).toBe('accepted')
+    expect(save({ unit: 'p'.repeat(17) })).toBe('that is longer than a unit — 16 characters')
+    expect(save({ note: 'n'.repeat(2000) })).toBe('accepted')
+    expect(save({ note: 'n'.repeat(2001) })).toBe('that is longer than a note — 2000 characters')
+  })
+})
+
 describe('the ceilings an account has', () => {
   it('refuses a two hundred and first activity, in the words the server uses', () => {
     for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)
@@ -652,6 +723,24 @@ describe('the ceilings an account has', () => {
 
 describe('the ceilings a routine has', () => {
   const stepsOf = (n: number) => Array.from({ length: n }, () => ({ activity: draw, mins: 10 }))
+
+  it('refuses a blank or 61-character name in words, before it counts the steps (#146)', () => {
+    expect(pvSaveRoutine('', [])).toEqual({ why: 'a routine needs a name' })
+    expect(pvSaveRoutine('   ', stepsOf(41))).toEqual({ why: 'a routine needs a name' })
+    expect(pvSaveRoutine('r'.repeat(61), [])).toEqual({
+      why: 'that is longer than a name — 60 characters',
+    })
+    expect('id' in pvSaveRoutine('r'.repeat(60), [])).toBe(true)
+    expect('id' in pvSaveRoutine('🌅'.repeat(60), [])).toBe(true) // 120 UTF-16 units
+  })
+
+  it('holds a step of 99,999,999,999 minutes at 600 and saves the routine (#146)', () => {
+    /* production on 22 Nov, before the fix: `value "99999999999" is out of range for type integer`
+       and nothing saved; after it, the step is least(mins, 600) taken as a numeric */
+    const r = pvSaveRoutine('Long', [{ activity: draw, mins: 99_999_999_999 }])
+    if (!('id' in r)) throw new Error('refused: ' + r.why)
+    expect(pvRoutines().find((x) => x.id === r.id)?.steps).toEqual([{ activity: draw, mins: 600 }])
+  })
 
   it('takes forty steps, which is what the server allows', () => {
     const r = pvSaveRoutine('Morning', stepsOf(40))
@@ -2213,6 +2302,8 @@ describe('an exercise linked to an activity', () => {
     if ('why' in a || 'why' in b) throw new Error('fixture')
     expect(amount(s)).toBe(12)
     expect(pvAmount(s, 10)).toBe(false) // below its counted sets
+    expect(pvAmount(s, -4)).toBe(false) // a negative meets the floor as 0, still below 12
+    expect(pvAmount(s, null)).toBe(false) // and so does a blank
     expect(pvAmount(s, 40)).toBe(true)
     expect(pvSetDrop(b.id)).toBeNull() // uncounted: nothing moves
     expect(pvSetDrop(a.id)).toBeNull()
@@ -2484,14 +2575,18 @@ describe('the stand-ins keep the server rules the audit found missing', () => {
     expect(pvActivities().find((x) => x.id === id)!.session).toBeNull()
   })
 
-  it('refuses a negative amount, as the floor check does there, and caps at 1e9', () => {
+  it('stores a negative amount as none when nothing is counted, as 21b does, and caps at 1e9', () => {
     pvAddEntry(gym, h(9), h(10), null)
     const e = pvEntries(dayStart(), dayEnd()).find((x) => x.start === h(9))!
-    /* ⚠️ chronicle_entry_amount compares coalesce(p_amount, 0) with the counted sets' sum, 0 here,
-       so -4 is refused rather than stored as none — see OPEN-DECISIONS §21 */
-    expect(pvAmount(e.id, -4)).toBe(false)
+    const amountOf = () => pvEntries(dayStart(), dayEnd()).find((x) => x.id === e.id)!.amount
+    expect(pvAmount(e.id, 12)).toBe(true)
+    expect(amountOf()).toBe(12)
+    /* chronicle_entry_amount since 22 Nov: greatest(coalesce(p_amount, 0), 0) meets a floor of 0,
+       and the update stores a negative as null. Before 21b, -4 was refused with "<NULL>". */
+    expect(pvAmount(e.id, -4)).toBe(true)
+    expect(amountOf()).toBeNull()
     expect(pvAmount(e.id, 2e9)).toBe(true)
-    expect(pvEntries(dayStart(), dayEnd()).find((x) => x.id === e.id)!.amount).toBe(1e9)
+    expect(amountOf()).toBe(1e9)
   })
 
   it('counts a note in characters, as Postgres does, not in UTF-16 units', () => {
@@ -2666,27 +2761,47 @@ describe("the day's workout line, as chronicle_moments builds it", () => {
     new Date(localMidnight(day).getTime() + 86_400_000).toISOString(),
   ]
 
-  it('says the first four over zero, rounded the way to_char rounds, and counts them all', () => {
+  it('says the first four over zero, to two decimals as the server does since 21a, and counts them all', () => {
     pvGiveCircuitLog('p-1', DAY, [
       { eid: 'ex-none', val: 0 },
-      { eid: 'ex-quad', val: 12.5 },
-      { eid: 'ex-plank', val: 90 },
-      { eid: 'ex-what', val: 3 },
+      { eid: 'ex-quad', val: 12.345 },
+      { eid: 'ex-plank', val: 0.25 },
+      { eid: 'ex-what', val: 3.5 },
       { eid: 'ex-laps', val: 2 },
       { eid: 'ex-row', val: 10 },
     ])
     const [from, to] = around(DAY)
+    /* production's trim_scale(round(v, 2))::text on 22 Nov: 12.345 → 12.35, 0.25 → 0.25,
+       3.5 → 3.5, 2 → 2 (and a stored 3.5-mile walk reads "3.5 mi" there) */
     expect(pvMoments(from, to).filter((m) => m.kind === 'workout')).toEqual([
       {
         kind: 'workout',
         at: null,
         on: DAY,
-        title: 'Quad Curl 13 reps · Plank 90 sec · Mystery 3 · Laps 2 laps',
+        title: 'Quad Curl 12.35 reps · Plank 0.25 sec · Mystery 3.5 · Laps 2 laps',
         score: null,
         about: null,
         detail: '5',
       },
     ])
+  })
+
+  it('rounds the decimal it was given, as numeric does, not the double nearest it', () => {
+    /* round(1.005::numeric, 2) is 1.01 and round(0.001, 2) is 0; a 1e9 ceiling prints whole */
+    for (const val of [1.005, 0.001, 1e9, 12])
+      pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-quad', val }])
+    const [from, to] = around(DAY)
+    const said = pvMoments(from, to)
+      .filter((m) => m.kind === 'workout')
+      .map((m) => m.title)
+    expect([...said].sort()).toEqual(
+      [
+        'Quad Curl 1.01 reps',
+        'Quad Curl 0 reps',
+        'Quad Curl 1000000000 reps',
+        'Quad Curl 12 reps',
+      ].sort(),
+    )
   })
 
   it('reads a day a little either side of the window, and nothing further', () => {
@@ -2726,7 +2841,7 @@ describe('a minute is counted on the raw time, then rounded', () => {
 })
 
 /**
- * ⚠️ BROWSING STAYS ON ITS OWNER'S SIDE OF THE CARD — docs/2026-11-14-card-hides-browsing.DRAFT.sql,
+ * ⚠️ BROWSING STAYS ON ITS OWNER'S SIDE OF THE CARD — docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql,
  * not applied yet. The workbench draws a friend's view, so the double leaves the site's own
  * activities out of all three figures, as the server will for anybody but the owner.
  */

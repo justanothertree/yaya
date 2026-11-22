@@ -7,6 +7,7 @@ import {
   waitingFor,
   whoseMove,
   type Action,
+  type Mode,
   type Room,
   type Rules,
 } from './room'
@@ -105,4 +106,31 @@ export function tableLine<G, M>(
   if (myTurn(rules, room))
     return room.mode === 'together' ? 'Your move for the team.' : 'Your turn.'
   return `${who(whoseMove(rules, room))}’s turn.`
+}
+
+/**
+ * A finished call game's rematch by turns (docs/2026-11-14-lab-async-matches-plan.md, "Starting a
+ * match"): the friend in the other seat, the same toy, and the same mode — together, against the
+ * computer at the level they were playing. Null while the game goes on, for anybody not seated,
+ * with nobody else seated, or on a toy that has no matches (`byTurns`, which the caller answers
+ * from the match names so a toy in a call never loads every match's rules).
+ *
+ * Whoever asks becomes the challenger, so moves first; a rematch asked by the second seat swaps
+ * the sides, as the plan has it.
+ */
+export function rematchOf<G, M>(
+  table: Table<G, M>,
+  rules: Rules<G, M>,
+  byTurns: (sub: string) => boolean,
+): { friend: string; mode: Mode; level: string | null } | null {
+  const room = table.room
+  if (!room || !byTurns(room.sub) || rules.turn(room.game) !== null) return null
+  const mine = seatOf(room)
+  if (mine === null) return null
+  const friend = room.seats[mine === 0 ? 1 : 0]
+  if (!friend || friend === room.me) return null
+  if (room.mode !== 'together') return { friend, mode: 'versus', level: null }
+  if (!(rules.modes ?? ['versus']).includes('together')) return null
+  const level = rules.computer?.levels[room.level]
+  return level === undefined ? null : { friend, mode: 'together', level }
 }

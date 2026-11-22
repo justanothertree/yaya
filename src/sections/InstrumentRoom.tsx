@@ -103,6 +103,8 @@ import { SoundPanel } from '../instrument/SoundPanel'
 import { openEditor } from '../instrument/openEditor'
 import { PartPanel, type PartTab } from '../instrument/PartPanel'
 import { LyricsPanel } from '../instrument/LyricsPanel'
+import { WhatsNew } from '../instrument/WhatsNew'
+import { forgetWhenEmptied, setSongName } from '../instrument/songName'
 import { setSingScale, stopSinging } from '../instrument/singAlong'
 import { vizStartsOpen } from '../instrument/vizStartsOpen'
 
@@ -181,7 +183,14 @@ const SWING_KEY = 'instrument_swing_v1'
  * full pipelines drawing at once (measured: two .viz-wrap mounted on one screen), for the second
  * copy of a thing the user has already put somewhere better.
  */
-export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}) {
+export function InstrumentRoom({
+  inCanvas = false,
+  username = null,
+}: {
+  inCanvas?: boolean
+  /** the member's username, for 🎵 Put it on my profile; null when signed out or not yet a member */
+  username?: string | null
+} = {}) {
   const [inst, setInst] = useState<InstrumentId>(() => {
     try {
       const v = localStorage.getItem(INST_KEY)
@@ -450,7 +459,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    */
   const [part, setPart] = useState<{ id: string; tab: PartTab } | null>(null)
   /** the lyrics box, open at a bar or at the top — one panel at a time, so it closes the part's */
-  const [lyricsAt, setLyricsAt] = useState<{ bar?: number } | null>(null)
+  const [lyricsAt, setLyricsAt] = useState<{ bar?: number; on?: string } | null>(null)
   const editing = part?.id ?? null
   const setEditing = useCallback((next: SetStateAction<string | null>) => {
     setPart((was) => {
@@ -463,9 +472,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     setPart({ id, tab })
     setLyricsAt(null)
   }, [])
-  const showLyrics = useCallback((bar?: number) => {
+  /** `on`: a part to sing them, when the box is opened from that part's menu */
+  const showLyrics = useCallback((bar?: number, on?: string) => {
     setPart(null)
-    setLyricsAt({ bar })
+    setLyricsAt({ bar, on })
   }, [])
   /* the voice stops with the room — a song scheduled into the future would otherwise sing on */
   useEffect(() => () => stopSinging(), [])
@@ -522,6 +532,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   /* ⚠️ AFTER the workbench above, so the bench it puts back is where undo starts rather than a
      step — it also marks that restore as from elsewhere, so the order is belt and braces */
   useEffect(() => startHistory(), [])
+  /* the song's kept name, for what an export is called, goes when the song empties (songName.ts) */
+  useEffect(() => forgetWhenEmptied(), [])
   /**
    * Which of the four tools under the song is open — 🥁 Beats, 🎚 Mix, 🎤 Voice or 📁 Songs, one
    * at a time (the #311 layout, 14 Nov 2026). Here rather than in SongTools because two things
@@ -536,7 +548,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * song with one layer — which is what lets a drum pattern you kept last week be dropped under
    * a bassline you are writing now.
    */
-  const keep = (kind: 'song' | 'loop', layerId?: string) => {
+  const askName = (question: string, offered = '') => {
     /**
      * ⚠️ BEFORE THE PROMPT, NOT AFTER IT. window.prompt blocks this thread while the audio clock
      * runs on, so the loop's scheduler stops extending its look-ahead and every note still
@@ -549,8 +561,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      */
     hushScheduled()
     hush()
-    const name =
-      window.prompt(kind === 'loop' ? 'Name this loop' : 'Name this song', '')?.trim() ?? ''
+    return window.prompt(question, offered)?.trim() ?? ''
+  }
+  /** a yes-or-no, asked the same way, for the same reasons */
+  const confirmIt = (question: string) => {
+    hushScheduled()
+    hush()
+    return window.confirm(question)
+  }
+  const keep = (kind: 'song' | 'loop', layerId?: string) => {
+    /* the prompt lets go of everything sounding first — see askName */
+    const name = askName(kind === 'loop' ? 'Name this loop' : 'Name this song')
     if (!name) return
     /**
      * ⚠️ WHICH OF THE THREE, because "Nothing to keep — record something first" was the
@@ -560,6 +581,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      * storage. Same three answers the paint room gives, for the same reason.
      */
     const item = saveToLibrary(kind, toSong(name, loop.bpm, loop.bars, loop.layers, layerId))
+    /* a song kept is a song named; one part kept as a loop names nothing about the rest */
+    if (item && kind === 'song') setSongName(item.name)
     setCapMsg(
       item
         ? librarySaved()
@@ -1734,6 +1757,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * one line each, then four tools under them. On a phone the whole of a three-part song now
        * fits on one screen with the keys; it took two, and the first part started 1,415px down.
        */}
+      {/* what is new, until it is closed: under the keys and the play bar, never above the
+          keyboard, which is the first thing in the room on purpose (see the note at the top) */}
+      <WhatsNew />
       <div className="inst-song">
         <SongControls
           loop={loop}
@@ -1761,6 +1787,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           loop={loop}
           setEditing={setEditing}
           keep={keep}
+          username={username}
+          askName={askName}
+          confirmIt={confirmIt}
           beats={
             <BackingPanel
               loop={loop}
@@ -1974,15 +2003,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               held={held}
               theirs={l.from ? (jamNames[l.from] ?? '') : null}
               onKeep={(id) => keep('loop', id)}
+              words={(id) => showLyrics(undefined, id)}
             />
           )
         })()}
       {lyricsAt && (
         <LyricsPanel
-          key={lyricsAt.bar ?? 'top'}
+          key={`${lyricsAt.bar ?? 'top'} ${lyricsAt.on ?? ''}`}
           loop={loop}
           close={() => setLyricsAt(null)}
           at={lyricsAt.bar}
+          on={lyricsAt.on}
           scale={singScale}
         />
       )}

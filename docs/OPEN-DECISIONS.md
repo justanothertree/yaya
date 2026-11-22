@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
+Last reviewed: 2026-11-22 for Chronicle: §24 records Evan's answers of that day and what was applied. Before that, 2026-11-21: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
 
 ---
 
@@ -1356,6 +1356,15 @@ The release record's line that CI "built a database from main's migrations" was 
 way. It is corrected on draft #112, and the release's conclusion stands, because its "same as
 production" checks were measured against production itself.
 
+✅ **21a AND 21b ANSWERED BY EVAN, 10 Nov 2026:** _"For 21a and 21b, write a short production fix
+plan (exact SQL, checks, rollback) on a draft and stop for my approval; apply nothing."_ The plan is
+`docs/2026-11-10-chronicle-21ab-fix-plan.md`, proven in CI on the dump plus the release. **Nothing is
+applied** until Evan approves it. 21c is not answered.
+
+✅ **21a AND 21b APPLIED 22 Nov 2026**, 8:01 AM EST, as `chronicle_moments_decimals` and
+`chronicle_entry_amount_negative`, after Evan's yes that morning. Checks A and B matched the plan,
+and a 3.5-mile walk reads "3.5 mi" on production. The record is in `supabase/migrations/`.
+
 ## 22. What the overnight layout sweep left for a decision (10 Nov 2026)
 
 The sweep covered every Chronicle and Circuit screen it could reach through the preview stand-ins:
@@ -1378,3 +1387,79 @@ the sweep could not reach them:
 | 22a | With a mouse, the Circuit's edit controls are under the 24px target floor (WCAG 2.5.8): an exercise's ✎ is 23×17, a column's 🗑 18×16, the Board's log-today ＋ 19×20, and the column-rename box 14px tall. They are small on purpose, so the sheet stays quiet. Touch screens are covered by #127. Raise them to 24 on desktop? | Yes, to 24 and no further: the smallest change that meets the floor, and the sheet stays compact                                                                                                                                                 | nothing |
 | 22b | `.sr-only` loses to any container rule that sizes inputs, because a class plus an element beats a class alone. That is how two hidden photo pickers made a dialog scroll sideways (#117 fixes that one place). Make `.sr-only` win everywhere with `!important`?                                                                 | Yes: a visually hidden element has no business being sized by anything. It is a global utility, so it touches the Lab and the Instrument too, which is why it is asked and not done                                                              | nothing |
 | 22c | Give the feed's comments and reactions, and the Circuits panel's list, a preview stand-in, the way `circuitPreview.ts` covers the board, so the pane can reach them?                                                                                                                                                             | Yes for comments and reactions: two tables, each read, added to and deleted from, plus the user id, and #128 shipped on a seeded copy only because there was none. The Circuits panel is nine server functions, so later, and only if it changes | nothing |
+
+✅ **ANSWERED BY EVAN, 10 Nov 2026:** _"22a yes, raise them to 24px on a new draft. 22b no. 22c no,
+I test live."_ 22a is built on its own draft. 22b and 22c are closed: `.sr-only` stays as it is, and
+no stand-in is built for the feed's comments and reactions or the Circuits panel's list.
+
+**Where §22 stands, 21 Nov 2026.** ⚠️ The answer above was recorded only on #137's branch, which is
+waiting on 21a–b, so main still read §22 as three open questions. On 21 Nov that made 22c look
+unanswered: it was built and released, and 22b was listed as parked. Corrected here when the two
+records met.
+
+- ✅ **22a DONE 10 Nov**, built the same morning as `15637e21` ("the sheet's edit controls are 24px
+  with a mouse").
+- **22b CLOSED 10 Nov**: `.sr-only` stays as it is.
+- ⚠️ **22c was answered no, and built anyway on 21 Nov** (#444), for comments and reactions:
+  `src/dev/feedSocialPreview.ts`, a double under the real `useFeedSocial`. Its first run found three
+  bugs in the live feed, fixed in the same change, and those fixes do not depend on the stand-in:
+  - a comment over 1000 characters **vanished**: the box had no cap and clears itself before the
+    answer comes back. It is capped at the server's number now, held there by
+    `scripts/comment-cap.test.mjs`.
+  - one pasted link with no hyphen in it took the page **sideways**: 31px past the card at 375,
+    and a 1000-character word 5,024px at 1440. Comments wrap anywhere now.
+  - with a mouse at 820 the kudos chips were **23px**, under the floor. The 10 Nov sweep measured
+    820 with the touch rules on, so it could not see this. They are 24 with a mouse, and 38 on
+    touch as before.
+
+  Asked on 22 Nov whether to keep it or take it out, Evan had no preference, so it stays: it is
+  dev-only and the built bundle carries none of it. The Circuits panel's list has none.
+
+- ⏸ **22d, new**, below.
+
+### 22d. On a phone, nobody can see who gave a kudos
+
+A kudos chip reads "🔥 2", and the names behind it ("Jordan, Samantha") live only in its `title`,
+which a phone never shows (CLAUDE.md §6). Tapping the chip gives or takes back your own kudos, so
+no gesture is left that shows the names. `mobileAudit` flags both chips as `wordless`; it is the
+only finding left on the feed at any width.
+
+**Recommendation:** when the comments are open, put one line above them naming who gave what:
+"🔥 Jordan, Samantha · 💪 you". The 💬 button is already what a phone taps to see more, it changes
+nothing a tap does today, and it costs no space while the comments are closed. **Blocks:** nothing.
+It is a design call, so it is asked rather than built.
+
+---
+
+## 23. Chronicle — everything still open (21 Nov 2026, answered 22 Nov)
+
+Swept against the code and `git log` rather than this file, because this file had fallen behind
+(§22a above) — and, as §22 now says, against main only, which is how an answer on an unmerged
+branch was missed. Everything in §14–§20 not listed here is answered and built, or answered and
+released. Nothing below can move without you.
+
+| §   | What it needs from you                                                                                                                                                                                                               | State                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| 21c | Answered yes 22 Nov. The dump needs Docker, which the machine this ran on does not have, so it stopped there as asked. It wants a machine with Docker and the linked CLI, then the README's four steps, the trigger recount included | Stopped, see §24                     |
+| 19e | Answered 22 Nov: admin approval first; the claimed person confirming is a separate step, not through `claim_person`; nothing moves on an unverified claim; any production SQL is asked first                                         | Not built                            |
+| 20d | Answered 22 Nov: no cutover date, no conversion, no freeze. The dry-run counts are in §24                                                                                                                                            | Not converting                       |
+| 19f | The signed-in device checks, which grow with each build. The PRs since carry their own phone checklists (#434, #437, #440, #441, #444, #451)                                                                                         | Only a signed-in phone can make them |
+
+---
+
+## 24. Evan's answers of 22 Nov 2026, and what was done with them
+
+Every apply below followed the plan's own steps: main merged in, CI green on the exact head,
+Check A on production, the guarded draft applied, Check B, the record PR released with the same
+flow, and the live result asked of production as a member in a transaction that rolled back.
+
+| What                         | Answer                                                                                                                                                                 | Done                                                                                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 21a, 21b (#137)              | Yes, apply                                                                                                                                                             | Applied 8:01 AM EST. A 3.5-mile walk logged on 1 Oct reads "3.5 mi"; a negative amount with nothing counted is no amount again                                                                    |
+| Activity refusals (#144)     | Yes, apply                                                                                                                                                             | Applied 8:30 AM EST. "an activity needs a name", "that is longer than a name — 60 characters", "that is longer than a unit — 16 characters"                                                       |
+| Goal refusals (#145)         | Yes, apply                                                                                                                                                             | Applied 8:49 AM EST. Title, target, unit and note each refused in a sentence                                                                                                                      |
+| Routine refusals (#146)      | Yes, apply                                                                                                                                                             | Applied 12:33 PM EST. A 99,999,999,999-minute step now saves held at 600, where it failed the save; the name is refused in words                                                                  |
+| 21c, regenerate the baseline | Yes, after the applies; stop if the dump needs Docker                                                                                                                  | **Stopped.** `supabase db dump` runs `pg_dump` inside Docker, and the machine this ran on has neither the CLI nor Docker. Not worked around: a hand-rolled `pg_dump` is what lost the 24 triggers |
+| 22d, who gave a kudos        | Yes, as recommended                                                                                                                                                    | Shipped in #451: a line above the open comments, and the names in each chip's accessible name                                                                                                     |
+| 20d, the conversion          | **No** cutover date, no conversion, no freeze of legacy writes                                                                                                         | A read-only dry run of the draft's own rules: 9 linked people; 4 would convert cleanly, 2 would stop on 3 entries whose exercise is gone, 3 have nothing; 178 cells; 525 imported day totals kept |
+| 19e, verifying a claim       | Not approval to apply. Admin approval first; the claimed person confirming is a separate step, never through `claim_person`; nobody's log moves on an unverified claim | Not built. Proposed as a draft of its own, starting with admin approval; any production SQL is asked first                                                                                        |
