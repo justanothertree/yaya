@@ -1,6 +1,6 @@
 -- Readable refusals for an activity's name and unit, asked of the real function as a seeded member.
 --
--- ⛔ NEEDS docs/2026-11-10-chronicle-activity-refusals.DRAFT.sql APPLIED FIRST, and refuses to run
+-- ⛔ NEEDS docs/applied/2026-11-10-chronicle-activity-refusals.DRAFT.sql APPLIED FIRST, and refuses to run
 -- otherwise. It runs only where a throwaway database has been built from the migrations and seed
 -- (the `db guards` CI job), and it rolls back. NEVER against production: it writes rows.
 --
@@ -30,7 +30,7 @@ do $$
 begin
   if position($q$raise exception 'an activity needs a name'$q$
               in pg_get_functiondef('public.chronicle_activity_save(uuid, text, text, text, text, integer, boolean)'::regprocedure)) = 0 then
-    raise exception 'apply docs/2026-11-10-chronicle-activity-refusals.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-10-chronicle-activity-refusals.DRAFT.sql before this file';
   end if;
 end $$;
 insert into fails select 'FIXTURE: no member to act as', 'seed the database first'

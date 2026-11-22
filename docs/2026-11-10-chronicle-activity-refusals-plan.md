@@ -1,6 +1,6 @@
 # An activity's name and unit, refused in words: the production fix plan
 
-⛔ **DRAFT. Nothing in it has run against production.** Found by the Chronicle server audit of
+✅ **APPLIED 22 Nov 2026 at 8:30:29 AM EST** as `chronicle_activity_refusals` (version 20261122133029), with Evan's yes that morning. Check A matched before it and Check B after it, production's record md5s to the draft's body, and live, as a member in a transaction that rolled back, every refusal below now reads in its new words. _(As written on 10 Nov:)_ Found by the Chronicle server audit of
 10 Nov 2026, which asked every Chronicle writer, as a member, for its refusals to a value that breaks
 a rule (db guards run 42825583418). Evan approves this plan, or not, as one step, and each step
 below is run by Claude after that approval and not before.
@@ -17,7 +17,7 @@ constraint's own sentence. The add and edit forms check only that a name is not 
 | A unit of 17 characters or more | the same sentence, about `chronicle_activity_metric_short`                                                | "that is longer than a unit — 16 characters" |
 
 One function changes. No table, column, row or grant changes, and nothing needs deploying: the room
-already shows whatever the server says. The SQL is `docs/2026-11-10-chronicle-activity-refusals.DRAFT.sql`,
+already shows whatever the server says. The SQL is `docs/applied/2026-11-10-chronicle-activity-refusals.DRAFT.sql`,
 which refuses to run unless the live function is the exact text it was written against.
 
 ## Steps

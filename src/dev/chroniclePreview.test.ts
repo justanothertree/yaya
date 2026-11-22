@@ -582,6 +582,33 @@ describe('saying what the session you are in is about', () => {
   })
 })
 
+describe('an activity name and unit, refused in words (chronicle_activity_refusals, #144)', () => {
+  const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+
+  it('refuses a blank name in words, before anything else is asked', () => {
+    expect(why(pvSaveActivity('', 'free', null))).toBe('an activity needs a name')
+    expect(why(pvSaveActivity('   ', 'free', null))).toBe('an activity needs a name')
+    /* the server checks the name before it looks for the row, so an unknown id still hears this */
+    expect(why(pvSaveActivity('', 'free', null, 'no-such-id'))).toBe('an activity needs a name')
+  })
+
+  it('takes a name of 60 characters and refuses 61, counting characters as char_length does', () => {
+    expect(why(pvSaveActivity('a'.repeat(60), 'free', null))).toBe('accepted')
+    expect(why(pvSaveActivity('b'.repeat(61), 'free', null))).toBe(
+      'that is longer than a name — 60 characters',
+    )
+    expect(why(pvSaveActivity('🏃'.repeat(60), 'free', null))).toBe('accepted') // 120 UTF-16 units
+    expect(why(pvSaveActivity('  ' + 'c'.repeat(60) + '  ', 'free', null))).toBe('accepted') // trimmed
+  })
+
+  it('takes a unit of 16 characters and refuses 17', () => {
+    expect(why(pvSaveActivity('Reading', 'free', null, undefined, 'p'.repeat(16)))).toBe('accepted')
+    expect(why(pvSaveActivity('Running', 'free', null, undefined, 'q'.repeat(17)))).toBe(
+      'that is longer than a unit — 16 characters',
+    )
+  })
+})
+
 describe('the ceilings an account has', () => {
   it('refuses a two hundred and first activity, in the words the server uses', () => {
     for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)

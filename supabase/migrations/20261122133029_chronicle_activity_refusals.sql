@@ -1,18 +1,13 @@
--- ⛔ DRAFT, NOT APPLIED. Readable refusals for an activity's name and unit; the plan is
--- docs/2026-11-10-chronicle-activity-refusals-plan.md, and nothing here runs until Evan approves it.
---
--- chronicle_activity_save let the table refuse a name or a unit, so the room showed the
--- constraint's own words: an empty, blank or 61-character name came back as
--- 'new row for relation "chronicle_activities" violates check constraint
--- "chronicle_activities_name_check"', and a 17-character unit as the same sentence about
--- "chronicle_activity_metric_short". Measured in db guards run 42825583418. The add form checks
--- only that a name is not empty, and neither box has a length limit, so both are reachable by
--- typing. The function now says it in words first.
---
--- It refuses to run unless the live function is the exact text it was written against (md5
--- 8ee2ec8d…, the text CI builds as production's, which step 1 of the plan reads from
--- production itself), and unless each piece it replaces appears in it exactly once. No table, row
--- or grant changes.
+-- ✅ APPLIED to production 22 Nov 2026 at 8:30 AM EST as migration `chronicle_activity_refusals`,
+-- version 20261122133029, with Evan's approval of #144 that morning. Production recorded
+-- md5(statements[1]) = 8842eea9496342229401a20a48c97591, this file's body byte for byte.
+-- Check A before it: chronicle_activity_save 8ee2ec8d…, the text this was written against.
+-- Check B after: 91d49b2b…, anon refused, members allowed. Live, as a member and rolled back:
+-- a blank or all-space name says "an activity needs a name" (with an unknown id too), 61
+-- characters "that is longer than a name — 60 characters", a 17-character unit "that is longer
+-- than a unit — 16 characters".
+-- Why, and the rollback: docs/applied/2026-11-10-chronicle-activity-refusals.DRAFT.sql,
+-- docs/2026-11-10-chronicle-activity-refusals-plan.md and its -rollback/ folder.
 
 do $mig$
 declare

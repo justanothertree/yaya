@@ -1,4 +1,4 @@
-# The rollback text for docs/2026-11-10-chronicle-activity-refusals.DRAFT.sql
+# The rollback text for docs/applied/2026-11-10-chronicle-activity-refusals.DRAFT.sql
 
 `chronicle_activity_save.sql` is that function's current text, byte for byte. It is what CI builds as
 production's, and step 1 of `docs/2026-11-10-chronicle-activity-refusals-plan.md` reads production's own
