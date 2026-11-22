@@ -92,6 +92,8 @@ import { dartsMatchRules, MAX_DARTS, tidy } from '../../../src/gpu/dartsRoom'
 import { plays as bgPlays } from '../../../src/gpu/backgammon'
 import { MAX_TURNS as BG_MAX_TURNS, replay as bgReplay } from '../../../src/gpu/backgammonRoom'
 import { FLEETS, randomFleet } from '../../../src/gpu/seabattle'
+import { chooseKeep, scoreOf as tenScore } from '../../../src/gpu/dice'
+import { replay as tenReplay } from '../../../src/gpu/diceRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -2745,5 +2747,119 @@ describe('sea battle by turns: each fleet hidden, each player shown only their o
       expect(shots.length).toBeGreaterThanOrEqual(cpu.flat().includes(0) ? 1 : 2)
       expect(row.turn).toBe(1)
     }
+  })
+})
+
+describe('ten thousand by turns: the server rolls, a turn is a run of decisions', () => {
+  const tk = (over: Partial<Row> = {}) => invite({ demo_id: 'dice', settings: {}, ...over })
+  const game = (state: unknown) => tenReplay(state)!
+  /** a decision on the table: the computer's keep, banking at 350 unless the dice are hot */
+  const decisionFor = (state: unknown) => {
+    const g = game(state)
+    const keep = chooseKeep(g.table!)
+    const made = g.points + tenScore(keep.map((i) => g.table![i]))!
+    return { keep, bank: made >= 350 && g.free - keep.length > 0 }
+  }
+  /**
+   * Each side's banked total, counted here from the log: a roll that leaves nothing to keep is
+   * followed by the next side's roll and banks nothing; a decision adds what its dice score to the
+   * turn, and a bank puts the turn on its side's total and passes the dice.
+   */
+  const banked = (log: number[][]) => {
+    const total = [0, 0]
+    let side = 0
+    let turn = 0
+    let table: number[] | null = null
+    for (const e of log) {
+      if (e[0] !== 0) {
+        if (table) {
+          // the roll before scored nothing: a bust, nothing banked, the other side's roll
+          side = 1 - side
+          turn = 0
+        }
+        table = e
+        continue
+      }
+      const keep = e.slice(2)
+      turn += tenScore(keep.map((i) => table![i]))!
+      table = null
+      if (e[1] === 1) {
+        total[side] += turn
+        turn = 0
+        side = 1 - side
+      }
+    }
+    return total
+  }
+
+  it('begins with the challenger’s first roll on the table, rolled by the server', () => {
+    const p = decide(tk(), B, { op: 'accept' })
+    if (p.kind !== 'begin') throw new Error('refused')
+    const g = game(p.state)
+    expect(p.turn).toBe(g.turn)
+    expect(g.table).not.toBeNull()
+  })
+
+  it('plays versus to the end, the winner first to bank ten thousand, the totals what the log banked', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(seed * 13))
+      const { row, plans } = playOut(tk(), (r) => decisionFor(r.state), 4000)
+      vi.restoreAllMocks()
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const log = (last.state as { log: number[][] }).log
+      const t = banked(log)
+      const w = last.result!.winner as 0 | 1
+      expect(t[w]).toBeGreaterThanOrEqual(10_000)
+      expect(t[1 - w]).toBeLessThan(10_000)
+      expect(game(last.state).scores).toEqual(t)
+      for (const p of plans)
+        if (p.kind === 'commit') expect(jsonbBytes(p.state)).toBeLessThanOrEqual(16384)
+      seen.add(String(w))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('together: the computer plays its whole turn in the same call, and the dice come back rolled', () => {
+    vi.spyOn(Math, 'random').mockImplementation(seeded(5))
+    const start = tk({ mode: 'together', settings: { level: 'fair' } })
+    let row = after(start, decide(start, B, { op: 'accept' }))
+    let replied = 0
+    for (let k = 0; k < 40 && row.status === 'active' && replied < 2; k++) {
+      const p = decide(row, row.turn === 0 ? A : B, move(row.seq, decisionFor(row.state)))
+      expect(p.kind).toBe('commit')
+      if (p.kind !== 'commit') break
+      row = after(row, p)
+      const h = p.move as { then?: unknown[]; replies?: number }
+      if (h.then || h.replies) replied++
+      // whoever is to move has dice on the table: the server rolled after the computer too
+      if (row.status === 'active') expect(game(row.state).table).not.toBeNull()
+    }
+    expect(replied).toBe(2)
+  })
+
+  it('refuses a keep that does not score, a position off the table, out of turn, and a stored log no rolls could make', () => {
+    vi.spyOn(Math, 'random').mockImplementation(() => 0.01)
+    // all ones: 1 1 1 1 1 1 on the table
+    const row = after(tk(), decide(tk(), B, { op: 'accept' }))
+    vi.restoreAllMocks()
+    expect(game(row.state).table).toEqual([1, 1, 1, 1, 1, 1])
+    expect(status(decide(row, A, move(row.seq, { keep: [], bank: true })))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, { keep: [6], bank: true })))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, { keep: [0], bank: true })))).toBe(409)
+    expect(status(decide(row, A, move(row.seq, { keep: [0, 1, 2, 3, 4, 5], bank: true })))).toBe(
+      'commit',
+    )
+    expect(
+      status(
+        decide(
+          { ...row, state: { log: [[7, 1, 1, 1, 1, 1]] } },
+          A,
+          move(row.seq, { keep: [0], bank: true }),
+        ),
+      ),
+    ).toBe(500)
   })
 })

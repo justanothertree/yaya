@@ -38,6 +38,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
     { size: 8 },
     { size: 10, fleet: 'swarm', apart: false, again: true, level: 'hard' },
   ],
+  dice: [{}, { level: 'fair' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -64,6 +65,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   darts: [],
   backgammon: [],
   seabattle: [{ size: 9 }, { fleet: 'armada' }, { apart: 'yes' }, { again: 1 }],
+  dice: [],
 }
 
 describe('the match toys', () => {
