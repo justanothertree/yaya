@@ -3090,3 +3090,159 @@ describe('shut the box by turns: one box each, the fewer left up wins', () => {
     ).toBe(500)
   })
 })
+
+describe('codebreaker by turns: a race to crack each other’s hidden code', () => {
+  const settings = { length: 4, colours: 6, repeats: true, tries: 10 }
+  const cb2 = (over: Partial<Row> = {}) => invite({ demo_id: 'codebreaker', settings, ...over })
+  /** a code's marks, counted here: pegs in place, then the colours both share less those */
+  const marks = (code: number[], guess: number[]) => {
+    const exact = code.filter((c, i) => guess[i] === c).length
+    let shared = 0
+    for (let c = 0; c < 6; c++)
+      shared += Math.min(code.filter((x) => x === c).length, guess.filter((x) => x === c).length)
+    return [exact, shared - exact]
+  }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data
+  }
+  const BO = [1, 2, 3, 4]
+  const AN = [5, 5, 0, 1]
+  const begun = () => after(cb2(), decide(cb2(), B, { op: 'accept', brought: BO }))
+
+  it('takes the friend’s code with their yes and the challenger’s with the first guess, and shows each only their own', () => {
+    expect(status(decide(cb2(), B, { op: 'accept' }))).toBe(400)
+    expect(status(decide(cb2(), B, { op: 'accept', brought: [1, 2, 3] }))).toBe(400)
+    expect(status(decide(cb2(), B, { op: 'accept', brought: [1, 2, 3, 6] }))).toBe(400)
+    let row = begun()
+    expect(row.state).toEqual({ placed: [false, true], guesses: [] })
+    expect(mine(row, B)).toEqual(BO)
+    expect(mine(row, A)).toBeNull()
+    expect(status(decide(row, A, move(row.seq, { guess: [0, 0, 0, 0] })))).toBe(400)
+    const p = decide(row, A, move(row.seq, { guess: [1, 2, 0, 0], code: AN }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.move).toEqual({ m: { guess: [1, 2, 0, 0] } })
+    row = after(row, p)
+    // marked against Bo's code, and Ann's kept back: no code in the state
+    expect(row.state).toEqual({
+      placed: [true, true],
+      guesses: [[1, 2, 0, 0, ...marks(BO, [1, 2, 0, 0])]],
+    })
+    expect(mine(row, A)).toEqual(AN)
+    expect(mine(row, B)).toEqual(BO)
+  })
+
+  it('gives the second guesser as many guesses as the first took, then shows both codes', () => {
+    let row = begun()
+    // Ann cracks it at once; Bo still gets his one guess, and misses
+    row = after(row, decide(row, A, move(row.seq, { guess: BO, code: AN })))
+    expect(row.status).toBe('active')
+    expect(row.turn).toBe(1)
+    const p = decide(row, B, move(row.seq, { guess: [0, 0, 0, 0] }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.result).toEqual({ winner: 0, score: '1–uncracked' })
+    row = after(row, p)
+    expect((row.state as { codes?: unknown }).codes).toEqual([AN, BO])
+    // and had he matched it in as many, it would be a draw
+    let tie = begun()
+    tie = after(tie, decide(tie, A, move(tie.seq, { guess: BO, code: AN })))
+    const q = decide(tie, B, move(tie.seq, { guess: AN }))
+    if (q.kind !== 'commit') throw new Error('refused')
+    expect(q.result).toEqual({ winner: 'draw', score: '1–1' })
+  })
+
+  it('races versus to the end, the winner whoever cracked it in fewer, every mark what the codes give', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 10; seed++) {
+      const rnd = seeded(seed)
+      const code = () => Array.from({ length: 4 }, () => Math.floor(rnd() * 6))
+      const codes = [code(), code()]
+      let row = after(cb2(), decide(cb2(), B, { op: 'accept', brought: codes[1] }))
+      const first = { done: false }
+      for (let k = 0; k < 40 && row.status === 'active'; k++) {
+        const who = row.turn as 0 | 1
+        // a guess a little better than random: now and then the code itself
+        const guess = rnd() < 0.12 ? codes[1 - who] : code()
+        const m = who === 0 && !first.done ? { guess, code: codes[0] } : { guess }
+        first.done ||= who === 0
+        const p = decide(row, who === 0 ? A : B, move(row.seq, m))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        row = after(row, p)
+      }
+      expect(row.status).toBe('finished')
+      const st = row.state as { guesses: number[][]; codes: number[][] }
+      expect(st.codes).toEqual(codes)
+      // who guessed each, by the race's rule, and every mark what the codes give
+      const n = [0, 0]
+      const took: (number | null)[] = [null, null]
+      for (const g of st.guesses) {
+        const by =
+          n[0] > n[1] && took[1] === null
+            ? 1
+            : took[0] !== null
+              ? 1
+              : took[1] !== null
+                ? 0
+                : n[1] < n[0]
+                  ? 1
+                  : 0
+        n[by]++
+        expect(g.slice(4)).toEqual(marks(codes[1 - by], g.slice(0, 4)))
+        if (g[4] === 4 && took[by] === null) took[by] = n[by]
+      }
+      const [a, b] = took
+      const winner =
+        a === null && b === null
+          ? 'draw'
+          : b === null || (a !== null && a < b)
+            ? 0
+            : a === null || b < a
+              ? 1
+              : 'draw'
+      expect(row.status === 'finished' && winner).toBe(winner)
+      seen.add(String(winner))
+    }
+    expect(seen.size).toBeGreaterThan(1)
+  })
+
+  it('refuses a stored race whose marks the codes do not give', () => {
+    let row = begun()
+    row = after(row, decide(row, A, move(row.seq, { guess: [1, 2, 0, 0], code: AN })))
+    const st = row.state as { placed: boolean[]; guesses: number[][] }
+    const wrong = { ...st, guesses: [[1, 2, 0, 0, 0, 0]] }
+    expect(
+      status(decide({ ...row, state: wrong }, B, move(row.seq, { guess: [0, 0, 0, 0] }))),
+    ).toBe(500)
+    // nor will a browser believe codes shown before the race is over
+    expect(
+      status(
+        decide(
+          { ...row, state: { ...st, codes: [AN, BO] } },
+          B,
+          move(row.seq, { guess: [0, 0, 0, 0] }),
+        ),
+      ),
+    ).toBe(500)
+  })
+
+  it('together: the computer’s code is chosen on the server, and it cracks the team’s in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = cb2({ mode: 'together', settings: { ...settings, level } })
+      const p0 = decide(start, B, { op: 'accept' })
+      if (p0.kind !== 'begin') throw new Error('refused')
+      const cpu = (p0.secret as { codes: (number[] | null)[] }).codes[1]
+      expect(cpu).toHaveLength(4)
+      let row = after(start, p0)
+      expect(mine(row, A)).toBeNull()
+      const p = decide(row, A, move(row.seq, { guess: [0, 1, 2, 3], code: AN }))
+      if (p.kind !== 'commit') throw new Error('refused')
+      row = after(row, p)
+      const st = row.state as { guesses: number[][] }
+      // the team's guess, then the computer's at the team's code
+      expect(st.guesses).toHaveLength(2)
+      expect(st.guesses[1].slice(4)).toEqual(marks(AN, st.guesses[1].slice(0, 4)))
+    }
+  })
+})

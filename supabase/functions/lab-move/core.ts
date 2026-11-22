@@ -51,6 +51,12 @@ import { total as yachtTotal } from '../../../src/gpu/yacht'
 import { yachtRules, type YachtGame } from '../../../src/gpu/yachtRoom'
 import { sum as shutSum } from '../../../src/gpu/shut'
 import { shutRules, type ShutGame } from '../../../src/gpu/shutRoom'
+import {
+  codeRules,
+  crackedIn,
+  readCodeSettings,
+  type CodeGame,
+} from '../../../src/gpu/codebreakerRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -185,6 +191,13 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // what each box left up, the challenger's first: the lower wins
     score: (g: ShutGame) => `${shutSum(g.up[0])}–${shutSum(g.up[1])}`,
   }),
+  codebreaker: (s) => {
+    const rules = readCodeSettings(s)
+    if (rules === null) return null
+    // the guesses each side took to crack the other's code, the challenger's first
+    const took = (g: CodeGame, side: 0 | 1) => crackedIn(g, side) ?? 'uncracked'
+    return { rules: codeRules(rules), score: (g: CodeGame) => `${took(g, 0)}–${took(g, 1)}` }
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
