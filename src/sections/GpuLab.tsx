@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import {
   CATEGORIES,
   FILTER_KEY,
@@ -19,7 +27,8 @@ import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 import { TOY_EVENT, hashParam, toyHash } from '../lab/links'
 import { YourGames } from '../lab/matches/YourGames'
-import { useFriendsOnToys } from '../lab/social/where'
+import { useFriendsOnToys, useLabMe } from '../lab/social/where'
+import { withWords } from '../lab/social/tour'
 import { hueFor } from '../party/party'
 
 /**
@@ -238,6 +247,19 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   /* friends in your call, by the toy they are on (src/lab/social/where.ts — friends only) */
   const onToys = useFriendsOnToys()
   const friendsOn = (id: string) => onToys.filter((p) => p.sub === id)
+  /* who has just arrived on a toy, so only their dot lands (lab.css, .lab-friend-in). Settled
+     before paint, so a new dot is never drawn once without its landing. Nobody lands on the first
+     look: a friend who was already there when you opened the Lab did not arrive. */
+  const lastOn = useRef<Map<string, string | undefined> | null>(null)
+  const [arrived, setArrived] = useState<ReadonlySet<string>>(() => new Set())
+  useLayoutEffect(() => {
+    const was = lastOn.current
+    lastOn.current = new Map(onToys.map((p) => [p.id, p.sub]))
+    if (was) setArrived(new Set(onToys.filter((p) => was.get(p.id) !== p.sub).map((p) => p.id)))
+  }, [onToys])
+  /* you, on the board the way your friends see you: only while your toy is going out to them */
+  const me = useLabMe()
+  const withYou = withWords(friendsOn(current.id).map((p) => p.name))
 
   const counts = useMemo(() => {
     const n = new Map<Category, number>()
@@ -273,23 +295,32 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         {shownDemos.map((d) => {
           const other = filter !== 'all' && META[d.id]?.category !== filter
           const friends = friendsOn(d.id)
+          const mine = me && current.id === d.id ? me : null
           return (
             <button
               key={d.id}
               className={`btn btn-ghost${other ? ' lab-other' : ''}`}
               aria-pressed={current.id === d.id}
+              data-toy={d.id}
               onClick={() => pick(d.id)}
             >
               {d.name}
-              {friends.length > 0 && (
+              {(friends.length > 0 || !!mine) && (
                 <>
                   {/* initials in each friend's own colour, the colour of their cursor and their
-                      ring on the nav — and the names in words, for a screen reader */}
+                      ring on the nav — and the names in words, for a screen reader. Your own
+                      token is a hollow ring in YOUR colour, on the toy your call is being told */}
                   <span className="lab-friends" aria-hidden>
+                    {mine && (
+                      <span
+                        className="lab-friend lab-friend-me lab-friend-in"
+                        style={{ ['--h' as string]: hueFor(mine) }}
+                      />
+                    )}
                     {friends.slice(0, 3).map((p) => (
                       <span
                         key={p.id}
-                        className="lab-friend"
+                        className={`lab-friend${arrived.has(p.id) ? ' lab-friend-in' : ''}`}
                         style={{ ['--h' as string]: hueFor(p.id) }}
                       >
                         {p.name.trim().charAt(0).toUpperCase() || '?'}
@@ -299,9 +330,11 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
                       <span className="lab-friend-more">+{friends.length - 3}</span>
                     )}
                   </span>
-                  <span className="sr-only">
-                    {`, ${friends.map((p) => p.name).join(', ')} ${friends.length === 1 ? 'is' : 'are'} here`}
-                  </span>
+                  {friends.length > 0 && (
+                    <span className="sr-only">
+                      {`, ${friends.map((p) => p.name).join(', ')} ${friends.length === 1 ? 'is' : 'are'} here`}
+                    </span>
+                  )}
                 </>
               )}
             </button>
@@ -315,6 +348,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         {viewer.isAdmin && currentFlags?.hidden && (
           <span className="lab-badge lab-badge-off">🙈 Hidden</span>
         )}
+        {withYou && <span className="lab-badge lab-with">👥 {withYou}</span>}
         {current.line}
       </p>
 
