@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Dominoes by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_dominoes_by_turns`, version 20261122025533:
+-- md5(statements[1]) = 2769f47b7f046b800544b857e21fda4d, this file's body. The record is
+-- supabase/migrations/20261122025533_lab_dominoes_by_turns.sql.
+--
+-- (as drafted) Dominoes by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
