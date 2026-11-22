@@ -19,11 +19,16 @@ import {
   type Size,
 } from './breakthrough'
 import { useKept } from './kept'
-import { breakthroughRules } from './breakthroughRoom'
+import { breakthroughRules, type BreakthroughGame } from './breakthroughRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -54,39 +59,61 @@ export function BreakthroughDemo() {
   /** who moved first in the game being played, so the next game can give the first move away */
   const firstRef = useRef<Side>(1)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A move
+     shows at once and waits for Send; the server plays it and the board comes back. */
+  const lm = useLabMatch('breakthrough')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as BreakthroughGame | null) : null
+
   /* ── the call's room: the host's size starts each game, which travels as its moves */
   const roomRules = useMemo(() => breakthroughRules(saved.size), [saved.size])
   const lab = useLabRoom('breakthrough', roomRules)
   const words = tableSeats(lab, roomRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** the toy's own controls: alone or two on one screen, neither in a call nor in a match */
+  const local = mode !== 'call' && !inMatch
   /**
    * The board turned round for whoever plays the far side in a call, so their pawns are at the
    * bottom as the board's own label promises: square n²-1-k is drawn where k would be.
    */
-  const flip = room?.mode === 'versus' && words.mySeat === 1
-  /** the game on screen: the call's in a call, else this one */
-  const view = room ? room.game.g : game
-  const viewLast = room ? room.game.last : last
+  const flip = inMatch
+    ? lm.view?.mode === 'versus' && lm.view.you === 1
+    : room?.mode === 'versus' && words.mySeat === 1
+  /** the game on screen: the match's, the call's in a call, else this one */
+  const view = matchGame ? matchGame.g : room ? room.game.g : game
+  const viewLast = matchGame ? matchGame.last : room ? room.game.last : last
 
   const n = view.board.n
   const sides = SIDES[saved.look]
   const all = moves(view)
-  const yours = room
-    ? lab.live && myTurn(roomRules, room)
-    : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === 1)
-  const computerTurn = mode === 'bot' && !game.winner && game.turn === 2
+  const yours = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(roomRules, room)
+      : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === 1)
+  const computerTurn = mode === 'bot' && !inMatch && !game.winner && game.turn === 2
   const nameOf = (s: Side) =>
-    room
-      ? room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? s === 1
-          ? 'Together'
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[s - 1])
-      : mode === 'bot'
-        ? s === 1
+        : s - 1 === lm.view.you
           ? 'You'
-          : 'The computer'
-        : sides[s - 1]
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? s === 1
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[s - 1])
+        : mode === 'bot'
+          ? s === 1
+            ? 'You'
+            : 'The computer'
+          : sides[s - 1]
   const targets = picked === null ? [] : all.filter((m) => m.from === picked)
   const lit = new Set(targets.map((m) => m.to))
   const movable = new Set(all.map((m) => m.from))
@@ -169,6 +196,12 @@ export function BreakthroughDemo() {
           : 'You play from the bottom; the computer moves first this time…',
     )
   }
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
 
   const tap = (i: number) => {
     if (!yours) return
@@ -177,7 +210,10 @@ export function BreakthroughDemo() {
       return
     }
     const m = targets.find((x) => x.to === i)
-    if (m && room) {
+    if (m && inMatch) {
+      setPicked(null)
+      lm.play(m)
+    } else if (m && room) {
       // in the call the host decides: this asks it, and the board comes back with everybody's
       setPicked(null)
       lab.act({ t: 'move', move: m })
@@ -242,76 +278,86 @@ export function BreakthroughDemo() {
   const untouched = !last
   return (
     <div className={`lab-keys bt-room is-${saved.look}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['first', 'second']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                setMode('call')
-                setPicked(null)
-              }}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => {
+                  setMode('call')
+                  setPicked(null)
+                }}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (untouched || game.winner) fresh(mode, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <div className="lab-group" role="group" aria-label="Board size">
+              {SIZES.map((s) => (
+                <button
+                  key={s}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.size === s}
+                  onClick={() => {
+                    setSaved((x) => ({ ...x, size: s }))
+                    fresh(mode, saved.level, s)
+                  }}
+                >
+                  {s}×{s}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
             </button>
           )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge
+              demo="breakthrough"
+              settings={{ size: saved.size }}
+              levelNames={LEVEL_NAMES}
+            />
+          )}
         </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
-              <button
-                key={l}
-                className="btn btn-ghost"
-                aria-pressed={saved.level === l}
-                onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (untouched || game.winner) fresh(mode, l)
-                }}
-              >
-                {LEVEL_NAMES[l]}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <div className="lab-group" role="group" aria-label="Board size">
-            {SIZES.map((s) => (
-              <button
-                key={s}
-                className="btn btn-ghost"
-                aria-pressed={saved.size === s}
-                onClick={() => {
-                  setSaved((x) => ({ ...x, size: s }))
-                  fresh(mode, saved.level, s)
-                }}
-              >
-                {s}×{s}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={roomRules}
@@ -341,7 +387,7 @@ export function BreakthroughDemo() {
           </div>
         ))}
       </div>
-      {mode !== 'call' && (
+      {local && (
         <p className="mc-line" aria-live="polite">
           {line}
         </p>
@@ -388,7 +434,8 @@ export function BreakthroughDemo() {
           )
         })}
       </div>
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -396,7 +443,7 @@ export function BreakthroughDemo() {
           </span>
         </p>
       )}
-      {mode === 'bot' && last && !game.winner && level !== saved.level && (
+      {mode === 'bot' && !inMatch && last && !game.winner && level !== saved.level && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
 
