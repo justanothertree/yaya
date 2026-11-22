@@ -49,6 +49,8 @@ import { readSeaSettings, seaRules, type SeaGame } from '../../../src/gpu/seabat
 import { diceRules, type DiceGame } from '../../../src/gpu/diceRoom'
 import { total as yachtTotal } from '../../../src/gpu/yacht'
 import { yachtRules, type YachtGame } from '../../../src/gpu/yachtRoom'
+import { sum as shutSum } from '../../../src/gpu/shut'
+import { shutRules, type ShutGame } from '../../../src/gpu/shutRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -177,6 +179,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     rules: yachtRules,
     // the two cards' totals, the challenger's first
     score: (y: YachtGame) => `${yachtTotal(y.g.cards[0])}–${yachtTotal(y.g.cards[1])}`,
+  }),
+  shut: () => ({
+    rules: shutRules,
+    // what each box left up, the challenger's first: the lower wins
+    score: (g: ShutGame) => `${shutSum(g.up[0])}–${shutSum(g.up[1])}`,
   }),
 }
 
