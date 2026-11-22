@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NUDGE_GAP_MS, coalesce, nudgeTopic, readNudge } from './nudge'
+import { NUDGE_GAP_MS, coalesce, nudgeTopic, readNudge, readSaid } from './nudge'
 
 describe('the nudge on an open match', () => {
   it('is on the match’s own topic, which the policy reads back', () => {
@@ -25,6 +25,21 @@ describe('the nudge on an open match', () => {
       { seq: 3, move: 'e4' },
     ])
       expect(readNudge(bad), JSON.stringify(bad)).toBeNull()
+  })
+
+  it('says a chat line was written by its id alone: never its words, which the page reads from the server', () => {
+    expect(readSaid({ line: 1 })).toBe(1)
+    expect(readSaid({ line: 42 })).toBe(42)
+    for (const bad of [
+      null,
+      3,
+      {},
+      { line: 0 },
+      { line: 1.5 },
+      { line: '3' },
+      { line: 3, body: 'hi' },
+    ])
+      expect(readSaid(bad), JSON.stringify(bad)).toBeNull()
   })
 })
 

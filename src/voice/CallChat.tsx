@@ -19,6 +19,7 @@ export function CallChat({
   inRoom,
   err,
   songs,
+  focusBox = false,
   onClose,
 }: {
   roomId: string | null
@@ -28,6 +29,9 @@ export function CallChat({
   err: string | null
   /** the room's songs, when the call is in a chat room — see useCallMessages */
   songs?: Record<string, ChatSong>
+  /** put the focus in the box on opening — asked from the page, where the panel is far away in
+   *  the tab order (callChatOpen.ts); not from the dock's 💬, which it sits straight after */
+  focusBox?: boolean
   onClose: () => void
 }) {
   return (
@@ -61,6 +65,7 @@ export function CallChat({
         </p>
       )}
       <Composer
+        autoFocus={focusBox}
         placeholder={inRoom ? `Message ${roomName}` : 'Message the call'}
         onSend={(text) => (inRoom && roomId ? sendToThread(roomId, text) : sendCallChat(text))}
       />

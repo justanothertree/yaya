@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { idle, type Mode, type Rules, type Seat } from './room'
 import { rematchOf, tableLine, tableSeats, type Table, type TableWords } from './table'
 import { challenge } from '../matches/cloud'
+import { CallChatButton } from './CallChatButton'
 import { MATCH_NAMES } from '../matches/names'
 import { matchHash } from '../matches/words'
 
@@ -10,8 +11,8 @@ const byTurns = (sub: string) => Object.hasOwn(MATCH_NAMES, sub)
 
 /**
  * The lobby and the line under the board for any toy played in a call (room.ts): versus or
- * together, the computer's level, the two seats, a new game, carrying on alone, and what is
- * happening now — the same controls and the same words on every toy that plays online.
+ * together, the computer's level, the two seats, a new game, the call's chat, carrying on alone,
+ * and what is happening now — the same controls and the same words on every toy that plays online.
  *
  * Everything here asks the room; nothing decides. A button that would be refused (a watcher
  * picking a mode, anybody picking mid-game) is not shown, and the line says why it is not.
@@ -130,6 +131,7 @@ export function CallTable<G, M>(p: Props<G, M>) {
               ↻ New game
             </button>
           )}
+          <CallChatButton />
         </div>
       )}
       {leftAlone && p.onCarryOn && (

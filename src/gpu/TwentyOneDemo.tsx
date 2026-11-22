@@ -19,6 +19,21 @@ import {
 } from './twentyone'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import {
+  BET as DUEL_BET,
+  START as DUEL_START,
+  chipsOf,
+  offered,
+  playRound,
+  type RoundView,
+  type TwentyOneGame,
+} from './twentyoneDuel'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 type Phase = 'bet' | 'play' | 'dealer' | 'done'
 type Hand = { cards: Card[]; doubled: boolean; split: boolean; stake: number; result?: number }
@@ -77,7 +92,20 @@ const say = (cards: Card[]) => {
   return `${t.soft ? 'soft ' : ''}${t.value}`
 }
 
+const MATCH_LEVELS = { easy: 'Easy', fair: 'Fair', hard: 'Hard · the book' }
+
 export function TwentyOneDemo() {
+  /* a duel by turns, when the address names one (src/lab/matches/useLabMatch.ts): the same rounds
+     from the same shoes for both sides, the shoes and the first side's play kept back by the
+     server (twentyoneDuel.ts) */
+  const lm = useLabMatch('twentyone', { preview: false })
+  // keyed by the match: another match starts with nothing of this one
+  if (lm.id) return <TwentyOneMatch key={lm.id} lm={lm} />
+  return <TwentyOneAlone />
+}
+
+function TwentyOneAlone() {
+  const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(TWENTYONE_KEY, readSaved)
   const [phase, setPhase] = useState<Phase>('bet')
   const [hands, setHands] = useState<Hand[]>([])
@@ -361,6 +389,9 @@ export function TwentyOneDemo() {
           >
             Deal {saved.bet} <kbd>N</kbd>
           </button>
+          {signedIn && (phase === 'bet' || phase === 'done') && (
+            <MatchChallenge demo="twentyone" settings={{}} levelNames={MATCH_LEVELS} />
+          )}
         </div>
       )}
 
@@ -439,6 +470,197 @@ export function TwentyOneDemo() {
         hand against every dealer card: over 200,000 hands it lost under 1% of each bet, where
         playing like the dealer lost 6%. You start with {START_CHIPS.toLocaleString()} play chips,
         and if they run out the bank starts you again. Keys: H, S, D and P; N deals.
+      </p>
+    </div>
+  )
+}
+
+/** what a round won, said in chips at the duel's bet */
+const wonWords = (won: number) =>
+  won > 0 ? `won ${won * DUEL_BET}` : won < 0 ? `lost ${-won * DUEL_BET}` : 'pushed'
+
+/** a round on the felt: the dealer, then the hands, the one being played marked */
+function RoundTable({ v, back, label }: { v: RoundView; back: Saved['back']; label: string }) {
+  return (
+    <div className="tw-table" aria-label={label}>
+      <section aria-label="The dealer">
+        <p className="tw-who">Dealer {v.over && <strong>{say(v.dealer)}</strong>}</p>
+        <div className="tw-cards">
+          {v.dealer.map((c, i) => (
+            <CardView key={i} c={c} back={back} />
+          ))}
+          {!v.over && <CardView c={0} hidden back={back} />}
+        </div>
+      </section>
+      <section aria-label="The hands" className="tw-mine">
+        {v.hands.map((h, i) => (
+          <div key={i} className={`tw-hand${i === v.active && !v.over ? ' is-active' : ''}`}>
+            <p className="tw-who">
+              {v.hands.length > 1 ? `Hand ${i + 1}` : 'Hand'} <strong>{say(h.cards)}</strong>
+              {h.doubled && <span className="muted"> · doubled</span>}
+            </p>
+            <div className="tw-cards">
+              {h.cards.map((c, k) => (
+                <CardView key={k} c={c} back={back} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+    </div>
+  )
+}
+
+/**
+ * A duel by turns: the same rounds, from the same shoes, for both sides against the dealer. My
+ * own rounds come from lab-move; the other side's are a count until the last round is done.
+ */
+function TwentyOneMatch({ lm }: { lm: LabMatch }) {
+  const [saved] = useKept(TWENTYONE_KEY, readSaved)
+  const x = lm.shown as TwentyOneGame | null
+  const together = lm.view?.mode === 'together'
+  const side: 0 | 1 = together ? 0 : lm.view?.you === 1 ? 1 : 0
+  const theirs: 0 | 1 = side === 0 ? 1 : 0
+  const them = !lm.view ? 'They' : together ? 'The computer' : otherName(lm.view)
+  const [mine, setMine] = useState<RoundView[] | null>(null)
+  const seq = lm.view?.seq
+  const status = lm.view?.status
+  useEffect(() => {
+    if (!lm.id || (status !== 'active' && status !== 'finished')) return
+    let live = true
+    myHidden(lm.id)
+      .then((d) => {
+        if (live) setMine(Array.isArray(d) ? (d as RoundView[]) : [])
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [lm.id, seq, status])
+  if (!x)
+    return (
+      <div className={`lab-keys tw-room is-${saved.felt}`}>
+        <MatchBar lm={lm} sides={['plays second', 'plays first']} />
+      </div>
+    )
+
+  const finished = !!x.shown
+  /* at the end everything is shown: both sides' rounds, from the seeds and the decisions */
+  const shownRounds = (s: 0 | 1) =>
+    x.shown ? x.shown.acts[s].map((a, r) => playRound(x.shown!.seeds[r], a)!) : null
+  const rounds = (finished ? shownRounds(side) : mine) ?? []
+  const cur = rounds.length && !rounds[rounds.length - 1].over ? rounds[rounds.length - 1] : null
+  const last = [...rounds].reverse().find((r) => r.over) ?? null
+  const lastAt = last ? rounds.lastIndexOf(last) : -1
+  const chips = DUEL_START + DUEL_BET * rounds.reduce((a, r) => a + (r.over ? (r.won ?? 0) : 0), 0)
+  const myGo = lm.canPlay && !!cur
+  const can = cur ? offered(cur) : []
+  const act = (a: Act) => {
+    if (!myGo || !can.includes(a) || lm.busy) return
+    void lm.commit({ act: a })
+  }
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('input, select, textarea')) return
+    const map: Record<string, Act> = { h: 'hit', s: 'stand', d: 'double', p: 'split' }
+    const a = map[e.key.toLowerCase()]
+    if (!a || !myGo) return
+    e.preventDefault()
+    act(a)
+  }
+  const both = x.shown ? chipsOf(x.shown.seeds, x.shown.acts) : null
+  const myName = together ? 'You two' : 'You'
+  const line = (() => {
+    if (both) {
+      const [me, other] = [both[side], both[theirs]]
+      const how = `${myName} ${me}, ${them} ${other}.`
+      return me > other ? `🏆 ${how}` : me < other ? `${them} wins. ${how}` : `A draw. ${how}`
+    }
+    const lastWords = last
+      ? `Round ${lastAt + 1}: the dealer ${bust(last.dealer) ? 'bust' : `had ${say(last.dealer)}`} — ${together ? 'you two' : 'you'} ${wonWords(last.won ?? 0)}. `
+      : ''
+    if (myGo)
+      return `${lastWords}Round ${x.done[side] + 1} of ${x.rounds}: hit, stand, double or split.`
+    if (together && cur) return `${lastWords}Your partner is playing round ${x.done[side] + 1}.`
+    if (x.done[side] >= x.rounds)
+      return `${lastWords}Your rounds are done. ${them} plays the same shoes now, without seeing yours.`
+    return `${them} is playing the rounds first (${x.done[theirs]} of ${x.rounds}). Yours come next, from the same shoes; theirs stay hidden until yours are done.`
+  })()
+
+  return (
+    <div className={`lab-keys tw-room is-${saved.felt}`} onKeyDown={onKey}>
+      <MatchBar lm={lm} sides={['plays second', 'plays first']} />
+      <div className="tw-bank">
+        <span>
+          Chips <strong>{both ? both[side] : chips}</strong>
+        </span>
+        <span className="muted">
+          {DUEL_BET} a round · {myName.toLowerCase()} {x.done[side]} of {x.rounds} played · {them}{' '}
+          {x.done[theirs]} of {x.rounds}
+        </span>
+      </div>
+      {cur ? (
+        <RoundTable v={cur} back={saved.back} label={`Round ${x.done[side] + 1}`} />
+      ) : last ? (
+        <RoundTable v={last} back={saved.back} label={`Round ${lastAt + 1}, as it ended`} />
+      ) : null}
+      <p className="mc-line" aria-live="polite">
+        {line}
+      </p>
+      {myGo && (
+        <div className="lab-controls tw-acts">
+          {(['hit', 'stand', 'double', 'split'] as const).map((a) => (
+            <button
+              key={a}
+              className={a === 'hit' || a === 'stand' ? 'btn' : 'btn btn-ghost'}
+              disabled={!can.includes(a) || lm.busy}
+              onClick={() => act(a)}
+              aria-keyshortcuts={{ hit: 'H', stand: 'S', double: 'D', split: 'P' }[a]}
+            >
+              {ACT_NAMES[a][0].toUpperCase() + ACT_NAMES[a].slice(1)}{' '}
+              <kbd>{{ hit: 'H', stand: 'S', double: 'D', split: 'P' }[a]}</kbd>
+            </button>
+          ))}
+        </div>
+      )}
+      {finished && (
+        <table className="tw-duel">
+          <caption className="sr-only">Every round, in chips</caption>
+          <thead>
+            <tr>
+              <th scope="col">Round</th>
+              <th scope="col">{myName}</th>
+              <th scope="col">{them}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shownRounds(side)!.map((r, i) => {
+              const o = shownRounds(theirs)![i]
+              const cell = (v: RoundView) => {
+                const w = (v.won ?? 0) * DUEL_BET
+                const hands = v.hands
+                  .map((h) => (bust(h.cards) ? `${say(h.cards)} bust` : say(h.cards)))
+                  .join(' & ')
+                return `${hands} → ${w > 0 ? `+${w}` : w < 0 ? `−${-w}` : '0'}`
+              }
+              return (
+                <tr key={i}>
+                  <th scope="row">{i + 1}</th>
+                  <td>{cell(r)}</td>
+                  <td>{cell(o)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      <p className="muted lab-hint">
+        Duplicate twenty-one by turns: {x.rounds} rounds, and each round’s shoe is shuffled by the
+        server and dealt to both sides alike, {DUEL_BET} chips a round from {DUEL_START}. The luck
+        of the cards falls on you both; what is left between you is the decisions. The first side’s
+        rounds stay hidden until the second side’s are done. Keys: H, S, D and P.
+        {together
+          ? ' Together, you take the rounds in turn against the computer on the same shoes.'
+          : ''}
       </p>
     </div>
   )

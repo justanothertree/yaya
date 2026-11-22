@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-21 for Chronicle: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
+Last reviewed: 2026-11-22 for Chronicle: §24 records Evan's answers of that day and what was applied. Before that, 2026-11-21: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
 
 ---
 
@@ -1356,6 +1356,15 @@ The release record's line that CI "built a database from main's migrations" was 
 way. It is corrected on draft #112, and the release's conclusion stands, because its "same as
 production" checks were measured against production itself.
 
+✅ **21a AND 21b ANSWERED BY EVAN, 10 Nov 2026:** _"For 21a and 21b, write a short production fix
+plan (exact SQL, checks, rollback) on a draft and stop for my approval; apply nothing."_ The plan is
+`docs/2026-11-10-chronicle-21ab-fix-plan.md`, proven in CI on the dump plus the release. **Nothing is
+applied** until Evan approves it. 21c is not answered.
+
+✅ **21a AND 21b APPLIED 22 Nov 2026**, 8:01 AM EST, as `chronicle_moments_decimals` and
+`chronicle_entry_amount_negative`, after Evan's yes that morning. Checks A and B matched the plan,
+and a 3.5-mile walk reads "3.5 mi" on production. The record is in `supabase/migrations/`.
+
 ## 22. What the overnight layout sweep left for a decision (10 Nov 2026)
 
 The sweep covered every Chronicle and Circuit screen it could reach through the preview stand-ins:
@@ -1422,19 +1431,35 @@ It is a design call, so it is asked rather than built.
 
 ---
 
-## 23. Chronicle — everything still open, 21 Nov 2026
+## 23. Chronicle — everything still open (21 Nov 2026, answered 22 Nov)
 
 Swept against the code and `git log` rather than this file, because this file had fallen behind
 (§22a above) — and, as §22 now says, against main only, which is how an answer on an unmerged
 branch was missed. Everything in §14–§20 not listed here is answered and built, or answered and
 released. Nothing below can move without you.
 
-| §   | What it needs from you                                                                                                                                                                                                                                                                                                                                                                       | State                                              |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 21a | A yes to apply the migration in draft #137. Until then a 3.5-mile walk reads "4 mi" in the day's workout line                                                                                                                                                                                                                                                                                | Written and proven in CI on 10 Nov. Production SQL |
-| 21b | The same yes: it is in #137 with 21a. A negative amount's refusal says "count <NULL>"                                                                                                                                                                                                                                                                                                        | As 21a. Nothing in the room sends a negative       |
-| 21c | Run, or approve running, `supabase db dump --linked`, the first of the four steps in `supabase/baseline/README.md`, so CI tests the schema production has. Until then nothing applied since 4 Nov is in the database `db guards` runs against                                                                                                                                                | It reads production, so it is yours                |
-| 19e | Who "the person" is in "the person confirms from their own account". `claim_person` is already a member claiming a row as themself, so a claim made that way cannot confirm itself; the likeliest meaning is that the member who added the row confirms, but that is a guess. Building either half is production SQL, and the only thing waiting on it is the conversion, which waits on 20d | Answered 9 Nov, not built                          |
-| 20d | A cutover date for the conversion. 20e (what a restore does to a converted cell) waits on it too                                                                                                                                                                                                                                                                                             | Nothing converts until then                        |
-| 22d | Where a phone shows who gave a kudos                                                                                                                                                                                                                                                                                                                                                         | New, 21 Nov                                        |
-| 19f | The signed-in device checks, which grow with each build. The PRs since carry their own phone checklists (#434, #437, #440, #441, #444)                                                                                                                                                                                                                                                       | Only a signed-in phone can make them               |
+| §   | What it needs from you                                                                                                                                                                                                               | State                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| 21c | Answered yes 22 Nov. The dump needs Docker, which the machine this ran on does not have, so it stopped there as asked. It wants a machine with Docker and the linked CLI, then the README's four steps, the trigger recount included | Stopped, see §24                     |
+| 19e | Answered 22 Nov: admin approval first; the claimed person confirming is a separate step, not through `claim_person`; nothing moves on an unverified claim; any production SQL is asked first                                         | Not built                            |
+| 20d | Answered 22 Nov: no cutover date, no conversion, no freeze. The dry-run counts are in §24                                                                                                                                            | Not converting                       |
+| 19f | The signed-in device checks, which grow with each build. The PRs since carry their own phone checklists (#434, #437, #440, #441, #444, #451)                                                                                         | Only a signed-in phone can make them |
+
+---
+
+## 24. Evan's answers of 22 Nov 2026, and what was done with them
+
+Every apply below followed the plan's own steps: main merged in, CI green on the exact head,
+Check A on production, the guarded draft applied, Check B, the record PR released with the same
+flow, and the live result asked of production as a member in a transaction that rolled back.
+
+| What                         | Answer                                                                                                                                                                 | Done                                                                                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 21a, 21b (#137)              | Yes, apply                                                                                                                                                             | Applied 8:01 AM EST. A 3.5-mile walk logged on 1 Oct reads "3.5 mi"; a negative amount with nothing counted is no amount again                                                                    |
+| Activity refusals (#144)     | Yes, apply                                                                                                                                                             | Applied 8:30 AM EST. "an activity needs a name", "that is longer than a name — 60 characters", "that is longer than a unit — 16 characters"                                                       |
+| Goal refusals (#145)         | Yes, apply                                                                                                                                                             | Applied 8:49 AM EST. Title, target, unit and note each refused in a sentence                                                                                                                      |
+| Routine refusals (#146)      | Yes, apply                                                                                                                                                             | Applied 12:33 PM EST. A 99,999,999,999-minute step now saves held at 600, where it failed the save; the name is refused in words                                                                  |
+| 21c, regenerate the baseline | Yes, after the applies; stop if the dump needs Docker                                                                                                                  | **Stopped.** `supabase db dump` runs `pg_dump` inside Docker, and the machine this ran on has neither the CLI nor Docker. Not worked around: a hand-rolled `pg_dump` is what lost the 24 triggers |
+| 22d, who gave a kudos        | Yes, as recommended                                                                                                                                                    | Shipped in #451: a line above the open comments, and the names in each chip's accessible name                                                                                                     |
+| 20d, the conversion          | **No** cutover date, no conversion, no freeze of legacy writes                                                                                                         | A read-only dry run of the draft's own rules: 9 linked people; 4 would convert cleanly, 2 would stop on 3 entries whose exercise is gone, 3 have nothing; 178 cells; 525 imported day totals kept |
+| 19e, verifying a claim       | Not approval to apply. Admin approval first; the claimed person confirming is a separate step, never through `claim_person`; nobody's log moves on an unverified claim | Not built. Proposed as a draft of its own, starting with admin approval; any production SQL is asked first                                                                                        |
