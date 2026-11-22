@@ -69,7 +69,7 @@ select md5(pg_get_expr(polqual, polrelid) || '|' || pg_get_expr(polwithcheck, po
 \set ON_ERROR_STOP 1
 \echo '#### STAPLE APPLY'
 \ir ../../docs/2026-11-22-circuit-creator-staple.DRAFT.sql
-select '#### STAPLE policies AFTER ' || string_agg(polname || ':' || polcmd, ',' order by polname)
+select '#### STAPLE policies AFTER ' || string_agg(polname || ':' || polcmd::text, ',' order by polname)
   from pg_policy where polrelid = 'public.circuit_person_groups'::regclass;
 \echo '#### STAPLE THE TEST, which must pass'
 \ir circuit-creator-staple.sql
@@ -81,7 +81,7 @@ rollback;
 \set ON_ERROR_STOP 1
 \echo '#### STAPLE ROLLBACK'
 \ir ../../docs/2026-11-22-circuit-creator-staple.ROLLBACK.sql
-select '#### STAPLE ROLLED BACK policies ' || string_agg(polname || ':' || polcmd, ',' order by polname)
+select '#### STAPLE ROLLED BACK policies ' || string_agg(polname || ':' || polcmd::text, ',' order by polname)
     || ' cpg_write same ' || (select md5(pg_get_expr(polqual, polrelid) || '|' || pg_get_expr(polwithcheck, polrelid)) = :'cpg_before'
                               from pg_policy where polrelid = 'public.circuit_person_groups'::regclass and polname = 'cpg_write')
   from pg_policy where polrelid = 'public.circuit_person_groups'::regclass;
