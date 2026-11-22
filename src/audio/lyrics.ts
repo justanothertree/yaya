@@ -139,6 +139,9 @@ export type SungNote = {
   text: string
   hold: boolean
   whole?: boolean
+  /** the syllable starts a word, where its consonant is said a little more clearly; absent is a
+   *  start, so a line nobody split still sounds like words */
+  start?: boolean
 }
 
 /**
@@ -161,7 +164,15 @@ export function assignSyllables(
     const s = syls[i]
     if (s && !s.hold) {
       lastText = s.text
-      sung.push({ t: n.t, dur: n.dur, midi: n.midi, text: s.text, hold: false, whole: s.whole })
+      sung.push({
+        t: n.t,
+        dur: n.dur,
+        midi: n.midi,
+        text: s.text,
+        hold: false,
+        whole: s.whole,
+        start: s.start,
+      })
     } else {
       sung.push({
         t: n.t,

@@ -2726,7 +2726,7 @@ describe('a minute is counted on the raw time, then rounded', () => {
 })
 
 /**
- * ⚠️ BROWSING STAYS ON ITS OWNER'S SIDE OF THE CARD — docs/2026-11-14-card-hides-browsing.DRAFT.sql,
+ * ⚠️ BROWSING STAYS ON ITS OWNER'S SIDE OF THE CARD — docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql,
  * not applied yet. The workbench draws a friend's view, so the double leaves the site's own
  * activities out of all three figures, as the server will for anybody but the owner.
  */

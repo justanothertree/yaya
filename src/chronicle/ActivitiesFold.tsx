@@ -237,8 +237,8 @@ export function ActivitiesFold({
               {/**
                * ⚠️ AND THE SITE'S OWN ACTIVITIES HAVE NO TICK AT ALL, because nothing reads their
                * level: the Feed, the Friends tab and the profile card all leave an `auto` activity
-               * out for anybody but its owner (docs/2026-11-13-feed-hides-browsing.DRAFT.sql and
-               * docs/2026-11-14-card-hides-browsing.DRAFT.sql). A tick there would be a control
+               * out for anybody but its owner (docs/applied/2026-11-13-feed-hides-browsing.DRAFT.sql and
+               * docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql). A tick there would be a control
                * that changes nothing. The level already stored is left alone — saving passes
                * `actShared` back as it was seeded — and Sharing no longer lists these either.
                */}

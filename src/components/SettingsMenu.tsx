@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { playCallSound, ringtoneEnabled, setRingtoneEnabled } from '../voice/ringtone'
+import { buzz, hapticsOn, offerVibration, setHaptics } from '../ui/haptics'
 
 import {
   effectiveStatus,
@@ -117,6 +118,7 @@ export function SettingsMenu({
    * scroll every time flair was on, so picking a style opens its own dialog instead */
   const [styleOpen, setStyleOpen] = useState(false)
   const [callSound, setCallSound] = useState(ringtoneEnabled)
+  const [haptics, setHapticsState] = useState(hapticsOn)
   const wrapRef = useRef<HTMLDivElement>(null)
   const cogRef = useRef<HTMLButtonElement>(null)
   /**
@@ -400,6 +402,28 @@ export function SettingsMenu({
         <span>🧘 Reduce motion</span>
         <span className={'nav-menu-switch' + (motionOff ? ' is-on' : '')} aria-hidden />
       </button>
+
+      {/* ⚠️ OFF UNTIL TURNED ON, and only on a touch device whose browser can vibrate — an iPhone cannot,
+          and a switch that does nothing there would look broken. Turning it on buzzes once, for
+          the reason Call sound below plays: a switch for something you cannot feel cannot be
+          judged. See src/ui/haptics.ts. */}
+      {offerVibration() && (
+        <button
+          className="nav-menu-row"
+          role="menuitemcheckbox"
+          aria-checked={haptics}
+          onClick={() => {
+            const next = !haptics
+            setHaptics(next)
+            setHapticsState(next)
+            if (next) buzz('tap')
+          }}
+          title="A short buzz when a timer starts or stops, a note is saved, or a goal is done"
+        >
+          <span>📳 Vibrate on taps</span>
+          <span className={'nav-menu-switch' + (haptics ? ' is-on' : '')} aria-hidden />
+        </button>
+      )}
 
       {/* Local to this menu rather than lifted into App: nothing else needs to know, and the
               sound module reads the same key it writes. Clicking it also PLAYS the sound — a

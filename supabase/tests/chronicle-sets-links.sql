@@ -2,8 +2,8 @@
 -- functions as seeded members.
 --
 -- ⛔ NEEDS BOTH DRAFTS APPLIED FIRST, in order, and refuses to run otherwise:
---      docs/2026-11-08-chronicle-sets.DRAFT.sql        (step 1)
---      docs/2026-11-09-chronicle-sets-links.DRAFT.sql  (step 2a)
+--      docs/applied/2026-11-08-chronicle-sets.DRAFT.sql        (step 1)
+--      docs/applied/2026-11-09-chronicle-sets-links.DRAFT.sql  (step 2a)
 -- Neither is applied to production. This runs only in a throwaway database built from the
 -- migrations and seed — the `db guards` CI job — and rolls back. NEVER against production.
 --
