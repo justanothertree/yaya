@@ -6,11 +6,14 @@ import {
   RECORD_SIZE,
   VAPID_SUBJECT,
   b64u,
+  deliveryFor,
   deriveKeys,
   encrypt,
+  failureNote,
   notePayload,
   outcomeOf,
   privateKey,
+  serviceSaid,
   unb64u,
   vapidAuthorization,
   vapidKeysAgree,
@@ -402,14 +405,107 @@ describe('VAPID (RFC 8292)', () => {
 })
 
 describe('what a push service’s answer means', () => {
-  it('201 and 202 are delivered, 404 and 410 are gone, and everything else is tried again', () => {
-    /* RFC 8030 §5 and §7.3; the rest are the answers a refused token, a rate limit, an oversized
-       body, an outage and a redirect come back as — each one a retry, never a lost device */
+  it('201 and 202 are delivered, 404 and 410 are gone', () => {
+    /* RFC 8030 §5 and §7.3 */
     expect([201, 202].map(outcomeOf)).toEqual(['delivered', 'delivered'])
     expect([404, 410].map(outcomeOf)).toEqual(['gone', 'gone'])
-    for (const status of [0, 200, 301, 400, 401, 403, 413, 429, 500, 502, 503]) {
-      expect(outcomeOf(status)).toBe('failed')
+  })
+
+  it('a malformed request, a refused token and an oversized body are final for that device', () => {
+    /* the same bytes, signed the same way, to the same subscription get the same answer again */
+    expect([400, 401, 403, 413].map(outcomeOf)).toEqual(['final', 'final', 'final', 'final'])
+  })
+
+  it('a rate limit, an outage and anything unexpected are tried again', () => {
+    for (const status of [429, 500, 502, 503, 504, 0, 200, 301, 302, 408]) {
+      expect(outcomeOf(status)).toBe('retry')
     }
+  })
+})
+
+describe('how long an alert is worth sending', () => {
+  /* the outbox's lease in docs/2026-11-22-phone-alerts.DRAFT.sql: the soonest a failed try comes
+     round again */
+  const LEASE = 2 * 60
+
+  it('sends what is left of the TTL, not the whole of it', () => {
+    expect(deliveryFor('ring', 0)).toEqual({ ttl: 60, urgency: 'high' })
+    expect(deliveryFor('ring', 10).ttl).toBe(50)
+    expect(deliveryFor('message', 3600).ttl).toBe(23 * 3600)
+    expect(deliveryFor('post', 0).urgency).toBe('normal')
+  })
+
+  it('never sends a ring a minute after it was due, so a retried ring is never sent', () => {
+    expect(deliveryFor('ring', 60).ttl).toBeLessThanOrEqual(0)
+    expect(deliveryFor('ring', 59.5).ttl).toBeLessThanOrEqual(0) // half a second is no TTL at all
+    expect(deliveryFor('ring', LEASE).ttl).toBeLessThanOrEqual(0)
+  })
+
+  it('stops every kind at its own TTL, and a kind it does not know at an hour', () => {
+    expect(deliveryFor('message', 24 * 3600).ttl).toBeLessThanOrEqual(0)
+    expect(deliveryFor('chronicle', 3600 - 1).ttl).toBe(1)
+    expect(deliveryFor('chronicle', 3600).ttl).toBeLessThanOrEqual(0)
+    expect(deliveryFor('something new', 0)).toEqual({ ttl: 3600, urgency: 'normal' })
+  })
+
+  it('never stretches a TTL for a clock that reads early, and treats a missing age as too old', () => {
+    expect(deliveryFor('ring', -30).ttl).toBe(60)
+    expect(deliveryFor('ring', Number.NaN).ttl).toBeLessThanOrEqual(0)
+    expect(deliveryFor('ring', undefined as unknown as number).ttl).toBeLessThanOrEqual(0)
+  })
+})
+
+describe('what is kept about a failure', () => {
+  /* a short token on purpose: nothing about it looks like a secret except that it is one */
+  const endpoint = 'https://fcm.googleapis.com/fcm/send/abc123:Z9'
+  const longEndpoint =
+    'https://updates.push.services.mozilla.com/wpush/v2/gAAAAABnQ0hX5vQk1Lq2Wb9Yc3Pz8Tf4Rm6Na7Kd'
+
+  it('is the status or the error’s name, and the push service’s host', () => {
+    expect(failureNote(endpoint, 403)).toBe('403 from fcm.googleapis.com')
+    expect(failureNote(endpoint, new DOMException('signal timed out', 'TimeoutError'))).toBe(
+      'TimeoutError from fcm.googleapis.com',
+    )
+    expect(failureNote(longEndpoint, 503)).toBe('503 from updates.push.services.mozilla.com')
+  })
+
+  it('never carries the endpoint, even when the error’s own message does', () => {
+    /* the shape of a failed fetch's message: the URL it was sending to, whole */
+    const thrown = new TypeError(`error sending request for url (${endpoint}): connection reset`)
+    const note = failureNote(endpoint, thrown)
+    expect(note).toBe('TypeError from fcm.googleapis.com')
+    expect(note).not.toContain('abc123')
+    /* a name that is not a word is not trusted to be one */
+    const odd = Object.assign(new Error('x'), { name: `Bad ${endpoint}` })
+    expect(failureNote(endpoint, odd)).toBe('Error from fcm.googleapis.com')
+    expect(failureNote(endpoint, endpoint)).toBe('Error from fcm.googleapis.com')
+    expect(failureNote(endpoint, null)).toBe('Error from fcm.googleapis.com')
+  })
+
+  it('logs the service’s sentence with the endpoint and anything token-shaped taken out', () => {
+    const sentence =
+      'the key in the authorization header does not correspond to the sender ID used to subscribe this user'
+    expect(serviceSaid(`  ${sentence}\n`, endpoint)).toBe(sentence.slice(0, 120))
+    const echoed = serviceSaid(`no such subscription: ${endpoint} (${longEndpoint})`, endpoint)
+    expect(echoed).not.toContain('abc123')
+    expect(echoed).not.toContain('gAAAAABnQ0hX')
+    expect(echoed.length).toBeLessThanOrEqual(120)
+  })
+
+  it('takes out a token the pattern alone cannot see: a Windows one, in the query, broken by %2b', () => {
+    const wns = 'https://wns2-par02p.notify.windows.com/w/?token=BQYAAAD%2bxYz7Kq%2fq1Qm%3d'
+    for (const echo of [wns, '/w/?token=BQYAAAD%2bxYz7Kq%2fq1Qm%3d']) {
+      const said = serviceSaid(`unknown channel ${echo}`, wns)
+      expect(said).not.toContain('BQYAAAD')
+      expect(said).not.toContain('xYz7Kq')
+      expect(said.startsWith('unknown channel')).toBe(true)
+    }
+  })
+
+  it('takes a token out before cutting the sentence short, so no half of one is left', () => {
+    const token = 'gAAAAABnQ0hX5vQk1Lq2Wb9Yc3Pz8Tf4Rm6Na7Kd'
+    const said = serviceSaid(`${'x '.repeat(55)}${token}`, endpoint)
+    expect(said).not.toContain(token.slice(0, 8))
   })
 })
 

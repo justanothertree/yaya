@@ -168,11 +168,11 @@ phone, with "Send a test".
 
 Not applied and not deployed. The client half (`sw.js`, "📱 Phone alerts") is built separately.
 
-- **`docs/2026-11-22-phone-alerts.DRAFT.sql`**: the three tables, plus `push_config`, all
-  deny-all. Member RPCs: `push_device_add`, `push_device_remove`, `push_devices_mine`,
-  `push_prefs_get`, `push_prefs_set` and `push_test`. Service-role RPCs: `push_claim`,
-  `push_done`, `push_device_ok` and `push_device_gone`. Admin RPC: `push_stuck`. Also the kick,
-  its statement trigger and the one-minute `push-sweep` cron.
+- **`docs/2026-11-22-phone-alerts.DRAFT.sql`**: the three tables, plus `push_deliveries` and
+  `push_config`, all deny-all. Member RPCs: `push_device_add`, `push_device_remove`,
+  `push_devices_mine`, `push_prefs_get`, `push_prefs_set` and `push_test`. Service-role RPCs:
+  `push_claim`, `push_delivery`, `push_device_gone`, `push_done` and `push_expire`. Admin RPC:
+  `push_stuck`. Also the kick, its statement trigger and the one-minute `push-sweep` cron.
 - **`supabase/tests/phone-alerts.sql`**, run by a new db-guards step after the draft is loaded.
   The visibility guards then run a second time, so H and K see the new functions.
 - **`supabase/functions/push/`**: `webpush.ts` (pure, WebCrypto only), its test, and `index.ts`.
@@ -184,13 +184,37 @@ Not applied and not deployed. The client half (`sw.js`, "📱 Phone alerts") is 
 - **`push_outbox.claimed_at`, a two-minute lease.** `for update skip locked` holds only inside
   the claiming transaction, and an RPC is its own transaction. Without the lease, two kicks a
   second apart would both deliver a row.
+- **Delivery is kept per device, in `push_deliveries`.** One row per alert per device that took
+  it, or refused it for good. The first version had one `sent_at` per alert, which was wrong both
+  ways: a phone that showed an alert was sent it again on every retry another phone needed (and a
+  ring buzzed again each time, because `sw.js` renotifies a ring), and one phone refusing for ever
+  held the alert unsent until it was counted stuck. Now:
+  - a retry goes only to the devices still waiting;
+  - an alert is sent when every live device has taken it or refused it for good;
+  - 400, 401, 403 and 413 are for good, recorded once and not retried;
+  - 404 and 410 mark the device gone, as before;
+  - 429, a 5xx, a timeout and anything else are retried, for that device only.
 - **Five tries, then the row stays unsent** and `push_stuck` counts it.
-- **`tag` is required.** A retried row reaches a phone that already had it. That is harmless only
-  because a notification with the same tag replaces the first without sounding again.
+- **A refusal for good is counted too** (`refused_day`, `last_refusal`). It finishes its row, so it is never "stuck", and a VAPID key the push services reject would refuse every device with a 401 or 403 and finish every row quietly. A broken queue must still show as a number.
+- **A retry sends what is left of the TTL, and a row with none left expires.** The age is
+  measured from when the row became due, on the database's clock. A ring has a minute and the
+  lease is two, so a ring is never sent on a retry. `expired_at`, not `sent_at`, because nobody
+  was sent it. `push_stuck` does not count it: the queue moved.
+- **`tag` is still required.** A device that took an alert is not sent it again, unless the
+  function was cut off between the push service's 201 and recording it. Then the retry sends it
+  again, and the tag makes the second replace the first without sounding. A ring would sound, but
+  a ring is never retried: its minute is gone before its lease is.
 - **Endpoints must belong to a push service** (FCM, Mozilla, Apple or Windows). The function
   POSTs to whatever is stored, so an endpoint is a member choosing where the server sends a
   request. `index.ts` does not follow redirects, for the same reason.
-- **Ten live devices per member.**
+- **Ten live devices per member, and 30 new devices a day.** Turning a device off keeps its row,
+  so the live cap alone let a member grow the table without limit. The daily cap counts gone ones.
+  Turning one of your own back on is not a new device.
+- **`op: 'send'` tells its caller nothing.** Anybody with the public anon key can call it, so it
+  answers `{"ok":true}` or a 503 `{"error":"not sent"}`. The tally and every reason go to the
+  function's log, without endpoints or keys.
+- **`last_error` never holds an endpoint.** It keeps a status or an error's name, and the push
+  service's host: `403 from fcm.googleapis.com`. A failed fetch's own message names the URL.
 - **`push_http_post`** wraps `net.http_post`. A test can replace it on a stack where pg_net
   belongs to someone else, so the kick's checks run on every stack.
 
@@ -209,40 +233,53 @@ p_chronicle)`** return the five booleans. A null argument leaves that kind as it
   - `42501`: suspended.
   - `22023`: not a push service, bad keys, or ten devices already.
   - `P0002`: no device.
-  - `PT429`: one test a minute; PostgREST answers HTTP 429.
+  - `PT429`: one test a minute, or 30 new devices in a day; PostgREST answers HTTP 429.
 - **What the phone receives** is JSON `{kind, title, body, url, tag}`. If it is too big, the body
   is shortened first.
 
 ### What was checked
 
-- **`webpush.test.ts`, 19 tests.**
+- **`webpush.test.ts`, 30 tests.**
   - Every intermediate value in RFC 8291 Appendix A, and the exact body in §5. The values were
     re-read from rfc-editor.org on 22 Nov.
   - A body the RFC's own browser key opens, with record size 4096 and the 0x02 delimiter.
   - The 4096-octet limit, with one octet over refused.
   - A VAPID JWT that verifies with its `k=`, for the service's origin, under a day, from
     `https://evancook.dev`.
-  - The status rule: 201 and 202 delivered, 404 and 410 gone, everything else retried.
+  - The status rule: 201 and 202 delivered, 404 and 410 gone, 400, 401, 403 and 413 final,
+    everything else retried.
+  - The TTL that is left: a ring is never sent a minute after it was due, or on a retry.
+  - What is kept about a failure: the status or error name and the host, never the endpoint, even
+    when the error's message carries it. The log line has the endpoint and token-shaped runs taken
+    out first.
 - **21 bugs were put back one at a time.** 20 turned it red. The one that stayed green was a
   signature check that always passes, because Node refuses a mismatched key pair at import before
   the signature is ever asked (measured). That half is unexercised until it runs on Deno.
+- **12 more for the review fixes** (22 Nov), all red: the final statuses, the TTL (whole, unguarded,
+  stretched, rounded), the error name, and four ways of leaving a token in the log line.
 - **`index.ts` typechecked** with strict settings and a stand-in for `Deno`. Nothing here can run
   it.
-- **The SQL has not run anywhere yet.** There is no Postgres on this machine. It was checked by
-  reading it against the 4 Nov baseline and the seed. Its first run will be CI's, on the draft PR.
+- **The SQL runs only in CI.** There is no Postgres on this machine. The first version held 99
+  checks there after one fix. The review fixes (per-device delivery, expiry, the daily cap) were
+  checked by reading them against the 4 Nov baseline and the seed. Their first run is CI's.
+- **A test that reads with a STABLE function must not write in the same expression.** The STABLE
+  read sees the snapshot from before the write. The "null label keeps the label" check did exactly
+  that, so it could not fail; it is two statements now, and so is every other such check.
 
 ### What waits for the secret, and for Evan's yes
 
 1. **Apply the draft as a migration** (ask first). Decide whether to trim `cron.job_run_details`
    at the same time. The sweep adds 1,440 rows a day, an estimated ~80 MB a year (not measured).
-   Trimming means a DELETE, so it is Evan's call.
+   Trimming means a DELETE, so it is Evan's call. `push_outbox` and `push_deliveries` also keep
+   every row, at roughly one outbox row per alert and one delivery row per alert per phone. That is
+   small for eight people; it is worth a look when the alerts of steps 3 to 6 are flowing.
 2. **Deploy `push`**, then diff `get_edge_function` against both files. Before the secret exists,
-   POST `{op: 'send'}` must answer the function's own 503 "phone alerts are not configured", and
-   it must claim nothing.
+   POST `{op: 'send'}` must answer the function's own 503 `{"error":"not sent"}`, the log must say
+   "phone alerts are not configured", and it must claim nothing.
 3. **Generate the VAPID pair locally and show Evan.** Then set the secrets `VAPID_PUBLIC_KEY` and
    `VAPID_PRIVATE_KEY`, and put the public half in `src/notify/vapid.ts`.
 4. **Fill `push_config`** with the function's URL and the anon key, as one UPDATE in the
    database. Then read the first kick back from `net._http_response`. It must be the function's
    answer, not the gateway's: the gateway refused the legacy anon JWT on 21 Aug. If it still
    does, deploy `push` with verify_jwt off. That costs nothing, because the key is public.
-5. **"Send a test" from the Pixel**, then check that `push_stuck` reads 0.
+5. **"Send a test" from the Pixel**, then check that `push_stuck` reads 0 stuck and 0 refused.

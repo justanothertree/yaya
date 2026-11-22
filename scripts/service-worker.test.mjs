@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
 
@@ -19,19 +19,79 @@ import { describe, expect, it } from 'vitest'
 const SRC = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8')
 const SITE = 'https://evancook.dev'
 
-/** a tab as `clients.matchAll` returns it, recording what was done to it */
-function tab({ focused = false, navigateFails = false } = {}) {
+/**
+ * push_outbox's limits, read out of the SQL that creates it — the table owns these numbers, so a
+ * test that typed them in beside the worker's would agree with whichever of the two was wrong.
+ * Every file that creates the table is read (the draft now, its migration once applied), and they
+ * must agree.
+ */
+function outboxLimits() {
+  const root = new URL('../', import.meta.url)
+  const files = [
+    ...readdirSync(new URL('docs/', root)).map((f) => `docs/${f}`),
+    ...readdirSync(new URL('supabase/migrations/', root)).map((f) => `supabase/migrations/${f}`),
+  ].filter((f) => f.endsWith('.sql'))
+  const found = []
+  for (const f of files) {
+    const sql = readFileSync(new URL(f, root), 'utf8')
+    const table = /create table public\.push_outbox \(([\s\S]*?)\n\);/.exec(sql)
+    if (!table) continue
+    const num = (re) => Number(re.exec(table[1])?.[1])
+    found.push({
+      title: num(/char_length\(title\) between 1 and (\d+)/),
+      body: num(/char_length\(body\) <= (\d+)/),
+      tag: num(/char_length\(tag\) between 1 and (\d+)/),
+      url: num(/char_length\(url\) <= (\d+)/),
+    })
+  }
+  expect(found.length, 'no SQL creates push_outbox').toBeGreaterThan(0)
+  for (const f of found) expect(f).toEqual(found[0])
+  for (const n of Object.values(found[0])) expect(n).toBeGreaterThan(0)
+  return found[0]
+}
+
+/** a character count in the outbox's unit — `char_length`, which is code points, not UTF-16 */
+const chars = (s) => Array.from(s).length
+
+/**
+ * The one window interaction a tap grants the worker. `focus()` and `openWindow()` each spend it,
+ * and a second is refused — Chromium's rule ("Not allowed to open a window"), and the reason a
+ * focus spent too early leaves the fallback with nothing.
+ */
+function allowance() {
+  const a = {
+    left: 0,
+    spend(what) {
+      if (a.left < 1) throw new Error(`Not allowed to ${what}`)
+      a.left -= 1
+    },
+  }
+  return a
+}
+
+/**
+ * a tab as `clients.matchAll` returns it, recording what was done to it. `navigate` resolves with
+ * a NEW client, as it does for the document it loads — so focusing the old one is visible here.
+ * `leaves` is a tab whose navigation ends up on another site, for which navigate resolves null.
+ */
+function tab({ focused = false, navigateFails = false, leaves = false } = {}) {
   const t = {
     focused,
     did: [],
+    allowance: null,
+    after: null,
     focus: async () => {
+      t.allowance.spend('focus a window')
       t.did.push('focus')
       return t
     },
     navigate: async (url) => {
       t.did.push(['navigate', url])
       if (navigateFails) throw new TypeError('not controlled')
-      return t
+      if (leaves) return null
+      t.after = tab({ focused })
+      t.after.allowance = t.allowance
+      return t.after
     },
   }
   return t
@@ -41,6 +101,8 @@ function worker({ tabs = [] } = {}) {
   const on = {}
   const shown = []
   const opened = []
+  const grant = allowance()
+  for (const t of tabs) t.allowance = grant
   const ctx = {
     URL,
     location: { origin: SITE },
@@ -59,6 +121,7 @@ function worker({ tabs = [] } = {}) {
     clients: {
       matchAll: async () => tabs,
       openWindow: async (url) => {
+        grant.spend('open a window')
         opened.push(url)
       },
       claim: async () => {},
@@ -71,6 +134,8 @@ function worker({ tabs = [] } = {}) {
   /** fire an event the way the browser does, and wait for whatever it asked to be waited for */
   async function fire(type, event) {
     const waits = []
+    /* only a tap may bring a window forward, and only once */
+    grant.left = type === 'notificationclick' ? 1 : 0
     on[type]({ ...event, waitUntil: (p) => waits.push(p) })
     await Promise.all(waits)
   }
@@ -91,7 +156,8 @@ describe('the worker', () => {
   it('listens for push, a tap, install and activate — and never for fetch', () => {
     const { on } = worker()
     /* ⚠️ the fetch half is the claim in the file's header: no fetch handler, so it can never
-       stand between anybody and the site, and never serve a stale build */
+       stand between anybody and the site, and never serve a stale build. Nor
+       pushsubscriptionchange, which a worker has no session to act on (the note at its foot). */
     expect(Object.keys(on).sort()).toEqual(['activate', 'install', 'notificationclick', 'push'])
   })
 })
@@ -162,17 +228,66 @@ describe('a push', () => {
     expect(w.shown[1].options.body).toBe('not json at all')
   })
 
-  it('cuts what it is given down to a size a phone can draw', async () => {
+  it('cuts what it is given to the outbox’s limits, and says so with "…"', async () => {
+    const max = outboxLimits()
+    const title = 'x'.repeat(5000)
+    const body = 'y'.repeat(50000)
+    const w = worker()
+    await w.fire('push', pushOf(JSON.stringify({ title, body, tag: 7 })))
+    const [shown] = w.shown
+    /* exactly the limit, the last of it the ellipsis, the rest the text as it was */
+    expect(chars(shown.title)).toBe(max.title)
+    expect(shown.title).toBe(title.slice(0, max.title - 1) + '…')
+    expect(chars(shown.options.body)).toBe(max.body)
+    expect(shown.options.body).toBe(body.slice(0, max.body - 1) + '…')
+    /* a tag that is not a string is no tag, rather than the number 7 coerced into a slot */
+    expect(shown.options.tag).toBeUndefined()
+  })
+
+  it('anything the outbox accepts arrives whole — counted in characters, as the outbox counts', async () => {
+    const max = outboxLimits()
+    /* each exactly at the limit in the outbox's unit and well past it in UTF-16's, since every
+       one of these emoji is one character and two code units: a cut made by `.length` would
+       shorten all four */
+    const title = '🔔'.repeat(max.title)
+    const body = '💬'.repeat(max.body)
+    const tag = '🔖'.repeat(max.tag)
+    const url = '#' + '🔔'.repeat(max.url - 1)
+    expect([title, body, tag, url].map(chars)).toEqual([max.title, max.body, max.tag, max.url])
+    expect(title.length).toBe(2 * max.title)
+    const w = worker()
+    await w.fire('push', pushOf(JSON.stringify({ title, body, tag, url })))
+    const [shown] = w.shown
+    expect(shown.title).toBe(title)
+    expect(shown.options.body).toBe(body)
+    expect(shown.options.tag).toBe(tag)
+    expect(shown.options.data.url).toBe(url)
+  })
+
+  it('one character over: text is cut on a character, an identifier is dropped', async () => {
+    const max = outboxLimits()
     const w = worker()
     await w.fire(
       'push',
-      pushOf(JSON.stringify({ title: 'x'.repeat(5000), body: 'y'.repeat(50000), tag: 7 })),
+      pushOf(
+        JSON.stringify({
+          kind: 'ring',
+          title: '🔔'.repeat(max.title + 1),
+          body: '💬'.repeat(max.body + 1),
+          tag: 't'.repeat(max.tag + 1),
+          url: '#' + 'u'.repeat(max.url),
+        }),
+      ),
     )
-    const [{ title, options }] = w.shown
-    expect(title.length).toBeLessThanOrEqual(100)
-    expect(options.body.length).toBeLessThanOrEqual(300)
-    /* a tag that is not a string is no tag, rather than the number 7 coerced into a slot */
-    expect(options.tag).toBeUndefined()
+    const [shown] = w.shown
+    expect(shown.title).toBe('🔔'.repeat(max.title - 1) + '…')
+    expect(shown.options.body).toBe('💬'.repeat(max.body - 1) + '…')
+    /* never half an emoji: a lone surrogate is not a character, and encodeURIComponent says so */
+    expect(() => encodeURIComponent(shown.title + shown.options.body)).not.toThrow()
+    /* a cut tag would be a different slot and a cut URL a different page: neither is kept */
+    expect(shown.options.tag).toBeUndefined()
+    expect(shown.options.renotify).toBeUndefined()
+    expect(shown.options.data.url).toBe('')
   })
 })
 
@@ -221,7 +336,9 @@ describe('a tap', () => {
     const front = tab({ focused: true })
     const w = worker({ tabs: [back, front] })
     await w.fire('notificationclick', tapOn('#chat?room=abc'))
-    expect(front.did).toEqual(['focus', ['navigate', 'https://evancook.dev/#chat?room=abc']])
+    /* navigated first, and what comes forward is the page it loaded, not the one it left */
+    expect(front.did).toEqual([['navigate', 'https://evancook.dev/#chat?room=abc']])
+    expect(front.after.did).toEqual(['focus'])
     expect(back.did).toEqual([])
     expect(w.opened).toEqual([])
   })
@@ -232,12 +349,24 @@ describe('a tap', () => {
     expect(w.opened).toEqual(['https://evancook.dev/#chronicle'])
   })
 
-  it('opens a window when the open tab will not navigate', async () => {
-    /* a tab the worker does not control rejects navigate — the tap must still land */
+  it('opens a window when the open tab will not navigate — with the tap’s one window still unspent', async () => {
+    /* a tab the worker does not control rejects navigate — the tap must still land. ⚠️ The fake
+       refuses a second window interaction as Chromium does, so a focus spent on the stuck tab
+       first makes this openWindow throw and the test go red */
     const stuck = tab({ navigateFails: true })
     const w = worker({ tabs: [stuck] })
     await w.fire('notificationclick', tapOn('#chat?room=abc'))
+    expect(stuck.did).toEqual([['navigate', 'https://evancook.dev/#chat?room=abc']])
     expect(w.opened).toEqual(['https://evancook.dev/#chat?room=abc'])
+  })
+
+  it('opens a window when the tab navigated somewhere that is not this site', async () => {
+    /* navigate resolves null then: there is no client of ours left to bring forward */
+    const away = tab({ leaves: true })
+    const w = worker({ tabs: [away] })
+    await w.fire('notificationclick', tapOn('#chronicle'))
+    expect(away.did).toEqual([['navigate', 'https://evancook.dev/#chronicle']])
+    expect(w.opened).toEqual(['https://evancook.dev/#chronicle'])
   })
 
   it('closes the alert, and a hostile link lands on the home page', async () => {

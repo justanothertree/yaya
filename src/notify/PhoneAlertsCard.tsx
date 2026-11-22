@@ -5,6 +5,7 @@ import {
   KINDS,
   makeAlerts,
   realBrowser,
+  testLine,
   type AlertsApi,
   type Kind,
   type Prefs,
@@ -159,15 +160,7 @@ export function PhoneAlertsCard() {
     setSay('Sending…')
     void api.sendTest().then((r) => {
       setBusy(null)
-      setSay(
-        r.ok
-          ? r.devices === 0
-            ? 'No device has alerts on.'
-            : 'Test sent. It should arrive within a minute.'
-          : r.why === 'not-yet'
-            ? 'Not switched on yet.'
-            : 'Couldn’t send. Try again.',
-      )
+      setSay(testLine(r))
     })
   }
 

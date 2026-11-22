@@ -18,29 +18,31 @@
 -- its checks H (nothing new anon-callable) and K (writers refuse a suspended member) are asked
 -- about these functions too.
 --
--- WHAT IT ADDS, in the house pattern (CLAUDE.md §3): four tables with RLS ON, ZERO policies and no
+-- WHAT IT ADDS, in the house pattern (CLAUDE.md §3): five tables with RLS ON, ZERO policies and no
 -- privileges for public, anon or authenticated — deny-all — reached only through SECURITY DEFINER
 -- functions.
 --
---   push_devices  one row per browser subscription: the endpoint, its two keys, a label. A push
---                 service answering 404 or 410 marks it gone; nothing deletes a row.
---   push_prefs    one row per member, a boolean per kind of alert. No row means all on: turning
---                 alerts on at all was the opt-in.
---   push_outbox   one row per alert to one member. `not_before` is what will make a Chronicle alarm
---                 the same machinery as a message.
---   push_config   one row: the push function's URL and the project's public anon key, for the
---                 kick. Created empty; filled at the secret step, never from the repository.
+--   push_devices     one row per browser subscription: the endpoint, its two keys, a label. A push
+--                    service answering 404 or 410 marks it gone; nothing deletes a row.
+--   push_prefs       one row per member, a boolean per kind of alert. No row means all on: turning
+--                    alerts on at all was the opt-in.
+--   push_outbox      one row per alert to one member. `not_before` is what will make a Chronicle
+--                    alarm the same machinery as a message.
+--   push_deliveries  one row per alert per device that is finished with it: took it, or refused it
+--                    for good. What a retry leaves out, and what decides that a row is sent.
+--   push_config      one row: the push function's URL and the project's public anon key, for the
+--                    kick. Created empty; filled at the secret step, never from the repository.
 --
 -- WHO MAY DO WHAT.
 --   members   push_device_add, push_device_remove, push_devices_mine, push_prefs_get,
 --             push_prefs_set, push_test. Every writer refuses a suspended member except
 --             push_device_remove, which only stops alerts reaching one's own phone.
---   service   push_claim, push_done, push_device_ok, push_device_gone: the `push` function's four
---             doors, granted to service_role and nobody else.
+--   service   push_claim, push_delivery, push_device_gone, push_done, push_expire: the `push`
+--             function's five doors, granted to service_role and nobody else.
 --   admins    push_stuck: how many alerts are overdue, so a stuck queue is a number on a screen
 --             rather than a quiet phone (the five-day 401 in docs/2026-08-21-prices-without-the-
 --             edge-gateway.sql is why).
---   nobody    push_due, push_http_post, push_kick, push_outbox_kick: internal.
+--   nobody    push_due, push_waiting, push_http_post, push_kick, push_outbox_kick: internal.
 --
 -- ⚠️ ONE COLUMN THE PLAN DID NOT HAVE: push_outbox.claimed_at, A LEASE. The plan said rows are
 -- claimed `for update skip locked`, "so a send that overlaps the next can never deliver one twice".
@@ -49,10 +51,26 @@
 -- second apart would each claim the same row. So a claim also stamps claimed_at, and a row is not
 -- offered again for two minutes — which is also the wait before a failed row is retried.
 --
--- ⚠️ AND push_outbox.tag IS REQUIRED. A row is retried while any of its member's devices failed,
--- so a phone that had it gets it again; that is harmless only because the service worker shows it
--- under the same tag, which replaces the first without sounding again. A row with no tag would
--- break that silently, so the table refuses one.
+-- ⚠️ AND DELIVERY IS KEPT PER DEVICE, BECAUSE PER ROW WAS WRONG BOTH WAYS. The first draft had one
+-- sent_at for a row going to several phones, and a row was "sent" only when every phone took it on
+-- the same try. So a Pixel that showed an alert was sent it again on each retry while a tablet met
+-- 503s — and a ring buzzed again each time, because sw.js renotifies a ring on purpose — and a
+-- phone answering 403 for ever (a subscription made under another key) held every row of its
+-- member's unsent until the fifth try, then counted it stuck. Now each device that takes a row, or
+-- refuses it for good, gets a push_deliveries row; a retry goes only to the devices still waiting;
+-- and the row is sent when none are.
+--
+-- ⚠️ AND A ROW CAN EXPIRE. Each kind has a TTL (supabase/functions/push/webpush.ts, `DELIVERY`),
+-- and a retry is sent with what is LEFT of it, measured from when the row became due — so a ring
+-- (a minute) is never sent on a retry two minutes later; the function calls push_expire instead.
+-- expired_at, not sent_at: nobody was sent it, and sent_at would say they were.
+--
+-- ⚠️ AND push_outbox.tag IS STILL REQUIRED, for a narrower reason than it was. A device that took an
+-- alert is not sent it again — unless the function was cut off between the push service's 201 and
+-- recording it, and then the retry does send it again. That second one is harmless only because
+-- the service worker shows it under the same tag, which replaces the first without sounding again.
+-- (Not a ring, which sw.js renotifies on purpose — but a ring is never retried: its minute is gone
+-- before its lease is.) A row with no tag would break that silently, so the table refuses one.
 --
 -- ⚠️ THE KICK MAY NEVER FAIL THE INSERT THAT CAUSED IT. An alert is queued inside the transaction
 -- of the thing it is about (a message, a note); if telling the push function could raise, a push
@@ -63,19 +81,21 @@
 -- WHAT DOES NOT CHANGE. No existing table, column, row, function or grant. Nothing queues an alert
 -- yet except "Send a test": messages, notes, rings, challenges and Chronicle are steps 3 to 6.
 --
--- AFTER APPLYING: add the four tables to block B of supabase/tests/visibility-guards.sql (it runs
+-- AFTER APPLYING: add the five tables to block B of supabase/tests/visibility-guards.sql (it runs
 -- before this draft in CI, so it cannot name them yet), and point the db-guards step at the
 -- migration instead of this file.
 --
 -- ROLLBACK, while nothing has used it:
 --   select cron.unschedule('push-sweep');   -- only where pg_cron is installed
---   drop table public.push_outbox, public.push_devices, public.push_prefs, public.push_config cascade;
+--   drop table public.push_deliveries, public.push_outbox, public.push_devices, public.push_prefs,
+--     public.push_config cascade;
 --   drop function public.push_device_add(text, text, text, text), public.push_device_remove(text),
 --     public.push_devices_mine(), public.push_prefs_get(),
 --     public.push_prefs_set(boolean, boolean, boolean, boolean, boolean), public.push_test(),
---     public.push_claim(int), public.push_done(bigint, text), public.push_device_ok(uuid),
---     public.push_device_gone(uuid), public.push_stuck(), public.push_http_post(text, jsonb, jsonb),
---     public.push_kick();
+--     public.push_waiting(bigint, uuid), public.push_claim(int),
+--     public.push_delivery(bigint, uuid, text), public.push_done(bigint, text),
+--     public.push_expire(bigint), public.push_device_gone(uuid), public.push_stuck(),
+--     public.push_http_post(text, jsonb, jsonb), public.push_kick();
 --   (the cascade takes push_due and the trigger with push_outbox; push_outbox_kick is then
 --   `drop function public.push_outbox_kick()`)
 
@@ -122,12 +142,35 @@ create table public.push_outbox (
   not_before timestamptz not null default now(),
   created_at timestamptz not null default now(),
   claimed_at timestamptz,
+  /* every live device of the member's took it or refused it for good (push_deliveries) */
   sent_at timestamptz,
+  /* its kind's TTL ran out before every device had it: given up on, and never sent late */
+  expired_at timestamptz,
   attempts int not null default 0 check (attempts >= 0),
-  last_error text check (last_error is null or char_length(last_error) <= 500)
+  /* a status or an error's name and a push service's host — never an endpoint (webpush.ts,
+     failureNote) */
+  last_error text check (last_error is null or char_length(last_error) <= 500),
+  check (sent_at is null or expired_at is null)
 );
-/* every reader of the queue asks about unsent rows only, and nothing deletes the sent ones */
-create index push_outbox_unsent on public.push_outbox (not_before) where sent_at is null;
+/* every reader of the queue asks about open rows only, and nothing deletes the finished ones */
+create index push_outbox_open on public.push_outbox (not_before)
+  where sent_at is null and expired_at is null;
+
+/* ⚠️ ONE ROW PER ALERT PER DEVICE THAT IS DONE WITH IT, and the absence of a row is "still
+   waiting" — so a retry goes only to the devices with none (push_waiting). ok_at: the push service
+   took it. final_error: it refused it in a way that will not change (400, 401, 403, 413), so that
+   device is not sent this alert again. Exactly one of the two. A device that met a 429 or a 5xx
+   gets no row: it is still waiting, and the retry is for it alone. */
+create table public.push_deliveries (
+  outbox_id bigint not null references public.push_outbox (id) on delete cascade,
+  device_id uuid not null references public.push_devices (id) on delete cascade,
+  ok_at timestamptz,
+  final_error text check (final_error is null or char_length(final_error) <= 500),
+  /* when it was recorded, so push_stuck can count recent refusals (below) */
+  at timestamptz not null default now(),
+  primary key (outbox_id, device_id),
+  check (num_nonnulls(ok_at, final_error) = 1)
+);
 
 create table public.push_config (
   id int primary key check (id = 1),
@@ -139,19 +182,21 @@ insert into public.push_config (id) values (1);
 alter table public.push_devices enable row level security;
 alter table public.push_prefs enable row level security;
 alter table public.push_outbox enable row level security;
+alter table public.push_deliveries enable row level security;
 alter table public.push_config enable row level security;
 
 -- ⚠️ EXPLICIT, BECAUSE THE SCHEMA'S DEFAULT ACL GRANTS EVERYTHING (CLAUDE.md §3): RLS refuses rows
 -- but never TRUNCATE, and `revoke … from public` does not reach anon in this project.
-revoke all on table public.push_devices, public.push_prefs, public.push_outbox, public.push_config
+revoke all on table public.push_devices, public.push_prefs, public.push_outbox,
+  public.push_deliveries, public.push_config
   from public, anon, authenticated;
 revoke all on sequence public.push_outbox_id_seq from public, anon, authenticated;
 
--- ── the queue's one rule ───────────────────────────────────────────────────────────────────
--- Due: unsent, its time has come, under five tries, and not claimed in the last two minutes (the
--- lease in the header). Written once, because push_claim takes what it says and push_kick asks
--- whether there is anything to take, and the two disagreeing would be a kick that wakes the
--- function for nothing or a row nothing ever wakes it for.
+-- ── the queue's two rules ───────────────────────────────────────────────────────────────────
+-- Due: neither sent nor expired, its time has come, under five tries, and not claimed in the last
+-- two minutes (the lease in the header). Written once, because push_claim takes what it says and
+-- push_kick asks whether there is anything to take, and the two disagreeing would be a kick that
+-- wakes the function for nothing or a row nothing ever wakes it for.
 create function public.push_due(o public.push_outbox)
 returns boolean
 language sql
@@ -159,9 +204,32 @@ stable
 set search_path = public, pg_temp
 as $$
   select o.sent_at is null
+     and o.expired_at is null
      and o.not_before <= now()
      and o.attempts < 5
      and (o.claimed_at is null or o.claimed_at <= now() - interval '2 minutes')
+$$;
+
+-- Waiting: the devices one row still has to reach — its member's live devices with no
+-- push_deliveries row for it. Written once for the same reason as push_due: push_claim sends to
+-- these and push_done calls the row sent when there are none, and the two disagreeing would be an
+-- alert marked sent that a phone never got, or a row that never finishes.
+--
+-- ⚠️ IT TAKES THE MEMBER AS WELL AS THE ROW so it never reads push_outbox. push_claim calls it in
+-- the same statement as the UPDATE that claims the row, and a STABLE function there reads the
+-- snapshot from BEFORE that update (CI met this shape in the tests once already). That is safe
+-- only while it reads nothing that statement writes, and keeping push_outbox out of it keeps it so.
+create function public.push_waiting(p_outbox bigint, p_user uuid)
+returns setof uuid
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  select d.id
+    from public.push_devices d
+   where d.user_id = p_user and d.gone_at is null
+     and not exists (select 1 from public.push_deliveries pd
+                      where pd.outbox_id = p_outbox and pd.device_id = d.id)
 $$;
 
 -- ── members ─────────────────────────────────────────────────────────────────────────────────
@@ -206,12 +274,24 @@ begin
       using errcode = '22023';
   end if;
 
-  /* one member's devices are counted one call at a time, so two tabs cannot both pass the cap */
+  /* one member's devices are counted one call at a time, so two tabs cannot both pass a cap */
   perform pg_advisory_xact_lock(hashtextextended('push_devices ' || me::text, 0));
   if (select count(*) from public.push_devices d
        where d.user_id = me and d.gone_at is null and d.endpoint <> v_endpoint) >= 10 then
     raise exception 'alerts are on for 10 devices already; turn one off first'
       using errcode = '22023';
+  end if;
+  /* ⚠️ AND THE ROWS, NOT ONLY THE LIVE ONES. The cap above counts devices that are on, and turning
+     one off keeps its row (nothing here deletes), so add-then-remove grew the table without limit
+     while never passing ten. So a member may also bring in at most 30 endpoints a day, gone ones
+     counted. created_at is when a row became this member's (a browser moved from another account
+     starts again), and an endpoint already theirs — turned back on, or its keys renewed — is not
+     a new row, so it never meets this. PT429: PostgREST answers HTTP 429. */
+  if not exists (select 1 from public.push_devices d where d.endpoint = v_endpoint and d.user_id = me)
+     and (select count(*) from public.push_devices d
+           where d.user_id = me and d.created_at > now() - interval '1 day') >= 30 then
+    raise exception 'alerts were turned on for 30 new devices today; try again tomorrow'
+      using errcode = 'PT429';
   end if;
 
   begin
@@ -381,9 +461,13 @@ end;
 $$;
 
 -- ── the push function's doors (service_role only) ──────────────────────────────────────────
--- Takes up to p_limit due rows, each with its member's live devices and their keys, and counts
--- the attempt. `skip locked` keeps two overlapping claims from waiting on each other; the lease
--- (claimed_at, see the header) is what keeps them from taking the same row.
+-- Takes up to p_limit due rows, each with the devices still waiting for it (push_waiting) and
+-- their keys, and counts the attempt. `skip locked` keeps two overlapping claims from waiting on
+-- each other; the lease (claimed_at, see the header) is what keeps them from taking the same row.
+--
+-- `age` is how long the row has been due, in seconds, on this clock: from not_before, or from
+-- created_at for a row queued after its own time. The function takes it off the kind's TTL, and a
+-- row with none left is expired rather than sent (webpush.ts, deliveryFor).
 create function public.push_claim(p_limit int default 50)
 returns jsonb
 language plpgsql
@@ -397,7 +481,7 @@ begin
   with picked as (
     select o.id
       from public.push_outbox o
-     where o.sent_at is null and public.push_due(o)
+     where o.sent_at is null and o.expired_at is null and public.push_due(o)
      order by o.not_before, o.id
      limit greatest(1, least(coalesce(p_limit, 50), 200))
        for update skip locked
@@ -406,17 +490,19 @@ begin
        set attempts = o.attempts + 1, claimed_at = now()
       from picked
      where o.id = picked.id
-    returning o.id, o.user_id, o.kind, o.title, o.body, o.url, o.tag, o.attempts
+    returning o.id, o.user_id, o.kind, o.title, o.body, o.url, o.tag, o.attempts,
+              greatest(0, round(
+                extract(epoch from now() - greatest(o.created_at, o.not_before))::numeric, 3)) as age
   )
   select coalesce(jsonb_agg(jsonb_build_object(
            'id', c.id, 'kind', c.kind, 'title', c.title, 'body', c.body, 'url', c.url,
-           'tag', c.tag, 'attempts', c.attempts,
+           'tag', c.tag, 'attempts', c.attempts, 'age', c.age,
            'devices', coalesce((
              select jsonb_agg(jsonb_build_object(
                       'id', d.id, 'endpoint', d.endpoint, 'p256dh', d.p256dh, 'auth', d.auth)
                     order by d.created_at, d.id)
-               from public.push_devices d
-              where d.user_id = c.user_id and d.gone_at is null), '[]'::jsonb))
+               from public.push_waiting(c.id, c.user_id) as w(id)
+               join public.push_devices d on d.id = w.id), '[]'::jsonb))
          order by c.id), '[]'::jsonb)
     into v
     from claimed c;
@@ -424,11 +510,64 @@ begin
 end;
 $$;
 
--- Finished with a row: p_error null means delivered (or nobody left to deliver to) and stamps
--- sent_at; anything else is kept in last_error and the row waits out its lease for another try,
--- until its fifth. Once only: a row already sent is not touched again. A success keeps the last
--- error, so a row that went on its third try still says what the first two met.
+-- One device is done with one row: p_error null means its push service took it, anything else
+-- that it refused it for good (webpush.ts, outcomeOf: 'final'). Either way that device is not
+-- offered the row again. Once only — the first answer stands — and only for a device that is the
+-- row's member's: false otherwise, and nothing is written. A device that took it gets last_ok_at.
+create function public.push_delivery(p_outbox bigint, p_device uuid, p_error text default null)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  n int;
+begin
+  insert into public.push_deliveries (outbox_id, device_id, ok_at, final_error)
+  select o.id, d.id, case when p_error is null then now() end, left(p_error, 500)
+    from public.push_outbox o
+    join public.push_devices d on d.id = p_device and d.user_id = o.user_id
+   where o.id = p_outbox
+  on conflict (outbox_id, device_id) do nothing;
+  get diagnostics n = row_count;
+  if n = 1 and p_error is null then
+    update public.push_devices d set last_ok_at = now() where d.id = p_device;
+  end if;
+  return n = 1;
+end;
+$$;
+
+-- Finished with a try at a row. ⚠️ WHETHER THE ROW IS SENT IS DECIDED HERE, FROM THE DEVICES, AND
+-- NOT BY THE CALLER: sent when no live device of the member's is still waiting (push_waiting) —
+-- every one took it or refused it for good — and otherwise left for the devices that are, once
+-- its lease runs out, until its fifth try. A member with no live device at all has nobody to wait
+-- for, so that row is sent too. p_error is only what last_error says about this try; a success
+-- keeps the last error, so a row that went on its third try still says what the first two met.
+-- Once only: a row already sent or expired is not touched. True when this call marked it sent.
 create function public.push_done(p_id bigint, p_error text default null)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_sent boolean;
+begin
+  update public.push_outbox o
+     set sent_at = case when not exists (select 1 from public.push_waiting(o.id, o.user_id))
+                        then now() end,
+         last_error = coalesce(left(p_error, 500), o.last_error)
+   where o.id = p_id and o.sent_at is null and o.expired_at is null
+  returning o.sent_at is not null into v_sent;
+  return coalesce(v_sent, false);
+end;
+$$;
+
+-- Too late to send: the kind's TTL ran out before every device had it (webpush.ts, deliveryFor).
+-- Once only, and never over a row already sent.
+create function public.push_expire(p_id bigint)
 returns boolean
 language plpgsql
 volatile
@@ -437,22 +576,8 @@ set search_path = public, pg_temp
 as $$
 begin
   update public.push_outbox o
-     set sent_at = case when p_error is null then now() end,
-         last_error = coalesce(left(p_error, 500), o.last_error)
-   where o.id = p_id and o.sent_at is null;
-  return found;
-end;
-$$;
-
-create function public.push_device_ok(p_id uuid)
-returns boolean
-language plpgsql
-volatile
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  update public.push_devices d set last_ok_at = now() where d.id = p_id;
+     set expired_at = now()
+   where o.id = p_id and o.sent_at is null and o.expired_at is null;
   return found;
 end;
 $$;
@@ -472,8 +597,9 @@ end;
 $$;
 
 -- ── watched, not trusted ────────────────────────────────────────────────────────────────────
--- Unsent alerts that were due more than five minutes ago. ⚠️ DUE, NOT CREATED: a Chronicle alarm
--- queued today for tomorrow is not late, and counting from created_at would call it stuck.
+-- Open alerts — neither sent nor expired — that were due more than five minutes ago. ⚠️ DUE, NOT
+-- CREATED: a Chronicle alarm queued today for tomorrow is not late, and counting from created_at
+-- would call it stuck. An expired row is not stuck either: the queue moved, and gave it up.
 create function public.push_stuck()
 returns jsonb
 language plpgsql
@@ -490,9 +616,19 @@ begin
              'stuck', count(*),
              'oldest_due', min(o.not_before),
              'last_error', (array_agg(o.last_error order by o.id desc)
-                              filter (where o.last_error is not null))[1])
+                              filter (where o.last_error is not null))[1],
+             /* ⚠️ REFUSALS ARE COUNTED TOO, because they are not stuck. 400, 401, 403 and 413 are
+                final for a device, so a row they end is finished, never late — and a VAPID key the
+                push services reject answers 401 or 403 for EVERY device, which would finish every
+                row quietly while "stuck" read zero. The whole point of this function is that a
+                broken queue shows as a number rather than a quiet phone. */
+             'refused_day', (select count(*) from public.push_deliveries d
+                              where d.final_error is not null and d.at > now() - interval '1 day'),
+             'last_refusal', (select d.final_error from public.push_deliveries d
+                               where d.final_error is not null order by d.at desc limit 1))
       from public.push_outbox o
-     where o.sent_at is null and o.not_before < now() - interval '5 minutes');
+     where o.sent_at is null and o.expired_at is null
+       and o.not_before < now() - interval '5 minutes');
 end;
 $$;
 
@@ -508,7 +644,7 @@ $$;
 -- refused the project's legacy anon JWT outright, UNAUTHORIZED_LEGACY_JWT, while pg_net reported
 -- nothing for five days (docs/2026-08-21-prices-without-the-edge-gateway.sql). So the first kick
 -- after push_config is filled is read back from net._http_response, and it must be the function's
--- OWN answer — its tally, or its 503 "phone alerts are not configured" — never the gateway's. If
+-- OWN answer — `{"ok":true}`, or its 503 `{"error":"not sent"}` — never the gateway's. If
 -- the gateway refuses, `push` can run with verify_jwt off, which gives nothing away here: the key
 -- it would check is public.
 --
@@ -552,8 +688,8 @@ begin
   end if;
   /* the cron asks every minute; waking the function for an empty queue would be 1,440 calls a day
      to do nothing */
-  if not exists (select 1 from public.push_outbox o where o.sent_at is null and public.push_due(o))
-  then
+  if not exists (select 1 from public.push_outbox o
+                  where o.sent_at is null and o.expired_at is null and public.push_due(o)) then
     return 'nothing due';
   end if;
   begin
@@ -597,12 +733,12 @@ create trigger push_outbox_kick
 -- ── who may call what ───────────────────────────────────────────────────────────────────────
 -- ⚠️ revoke … from public DOES NOT COVER anon in this project (CLAUDE.md §3): each is named.
 revoke all on function
-  public.push_due(public.push_outbox),
+  public.push_due(public.push_outbox), public.push_waiting(bigint, uuid),
   public.push_device_add(text, text, text, text), public.push_device_remove(text),
   public.push_devices_mine(), public.push_prefs_get(),
   public.push_prefs_set(boolean, boolean, boolean, boolean, boolean), public.push_test(),
-  public.push_claim(int), public.push_done(bigint, text),
-  public.push_device_ok(uuid), public.push_device_gone(uuid),
+  public.push_claim(int), public.push_delivery(bigint, uuid, text), public.push_done(bigint, text),
+  public.push_expire(bigint), public.push_device_gone(uuid),
   public.push_stuck(), public.push_http_post(text, jsonb, jsonb), public.push_kick(),
   public.push_outbox_kick()
   from public, anon, authenticated;
@@ -613,8 +749,8 @@ grant execute on function
   public.push_stuck()
   to authenticated;
 grant execute on function
-  public.push_claim(int), public.push_done(bigint, text),
-  public.push_device_ok(uuid), public.push_device_gone(uuid)
+  public.push_claim(int), public.push_delivery(bigint, uuid, text), public.push_done(bigint, text),
+  public.push_expire(bigint), public.push_device_gone(uuid)
   to service_role;
 
 -- ── the sweep ───────────────────────────────────────────────────────────────────────────────

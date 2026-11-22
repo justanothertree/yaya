@@ -4,17 +4,19 @@
  *
  * The server's half is three deny-all tables reached only through SECURITY DEFINER functions, an
  * outbox and a `push` edge function — docs/2026-11-22-phone-alerts.md. This file talks to it
- * through five RPCs and nothing else:
+ * through six RPCs and nothing else:
  *
  *   push_device_add(p_endpoint, p_p256dh, p_auth, p_label)   this device's subscription
  *   push_device_remove(p_endpoint)                            ...and taking it away
+ *   push_devices_mine()                                       [{ id, endpoint, label, created_at, last_ok_at }]
  *   push_prefs_get()                                          { ring, message, post, challenge, chronicle }
  *   push_prefs_set(p_ring?, p_message?, p_post?, p_challenge?, p_chronicle?)
  *   push_test()                                               queue a test alert to the member's devices
  *
- * ⚠️ IT SHIPS DARK. Until the VAPID key exists (src/notify/vapid.ts) `offer()` answers 'none' and
- * the card renders nothing; and until the migration is applied every one of those RPCs answers
- * "no such function", which `notYet` turns into "not switched on yet" rather than an error.
+ * ⚠️ IT SHIPS DARK. Until the VAPID key exists (src/notify/vapid.ts) `offer()` answers 'none',
+ * the card renders nothing and signing out asks nothing; and until the migration is applied every
+ * one of those RPCs answers "no such function", which `notYet` turns into "not switched on yet"
+ * rather than an error.
  *
  * ⚠️ THE BROWSER AND THE SERVER ARE BOTH PASSED IN (`makeAlerts(key, rpc, browser)`), so the
  * order of a switch-on — permission, then subscribe, then save — can be asked in vitest with
@@ -232,6 +234,35 @@ export function prefsOf(data: unknown): Prefs {
   return out
 }
 
+/**
+ * Does push_devices_mine's answer hold this endpoint? Anything that is not its list of rows —
+ * null, an error body, a row without an endpoint — holds nothing, so the switch reads off.
+ */
+export function listsEndpoint(data: unknown, endpoint: string): boolean {
+  return (
+    Array.isArray(data) &&
+    data.some((d: unknown) => !!d && (d as { endpoint?: unknown }).endpoint === endpoint)
+  )
+}
+
+/**
+ * What a refusal means to this page.
+ *
+ * - **'not-yet'**: no such function — see `notYet`.
+ * - **'no-device'**: P0002, which only push_test raises: no live device on the account.
+ * - **'too-soon'**: push_test's one-a-minute limit. Raised as SQLSTATE PT429, which PostgREST
+ *   turns into HTTP 429; either half is enough, since which one survives the trip is PostgREST's
+ *   business and not this file's.
+ */
+export type Refusal = 'not-yet' | 'no-device' | 'too-soon' | 'failed'
+
+export function refusalOf(error: RpcError, status?: number): Refusal {
+  if (notYet(error, status)) return 'not-yet'
+  if (error.code === 'P0002') return 'no-device'
+  if (error.code === 'PT429' || status === 429) return 'too-soon'
+  return 'failed'
+}
+
 // ── switching it on and off ─────────────────────────────────────────────────
 
 /** the parts of a PushSubscription this file uses, so a test can build one */
@@ -266,20 +297,49 @@ export type Browser = {
 
 export type Outcome =
   | { ok: true; devices?: number }
-  | { ok: false; why: 'not-yet' | 'denied' | 'failed'; message?: string }
+  | { ok: false; why: Refusal | 'denied'; message?: string }
 
 export type AlertsApi = {
   /** whether to offer alerts at all — 'none' while there is no key, whatever the browser */
   offer(): Support
   permission(): NotificationPermission | 'unsupported'
-  /** is THIS device subscribed, with the current key */
+  /** is THIS device subscribed, with the current key, AND on the signed-in member's account */
   onHere(): Promise<boolean>
   enable(): Promise<Outcome>
   disable(): Promise<Outcome>
   prefs(): Promise<Prefs | 'not-yet' | 'failed'>
   setPref(kind: Kind, on: boolean): Promise<Outcome>
   sendTest(): Promise<Outcome>
+  /**
+   * For signing out: take this browser off the account and unsubscribe it. Never rejects, and
+   * resolves within `ms` whatever the network is doing.
+   */
+  forgetHere(ms?: number): Promise<void>
 }
+
+/** what the card says after "Send a test" — here rather than in the card so a test can ask it */
+export function testLine(r: Outcome): string {
+  if (r.ok) return 'Test sent. It should arrive within a minute.'
+  switch (r.why) {
+    case 'no-device':
+      return 'No device has alerts on.'
+    case 'too-soon':
+      return 'One test a minute; try again shortly.'
+    case 'not-yet':
+      return 'Not switched on yet.'
+    default:
+      return 'Couldn’t send. Try again.'
+  }
+}
+
+/**
+ * How long signing out waits for this browser's alerts to be taken off the account.
+ *
+ * ⚠️ A CAP, NOT A DELAY: the usual wait is one RPC, and this is only what a stalled network can
+ * cost. It cannot be zero, because the call must leave while the session still has a token —
+ * after `auth.signOut()` it would go out as anon and be refused.
+ */
+export const FORGET_WITHIN_MS = 1000
 
 const messageOf = (e: unknown): string =>
   e instanceof Error ? e.message : typeof e === 'string' ? e : 'unknown error'
@@ -297,11 +357,7 @@ export function makeAlerts(key: string, rpc: Rpc, browser: Browser): AlertsApi {
     try {
       const { data, error, status } = await rpc(fn, args)
       if (!error) return { ok: true, data }
-      return {
-        ok: false,
-        why: notYet(error, status) ? 'not-yet' : 'failed',
-        message: error.message,
-      }
+      return { ok: false, why: refusalOf(error, status), message: error.message }
     } catch (e) {
       return { ok: false, why: 'failed', message: messageOf(e) }
     }
@@ -314,7 +370,18 @@ export function makeAlerts(key: string, rpc: Rpc, browser: Browser): AlertsApi {
     async onHere() {
       if (!usable()) return false
       const reg = await browser.existing()
-      return ours(reg ? await reg.pushManager.getSubscription() : null)
+      const sub = reg ? await reg.pushManager.getSubscription() : null
+      if (!sub || !ours(sub)) return false
+      /* ⚠️ THE BROWSER SAYING YES IS NOT ENOUGH; THE ACCOUNT HAS TO SAY IT TOO. A subscription
+         belongs to the browser, and the device row to whoever saved it last — so on a shared
+         browser the next member to sign in found the switch on and was told about nothing, while
+         the alerts went on going to the member before. The same for a device the push function
+         marked gone, and for a subscription the browser replaced on its own (sw.js says why it
+         cannot save that one). Read off in each case, the switch offers to turn on, and
+         push_device_add moves the row to whoever is signed in. A call that fails reads off as
+         well: turning on again costs one idempotent save, and on when it is not costs the alerts. */
+      const mine = await call('push_devices_mine')
+      return mine.ok && listsEndpoint(mine.data, sub.endpoint)
     },
 
     async enable() {
@@ -350,8 +417,9 @@ export function makeAlerts(key: string, rpc: Rpc, browser: Browser): AlertsApi {
         p_label: deviceLabel(hints),
       })
       if (!saved.ok) {
-        /* ⚠️ A SUBSCRIPTION THE SERVER DOES NOT KNOW ABOUT IS A SWITCH THAT READS ON AND DELIVERS
-           NOTHING, since `onHere` asks the browser. So it goes again, and the card says why. */
+        /* a subscription the account does not hold delivers nothing, and `onHere` reads it as
+           off; kept, it would only be a promise to the push service that nobody keeps. So it
+           goes again, and the card says why. */
         await sub.unsubscribe().catch(() => false)
         return saved
       }
@@ -394,6 +462,36 @@ export function makeAlerts(key: string, rpc: Rpc, browser: Browser): AlertsApi {
       const r = await call('push_test')
       if (!r.ok) return r
       return { ok: true, devices: typeof r.data === 'number' ? r.data : undefined }
+    },
+
+    async forgetHere(ms = FORGET_WITHIN_MS) {
+      /* no key, no subscription anybody could have made: nothing is asked, of the browser or the
+         server, until the feature exists */
+      if (!usable()) return
+      const work = (async () => {
+        const reg = await browser.existing()
+        const sub = reg ? await reg.pushManager.getSubscription() : null
+        if (!sub) return
+        /* ⚠️ ANY SUBSCRIPTION, NOT ONLY ONE UNDER THIS KEY OR ON THIS ACCOUNT. Whoever's it is,
+           nobody is signed in here once this finishes, and alerts must not go on arriving on a
+           browser its member has left. The server only marks the CALLER's own row gone, so
+           asking about somebody else's changes nothing there; the unsubscribe ends it here, and
+           the push service's 404 or 410 then ends it for the row that is left. Both at once,
+           because each is a network round trip and sign-out is waiting. */
+        await Promise.allSettled([
+          call('push_device_remove', { p_endpoint: sub.endpoint }),
+          sub.unsubscribe(),
+        ])
+      })()
+      await new Promise<void>((done) => {
+        const cap = setTimeout(done, ms)
+        void work
+          .catch(() => {})
+          .finally(() => {
+            clearTimeout(cap)
+            done()
+          })
+      })
     },
   }
 }

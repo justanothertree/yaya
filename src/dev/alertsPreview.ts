@@ -27,10 +27,12 @@ import {
  * `npm run build` by grepping `dist/` for `push.invalid`, which only this file says.
  *
  * Other states, set before a reload (the harness reads it once):
- *   localStorage.setItem('dev_alerts', 'not-yet')   every RPC answers "no such function"
- *   localStorage.setItem('dev_alerts', 'blocked')   the browser has notifications blocked
- *   localStorage.setItem('dev_alerts', 'install')   Safari on an iPhone, in a tab
- *   localStorage.setItem('dev_alerts', 'flaky')     every save fails
+ *   localStorage.setItem('dev_alerts', 'not-yet')     every RPC answers "no such function"
+ *   localStorage.setItem('dev_alerts', 'blocked')     the browser has notifications blocked
+ *   localStorage.setItem('dev_alerts', 'install')     Safari on an iPhone, in a tab
+ *   localStorage.setItem('dev_alerts', 'flaky')       every save fails
+ *   localStorage.setItem('dev_alerts', 'elsewhere')   this browser is subscribed, on another
+ *                                                     member's account: the switch reads off
  */
 export function alertsStandIn(): AlertsApi {
   const mode = window.localStorage.getItem('dev_alerts') ?? ''
@@ -45,27 +47,35 @@ export function alertsStandIn(): AlertsApi {
     mode === 'install'
       ? { serviceWorker: true, pushManager: false, notification: false, standalone: false }
       : { serviceWorker: true, pushManager: true, notification: true, standalone: undefined }
-  let permission: NotificationPermission = mode === 'blocked' ? 'denied' : 'default'
-  let registered = false
+  let permission: NotificationPermission =
+    mode === 'blocked' ? 'denied' : mode === 'elsewhere' ? 'granted' : 'default'
+  let registered = mode === 'elsewhere'
   let current: Sub | null = null
 
   const endpoint = 'https://push.invalid/alerts-stand-in/this-device'
+  const subscription = (): Sub => {
+    const s: Sub = {
+      endpoint,
+      options: { applicationServerKey: keyBytes.slice().buffer },
+      toJSON: () => ({ endpoint, keys: { p256dh: 'stand-in', auth: 'stand-in' } }),
+      unsubscribe: async () => {
+        if (current === s) current = null
+        return true
+      },
+    }
+    return s
+  }
+  /* 'elsewhere': the browser already holds a subscription under this key, which the account
+     below does not list — what a shared browser looks like to the next member to sign in */
+  if (mode === 'elsewhere') current = subscription()
+
   const reg: Reg = {
     pushManager: {
       getSubscription: async () => current,
       subscribe: async () => {
         await wait(250)
-        const s: Sub = {
-          endpoint,
-          options: { applicationServerKey: keyBytes.slice().buffer },
-          toJSON: () => ({ endpoint, keys: { p256dh: 'stand-in', auth: 'stand-in' } }),
-          unsubscribe: async () => {
-            current = null
-            return true
-          },
-        }
-        current = s
-        return s
+        current = subscription()
+        return current
       },
     },
   }
@@ -86,9 +96,11 @@ export function alertsStandIn(): AlertsApi {
     hints: async () => ({ ua: navigator.userAgent }),
   }
 
-  /* the server, in memory. Its defaults are the plan's: every kind on until turned off. */
+  /* the server, in memory. Its defaults are the plan's: every kind on until turned off. Its
+     refusals are the real one's, code and status, as PostgREST hands them to supabase-js. */
   const prefs = Object.fromEntries(KINDS.map(({ kind }) => [kind, true])) as Prefs
-  const devices = new Set<string>()
+  const devices = new Map<string, { id: string; label: string; created_at: string }>()
+  let lastTest = -Infinity
   const rpc: Rpc = async (fn, args = {}) => {
     await wait(300)
     if (mode === 'not-yet') {
@@ -98,7 +110,8 @@ export function alertsStandIn(): AlertsApi {
         status: 404,
       }
     }
-    if (mode === 'flaky' && fn !== 'push_prefs_get') {
+    /* the saves fail; the two reads still answer, so the card gets as far as its switches */
+    if (mode === 'flaky' && fn !== 'push_prefs_get' && fn !== 'push_devices_mine') {
       return { data: null, error: { code: 'XX000', message: 'stand-in failure' }, status: 500 }
     }
     switch (fn) {
@@ -111,13 +124,38 @@ export function alertsStandIn(): AlertsApi {
           if (typeof v === 'boolean') prefs[kind] = v
         }
         return { data: { ...prefs }, error: null }
-      case 'push_device_add':
-        devices.add(String(args.p_endpoint))
-        return { data: null, error: null }
+      case 'push_device_add': {
+        /* one row per endpoint, as `on conflict (endpoint)` keeps it */
+        const e = String(args.p_endpoint)
+        const had = devices.get(e)
+        const d = {
+          id: had?.id ?? `pv-device-${devices.size + 1}`,
+          label: String(args.p_label ?? had?.label ?? ''),
+          created_at: had?.created_at ?? new Date().toISOString(),
+        }
+        devices.set(e, d)
+        return { data: d.id, error: null }
+      }
       case 'push_device_remove':
-        devices.delete(String(args.p_endpoint))
-        return { data: null, error: null }
+        return { data: devices.delete(String(args.p_endpoint)), error: null }
+      case 'push_devices_mine':
+        return {
+          data: [...devices].map(([e, d]) => ({ ...d, endpoint: e, last_ok_at: null })),
+          error: null,
+        }
       case 'push_test':
+        /* in the real one's order: no device first, then the minute */
+        if (devices.size === 0) {
+          return {
+            data: null,
+            error: { code: 'P0002', message: 'alerts are not on for any device' },
+            status: 500,
+          }
+        }
+        if (Date.now() - lastTest < 60_000) {
+          return { data: null, error: { code: 'PT429', message: 'one test a minute' }, status: 429 }
+        }
+        lastTest = Date.now()
         return { data: devices.size, error: null }
     }
     return { data: null, error: { code: 'PGRST202', message: fn }, status: 404 }

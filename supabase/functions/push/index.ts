@@ -5,10 +5,12 @@
  * docs/2026-11-22-phone-alerts.DRAFT.sql. Deploy it as it is in git, this file and webpush.ts, and
  * then diff `get_edge_function` against both (CLAUDE.md §2).
  *
- *   POST { op: 'send' }   claim the rows that are due, seal each for each of its member's live
- *                         devices, POST them to the push services, and record what came back
+ *   POST { op: 'send' }   claim the rows that are due, seal each for each of its member's devices
+ *                         still waiting for it, POST them to the push services, and record what
+ *                         came back, device by device
  *
- * It answers `{ claimed, delivered, gone, failed }`, or `{ error }` with a status.
+ * It answers `{ ok: true }`, or `{ error: 'not sent' }` with a status. Nothing more, on purpose:
+ * see the next note.
  *
  * ⚠️ IT NEEDS NO USER, AND THAT IS THE DESIGN RATHER THAN A GAP. `send` only delivers what the
  * database has already queued, once, to the members it was queued for: the SQL that saw the event
@@ -17,13 +19,21 @@
  * empty the queue a moment sooner. That is what lets the outbox trigger and the one-minute cron
  * call it with that key from pg_net, with no secret in the database.
  *
- * ⚠️ AND SO IT USES THE SERVICE ROLE FOR EVERYTHING, through four functions granted to nobody
- * else: `push_claim`, `push_done`, `push_device_ok`, `push_device_gone`. There is no caller whose
- * `auth.uid()` could stand in, and the subscription keys it needs are not something any member
- * may read. Every rule — who, when, how often, how many tries — lives in those functions.
+ * ⚠️ AND SO IT TELLS ITS CALLER NOTHING. The caller is anybody with the anon key, which is in every
+ * page of the site. The first version answered with its tally — how many alerts were claimed,
+ * delivered, refused — and with the database's own error message, which together say how busy the
+ * queue is and how the function is failing to anyone who asks. pg_net reads none of it. Every
+ * figure and every reason goes to the function's log instead (`console`), which only the
+ * project's owner can read — and even there without an endpoint or a key.
  *
- * What is decided here is only the wire: the encryption and the VAPID token, which are in
- * webpush.ts so vitest can check them against RFC 8291's own worked example.
+ * ⚠️ AND IT USES THE SERVICE ROLE FOR EVERYTHING, through five functions granted to nobody else:
+ * `push_claim`, `push_delivery`, `push_device_gone`, `push_done` and `push_expire`. There is no
+ * caller whose `auth.uid()` could stand in, and the subscription keys it needs are not something
+ * any member may read. Every rule — who, when, how often, how many tries, when a row is finished —
+ * lives in those functions.
+ *
+ * What is decided here is only the wire: the encryption, the VAPID token, the TTL and what each
+ * answer means, which are in webpush.ts so vitest can check them without a push service.
  *
  * Secrets (set with `supabase secrets set`, never in the bundle or the repository — §3):
  *   VAPID_PUBLIC_KEY   base64url, the 65-octet public point; the same string the client uses
@@ -32,9 +42,12 @@
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
+  deliveryFor,
   encrypt,
+  failureNote,
   notePayload,
   outcomeOf,
+  serviceSaid,
   unb64u,
   vapidAuthorization,
   vapidKeysAgree,
@@ -67,6 +80,17 @@ const json = (body: unknown, status: number, origin: string | null) =>
   })
 
 /**
+ * The one failure a caller hears about, whatever it was. The reason is logged beside it, so the
+ * secret step can still tell "not configured" from "the keys are not a pair" — by reading the
+ * log, not the response. It is still a sentence only this function says, which is what tells it
+ * apart from the gateway's own 401 (CLAUDE.md §2).
+ */
+const notSent = (why: string, origin: string | null) => {
+  console.error(`push: not sent: ${why}`)
+  return json({ error: 'not sent' }, 503, origin)
+}
+
+/**
  * Rows taken per call. ⚠️ BOUNDED BY THE LEASE IN `push_claim`: a claimed row is not offered
  * again for two minutes, so everything taken here must be sent well inside that, or an
  * overlapping call could take it a second time. Fifty rows, sent in parallel, each request cut off
@@ -74,20 +98,6 @@ const json = (body: unknown, status: number, origin: string | null) =>
  */
 const PER_CALL = 50
 const PER_REQUEST_MS = 15_000
-
-/**
- * Per kind: how long a push service may hold a message for a phone that is off (`TTL`, seconds),
- * and how hard to wake it (`Urgency`, RFC 8030 §5.3). ⚠️ A RING GETS A MINUTE: a call nobody can
- * answer by then is not a call any more, and a phone switched on an hour later should not ring.
- */
-const DELIVERY: Record<string, { ttl: number; urgency: 'high' | 'normal' }> = {
-  ring: { ttl: 60, urgency: 'high' },
-  message: { ttl: 24 * 3600, urgency: 'high' },
-  chronicle: { ttl: 3600, urgency: 'high' },
-  test: { ttl: 600, urgency: 'high' },
-  post: { ttl: 24 * 3600, urgency: 'normal' },
-  challenge: { ttl: 24 * 3600, urgency: 'normal' },
-}
 
 type Device = { id: string; endpoint: string; p256dh: string; auth: string }
 type Row = {
@@ -98,6 +108,9 @@ type Row = {
   url: string | null
   tag: string | null
   attempts: number
+  /** seconds since the row became due, on the database's clock */
+  age: number
+  /** the member's live devices that have neither taken this row nor refused it for good */
   devices: Device[]
 }
 
@@ -125,20 +138,24 @@ Deno.serve(async (req) => {
      reason `pictures` gives: a pasted secret once carried a newline nothing displayed. */
   const publicKey = Deno.env.get('VAPID_PUBLIC_KEY')?.trim()
   const privateKey = Deno.env.get('VAPID_PRIVATE_KEY')?.trim()
-  if (!publicKey || !privateKey) {
-    return json({ error: 'phone alerts are not configured' }, 503, origin)
-  }
+  if (!publicKey || !privateKey) return notSent('phone alerts are not configured', origin)
   if (!(await vapidKeysAgree(publicKey, privateKey))) {
-    return json({ error: 'the two VAPID keys are not one pair' }, 503, origin)
+    return notSent('the two VAPID keys are not one pair', origin)
   }
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  if (!serviceKey) return json({ error: 'this project cannot send alerts yet' }, 503, origin)
+  if (!serviceKey) return notSent('no service role key', origin)
   const db = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey, {
     auth: { persistSession: false },
   })
 
+  /** a service door, whose refusal is logged rather than lost — there is nobody else to tell */
+  const call = async (fn: string, args: Record<string, unknown>) => {
+    const { error } = await db.rpc(fn, args)
+    if (error) console.error(`push: ${fn} failed: ${error.message}`)
+  }
+
   const { data, error } = await db.rpc('push_claim', { p_limit: PER_CALL })
-  if (error) return json({ error: error.message }, 500, origin)
+  if (error) return notSent(`push_claim: ${error.message}`, origin)
   const rows = (data ?? []) as Row[]
 
   /* one token per push service per call: the audience is the service, not the phone (webpush.ts) */
@@ -149,83 +166,132 @@ Deno.serve(async (req) => {
     return tokens.get(aud)!
   }
 
-  const tally = { claimed: rows.length, delivered: 0, gone: 0, failed: 0 }
+  const tally = { claimed: rows.length, delivered: 0, gone: 0, refused: 0, retry: 0, expired: 0 }
 
-  /** one device: what its push service said, as the database needs to hear it */
-  const deliver = async (d: Device, plaintext: Uint8Array, how: (typeof DELIVERY)[string]) => {
-    const res = await fetch(d.endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: await authFor(d.endpoint),
-        'Content-Encoding': 'aes128gcm',
-        'Content-Type': 'application/octet-stream',
-        TTL: String(how.ttl),
-        Urgency: how.urgency,
-      },
-      body: await encrypt({ plaintext, uaPublic: unb64u(d.p256dh), authSecret: unb64u(d.auth) }),
-      signal: AbortSignal.timeout(PER_REQUEST_MS),
-      /* ⚠️ NOT FOLLOWED. `push_device_add` checked this address against the push services before
-         storing it, and that check is the only thing standing between a member and "make the
-         server POST somewhere". A redirect would send the request to an address nothing checked,
-         so it is recorded as the failure it is. */
-      redirect: 'manual',
-    })
+  /**
+   * One device, and what its push service said, recorded for THAT DEVICE as soon as it is known.
+   * Returns the note to keep in the row's `last_error`, or null when there is nothing to say.
+   *
+   * ⚠️ RECORDED HERE, NOT AFTER THE LAST DEVICE ANSWERS. A device that took the alert is never
+   * offered that row again (`push_claim` leaves it out), and that only holds if the record exists
+   * before anything else can go wrong — a function cut off between a 201 and the end of the row
+   * would otherwise send the same alert to the same phone on the retry.
+   */
+  const deliver = async (
+    row: Row,
+    d: Device,
+    plaintext: Uint8Array,
+    how: ReturnType<typeof deliveryFor>,
+  ): Promise<string | null> => {
+    let sealed: Uint8Array<ArrayBuffer>
+    try {
+      sealed = await encrypt({ plaintext, uaPublic: unb64u(d.p256dh), authSecret: unb64u(d.auth) })
+    } catch (e) {
+      /* keys the table's shape check let through but that are not a point on the curve: the same
+         keys will fail the same way next time, so this device is done with this row */
+      const note = failureNote(d.endpoint, e)
+      tally.refused++
+      console.warn(`push: row ${row.id}, device ${d.id}: could not seal (${note})`)
+      await call('push_delivery', { p_outbox: row.id, p_device: d.id, p_error: note })
+      return note
+    }
+    let res: Response
+    try {
+      res = await fetch(d.endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: await authFor(d.endpoint),
+          'Content-Encoding': 'aes128gcm',
+          'Content-Type': 'application/octet-stream',
+          TTL: String(how.ttl),
+          Urgency: how.urgency,
+        },
+        body: sealed,
+        signal: AbortSignal.timeout(PER_REQUEST_MS),
+        /* ⚠️ NOT FOLLOWED. `push_device_add` checked this address against the push services before
+           storing it, and that check is the only thing standing between a member and "make the
+           server POST somewhere". A redirect would send the request to an address nothing checked,
+           so it is recorded as the failure it is. */
+        redirect: 'manual',
+      })
+    } catch (e) {
+      /* a timeout or a dropped connection: worth another try, for this device only */
+      const note = failureNote(d.endpoint, e)
+      tally.retry++
+      console.warn(`push: row ${row.id}, device ${d.id}: ${note}`)
+      return note
+    }
     const outcome = outcomeOf(res.status)
     if (outcome === 'delivered') {
       await res.body?.cancel()
       tally.delivered++
-      await db.rpc('push_device_ok', { p_id: d.id })
+      await call('push_delivery', { p_outbox: row.id, p_device: d.id })
       return null
     }
     /* marked gone rather than deleted, so nothing in this system deletes rows; and not an error for
-       the row, because the member's other devices may well have had it (webpush.ts says why) */
+       the row, because a device that is gone is no longer one of the member's devices at all */
     if (outcome === 'gone') {
       await res.body?.cancel()
       tally.gone++
-      await db.rpc('push_device_gone', { p_id: d.id })
+      await call('push_device_gone', { p_id: d.id })
       return null
     }
-    tally.failed++
-    /* the service's own sentence, briefly: FCM says which of VAPID, size or rate it disliked. The
-       host rather than the endpoint, because the endpoint is the one secret a device has. */
-    const said = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120)
-    return `${res.status} from ${new URL(d.endpoint).host}${said ? `: ${said}` : ''}`
+    const note = failureNote(d.endpoint, res.status)
+    const said = serviceSaid(await res.text().catch(() => ''), d.endpoint)
+    console.warn(`push: row ${row.id}, device ${d.id}: ${note}${said ? `: ${said}` : ''}`)
+    if (outcome === 'final') {
+      tally.refused++
+      await call('push_delivery', { p_outbox: row.id, p_device: d.id, p_error: note })
+    } else {
+      tally.retry++
+    }
+    return note
   }
 
   await Promise.all(
     rows.map(async (row) => {
+      /* nobody left waiting — every device took it, refused it, or went — so the row is finished,
+         and push_done says so from what the database holds rather than from anything said here */
+      if (row.devices.length === 0) {
+        await call('push_done', { p_id: row.id, p_error: null })
+        return
+      }
+      const how = deliveryFor(row.kind, row.age)
+      if (how.ttl <= 0) {
+        tally.expired++
+        await call('push_expire', { p_id: row.id })
+        return
+      }
       let plaintext: Uint8Array
       try {
         plaintext = notePayload(row)
       } catch (e) {
-        tally.failed++
-        await db.rpc('push_done', { p_id: row.id, p_error: String(e).slice(0, 500) })
+        /* the outbox's own limits make this unreachable, so it is left to fail loudly: kept for
+           another try, and after five `push_stuck` counts it. The note is webpush.ts's own
+           sentence, never anything from a device. */
+        tally.refused++
+        await call('push_done', {
+          p_id: row.id,
+          p_error: (e instanceof Error ? e.message : 'the alert would not fit').slice(0, 500),
+        })
         return
       }
-      const how = DELIVERY[row.kind] ?? { ttl: 3600, urgency: 'normal' }
-      const errors = (
-        await Promise.all(
-          row.devices.map((d) =>
-            deliver(d, plaintext, how).catch((e) => {
-              tally.failed++
-              return String(e).slice(0, 200)
-            }),
-          ),
-        )
+      const notes = (
+        await Promise.all(row.devices.map((d) => deliver(row, d, plaintext, how)))
       ).filter((e): e is string => e !== null)
       /**
-       * ⚠️ ONE FAILED DEVICE KEEPS THE ROW FOR ANOTHER TRY, EVEN IF ANOTHER DEVICE HAD IT. Marking
-       * it sent would lose the alert for the phone that missed it; retrying sends it again to the
-       * phone that did not. The second is harmless by construction: `sw.js` shows every alert
-       * under its `tag`, and a notification replacing one with the same tag does not sound again.
-       * A row with no live device at all is done — there is nobody left to tell.
+       * ⚠️ push_done DECIDES WHETHER THE ROW IS FINISHED, FROM THE DEVICES, NOT FROM THESE NOTES.
+       * A row is sent once every live device of its member has taken it or refused it for good;
+       * a device that met a 429 or a 5xx is still waiting, and is the only one the retry goes to.
+       * The notes are only what `last_error` says about this try.
        */
-      await db.rpc('push_done', {
+      await call('push_done', {
         p_id: row.id,
-        p_error: errors.length ? errors.join('; ').slice(0, 500) : null,
+        p_error: notes.length ? notes.join('; ').slice(0, 500) : null,
       })
     }),
   )
 
-  return json(tally, 200, origin)
+  console.log(`push: ${JSON.stringify(tally)}`)
+  return json({ ok: true }, 200, origin)
 })

@@ -269,26 +269,129 @@ export const notePayload = (note: Note): Uint8Array<ArrayBuffer> => {
   }
 }
 
+// ── how long an alert is worth sending ────────────────────────────────────────────────────
+
+/**
+ * Per kind: how long a push service may hold a message for a phone that is off (`ttl`, seconds),
+ * and how hard to wake it (`urgency`, RFC 8030 §5.3). ⚠️ A RING GETS A MINUTE: a call nobody can
+ * answer by then is not a call any more, and a phone switched on an hour later should not ring.
+ */
+export const DELIVERY: Record<string, { ttl: number; urgency: 'high' | 'normal' }> = {
+  ring: { ttl: 60, urgency: 'high' },
+  message: { ttl: 24 * 3600, urgency: 'high' },
+  chronicle: { ttl: 3600, urgency: 'high' },
+  test: { ttl: 600, urgency: 'high' },
+  post: { ttl: 24 * 3600, urgency: 'normal' },
+  challenge: { ttl: 24 * 3600, urgency: 'normal' },
+}
+const OTHER_KIND = { ttl: 3600, urgency: 'normal' } as const
+
+/**
+ * The `TTL` and `Urgency` for a row `age` seconds past the moment it became due (`push_claim`
+ * measures that, on the database's clock). `ttl` at or below zero means DO NOT SEND: `index.ts`
+ * records the row as expired instead.
+ *
+ * ⚠️ WHAT IS LEFT OF THE TTL, NOT THE TTL. A row is retried after a two-minute lease, so a ring
+ * whose first try met a 503 is two minutes old on its second — and sent with a fresh `TTL: 60` it
+ * would ring a phone switched on at minute three about a call that ended at minute one. The TTL is
+ * a promise about the alert, so the age it has already spent waiting comes off it.
+ *
+ * ⚠️ AN AGE THAT IS NOT A NUMBER IS TREATED AS TOO OLD. It can only mean `push_claim` and this
+ * file disagree about the row's shape, and the cost of guessing young is a ring nobody can answer.
+ */
+export const deliveryFor = (kind: string, age: number) => {
+  const how = DELIVERY[kind] ?? OTHER_KIND
+  const ttl = Number.isFinite(age) ? Math.floor(how.ttl - Math.max(0, age)) : 0
+  return { ttl, urgency: how.urgency }
+}
+
 // ── what a push service's answer means ────────────────────────────────────────────────────
 
 /**
  * One device's answer, as the database needs to hear it. Here rather than in `index.ts` so the
  * rule can be asked without a push service (CLAUDE.md §2: move the decision out).
  *
- *   delivered  201 or 202: the service took it (RFC 8030 §5) → `push_device_ok`
+ *   delivered  201 or 202: the service took it (RFC 8030 §5) → `push_delivery`, no error
  *   gone       404 or 410: the subscription is over for good (RFC 8030 §7.3) → `push_device_gone`
- *   failed     anything else, a refused token, a rate limit or an outage → kept for another try
+ *   final      400, 401, 403 or 413: this message will never be taken by this device as it stands
+ *              → `push_delivery` with the error, and that device is not offered this row again
+ *   retry      everything else — 429, a 5xx, a timeout, a redirect — for this device only
  *
  * ⚠️ GONE IS NOT A FAILURE OF THE ALERT. The phone unsubscribed or its app data was cleared, so
  * there is nothing to retry; retrying would spend the row's tries on a device that cannot answer.
+ *
+ * ⚠️ AND FINAL IS A FAILURE OF THE ALERT FOR ONE DEVICE, NOT A REASON TO HOLD THE ROW. Sending the
+ * same bytes, signed the same way, to the same subscription gets the same 400 (malformed), 401 or
+ * 403 (the token, or a subscription made under another key) or 413 (too big) — so retrying it
+ * spent all five of the row's tries and then left it stuck, while every OTHER device of the
+ * member's was sent it again each time. Recorded once, it lets the row finish.
  */
-export type Outcome = 'delivered' | 'gone' | 'failed'
+export type Outcome = 'delivered' | 'gone' | 'final' | 'retry'
+const FINAL = new Set([400, 401, 403, 413])
 export const outcomeOf = (status: number): Outcome =>
   status === 201 || status === 202
     ? 'delivered'
     : status === 404 || status === 410
       ? 'gone'
-      : 'failed'
+      : FINAL.has(status)
+        ? 'final'
+        : 'retry'
+
+/** the push service's host, which is all of an endpoint anything outside the device may keep */
+const hostOf = (endpoint: string): string => {
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return 'a push service'
+  }
+}
+
+/**
+ * What `last_error` and `push_deliveries.final_error` hold about one device: the status or the
+ * error's NAME, and the push service's HOST — `403 from fcm.googleapis.com`,
+ * `TimeoutError from fcm.googleapis.com`.
+ *
+ * ⚠️ NEVER THE ENDPOINT, AND NEVER AN ERROR'S MESSAGE. The endpoint is the one secret a device has,
+ * and Deno's message for a failed fetch names the URL it was sending to — so the first version,
+ * which kept `String(e)`, would have written a whole endpoint into a column `push_stuck` reads out
+ * to an admin. A name is a word; anything that is not one is called `Error`.
+ */
+export const failureNote = (endpoint: string, cause: unknown): string => {
+  const name =
+    typeof cause === 'number'
+      ? String(cause)
+      : typeof (cause as { name?: unknown } | null)?.name === 'string'
+        ? (cause as { name: string }).name
+        : ''
+  return `${/^[A-Za-z0-9]{1,40}$/.test(name) ? name : 'Error'} from ${hostOf(endpoint)}`
+}
+
+/**
+ * The push service's own sentence, for the function's LOG only — FCM says which of VAPID, size or
+ * rate it disliked, and nothing else does. ⚠️ A SERVICE MAY ECHO WHAT IT WAS SENT, so the
+ * endpoint, its path and query, and every token-like run (20 or more of the characters a token is
+ * made of) come out first, and only then is it cut short — cutting first could leave half a token
+ * behind. Both, because neither is enough alone: a Windows endpoint carries its token in the query
+ * with `%2b` and `%2f` through it, which breaks it into runs too short for the pattern to see.
+ */
+export const serviceSaid = (text: string, endpoint: string): string => {
+  let said = text
+  let rest = ''
+  try {
+    const url = new URL(endpoint)
+    rest = url.pathname + url.search
+  } catch {
+    /* not a URL: nothing more specific to take out than the rule below */
+  }
+  for (const secret of [endpoint, rest].filter((s) => s.length > 1)) {
+    said = said.split(secret).join('…')
+  }
+  return said
+    .replace(/[A-Za-z0-9_:=+/-]{20,}/g, '…')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+}
 
 // ── RFC 8292: VAPID ───────────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
--- Phone alerts, step 2 (docs/2026-11-22-phone-alerts.DRAFT.sql): who may reach the four tables
+-- Phone alerts, step 2 (docs/2026-11-22-phone-alerts.DRAFT.sql): who may reach the five tables
 -- and the functions, and whether each function does what the plan says, asked as every kind of
 -- caller — a member, a suspended member, a stranger to the row, anon, the push function's service
 -- role, and an admin.
@@ -9,7 +9,7 @@
 -- asked otherwise — and which of pg_net and pg_cron the stack had, because two checks depend on
 -- that and the log should say which way they went.
 --
--- ⚠️ A MEMBER HAS NO GRANT ON ANY OF THE FOUR TABLES (deny-all, the house pattern), so every member
+-- ⚠️ A MEMBER HAS NO GRANT ON ANY OF THE FIVE TABLES (deny-all, the house pattern), so every member
 -- section reads through the member's own RPCs, the way their browser does. What the tables hold is
 -- read as postgres between them.
 --
@@ -56,7 +56,7 @@ declare
   dev2 uuid;
   dev5 uuid;
   back uuid;
-  r1 bigint; r2 bigint; r3 bigint; r4 bigint; r5 bigint; r6 bigint;
+  r1 bigint; r2 bigint; r3 bigint; r4 bigint; r5 bigint; r6 bigint; r7 bigint;
   stuck0 int;
   first_ boolean;
   again_ boolean;
@@ -89,7 +89,7 @@ begin
   select string_agg(rl || ' has ' || pv || ' on ' || tb, ', ') into t
     from unnest(array['anon', 'authenticated']) rl,
          unnest(array['public.push_devices', 'public.push_prefs', 'public.push_outbox',
-                      'public.push_config']) tb,
+                      'public.push_deliveries', 'public.push_config']) tb,
          unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) pv
    where has_table_privilege(rl, tb, pv);
   if t is not null then
@@ -100,11 +100,11 @@ begin
   select count(*) into n
     from pg_class c join pg_namespace ns on ns.oid = c.relnamespace
    where ns.nspname = 'public' and c.relkind = 'r'
-     and c.relname in ('push_devices', 'push_prefs', 'push_outbox', 'push_config')
+     and c.relname in ('push_devices', 'push_prefs', 'push_outbox', 'push_deliveries', 'push_config')
      and c.relrowsecurity
      and not exists (select 1 from pg_policy pol where pol.polrelid = c.oid);
-  if n <> 4 then
-    fails := array_append(fails, format('1: %s of the 4 tables have RLS on and no policy', n));
+  if n <> 5 then
+    fails := array_append(fails, format('1: %s of the 5 tables have RLS on and no policy', n));
   end if;
 
   asked := asked + 1;
@@ -135,12 +135,15 @@ begin
       ('public.push_claim(integer)', 'service_role', true),
       ('public.push_claim(integer)', 'authenticated', false),
       ('public.push_claim(integer)', 'anon', false),
+      ('public.push_delivery(bigint, uuid, text)', 'service_role', true),
+      ('public.push_delivery(bigint, uuid, text)', 'authenticated', false),
+      ('public.push_delivery(bigint, uuid, text)', 'anon', false),
       ('public.push_done(bigint, text)', 'service_role', true),
       ('public.push_done(bigint, text)', 'authenticated', false),
       ('public.push_done(bigint, text)', 'anon', false),
-      ('public.push_device_ok(uuid)', 'service_role', true),
-      ('public.push_device_ok(uuid)', 'authenticated', false),
-      ('public.push_device_ok(uuid)', 'anon', false),
+      ('public.push_expire(bigint)', 'service_role', true),
+      ('public.push_expire(bigint)', 'authenticated', false),
+      ('public.push_expire(bigint)', 'anon', false),
       ('public.push_device_gone(uuid)', 'service_role', true),
       ('public.push_device_gone(uuid)', 'authenticated', false),
       ('public.push_device_gone(uuid)', 'anon', false),
@@ -150,6 +153,8 @@ begin
       ('public.push_http_post(text, jsonb, jsonb)', 'anon', false),
       ('public.push_due(public.push_outbox)', 'authenticated', false),
       ('public.push_due(public.push_outbox)', 'anon', false),
+      ('public.push_waiting(bigint, uuid)', 'authenticated', false),
+      ('public.push_waiting(bigint, uuid)', 'anon', false),
       ('public.push_outbox_kick()', 'authenticated', false),
       ('public.push_outbox_kick()', 'anon', false)
     ) want(fn, rl, ok)
@@ -266,12 +271,18 @@ begin
   end if;
   perform set_config('role', 'authenticated', true);
 
-  /* adding it again with no label keeps the label: null is "not saying", never "clear it" */
+  /* adding it again with no label keeps the label: null is "not saying", never "clear it".
+     ⚠️ TWO STATEMENTS. This was one expression, the add and push_devices_mine side by side, and
+     push_devices_mine is STABLE: it read the snapshot from before the add, saw the label the add
+     had not touched yet, and so could not fail for the thing it is named after. Reasoned, not run:
+     with the coalesce taken out of push_device_add, the one-expression form stays green. */
   asked := asked + 1;
-  if public.push_device_add(e1, good_key, good_auth) is distinct from id1
-     or (select x->>'label' from jsonb_array_elements(public.push_devices_mine()) x
-          where x->>'endpoint' = e1) is distinct from 'Pixel, Chrome' then
-    fails := array_append(fails, '2: adding a device again changed its id or lost its label');
+  back := public.push_device_add(e1, good_key, good_auth);
+  j := public.push_devices_mine();
+  if back is distinct from id1
+     or (select x->>'label' from jsonb_array_elements(j) x where x->>'endpoint' = e1)
+          is distinct from 'Pixel, Chrome' then
+    fails := array_append(fails, '2: adding a device again changed its id or lost its label: ' || j::text);
   end if;
 
   /* one toggle at a time: a null leaves the others alone */
@@ -345,9 +356,15 @@ begin
      the add it reads the snapshot from before the add and cannot see the row come back. CI's first
      run failed here on exactly that, with the function right. */
   back := public.push_device_add(e2, good_key, good_auth);
+  j := public.push_devices_mine();
   if back is distinct from dev2
-     or not exists (select 1 from jsonb_array_elements(public.push_devices_mine()) x where x->>'endpoint' = e2) then
+     or not exists (select 1 from jsonb_array_elements(j) x where x->>'endpoint' = e2) then
     fails := array_append(fails, '3: turning a removed device back on did not bring the same row back');
+  end if;
+  /* and its label with it: the same owner turning it back on with no label is not clearing one */
+  asked := asked + 1;
+  if (select x->>'label' from jsonb_array_elements(j) x where x->>'endpoint' = e2) is distinct from 'Firefox' then
+    fails := array_append(fails, '3: a device turned back on with no label lost its label: ' || j::text);
   end if;
 
   /* somebody else: they cannot remove it, and taking the browser over moves it to them */
@@ -427,6 +444,7 @@ begin
     'select public.push_devices_mine()', 'select public.push_prefs_get()',
     'select public.push_prefs_set()', 'select public.push_test()', 'select public.push_stuck()',
     'select public.push_claim(1)', 'select public.push_done(1, null)', 'select public.push_kick()',
+    'select public.push_delivery(1, gen_random_uuid())', 'select public.push_expire(1)',
     'select public.push_http_post(''https://example.com'', ''{}'', ''{}'')'
   ] loop
     asked := asked + 1;
@@ -439,8 +457,8 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', o_id, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
   foreach t in array array[
-    'select public.push_claim(1)', 'select public.push_done(1, null)',
-    'select public.push_device_ok(gen_random_uuid())', 'select public.push_device_gone(gen_random_uuid())',
+    'select public.push_claim(1)', 'select public.push_done(1, null)', 'select public.push_expire(1)',
+    'select public.push_delivery(1, gen_random_uuid())', 'select public.push_device_gone(gen_random_uuid())',
     'select public.push_kick()', 'select public.push_http_post(''https://example.com'', ''{}'', ''{}'')'
   ] loop
     asked := asked + 1;
@@ -452,16 +470,20 @@ begin
   end loop;
   perform set_config('role', 'postgres', true);
 
-  /* ------------------------------------------------------------------- 6. claim and done, as the push function */
-  -- the cast now: seedowner has e2 and e5, seedfriend has e1, seedstranger has no live device
-  insert into public.push_outbox (user_id, kind, title, body, url, tag)
-  values (o_id, 'message', 'From the test', 'one', '#chat', 'pa-1') returning id into r1;
+  /* ------------------------------------------------------------------- 6. claim, deliver and done, as the push function */
+  -- the cast now: seedowner has e2 (dev2) and e5 (dev5), seedfriend has e1 (id1), seedstranger has
+  -- no live device. ⚠️ ONE TRANSACTION, SO now() IS ONE INSTANT for everything below: an age read
+  -- back from a claim is exact, not approximately right.
+  insert into public.push_outbox (user_id, kind, title, body, url, tag, created_at, not_before)
+  values (o_id, 'message', 'From the test', 'one', '#chat', 'pa-1',
+          now() - interval '30 seconds', now() - interval '30 seconds') returning id into r1;
   insert into public.push_outbox (user_id, kind, title, url, tag, not_before)
   values (o_id, 'chronicle', 'Later', '#chronicle', 'pa-2', now() + interval '1 hour') returning id into r2;
   insert into public.push_outbox (user_id, kind, title, tag)
   values (f_id, 'post', 'For the friend', 'pa-3') returning id into r3;
-  insert into public.push_outbox (user_id, kind, title, tag)
-  values (s_id, 'ring', 'For nobody', 'pa-4') returning id into r4;
+  /* queued now for ten minutes ago: it has waited since it was queued, not since its time */
+  insert into public.push_outbox (user_id, kind, title, tag, not_before)
+  values (s_id, 'ring', 'For nobody', 'pa-4', now() - interval '10 minutes') returning id into r4;
 
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   perform set_config('role', 'service_role', true);
@@ -504,6 +526,15 @@ begin
      is distinct from 'From the test|one|#chat|pa-1|message' then
     fails := array_append(fails, '6: a claimed row does not carry what was queued');
   end if;
+  /* how long each has been due, which the function takes off its TTL: r1 was due 30 seconds ago,
+     r3 this instant, and r4 — due ten minutes before it was queued — has waited since it was queued */
+  asked := asked + 1;
+  if (select (x->>'age')::numeric from jsonb_array_elements(j) x where (x->>'id')::bigint = r1) is distinct from 30
+     or (select (x->>'age')::numeric from jsonb_array_elements(j) x where (x->>'id')::bigint = r3) is distinct from 0
+     or (select (x->>'age')::numeric from jsonb_array_elements(j) x where (x->>'id')::bigint = r4) is distinct from 0 then
+    fails := array_append(fails, '6: the claim''s ages are not how long each row has been due: '
+      || coalesce((select jsonb_agg(jsonb_build_object('id', x->'id', 'age', x->'age')) from jsonb_array_elements(j) x)::text, 'none'));
+  end if;
 
   /* ⚠️ THE LEASE: a second send a moment later must not take any of them again */
   asked := asked + 1;
@@ -512,32 +543,92 @@ begin
     fails := array_append(fails, '6: a row claimed a moment ago was claimed again, so two sends would both deliver it');
   end if;
 
+  /* one of seedowner's phones takes r1, and that is recorded once: the first answer stands */
   asked := asked + 1;
-  first_ := public.push_done(r1, null);
-  again_ := public.push_done(r1, null);
+  first_ := public.push_delivery(r1, dev2);
+  again_ := public.push_delivery(r1, dev2, '403 from updates.push.services.mozilla.com');
   if not first_ or again_ then
-    fails := array_append(fails, format('6: done is not once and only once (%s, then %s)', first_, again_));
+    fails := array_append(fails, format('6: a delivery is not recorded once and only once (%s, then %s)', first_, again_));
   end if;
+  /* and only for the row's own member's device: dev2 is seedowner's, r3 is seedfriend's */
   asked := asked + 1;
-  if not public.push_done(r3, '500 from fcm.googleapis.com') then
-    fails := array_append(fails, '6: a failure could not be recorded');
+  if public.push_delivery(r3, dev2) then
+    fails := array_append(fails, '6: a delivery was recorded for a device that is not the row''s member''s');
+  end if;
+  /* ⚠️ DONE ASKS THE DEVICES, NOT THE CALLER: with e5 still waiting, no error is not "sent" */
+  asked := asked + 1;
+  if public.push_done(r1, null) then
+    fails := array_append(fails, '6: done called r1 sent with one of seedowner''s phones still waiting');
   end if;
   perform set_config('role', 'postgres', true);
   asked := asked + 1;
-  if not exists (select 1 from public.push_outbox ob where ob.id = r1 and ob.sent_at is not null and ob.last_error is null)
-     or not exists (select 1 from public.push_outbox ob
-                     where ob.id = r3 and ob.sent_at is null and ob.attempts = 1
-                       and ob.last_error = '500 from fcm.googleapis.com') then
-    fails := array_append(fails, '6: done did not mark the delivered row sent and keep the failed one waiting');
+  if not exists (select 1 from public.push_outbox ob where ob.id = r1 and ob.sent_at is null)
+     or not exists (select 1 from public.push_deliveries pd
+                     where pd.outbox_id = r1 and pd.device_id = dev2
+                       and pd.ok_at is not null and pd.final_error is null)
+     or (select count(*) from public.push_deliveries pd where pd.outbox_id in (r1, r3)) <> 1
+     or not exists (select 1 from public.push_devices d where d.id = dev2 and d.last_ok_at is not null) then
+    fails := array_append(fails, '6: one phone taking r1 was not recorded as exactly that');
   end if;
 
-  /* the lease runs out, and the failed row is offered again */
+  /* ⚠️ THE RETRY GOES ONLY TO THE PHONE THAT HAS NOT HAD IT. The first draft sent it to both again,
+     so a phone that had shown an alert showed it again on every try a second phone failed. */
+  update public.push_outbox set claimed_at = now() - interval '121 seconds' where id = r1;
+  perform set_config('role', 'service_role', true);
+  asked := asked + 1;
+  j := public.push_claim(200);
+  select string_agg(d->>'endpoint', ' ') into t
+    from jsonb_array_elements(j) x, jsonb_array_elements(x->'devices') d where (x->>'id')::bigint = r1;
+  if t is distinct from e5 then
+    fails := array_append(fails, '6: r1''s retry went to ' || coalesce(t, 'nobody') || ', not only to e5, the phone still waiting');
+  end if;
+
+  /* e5 refuses it for good (a 403 is the same 403 on every try): nobody is waiting, so it is sent */
+  asked := asked + 1;
+  if not public.push_delivery(r1, dev5, '403 from fcm.googleapis.com') then
+    fails := array_append(fails, '6: a refusal for good could not be recorded');
+  end if;
+  asked := asked + 1;
+  first_ := public.push_done(r1, '403 from fcm.googleapis.com');
+  again_ := public.push_done(r1, null);
+  if not first_ or again_ then
+    fails := array_append(fails, format('6: with nobody waiting, done is not once and only once (%s, then %s)', first_, again_));
+  end if;
+  perform set_config('role', 'postgres', true);
+  asked := asked + 1;
+  if not exists (select 1 from public.push_outbox ob
+                  where ob.id = r1 and ob.sent_at is not null and ob.last_error = '403 from fcm.googleapis.com')
+     or not exists (select 1 from public.push_deliveries pd
+                     where pd.outbox_id = r1 and pd.device_id = dev5
+                       and pd.ok_at is null and pd.final_error = '403 from fcm.googleapis.com')
+     or exists (select 1 from public.push_devices d where d.id = dev5 and d.last_ok_at is not null) then
+    fails := array_append(fails, '6: a row one phone took and one refused for good is not sent, or does not say why');
+  end if;
+  perform set_config('role', 'service_role', true);
+
+  /* a 500 is worth another try, so r3's one phone is still waiting and r3 is not sent */
+  asked := asked + 1;
+  if public.push_done(r3, '500 from fcm.googleapis.com') then
+    fails := array_append(fails, '6: a row whose only phone met a 500 was called sent');
+  end if;
+  perform set_config('role', 'postgres', true);
+  asked := asked + 1;
+  if not exists (select 1 from public.push_outbox ob
+                  where ob.id = r3 and ob.sent_at is null and ob.attempts = 1
+                    and ob.last_error = '500 from fcm.googleapis.com') then
+    fails := array_append(fails, '6: done did not keep the failed row waiting, with what it met');
+  end if;
+
+  /* the lease runs out, and the failed row is offered again, to the same phone */
   update public.push_outbox set claimed_at = now() - interval '121 seconds' where id = r3;
   perform set_config('role', 'service_role', true);
   asked := asked + 1;
   j := public.push_claim(200);
-  if not exists (select 1 from jsonb_array_elements(j) x where (x->>'id')::bigint = r3 and (x->>'attempts')::int = 2) then
-    fails := array_append(fails, '6: a failed row was not tried again once its lease ran out');
+  if not exists (select 1 from jsonb_array_elements(j) x
+                  where (x->>'id')::bigint = r3 and (x->>'attempts')::int = 2
+                    and x->'devices' = jsonb_build_array(jsonb_build_object(
+                          'id', id1, 'endpoint', e1, 'p256dh', good_key, 'auth', good_auth))) then
+    fails := array_append(fails, '6: a failed row was not tried again, on its phone, once its lease ran out');
   end if;
   /* the fifth try is the last */
   perform set_config('role', 'postgres', true);
@@ -548,21 +639,84 @@ begin
   if exists (select 1 from jsonb_array_elements(j) x where (x->>'id')::bigint = r3) then
     fails := array_append(fails, '6: a row was tried a sixth time');
   end if;
-  /* the alarm's time comes */
+  /* the alarm's time comes. ⚠️ ITS AGE IS FROM WHEN IT WAS DUE, NOT WHEN IT WAS QUEUED: queued an
+     hour ago for twenty seconds ago, it is twenty seconds old — counted from created_at it would be
+     an hour, which is all of a Chronicle alarm's TTL, and it would be given up on unsent. */
   perform set_config('role', 'postgres', true);
-  update public.push_outbox set not_before = now() - interval '1 second' where id = r2;
+  update public.push_outbox
+     set created_at = now() - interval '1 hour', not_before = now() - interval '20 seconds'
+   where id = r2;
   perform set_config('role', 'service_role', true);
   asked := asked + 1;
   j := public.push_claim(200);
   if not exists (select 1 from jsonb_array_elements(j) x where (x->>'id')::bigint = r2) then
     fails := array_append(fails, '6: a scheduled row was not taken once its time came');
+  elsif (select (x->>'age')::numeric from jsonb_array_elements(j) x where (x->>'id')::bigint = r2) is distinct from 20 then
+    fails := array_append(fails, '6: an alarm queued an hour ago and due 20 seconds ago reads as '
+      || (select x->>'age' from jsonb_array_elements(j) x where (x->>'id')::bigint = r2) || ' seconds old');
   end if;
 
-  /* what the push services said about two devices */
+  /* ⚠️ A REFUSAL FOR GOOD IS NOT OFFERED AGAIN EITHER: e5 says 400, e2 meets a 503, and the retry
+     is e2's alone */
+  perform set_config('role', 'postgres', true);
+  insert into public.push_outbox (user_id, kind, title, tag)
+  values (o_id, 'message', 'Two answers', 'pa-16') returning id into r7;
+  perform set_config('role', 'service_role', true);
+  j := public.push_claim(200);
+  perform public.push_delivery(r7, dev5, '400 from fcm.googleapis.com');
   asked := asked + 1;
-  if not public.push_device_ok(dev2) then
-    fails := array_append(fails, '6: push_device_ok found nothing to mark');
+  if public.push_done(r7, '400 from fcm.googleapis.com; 503 from updates.push.services.mozilla.com') then
+    fails := array_append(fails, '6: a row was called sent with a phone that met a 503 still waiting');
   end if;
+  perform set_config('role', 'postgres', true);
+  update public.push_outbox set claimed_at = now() - interval '121 seconds' where id = r7;
+  perform set_config('role', 'service_role', true);
+  asked := asked + 1;
+  j := public.push_claim(200);
+  select string_agg(d->>'endpoint', ' ') into t
+    from jsonb_array_elements(j) x, jsonb_array_elements(x->'devices') d where (x->>'id')::bigint = r7;
+  if t is distinct from e2 then
+    fails := array_append(fails, '6: after e5 refused it for good, the retry went to ' || coalesce(t, 'nobody') || ', not only e2');
+  end if;
+
+  /* too late to send: the alarm expires, once, and is never offered or sent after that — even with
+     every phone done with it, which would otherwise make it sent */
+  asked := asked + 1;
+  first_ := public.push_expire(r2);
+  again_ := public.push_expire(r2);
+  if not first_ or again_ then
+    fails := array_append(fails, format('6: expire is not once and only once (%s, then %s)', first_, again_));
+  end if;
+  perform set_config('role', 'postgres', true);
+  update public.push_outbox set claimed_at = null where id = r2;
+  perform set_config('role', 'service_role', true);
+  asked := asked + 1;
+  j := public.push_claim(200);
+  if exists (select 1 from jsonb_array_elements(j) x where (x->>'id')::bigint = r2) then
+    fails := array_append(fails, '6: an expired row was offered again');
+  end if;
+  perform public.push_delivery(r2, dev2);
+  perform public.push_delivery(r2, dev5);
+  asked := asked + 1;
+  first_ := public.push_done(r2, null);
+  perform set_config('role', 'postgres', true);
+  if first_ or not exists (select 1 from public.push_outbox ob
+                            where ob.id = r2 and ob.sent_at is null and ob.expired_at is not null) then
+    fails := array_append(fails, '6: an expired row was marked sent');
+  end if;
+  perform set_config('role', 'service_role', true);
+  asked := asked + 1;
+  if public.push_expire(r1) then
+    fails := array_append(fails, '6: a row already sent was expired');
+  end if;
+
+  /* nobody to send to is nobody to wait for: seedstranger has no live device, so r4 is finished */
+  asked := asked + 1;
+  if not public.push_done(r4, null) then
+    fails := array_append(fails, '6: a row with no live device to wait for was not finished');
+  end if;
+
+  /* a push service says a device is gone */
   asked := asked + 1;
   first_ := public.push_device_gone(dev5);
   again_ := public.push_device_gone(dev5);
@@ -571,9 +725,9 @@ begin
   end if;
   perform set_config('role', 'postgres', true);
   asked := asked + 1;
-  if not exists (select 1 from public.push_devices d where d.id = dev2 and d.last_ok_at is not null and d.gone_at is null)
-     or not exists (select 1 from public.push_devices d where d.id = dev5 and d.gone_at is not null) then
-    fails := array_append(fails, '6: ok and gone were not recorded on the devices');
+  if not exists (select 1 from public.push_devices d where d.id = dev5 and d.gone_at is not null)
+     or not exists (select 1 from public.push_devices d where d.id = dev2 and d.gone_at is null) then
+    fails := array_append(fails, '6: gone was not recorded on the one device it was said of');
   end if;
   insert into public.push_outbox (user_id, kind, title, tag)
   values (o_id, 'message', 'After a phone went', 'pa-5') returning id into r5;
@@ -584,6 +738,12 @@ begin
     from jsonb_array_elements(j) x, jsonb_array_elements(x->'devices') d where (x->>'id')::bigint = r5;
   if t is distinct from e2 then
     fails := array_append(fails, '6: after a device went, seedowner''s next alert goes to ' || coalesce(t, 'nobody'));
+  end if;
+  /* and a phone that is gone is not waited for: e2 takes r5, and r5 is sent */
+  perform public.push_delivery(r5, dev2);
+  asked := asked + 1;
+  if not public.push_done(r5, null) then
+    fails := array_append(fails, '6: a row was held for a phone that is gone');
   end if;
   perform set_config('request.jwt.claims', json_build_object('sub', o_id, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
@@ -626,6 +786,50 @@ begin
     fails := array_append(fails, format('6: after the cap, seedstranger has %s live devices, not 10',
       jsonb_array_length(public.push_devices_mine())));
   end if;
+
+  /* ⚠️ AND THIRTY NEW ROWS A DAY, GONE ONES COUNTED. Turning one off and adding another never
+     passes ten live, and every one of those is a row kept for good. seedstranger has made twelve
+     today (e3, pa-cap-1 to pa-cap-11); eighteen more, each after turning one off, make thirty. */
+  asked := asked + 1;
+  t := 'https://fcm.googleapis.com/fcm/send/pa-cap-11';
+  begin
+    for i in 1..18 loop
+      perform public.push_device_remove(t);
+      t := 'https://fcm.googleapis.com/fcm/send/pa-day-' || i;
+      perform public.push_device_add(t, good_key, good_auth);
+    end loop;
+  exception when others then
+    fails := array_append(fails, format('6: the day''s cap refused a new device before thirty, at %s: %s %s', t, sqlstate, sqlerrm));
+  end;
+  /* the thirty-first, with only nine on */
+  asked := asked + 1;
+  perform public.push_device_remove(t);
+  begin
+    perform public.push_device_add('https://fcm.googleapis.com/fcm/send/pa-day-19', good_key, good_auth);
+    fails := array_append(fails, '6: a thirty-first new device in a day was added (the gone ones were not counted)');
+  exception when others then
+    if sqlstate <> 'PT429' or sqlerrm not like '%30 new devices%' then
+      fails := array_append(fails, '6: the thirty-first new device was refused for another reason: ' || sqlstate || ' ' || sqlerrm);
+    end if;
+  end;
+  /* turning one of their own back on is not a new row, so thirty does not stop it */
+  asked := asked + 1;
+  begin
+    perform public.push_device_add(t, good_key, good_auth);
+  exception when others then
+    fails := array_append(fails, '6: at thirty today, a device of their own could not be turned back on: ' || sqlerrm);
+  end;
+  /* and a day is a day: with e3 made 25 hours ago, the last day holds 29, and a new one fits */
+  perform set_config('role', 'postgres', true);
+  update public.push_devices set created_at = now() - interval '25 hours' where endpoint = e3 and user_id = s_id;
+  perform set_config('role', 'authenticated', true);
+  asked := asked + 1;
+  perform public.push_device_remove(t);
+  begin
+    perform public.push_device_add('https://fcm.googleapis.com/fcm/send/pa-day-19', good_key, good_auth);
+  exception when others then
+    fails := array_append(fails, '6: a new device was refused with only 29 made in the last day: ' || sqlerrm);
+  end;
   perform set_config('request.jwt.claims', json_build_object('sub', o_id, 'role', 'authenticated')::text, true);
 
   /* ------------------------------------------------------------------- 7. push_stuck, admin only */
@@ -640,12 +844,20 @@ begin
   -- not late: queued an hour ago for an hour from now, which counting from created_at would call stuck
   insert into public.push_outbox (user_id, kind, title, tag, created_at, not_before)
   values (o_id, 'chronicle', 'Tomorrow', 'pa-8', now() - interval '1 hour', now() + interval '1 hour');
+  -- not late: expired, though due long ago. The queue moved and gave it up; that is not stuck
+  insert into public.push_outbox (user_id, kind, title, tag, not_before, expired_at)
+  values (o_id, 'ring', 'Gave up', 'pa-17', now() - interval '10 minutes', now() - interval '9 minutes');
   perform set_config('role', 'authenticated', true);
   asked := asked + 1;
   j := public.push_stuck();
   if (j->>'stuck')::int is distinct from stuck0 + 1 or j->>'last_error' is distinct from 'pa-6 failed'
      or (j->>'oldest_due')::timestamptz > now() - interval '10 minutes' then
     fails := array_append(fails, format('7: with one alert late, push_stuck reads %s (it read %s stuck before)', j, stuck0));
+  end if;
+  /* the 403 recorded in section 6 finished its row; it must still show here, as a refusal */
+  asked := asked + 1;
+  if coalesce((j->>'refused_day')::int, 0) < 1 or j->>'last_refusal' is null then
+    fails := array_append(fails, format('7: a final refusal is not counted by push_stuck: %s', j));
   end if;
   perform set_config('request.jwt.claims', json_build_object('sub', f_id, 'role', 'authenticated')::text, true);
   asked := asked + 1;
@@ -758,8 +970,9 @@ begin
     fails := array_append(fails, '8: the kick asked for ' || coalesce((select jsonb_agg(to_jsonb(k)) from kicks k)::text, 'nothing'));
   end if;
 
-  /* nothing due, nothing sent: the cron's empty minute costs no function call */
-  update public.push_outbox set sent_at = now() where sent_at is null;
+  /* nothing due, nothing sent: the cron's empty minute costs no function call. Expired rows stay
+     as they are (a row is sent or expired, never both) and are not due either. */
+  update public.push_outbox set sent_at = now() where sent_at is null and expired_at is null;
   asked := asked + 1;
   t := public.push_kick();
   if t is distinct from 'nothing due' or (select count(*) from kicks) <> 1 then
@@ -773,7 +986,7 @@ begin
   if (select count(*) from kicks) <> 2 then
     fails := array_append(fails, format('8: a two-row insert kicked %s times, not once', (select count(*) from kicks) - 1));
   end if;
-  update public.push_outbox set sent_at = now() where sent_at is null;
+  update public.push_outbox set sent_at = now() where sent_at is null and expired_at is null;
   asked := asked + 1;
   insert into public.push_outbox (user_id, kind, title, tag, not_before)
   values (o_id, 'chronicle', 'In an hour', 'pa-13', now() + interval '1 hour');

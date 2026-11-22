@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  FORGET_WITHIN_MS,
   deviceLabel,
+  listsEndpoint,
   makeAlerts,
   notYet,
   prefsOf,
   sameKey,
   supportOf,
+  testLine,
   urlBase64ToUint8Array,
   type Browser,
   type Env,
@@ -194,12 +197,66 @@ describe('prefsOf', () => {
   })
 })
 
+describe('listsEndpoint', () => {
+  const here = 'https://fcm.googleapis.com/fcm/send/device-77'
+
+  it('finds this endpoint among the account’s rows, and only this one', () => {
+    expect(listsEndpoint([row('https://web.push.apple.com/QGx', 1), row(here, 2)], here)).toBe(true)
+    expect(listsEndpoint([row('https://web.push.apple.com/QGx', 1)], here)).toBe(false)
+    /* the same service, a different browser: exact, never a prefix */
+    expect(listsEndpoint([row(here + '8', 1)], here)).toBe(false)
+    expect(listsEndpoint([row(here.slice(0, -1), 1)], here)).toBe(false)
+  })
+
+  it('anything that is not the list of rows holds nothing', () => {
+    expect(listsEndpoint([], here)).toBe(false)
+    expect(listsEndpoint(null, here)).toBe(false)
+    expect(listsEndpoint(row(here), here)).toBe(false)
+    expect(listsEndpoint([null, 7, here, { id: 'x' }], here)).toBe(false)
+  })
+})
+
 // ── switching on and off, with a fake browser and a fake server ────────────
+
+/** a device row as push_devices_mine returns it, every field away from its default */
+const row = (endpoint: string, n = 1) => ({
+  id: `0000000${n}-aaaa-4bbb-8ccc-dddddddddddd`,
+  endpoint,
+  label: `Pixel ${n + 6}, Chrome`,
+  created_at: `2026-11-0${n}T08:15:00+00:00`,
+  last_ok_at: `2026-11-1${n}T21:40:00+00:00`,
+})
+
+/**
+ * The server in memory, keeping the one thing the switch now asks it: which endpoints are on the
+ * signed-in member's account (`mine` is what it starts with). A device on somebody else's
+ * account is simply not in that list, which is all push_devices_mine lets one member see.
+ */
+function server(mine: string[] = []) {
+  const devices = new Set(mine)
+  return {
+    devices,
+    answer: (fn: string, args: Record<string, unknown> = {}): RpcAnswer => {
+      switch (fn) {
+        case 'push_device_add':
+          devices.add(String(args.p_endpoint))
+          return { data: '11111111-2222-4333-8444-555555555555', error: null }
+        case 'push_device_remove':
+          return { data: devices.delete(String(args.p_endpoint)), error: null }
+        case 'push_devices_mine':
+          return { data: [...devices].map((e, i) => row(e, i + 1)), error: null }
+        case 'push_test':
+          return { data: 2, error: null }
+      }
+      return { data: null, error: null }
+    },
+  }
+}
 
 function fakes({
   permission = 'default' as NotificationPermission,
   grant = 'granted' as NotificationPermission,
-  answer = (fn: string): RpcAnswer => ({ data: fn === 'push_test' ? 2 : null, error: null }),
+  answer = server().answer as (fn: string, args?: Record<string, unknown>) => RpcAnswer,
   env = {
     serviceWorker: true,
     pushManager: true,
@@ -267,7 +324,7 @@ function fakes({
 
   const rpc = async (fn: string, args?: Record<string, unknown>) => {
     log.push(['rpc', fn, args])
-    return answer(fn)
+    return answer(fn, args)
   }
 
   return { log, browser, rpc, current: () => current }
@@ -324,9 +381,44 @@ describe('makeAlerts', () => {
     const api = makeAlerts(RFC_KEY, f.rpc, f.browser)
     const r = await api.enable()
     expect(r.ok === false && r.why).toBe('not-yet')
-    /* ⚠️ the switch reads the browser, so a subscription left here would read On and deliver nothing */
+    /* a subscription the account does not hold delivers nothing, so none is kept */
     expect(f.current()).toBeNull()
     expect(await api.onHere()).toBe(false)
+  })
+
+  it('a subscription the account does not hold reads off, and turning on saves it here', async () => {
+    /* a shared browser: subscribed under this key by the member before, so the browser says yes
+       and this member's account says nothing about it */
+    const f = fakes({ hadKey: urlBase64ToUint8Array(RFC_KEY), registered: true })
+    const api = makeAlerts(RFC_KEY, f.rpc, f.browser)
+    expect(await api.onHere()).toBe(false)
+    expect(f.log).toEqual([['rpc', 'push_devices_mine', undefined]])
+    f.log.length = 0
+    expect(await api.enable()).toEqual({ ok: true })
+    /* the same subscription, saved to whoever is signed in: no unsubscribe, no new subscribe */
+    expect(f.log.map((x) => (Array.isArray(x) ? x.slice(0, 2).join(' ') : x))).toEqual([
+      'ask',
+      'register',
+      'rpc push_device_add',
+    ])
+    expect(await api.onHere()).toBe(true)
+  })
+
+  it('the account is asked only about a subscription made under this key', async () => {
+    const f = fakes({ registered: true })
+    const api = makeAlerts(RFC_KEY, f.rpc, f.browser)
+    /* no subscription at all: nothing to ask the server about */
+    expect(await api.onHere()).toBe(false)
+    expect(f.log).toEqual([])
+  })
+
+  it('an account that cannot be asked reads off rather than on', async () => {
+    const f = fakes({
+      hadKey: urlBase64ToUint8Array(RFC_KEY),
+      registered: true,
+      answer: () => ({ data: null, error: { message: 'Failed to fetch' } }),
+    })
+    expect(await makeAlerts(RFC_KEY, f.rpc, f.browser).onHere()).toBe(false)
   })
 
   it('a subscription under an old key is replaced, not reused', async () => {
@@ -371,7 +463,107 @@ describe('makeAlerts', () => {
   it('a test reports how many devices it went to', async () => {
     const f = fakes()
     const api = makeAlerts(RFC_KEY, f.rpc, f.browser)
-    expect(await api.sendTest()).toEqual({ ok: true, devices: 2 })
+    const r = await api.sendTest()
+    expect(r).toEqual({ ok: true, devices: 2 })
+    expect(testLine(r)).toBe('Test sent. It should arrive within a minute.')
+  })
+
+  it('a test refused for no device, or for the minute, says which', async () => {
+    /* each refusal as PostgREST delivers it: P0002 is a plpgsql error, so HTTP 500 with the code
+       in the body; PT429 sets the status itself */
+    const said = async (answer: RpcAnswer) => {
+      const f = fakes({ answer: () => answer })
+      return testLine(await makeAlerts(RFC_KEY, f.rpc, f.browser).sendTest())
+    }
+    const err = (code: string | undefined, message: string) => ({ code, message })
+    expect(
+      await said({
+        data: null,
+        error: err('P0002', 'alerts are not on for any device'),
+        status: 500,
+      }),
+    ).toBe('No device has alerts on.')
+    expect(await said({ data: null, error: err('PT429', 'one test a minute'), status: 429 })).toBe(
+      'One test a minute; try again shortly.',
+    )
+    /* either half of the 429 is enough on its own */
+    expect(
+      await said({ data: null, error: err(undefined, 'Too Many Requests'), status: 429 }),
+    ).toBe('One test a minute; try again shortly.')
+    expect(await said({ data: null, error: err('PT429', 'one test a minute') })).toBe(
+      'One test a minute; try again shortly.',
+    )
+    /* and the rest are not mistaken for either */
+    expect(await said({ data: null, error: err('PGRST202', 'Could not find'), status: 404 })).toBe(
+      'Not switched on yet.',
+    )
+    expect(await said({ data: null, error: err('42501', 'suspended'), status: 403 })).toBe(
+      'Couldn’t send. Try again.',
+    )
+  })
+
+  it('signing out takes this device off the account and unsubscribes it', async () => {
+    const endpoint = 'https://fcm.googleapis.com/fcm/send/device-77'
+    const s = server()
+    const f = fakes({ answer: s.answer })
+    const api = makeAlerts(RFC_KEY, f.rpc, f.browser)
+    await api.enable()
+    expect(s.devices.has(endpoint)).toBe(true)
+    f.log.length = 0
+    await api.forgetHere()
+    expect(f.log).toContainEqual(['rpc', 'push_device_remove', { p_endpoint: endpoint }])
+    expect(f.log).toContainEqual(['unsubscribe', endpoint])
+    expect(s.devices.has(endpoint)).toBe(false)
+    expect(f.current()).toBeNull()
+  })
+
+  it('signing out unsubscribes even a subscription the account does not hold', async () => {
+    /* whoever's it was, nobody is signed in here afterwards */
+    const f = fakes({ hadKey: new Uint8Array(65).fill(7), registered: true })
+    await makeAlerts(RFC_KEY, f.rpc, f.browser).forgetHere()
+    expect(f.current()).toBeNull()
+  })
+
+  it('signing out waits for a stalled server only as long as the cap, and never throws', async () => {
+    const f = fakes({ hadKey: urlBase64ToUint8Array(RFC_KEY), registered: true })
+    const stalled: typeof f.rpc = async (fn, args) => {
+      await f.rpc(fn, args)
+      return await new Promise<RpcAnswer>(() => {})
+    }
+    const cap = 40
+    const t0 = performance.now()
+    await makeAlerts(RFC_KEY, stalled, f.browser).forgetHere(cap)
+    const took = performance.now() - t0
+    expect(took).toBeGreaterThanOrEqual(cap - 5)
+    expect(took).toBeLessThan(cap + 400)
+    /* the call did leave, while the session was still there to carry it */
+    expect(f.log).toContainEqual([
+      'rpc',
+      'push_device_remove',
+      { p_endpoint: 'https://fcm.googleapis.com/fcm/send/device-77' },
+    ])
+    /* a browser that throws is the same: sign-out goes on */
+    const broken = fakes()
+    broken.browser.existing = async () => {
+      throw new Error('service workers are disabled')
+    }
+    await expect(
+      makeAlerts(RFC_KEY, broken.rpc, broken.browser).forgetHere(cap),
+    ).resolves.toBeUndefined()
+  })
+
+  it('signing out with a quick server takes the server’s time, not the cap', async () => {
+    const f = fakes({ hadKey: urlBase64ToUint8Array(RFC_KEY), registered: true })
+    const t0 = performance.now()
+    await makeAlerts(RFC_KEY, f.rpc, f.browser).forgetHere()
+    expect(performance.now() - t0).toBeLessThan(FORGET_WITHIN_MS / 2)
+  })
+
+  it('with no key, signing out asks nothing of the browser or the server', async () => {
+    const f = fakes({ hadKey: urlBase64ToUint8Array(RFC_KEY), registered: true })
+    await makeAlerts('', f.rpc, f.browser).forgetHere()
+    expect(f.log).toEqual([])
+    expect(f.current()).not.toBeNull()
   })
 
   it('prefs read "not yet" before the migration, and "failed" when the call fails', async () => {
