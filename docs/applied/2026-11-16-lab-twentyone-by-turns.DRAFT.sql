@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Twenty-one as a duel by turns: duplicate rounds from shoes the server
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_twentyone_by_turns`, version 20261122124855:
+-- md5(statements[1]) = 6fb75bac6d260a963be2bf3545764a0e, this file's body. The record is
+-- supabase/migrations/20261122124855_lab_twentyone_by_turns.sql.
+--
+-- (as drafted) Twenty-one as a duel by turns: duplicate rounds from shoes the server
 -- keeps back (src/gpu/twentyoneDuel.ts), a candidate the plan names under step 9.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
