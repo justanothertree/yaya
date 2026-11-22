@@ -1,6 +1,6 @@
 -- A note with no sitting — asked of the real functions as a member, and of a friend's readers.
 --
--- ⛔ A THROWAWAY DATABASE ONLY, and one docs/2026-11-08-chronicle-day-notes.DRAFT.sql has been
+-- ⛔ A THROWAWAY DATABASE ONLY, and one docs/applied/2026-11-08-chronicle-day-notes.DRAFT.sql has been
 -- applied to first. The draft is not a migration, so CI's database does not have it and this file
 -- is NOT run by the `db guards` job; a scratch branch applies the draft and then runs this. It
 -- writes inside a transaction that always rolls back, and is never pointed at production.
@@ -44,7 +44,7 @@ grant select, insert, update on ids to authenticated, anon;
 do $$
 begin
   if to_regprocedure('public.chronicle_day_note_add(date, text)') is null then
-    raise exception 'apply docs/2026-11-08-chronicle-day-notes.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-08-chronicle-day-notes.DRAFT.sql before this file';
   end if;
 end $$;
 insert into fails select 'FIXTURE: no member to act as', 'seed the database first'

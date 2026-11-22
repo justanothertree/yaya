@@ -1,5 +1,5 @@
-import type { Session, User } from '@supabase/supabase-js'
-import { getSupabaseClient, isSessionDefinitelyDead } from './client'
+import type { Session, Subscription, User } from '@supabase/supabase-js'
+import { getSupabaseClient, getSupabaseClientOrNull, isSessionDefinitelyDead } from './client'
 
 /**
  * Session helpers.
@@ -174,7 +174,18 @@ export async function sendPasswordReset(email: string): Promise<void> {
   if (error) throw error
 }
 
-export function onAuthStateChange(callback: (event: string, session: Session | null) => void) {
-  const sb = getSupabaseClient()
+/**
+ * ⚠️ MOUNTED ON EVERY PAGE, so it must not throw on a build with no Supabase env. PresenceBeacon
+ * and App subscribe as the site loads, and `getSupabaseClient()` throws when the env is missing —
+ * so a checkout without `.env.local` used to put every room, home included, behind its error
+ * boundary for the sake of a subscription that could never fire. With no client there is nobody
+ * to sign in, which is exactly what a subscription that never fires says: the callers already
+ * treat "no event yet" as signed out. With the env present this is the same call as before.
+ */
+export function onAuthStateChange(callback: (event: string, session: Session | null) => void): {
+  data: { subscription: Pick<Subscription, 'unsubscribe'> }
+} {
+  const sb = getSupabaseClientOrNull()
+  if (!sb) return { data: { subscription: { unsubscribe: () => {} } } }
   return sb.auth.onAuthStateChange((event, session) => callback(event, session))
 }
