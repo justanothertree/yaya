@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Chinese checkers by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_halma_by_turns`, version 20261122025100:
+-- md5(statements[1]) = d829b41db6afe01bdb8e6a2983948173, this file's body. The record is
+-- supabase/migrations/20261122025100_lab_halma_by_turns.sql.
+--
+-- (as drafted) Chinese checkers by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
