@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 /* ⚠️ The draft itself, read as text: the double's sentences are checked against the server's own
    words where they are written, never against a second copy typed in here. Vite's ?raw rather
    than node:fs, as fight.test.ts does, so this stays a browser-typed test. */
-import draft from '../../docs/2026-11-22-chat-songs.DRAFT.sql?raw'
+import draft from '../../supabase/migrations/20261122221602_chat_songs.sql?raw'
 
 /**
  * The songs-in-chat stand-in answers what the server answers (CLAUDE.md: "When a guard exists on

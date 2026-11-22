@@ -420,7 +420,7 @@ from (
 --   * `close_park_room`, `close_profile_room` -- they only close a room of your own, which is a
 --     narrowing action like a delete.
 --   * `chat_song_remove` -- an UPDATE rather than a DELETE only because the row must outlive its
---     R2 object (docs/2026-11-22-chat-songs.DRAFT.sql); for the member it is taking a song down.
+--     R2 object (supabase/migrations/20261122221602_chat_songs.sql); for the member it is taking a song down.
 --
 --   `link_snake_names_to_accounts` used to be listed here and is no longer member-callable at
 --   all: anybody can pre-post a leaderboard score under a username nobody has claimed, and that

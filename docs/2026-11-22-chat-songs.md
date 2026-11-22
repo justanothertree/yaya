@@ -30,7 +30,7 @@ names changed: the table is `chat_song_files`, not `song_files`.
 
 ## The contract both halves build against
 
-### SQL (`docs/2026-11-22-chat-songs.DRAFT.sql`, not applied)
+### SQL (`supabase/migrations/20261122221602_chat_songs.sql`, applied 22 Nov 2026)
 
 `chat_song_files` is deny-all: RLS on, no policies, no grants. It has no foreign key to the account,
 because a row outlives it so its object can still be found. Its columns:
@@ -235,9 +235,10 @@ blocks H and K see these functions.
 
 **Left:**
 
-- `chat_song_files` is not in `visibility-guards.sql` block B. CI runs the guards before any draft
-  loads, and `has_table_privilege` on a table that does not exist yet raises. The chat-songs test
-  checks it per privilege instead. It joins block B's list when this is applied.
+- `chat_song_files` is not in `visibility-guards.sql` block B, and applying it did not change
+  that. CI's guards run on the 4 Nov schema dump before any later migration loads, and
+  `has_table_privilege` on a table that does not exist there raises. The chat-songs test asks the
+  same question per privilege, `TRUNCATE` included, and checks RLS and that no policy exists.
 - Applying the migration and deploying `chat-songs` both wait for Evan's yes. After the deploy:
   diff `get_edge_function` against disk (both files); send a preflight carrying
   `Access-Control-Request-Headers` with the upload's own list (`authorization, apikey,

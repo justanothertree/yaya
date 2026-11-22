@@ -1,4 +1,5 @@
--- ROLLBACK for docs/2026-11-22-chat-songs.DRAFT.sql: every object it created, gone.
+-- ROLLBACK for supabase/migrations/20261122221602_chat_songs.sql (drafted as docs/applied/2026-11-22-chat-songs.DRAFT.sql): every
+-- object it created, gone.
 --
 -- ⚠️ THIS DROPS A TABLE, SO IT DELETES ITS ROWS, and is run only with Evan's yes. Before it runs on
 -- production, every object those rows name must be deleted from R2 first (their keys:

@@ -215,10 +215,10 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.ROLLBACK.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-rollback.sql
 
-      # ⏳ A DRAFT, NOT YET APPLIED TO PRODUCTION: songs sent into a chat room, kept in R2 and decided
-      # here (docs/2026-11-22-chat-songs.md). It is loaded from docs/ in one transaction, the way
-      # apply_migration will run it, and then asked about. When it is applied this line moves to its
-      # migration, like the Lab's three above, and chat_song_files joins block B of the guards.
+      # Songs sent into a chat room, kept in R2 and decided here (docs/2026-11-22-chat-songs.md) —
+      # applied 22 Nov 2026 as 20261122221602. The migration is loaded in one transaction, as production
+      # ran it, and then asked about. chat_song_files stays out of block B of the guards, which run
+      # on the 4 Nov dump before it exists; its own test asks the same question per privilege.
       - name: Run the chat songs checks
         run: |
           DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
@@ -235,11 +235,11 @@ jobs:
             -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-chat-songs.DRAFT.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f supabase/migrations/20261122221602_chat_songs.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chat-songs.sql
           bash supabase/tests/chat-songs-race.sh "$DB_URL"
-          # ⚠️ AND THE STANDING GUARDS AGAIN, WITH THE DRAFT IN PLACE. The step above ran them before
-          # any draft existed, so block H (no new anon-callable definer) and block K (a writer must
+          # ⚠️ AND THE STANDING GUARDS AGAIN, WITH THE MIGRATION IN PLACE. The first step ran them
+          # before it existed, so block H (no new anon-callable definer) and block K (a writer must
           # refuse a suspended member, chat_song_remove exempted) have never seen these functions.
           # This is the only run in which they do.
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql

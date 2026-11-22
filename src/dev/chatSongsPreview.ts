@@ -16,7 +16,7 @@ import {
  * what the harness is).
  *
  * ⚠️ IN THE SERVER'S OWN WORDS. `pvUploadSong` refuses what `chat_song_claim` refuses, in its
- * order and with its sentences (docs/2026-11-22-chat-songs.DRAFT.sql; chatSongsPreview.test.ts
+ * order and with its sentences (supabase/migrations/20261122221602_chat_songs.sql; chatSongsPreview.test.ts
  * reads them from there), `pvSendSong` what `send_chat_song` does, and `pvRemoveSong` only takes
  * down your own: a double kinder than the server hides the bug it should have shown (CLAUDE.md,
  * `pvStart` and `pvSaveGoal`).

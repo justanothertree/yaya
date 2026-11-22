@@ -5,7 +5,7 @@
 #
 #   supabase/tests/chat-songs-race.sh "$DB_URL"
 #
-# Needs a THROWAWAY database with docs/2026-11-22-chat-songs.DRAFT.sql loaded. db-guards.yml runs
+# Needs a THROWAWAY database with supabase/migrations/20261122221602_chat_songs.sql loaded. db-guards.yml runs
 # it on the stack it builds and throws away. It commits — a race needs committed rows — and removes
 # what it made at the end, pass or fail.
 #

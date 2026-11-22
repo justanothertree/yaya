@@ -3,7 +3,7 @@
  * Postgres decides who may send it and who may hear it.
  *
  * The contract is docs/2026-11-22-chat-songs.md; the SQL it calls is
- * docs/2026-11-22-chat-songs.DRAFT.sql until that is applied. This is modelled on `pictures`, and
+ * supabase/migrations/20261122221602_chat_songs.sql. This is modelled on `pictures`, and
  * every lesson written down there holds here — the ones that are load-bearing are repeated below
  * rather than referred to, because a deploy sends this file alone.
  *

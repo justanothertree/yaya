@@ -1,49 +1,12 @@
--- ⏳ DRAFT, NOT APPLIED. Songs in chat: a recording of a song, sent into a chat room and heard by
--- that room's members. Evan, 21 Nov 2026: "shared songs become a chat attachment; caps of 5 MB per
--- file and 25 MB per account; keep them until deleted." On 22 Nov: "migration through CI first; ask
--- before any production apply, storage change, or function deploy."
---
--- The contract both halves are built against is docs/2026-11-22-chat-songs.md; the names, shapes
--- and caps below are that file's. The plan before it was docs/2026-11-17-share-a-song-in-site.md.
---
--- WHY THIS SHAPE. The bytes live in R2 under songs/<id>.<ext>, beside the pictures, written and
--- signed by the `chat-songs` edge function, which reads the same project secrets the `pictures`
--- function does. What may be sent and heard by whom is decided here, and only here: the function
--- touches the bucket only after one of these has answered, as the caller.
---
--- ⚠️ THE BROWSER NEVER WRITES TO R2. The recording is the body of the upload request; the function
--- reads at most 5 MB of it, claims a row with the length it actually holds, checks the bytes,
--- writes them itself, and only then marks the row ready as the service. A signed PUT, which the
--- first draft used, stays good after the object has been checked, so anything could be put at the
--- key afterwards — which is why there is no `chat_song_pending` any more.
---
--- ⚠️ NOTHING HERE DELETES A ROW. A song somebody removes, a song whose message goes, and an upload
--- never sent within the hour are marked `deleted_at`; the function deletes the object from R2 and
--- then marks `object_gone_at`. The row stays, so an object whose delete failed can still be found
--- from it — which is the gap `picture_drop` left, where the row went first and the key with it.
--- `chat_song_abandoned` is how the function finds those again, at its owner's next upload or
--- remove.
---
--- ⚠️ NO OWNER ON ANYTHING A ROOM CAN SEE. The Lounge is pseudonymous: its messages carry no user id
--- and their authors live in a table members cannot read. So the owner of a song is kept only here,
--- in a deny-all table; the object key carries no owner; and nothing a member can call returns it
--- about anybody but themselves. `mine` is the only answer about it.
---
--- ⚠️ EVERY REVOKE NAMES anon. Production's default ACL hands anon and authenticated arwdDxtm on
--- every new table and EXECUTE on every new function, and `revoke … from public` does not touch
--- either (CLAUDE.md §3). db-guards.yml puts those defaults back before loading this file, so a
--- revoke that forgot anon fails there rather than here.
---
--- ⚠️ NOT IN visibility-guards.sql BLOCK B. That block lists the deny-all tables, and CI runs it
--- BEFORE any draft loads, where `has_table_privilege` on a table that does not exist yet raises
--- and takes the whole suite down. The test below checks this table per privilege instead; once
--- this is applied the table belongs in block B's list. Block K already exempts `chat_song_remove`.
---
--- TESTED: supabase/tests/chat-songs.sql, run by .github/workflows/db-guards.yml after loading this
--- file in one transaction (psql -1), then the standing guards again with it in place.
--- ROLLBACK, while nothing has been sent: drop the ten functions and the table (its trigger goes
--- with it). After a song has been sent, the rows are the only record of which R2 objects exist —
--- export them first.
+-- ✅ APPLIED to production 22 Nov 2026 (5:16 PM EST, 22:16 UTC) as migration `chat_songs`, version
+-- 20261122221602, with Evan's yes of 22 Nov ("#453 songs in chat: YES, apply the migration and deploy
+-- the chat-songs function"). Production recorded md5(statements[1]) = 1e154a258bb0c949e47099a834dfc1d8 over
+-- 17,747 bytes, this file's body byte for byte. Before it: no chat_song* object existed, and the
+-- three functions it calls matched what CI tested (chat_room_member differing only by CRLF). After it:
+-- chat_song_files with RLS on, no policy and no privilege of any kind for anon or authenticated; no
+-- function executable by anon; chat_song_ready and chat_song_gone by service_role only.
+-- Why, and the rollback: docs/applied/2026-11-22-chat-songs.DRAFT.sql,
+-- docs/2026-11-22-chat-songs.md and docs/2026-11-22-chat-songs.ROLLBACK.sql.
 
 create table public.chat_song_files (
   id uuid primary key default gen_random_uuid(),

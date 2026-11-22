@@ -1,4 +1,4 @@
--- Songs in chat (docs/2026-11-22-chat-songs.DRAFT.sql until it is applied), asked as every kind of
+-- Songs in chat (supabase/migrations/20261122221602_chat_songs.sql), asked as every kind of
 -- caller: who may call what, the caps, the hour's sweep, who may hear a song, that only the service
 -- can mark one ready, that the Lounge stays pseudonymous, that your own list reaches songs whose
 -- room you have lost, and that a song whose message goes stops counting. Each case is a real call
