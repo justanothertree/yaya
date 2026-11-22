@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   codeRules,
   crackedIn,
@@ -173,28 +173,40 @@ describe('codebreaker by turns: the race', () => {
     const solve = (level: string, rules = RULES, seed = 3) => {
       const C = codeRules(rules)
       const rnd = seeded(seed)
-      const team = Array.from({ length: rules.length }, () => Math.floor(rnd() * rules.colours))
-      let g = C.hidden!.accept(C.fresh(), null, 'together')!
-      g = C.apply(g, { guess: Array(rules.length).fill(0), code: team })
-      // the team never cracks it, so the computer guesses until it does or runs out
-      for (let k = 0; k < 30 && C.turn(g) !== null; k++) {
-        const by = C.turn(g)!
-        const m =
-          by === 1
-            ? C.computer!.choose(g, level)
-            : { guess: Array(rules.length).fill(rules.colours - 1) }
-        if (by === 0 && g.codes[1]!.every((c) => c === rules.colours - 1)) break
-        g = C.apply(g, m)
+      // every draw the race makes is seeded too, the computer's code and its guesses, so a race is
+      // the same race on every run and a level's mean is one number rather than a sample
+      const draws = vi.spyOn(Math, 'random').mockImplementation(seeded(seed * 7919 + 1))
+      try {
+        const team = Array.from({ length: rules.length }, () => Math.floor(rnd() * rules.colours))
+        let g = C.hidden!.accept(C.fresh(), null, 'together')!
+        g = C.apply(g, { guess: Array(rules.length).fill(0), code: team })
+        // the team never cracks it, so the computer guesses until it does or runs out
+        for (let k = 0; k < 30 && C.turn(g) !== null; k++) {
+          const by = C.turn(g)!
+          const m =
+            by === 1
+              ? C.computer!.choose(g, level)
+              : { guess: Array(rules.length).fill(rules.colours - 1) }
+          if (by === 0 && g.codes[1]!.every((c) => c === rules.colours - 1)) break
+          g = C.apply(g, m)
+        }
+        return crackedIn(g, 1) ?? rules.tries + 1
+      } finally {
+        draws.mockRestore()
       }
-      return crackedIn(g, 1) ?? rules.tries + 1
     }
+    // the same 40 races for each level, so one that played as another would read the same mean.
+    // Hard weighs up to 300 guesses against every code still possible, about 100ms a race here:
+    // 150 races took 15.2s of the 20s a test is given, and timed out on a busy CI runner on
+    // 22 Nov 2026
     const mean = (level: string) => {
       let t = 0
-      for (let s = 1; s <= 150; s++) t += solve(level, RULES, s)
-      return t / 150
+      for (let s = 1; s <= 40; s++) t += solve(level, RULES, s)
+      return t / 40
     }
     const [easy, fair, hard] = ['easy', 'fair', 'hard'].map(mean)
-    // measured 10.95, 5.22 and 4.45 over 400; the gaps asserted are well inside those
+    // seeded, these read 11.00, 4.78 and 4.18 (unseeded over 400, 10.95, 5.22 and 4.45); the gaps
+    // asserted are well inside those
     expect(easy - fair).toBeGreaterThan(3)
     expect(fair - hard).toBeGreaterThan(0.3)
     expect(hard).toBeLessThan(5.5)
