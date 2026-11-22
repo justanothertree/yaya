@@ -170,6 +170,16 @@ describe('old links still land', () => {
     expect(ALL_SECTIONS).not.toContain('now')
   })
 
+  /**
+   * ⚠️ NAMED FOR THE SAME REASON #now IS. People was a room of its own until it became Chat's
+   * left-hand side; the word is in the accept-an-invite page, in the bell's friend-request
+   * notice on any tab open across the deploy, and in what somebody would type.
+   */
+  it('still lands #people on Chat, which is where the directory went', () => {
+    expect(sectionOf('#people')).toBe('chat')
+    expect(ALL_SECTIONS).not.toContain('people')
+  })
+
   it('keeps the query a challenge link carries', () => {
     expect(sectionOf('#snake?room=abc')).toBe('games')
   })

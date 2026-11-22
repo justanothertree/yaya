@@ -104,6 +104,20 @@ export type TakeRow = {
    * to play it plain, never a reason to drop the take. Every reader goes through `readVoiceFx`.
    */
   voice?: Partial<VoiceFx>
+  /**
+   * Seconds into the song where this recording belongs: where the playhead was when it was sung
+   * (punchIn.ts), written once, when the take is kept. Absent for a recording made with the song
+   * stopped and for a file opened from disk, which go to the top as they always did.
+   *
+   * ⚠️ NOT `at`, WHICH THIS ROW ALREADY HAS AND WHICH MEANS SOMETHING ELSE: `at` is when it was
+   * recorded, in ms since 1970, and the list shows the date from it. A placement's `at` is a
+   * position in the song. Two fields called `at` on one record, meaning a date and a position,
+   * would be read the wrong way round by the next person to touch it.
+   *
+   * ⚠️ KEPT ON THE RECORDING as well as on its placement, because taking a take out of the loop
+   * forgets the placement, and putting it back used to start it from the top.
+   */
+  songAt?: number
 }
 
 let open: Promise<IDBDatabase | null> | null = null
@@ -218,7 +232,12 @@ export type PutResult = { ok: true; row: TakeRow } | { ok: false; why: 'full' | 
  * one thing a recorder must never do. Refusing is rude and recoverable; evicting is polite and
  * not.
  */
-export async function putTake(id: string, blob: Blob, len: number): Promise<PutResult> {
+export async function putTake(
+  id: string,
+  blob: Blob,
+  len: number,
+  songAt?: number,
+): Promise<PutResult> {
   const held = await takenBytes()
   const had = await getTake(id)
   /* replacing a take only costs the difference, so re-recording at the cap still works */
@@ -230,6 +249,7 @@ export async function putTake(id: string, blob: Blob, len: number): Promise<PutR
     bytes: blob.size,
     type: blob.type || 'audio/webm',
     blob,
+    ...(songAt !== undefined && Number.isFinite(songAt) && songAt >= 0 ? { songAt } : {}),
   }
   const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
   return done === null ? { ok: false, why: 'blocked' } : { ok: true, row }
