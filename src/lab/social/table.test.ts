@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Room, Rules } from './room'
-import { tableLine, tableSeats, type Table } from './table'
+import { rematchOf, tableLine, tableSeats, type Table } from './table'
 
 /*
  * Every line a table can show, asked of the pure function the toys draw it from. The race to 10
@@ -153,5 +153,49 @@ describe('who is who at a table', () => {
   it('a watcher is never left alone, and a finished game has nobody to carry on', () => {
     expect(tableSeats(table({ game: at(4), me: 'cy' }, false), race).leftAlone).toBe(false)
     expect(tableSeats(table({ game: at(10, 1) }, false), race).leftAlone).toBe(false)
+  })
+})
+
+describe('a rematch by turns, from a finished call game', () => {
+  const byTurns = (sub: string) => sub === 'x'
+  it('challenges the other seat to the same toy, from either seat, once the game is over', () => {
+    expect(rematchOf(table({ game: at(10) }), race, byTurns)).toEqual({
+      friend: 'bo',
+      mode: 'versus',
+      level: null,
+    })
+    expect(rematchOf(table({ game: at(10), me: 'bo' }), race, byTurns)).toEqual({
+      friend: 'ann',
+      mode: 'versus',
+      level: null,
+    })
+    // a draw is over too
+    expect(rematchOf(table({ game: at(11) }), race, byTurns)?.friend).toBe('bo')
+    // and the call having gone since does not take it away
+    expect(rematchOf(table({ game: at(10) }, false), race, byTurns)?.friend).toBe('bo')
+  })
+  it('together, the same two against the computer at the level they were playing', () => {
+    expect(rematchOf(table({ game: at(10), mode: 'together' }), race, byTurns)).toEqual({
+      friend: 'bo',
+      mode: 'together',
+      level: 'easy',
+    })
+    expect(rematchOf(table({ game: at(10), mode: 'together', level: 3 }), race, byTurns)).toBeNull()
+  })
+  it('nothing while the game goes on, for a watcher, alone at the table, or on a toy with no matches', () => {
+    expect(rematchOf(table({ game: at(4) }), race, byTurns)).toBeNull()
+    expect(rematchOf(table({ game: at(10), seats: ['bo', 'cy'] }), race, byTurns)).toBeNull()
+    expect(rematchOf(table({ game: at(10), seats: ['ann', null] }), race, byTurns)).toBeNull()
+    expect(rematchOf(table({ game: at(10), sub: 'y' }), race, byTurns)).toBeNull()
+    expect(
+      rematchOf({ live: false, room: null, act: () => {}, names: {} }, race, byTurns),
+    ).toBeNull()
+    // a toy whose matches have no Together is not offered one from a together game
+    expect(rematchOf(table({ game: at(10), mode: 'together' }), versusOnly, byTurns)).toBeNull()
+    // and a toy with a computer but no Together by turns is not offered one either
+    const computerButVersus: Rules<G, number> = { ...race, modes: ['versus'] }
+    expect(
+      rematchOf(table({ game: at(10), mode: 'together' }), computerButVersus, byTurns),
+    ).toBeNull()
   })
 })

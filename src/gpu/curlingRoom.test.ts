@@ -26,6 +26,7 @@ import {
   type CurlingGame,
   type Throw,
 } from './curlingRoom'
+import { matches, sample } from './testMatches'
 
 const at = (s: readonly Stone[]) => s.map((x) => [x.team, x.x, x.y])
 
@@ -64,28 +65,31 @@ function liveSlide(stones: Stone[], t: Throw['shot'], team: 0 | 1, held: (i: num
 }
 
 describe('curling on the wire', () => {
-  it('replays to the very same game from its throws, at every throw of a real game', () => {
-    const { cg, seen } = playThrough(3)
-    expect(cg.g.over).toBe(true)
-    expect(cg.g.scores.length).toBeGreaterThanOrEqual(CALL_ENDS)
-    for (const d of seen) {
-      const w = JSON.parse(JSON.stringify(R.encode(d)))
-      const back = R.decode(w)!
-      expect(at(back.g.stones)).toEqual(at(d.g.stones))
-      expect(back.g.scores).toEqual(d.g.scores)
-      expect([back.g.hammer, back.g.thrown, back.g.over]).toEqual([
-        d.g.hammer,
-        d.g.thrown,
-        d.g.over,
-      ])
-      expect(back.last?.ended).toEqual(d.last?.ended)
-      expect(at(back.last?.stones ?? [])).toEqual(at(d.last?.stones ?? []))
-      expect(R.encode(back)).toEqual(w)
-    }
-    expect(R.result!(cg)).not.toBeNull()
-    expect(R.legal(cg, seen[1].throws[0])).toBe(false)
-    expect(R.decode({ throws: [...cg.throws.map(pack), pack(cg.throws[0])] })).toBeNull()
-  })
+  it.each(matches([3], [3]))(
+    'replays to the very same game from its throws, through a real game (seed $seed, $kind)',
+    ({ seed }) => {
+      const { cg, seen } = playThrough(seed)
+      expect(cg.g.over).toBe(true)
+      expect(cg.g.scores.length).toBeGreaterThanOrEqual(CALL_ENDS)
+      for (const d of sample(seen)) {
+        const w = JSON.parse(JSON.stringify(R.encode(d)))
+        const back = R.decode(w)!
+        expect(at(back.g.stones)).toEqual(at(d.g.stones))
+        expect(back.g.scores).toEqual(d.g.scores)
+        expect([back.g.hammer, back.g.thrown, back.g.over]).toEqual([
+          d.g.hammer,
+          d.g.thrown,
+          d.g.over,
+        ])
+        expect(back.last?.ended).toEqual(d.last?.ended)
+        expect(at(back.last?.stones ?? [])).toEqual(at(d.last?.stones ?? []))
+        expect(R.encode(back)).toEqual(w)
+      }
+      expect(R.result!(cg)).not.toBeNull()
+      expect(R.legal(cg, seen[1].throws[0])).toBe(false)
+      expect(R.decode({ throws: [...cg.throws.map(pack), pack(cg.throws[0])] })).toBeNull()
+    },
+  )
 
   it('⚠️ slides a stone swept live to exactly where the thrower saw it stop', () => {
     // a light draw, swept in two bursts as a thumb might hold and lift and hold again

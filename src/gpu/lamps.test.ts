@@ -15,19 +15,37 @@ import {
   type Pattern,
   type Saved,
 } from './lamps'
+import { NIGHTLY } from './testMatches'
 
-/** the fewest presses by trying every set of presses there is: 512 on 3 × 3, 65,536 on 4 × 4 */
+/**
+ * The fewest presses by trying every set of presses there is: 512 on 3 × 3, 65,536 on 4 × 4,
+ * 33,554,432 on 5 × 5.
+ *
+ * In Gray-code order, so each set differs from the one before it by one press and costs one XOR
+ * of the lamps that press flips. That holds because a press flips the same lamps whatever the
+ * board is, which is checked here on the board being asked about rather than assumed. Applying
+ * every set from scratch took six seconds for the 4 × 4 boards below, the slowest test in the
+ * file; this takes milliseconds, so every push tries every board, and the nightly run adds 5 × 5.
+ */
 function brute(lit: boolean[], n: number, pattern: Pattern): number | null {
-  let best: number | null = null
-  for (let mask = 0; mask < 1 << (n * n); mask++) {
-    let b = lit
-    let k = 0
-    for (let i = 0; i < n * n; i++)
-      if ((mask >> i) & 1) {
-        b = press(b, n, i, pattern)
-        k++
-      }
-    if (dark(b) && (best === null || k < best)) best = k
+  const cells = n * n
+  const bits = (b: boolean[]) => b.reduce((m, on, i) => (on ? m | (1 << i) : m), 0)
+  const start = bits(lit)
+  const dark0 = new Array<boolean>(cells).fill(false)
+  const flips = Array.from({ length: cells }, (_, i) => {
+    const f = bits(press(lit, n, i, pattern)) ^ start
+    expect(bits(press(dark0, n, i, pattern))).toBe(f)
+    return f
+  })
+  let best: number | null = start === 0 ? 0 : null
+  let board = start
+  let k = 0
+  for (let g = 1; g < 2 ** cells; g++) {
+    // the press that differs between set g − 1 and set g is the lowest bit set in g
+    const i = 31 - Math.clz32(g & -g)
+    board ^= flips[i]
+    k += ((g ^ (g >> 1)) >> i) & 1 ? 1 : -1
+    if (board === 0 && (best === null || k < best)) best = k
   }
   return best
 }
@@ -48,8 +66,10 @@ describe('the solver', () => {
   it('finds the fewest presses, as trying every set of presses does', () => {
     // four by four with the plus has sixteen ways to clear every board it can clear, so this is
     // also the check that the shortest of several is the one chosen
+    let cannot = 0
+    let can = 0
     for (const pattern of ['plus', 'cross'] as const)
-      for (const n of [3, 4])
+      for (const n of NIGHTLY ? [3, 4, 5] : [3, 4])
         for (let s = 1; s <= 12; s++) {
           const r = rng(s * 7 + n)
           // half the boards lit at random, which on four by four can rarely be cleared at all; half
@@ -60,14 +80,20 @@ describe('the solver', () => {
             for (let k = 0; k < n * n; k++) if (r() < 0.5) lit = press(lit, n, k, pattern)
           const want = brute(lit, n, pattern)
           const got = solve(lit, n, pattern)
-          if (want === null) expect(got).toBeNull()
-          else {
+          if (want === null) {
+            cannot++
+            expect(got).toBeNull()
+          } else {
+            can++
             expect(got).not.toBeNull()
             expect(got!.length).toBe(want)
             // and those presses really do switch everything off
             expect(dark(got!.reduce((b, i) => press(b, n, i, pattern), lit))).toBe(true)
           }
         }
+    // both answers were asked for: boards that cannot be cleared, and boards that can
+    expect(cannot).toBeGreaterThan(0)
+    expect(can).toBeGreaterThan(0)
   })
   it('says when a board cannot be cleared at all', () => {
     // on four by four with the plus, a single lit corner cannot be put out by any presses

@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
+Last reviewed: 2026-11-21 for Chronicle: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
 
 ---
 
@@ -1378,3 +1378,58 @@ the sweep could not reach them:
 | 22a | With a mouse, the Circuit's edit controls are under the 24px target floor (WCAG 2.5.8): an exercise's ✎ is 23×17, a column's 🗑 18×16, the Board's log-today ＋ 19×20, and the column-rename box 14px tall. They are small on purpose, so the sheet stays quiet. Touch screens are covered by #127. Raise them to 24 on desktop? | Yes, to 24 and no further: the smallest change that meets the floor, and the sheet stays compact                                                                                                                                                 | nothing |
 | 22b | `.sr-only` loses to any container rule that sizes inputs, because a class plus an element beats a class alone. That is how two hidden photo pickers made a dialog scroll sideways (#117 fixes that one place). Make `.sr-only` win everywhere with `!important`?                                                                 | Yes: a visually hidden element has no business being sized by anything. It is a global utility, so it touches the Lab and the Instrument too, which is why it is asked and not done                                                              | nothing |
 | 22c | Give the feed's comments and reactions, and the Circuits panel's list, a preview stand-in, the way `circuitPreview.ts` covers the board, so the pane can reach them?                                                                                                                                                             | Yes for comments and reactions: two tables, each read, added to and deleted from, plus the user id, and #128 shipped on a seeded copy only because there was none. The Circuits panel is nine server functions, so later, and only if it changes | nothing |
+
+**Where §22 stands, 21 Nov 2026:**
+
+- ✅ **22a DONE 10 Nov**, answered yes and built the same morning as `15637e21` ("the sheet's edit
+  controls are 24px with a mouse"). This section did not say so until 21 Nov, which is how it
+  nearly got built twice.
+- ✅ **22c DONE 21 Nov, for comments and reactions**, as recommended. `src/dev/feedSocialPreview.ts`
+  is a double under the real `useFeedSocial`, keeping the schema's rules in its own words (1 to
+  1000 characters by `char_length`, your own rows only, one kudos per person per emoji), with a
+  test made to fail seven ways. Its first run found three bugs in the feed, all fixed in the same
+  change:
+  - a comment over 1000 characters **vanished**: the box had no cap and clears itself before the
+    answer comes back. It is capped at the server's number now, held there by `scripts/comment-cap.test.mjs`.
+  - one pasted link with no hyphen in it took the page **sideways**: 31px past the card at 375,
+    and a 1000-character word 5,024px at 1440. Comments wrap anywhere now.
+  - with a mouse at 820 the kudos chips were **23px**, under the floor. The 10 Nov sweep measured
+    820 with the touch rules on, so it could not see this. They are 24 with a mouse, and 38 on
+    touch as before.
+
+  The Circuits panel's list still has no stand-in, as recommended.
+
+- ⏸ **22b PARKED**: still yours, for the reason in its row. It changes a utility the Lab and the
+  Instrument use too.
+- ⏸ **22d, new**, below.
+
+### 22d. On a phone, nobody can see who gave a kudos
+
+A kudos chip reads "🔥 2", and the names behind it ("Jordan, Samantha") live only in its `title`,
+which a phone never shows (CLAUDE.md §6). Tapping the chip gives or takes back your own kudos, so
+no gesture is left that shows the names. `mobileAudit` flags both chips as `wordless`; it is the
+only finding left on the feed at any width.
+
+**Recommendation:** when the comments are open, put one line above them naming who gave what:
+"🔥 Jordan, Samantha · 💪 you". The 💬 button is already what a phone taps to see more, it changes
+nothing a tap does today, and it costs no space while the comments are closed. **Blocks:** nothing.
+It is a design call, so it is asked rather than built.
+
+---
+
+## 23. Chronicle — everything still open, 21 Nov 2026
+
+Swept against the code and `git log` rather than this file, because this file had fallen behind
+(§22a above). Everything in §14–§20 not listed here is answered and built, or answered and
+released. Nothing below can move without you.
+
+| §   | What it needs from you                                                                                                                                                                                                                                                                                                                                                                       | State                                              |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 21a | A yes to apply the migration in draft #137. Until then a 3.5-mile walk reads "4 mi" in the day's workout line                                                                                                                                                                                                                                                                                | Written and proven in CI on 10 Nov. Production SQL |
+| 21b | The same yes: it is in #137 with 21a. A negative amount's refusal says "count <NULL>"                                                                                                                                                                                                                                                                                                        | As 21a. Nothing in the room sends a negative       |
+| 21c | Run, or approve running, `supabase db dump --linked`, the first of the four steps in `supabase/baseline/README.md`, so CI tests the schema production has. Until then nothing applied since 4 Nov is in the database `db guards` runs against                                                                                                                                                | It reads production, so it is yours                |
+| 19e | Who "the person" is in "the person confirms from their own account". `claim_person` is already a member claiming a row as themself, so a claim made that way cannot confirm itself; the likeliest meaning is that the member who added the row confirms, but that is a guess. Building either half is production SQL, and the only thing waiting on it is the conversion, which waits on 20d | Answered 9 Nov, not built                          |
+| 20d | A cutover date for the conversion. 20e (what a restore does to a converted cell) waits on it too                                                                                                                                                                                                                                                                                             | Nothing converts until then                        |
+| 22b | Yes or no to `.sr-only` with `!important`, site-wide                                                                                                                                                                                                                                                                                                                                         | Touches the Lab and the Instrument                 |
+| 22d | Where a phone shows who gave a kudos                                                                                                                                                                                                                                                                                                                                                         | New, 21 Nov                                        |
+| 19f | The signed-in device checks, which grow with each build. The PRs since carry their own phone checklists (#434, #437, #440, #441)                                                                                                                                                                                                                                                             | Only a signed-in phone can make them               |
