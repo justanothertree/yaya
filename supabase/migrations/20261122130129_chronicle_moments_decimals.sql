@@ -1,17 +1,11 @@
--- ⛔ DRAFT, NOT APPLIED. OPEN-DECISIONS 21a; the plan is docs/2026-11-10-chronicle-21ab-fix-plan.md,
--- and nothing here runs until Evan approves it.
---
--- The day's workout line rounds every number to a whole one. chronicle_moments prints each value
--- with to_char(v, 'FM999999990.##'), and `#` is not a digit in a to_char pattern, so the format has
--- no decimal places at all: 3.5 prints "4", 12.5 "13" and 0.25 "0". It becomes
--- trim_scale(round(v, 2))::text, which prints those as 3.5, 12.5 and 0.25, prints 12 as 12 with no
--- trailing point, and has no fixed digit count to overflow. Measured both ways in CI on 10 Nov;
--- the figures are in the plan.
---
--- One expression in one function changes, and no stored row. It refuses to run unless the live
--- function is the exact text it was written against (md5 ffdfc4c1…, the text CI builds as
--- production's, which step 1 of the plan reads from production itself) and the old expression
--- appears in it exactly once.
+-- ✅ APPLIED to production 22 Nov 2026 at 8:01 AM EST as migration `chronicle_moments_decimals`,
+-- version 20261122130129, with Evan's approval of OPEN-DECISIONS 21a. Production recorded
+-- md5(statements[1]) = ad320768c48ce3ccf65993c803e0ed62, this file's body byte for byte.
+-- Check A before it: chronicle_moments ffdfc4c1…, the text this was written against, and the
+-- 1.2.3 pre-check counted 0. Check B after: chronicle_moments d3d4fcc1…, anon refused, members
+-- allowed. Live: a 3.5-mile walk logged on 1 Oct reads "3.5 mi" through it.
+-- Why, and the rollback: docs/applied/2026-11-10-chronicle-moments-decimals.DRAFT.sql,
+-- docs/2026-11-10-chronicle-21ab-fix-plan.md and docs/2026-11-10-chronicle-21ab-rollback/.
 
 do $mig$
 declare

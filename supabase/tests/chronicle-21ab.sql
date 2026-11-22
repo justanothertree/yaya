@@ -1,8 +1,8 @@
 -- OPEN-DECISIONS 21a and 21b, asked of the real functions as a seeded member.
 --
 -- ⛔ NEEDS BOTH DRAFTS APPLIED FIRST, and refuses to run otherwise:
---      docs/2026-11-10-chronicle-moments-decimals.DRAFT.sql
---      docs/2026-11-10-chronicle-entry-amount-negative.DRAFT.sql
+--      docs/applied/2026-11-10-chronicle-moments-decimals.DRAFT.sql
+--      docs/applied/2026-11-10-chronicle-entry-amount-negative.DRAFT.sql
 -- It runs only where a throwaway database has been built from the migrations and seed (the
 -- `db guards` CI job), and it rolls back. NEVER against production: it writes rows.
 --

@@ -1,8 +1,14 @@
 # 21a and 21b: the production fix plan
 
-⛔ **DRAFT. Nothing in it has run against production.** OPEN-DECISIONS §21. Evan asked for this
-plan on 10 Nov 2026 and approves it, or not, as one step. Each step below is run by Claude after
-that approval and not before.
+✅ **APPLIED 22 Nov 2026**, with Evan's approval that morning: `chronicle_moments_decimals` at
+8:01:29 AM EST (version 20261122130129) and `chronicle_entry_amount_negative` at 8:01:38 AM EST
+(version 20261122130138). Check A and the 1.2.3 pre-check matched before it (both md5s as below,
+0 values), Check B matched after it, and production's record of each statement md5s to its draft's
+body. Live, a 3.5-mile walk logged on 1 Oct reads "3.5 mi" through the new function, read in a
+simulated session that writes nothing.
+
+(As written on 10 Nov) OPEN-DECISIONS §21. Evan asked for this plan on 10 Nov 2026 and approves
+it, or not, as one step. Each step below is run by Claude after that approval and not before.
 
 ## What changes
 
@@ -18,8 +24,8 @@ nothing in it sends a negative.
 The SQL is the two drafts, each refusing to run unless the live function is the exact text it was
 written against:
 
-- `docs/2026-11-10-chronicle-moments-decimals.DRAFT.sql`
-- `docs/2026-11-10-chronicle-entry-amount-negative.DRAFT.sql`
+- `docs/applied/2026-11-10-chronicle-moments-decimals.DRAFT.sql`
+- `docs/applied/2026-11-10-chronicle-entry-amount-negative.DRAFT.sql`
 
 ## Steps
 

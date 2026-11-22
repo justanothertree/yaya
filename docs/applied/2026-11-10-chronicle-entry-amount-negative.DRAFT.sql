@@ -1,4 +1,8 @@
--- ⛔ DRAFT, NOT APPLIED. OPEN-DECISIONS 21b; the plan is docs/2026-11-10-chronicle-21ab-fix-plan.md,
+-- ✅ APPLIED to production 22 Nov 2026 as migration `chronicle_entry_amount_negative`, version 20261122130138:
+-- md5(statements[1]) = 7ebd4aa1d3fdd2dc1f55b618cf137f10, this file's body. The record is
+-- supabase/migrations/20261122130138_chronicle_entry_amount_negative.sql.
+--
+-- (as drafted) OPEN-DECISIONS 21b; the plan is docs/2026-11-10-chronicle-21ab-fix-plan.md,
 -- and nothing here runs until Evan approves it.
 --
 -- chronicle_entry_amount refuses a negative amount on a sitting with no counted sets, and says
