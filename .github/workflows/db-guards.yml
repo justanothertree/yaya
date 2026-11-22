@@ -194,26 +194,43 @@ jobs:
       # loaded from docs/ in one transaction, the way apply_migration will run it, then asked about
       # by its two test files — the race needs real sessions, so it is a script. When it is applied
       # this line moves to its migration, like the Lab's three above.
-      - name: Run the profile page version checks and race
+      # ⚠️ A THROWAWAY BRANCH, NEVER MERGED: every rule of the page-version draft broken in turn, each
+      # expected to turn its tests red. Each variant is made from the REAL draft by sed, loaded, asked,
+      # and undone with the real ROLLBACK file before the next, so this also runs that rollback five
+      # times over a draft it did not write.
+      - name: Break each rule of the profile page version draft, and expect red
         run: |
           DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
           if [ -z "$DB_URL" ]; then
             DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           fi
-          # ⚠️ A DRAFT GOES INTO THE WORLD IT WILL MEET. This stack's baseline revokes the schema's
-          # default grants, while production's default ACL hands anon EXECUTE on every new function
-          # and arwdDxtm on every new table — so here a draft that forgot `revoke … from anon` would
-          # pass its own privilege checks. Production's defaults go back first, as
-          # supabase/tests/plain-postgres/build.sh does; they touch only what is created after them.
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q \
             -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.DRAFT.sql
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-version.sql
-          bash supabase/tests/profile-page-race.sh "$DB_URL"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.ROLLBACK.sql
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-rollback.sql
+          D=docs/2026-11-22-profile-page-version.DRAFT.sql
+          R=docs/2026-11-22-profile-page-version.ROLLBACK.sql
+          bad=0
+          try() {
+            name="$1"; shift
+            sed "$@" "$D" > "/tmp/$name.sql"
+            if cmp -s "$D" "/tmp/$name.sql"; then echo "::error::$name: the sed changed nothing"; bad=1; return; fi
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "/tmp/$name.sql"
+            ok=1
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-version.sql > "/tmp/$name.v" 2>&1 || ok=0
+            bash supabase/tests/profile-page-race.sh "$DB_URL" > "/tmp/$name.r" 2>&1 || ok=0
+            if [ "$ok" = 1 ]; then echo "::error::GREEN $name -- the tests did not notice"; bad=1; else echo "RED   $name"; fi
+            grep -hE "FAIL|ERROR|^ *- " "/tmp/$name.v" "/tmp/$name.r" | sed 's/^/      /' | head -12
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$R"
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/tests/profile-page-rollback.sql
+          }
+          try no-profile-lock -e '/for no key update;/d'
+          try no-row-lock -e '/from public.profile_blocks where user_id = v_me for update;/d'
+          try no-check -e "s/raise exception 'page changed'.*\$/null;/"
+          try anon-forgotten -e 's/my_profile_page_version() from public, anon;/my_profile_page_version() from public;/'
+          try lists-not-in-version -e 's/jsonb_agg(vc.friend order by vc.friend)/null::jsonb/'
+          try ids-in-version -e 's/b.position, b.block_type, b.size/b.id, b.position, b.block_type, b.size/'
+          exit $bad
 
       - name: Stop the database
         if: always()
