@@ -1,6 +1,9 @@
 import { sharedCtx } from './context'
+import { hasLyrics } from './lyricLines'
 import {
+  endPassAt,
   loopLength,
+  loopOrigin,
   loopState,
   muteTake,
   setMetronome,
@@ -8,12 +11,13 @@ import {
   stopLoop,
   toggleMute,
 } from './looper'
-import { outputTap } from './synth'
+import { outputTap, wakeSynth } from './synth'
 import { takeBus } from './takeBus'
 import { toWav } from './wav'
 
 /**
- * Every part of a song as its own file.
+ * Every part of a song as its own file, the sung words among them. The whole mix as one file is
+ * instrument/songExport.ts, which records the same tap.
  *
  * ⚠️ BOUNCED IN REAL TIME, NOT RENDERED OFFLINE, and that is a deliberate trade. An
  * OfflineAudioContext would be faster than real time and sample-exact — and it would need the
@@ -42,8 +46,11 @@ export type Stem = { name: string; blob: Blob; seconds: number }
  * see takeBus — so tapping the instrument alone would export a song with every recording
  * missing, silently and only in the exported file.
  */
-function tapAll(ctx: AudioContext): GainNode {
+export function tapAll(ctx: AudioContext): GainNode {
   const sum = ctx.createGain()
+  /* ⚠️ AWAKE FIRST (16 Nov 2026). The synth builds its graph at its first note, so a song opened
+     and bounced before anything was played tapped null and recorded every part as silence */
+  wakeSynth()
   const inst = outputTap()
   if (inst) inst.connect(sum)
   takeBus().connect(sum)
@@ -99,6 +106,12 @@ const safe = (s: string) => s.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g
 export type StemProgress = { doing: string; done: number; of: number }
 
 /**
+ * The song's words, sung for one lap from a given top — singAlong's, handed in so this module does
+ * not reach up into the room for it. Returns its stop, or null when nothing has words.
+ */
+export type SingLap = (top: number) => (() => void) | null
+
+/**
  * Bounce each layer and each take on its own.
  *
  * ⚠️ THE METRONOME IS OFF FOR ALL OF IT. A click is a thing you play along to, not a thing that
@@ -109,15 +122,25 @@ export type StemProgress = { doing: string; done: number; of: number }
  * set up; a bounce that leaves their song soloed on the last part is a bounce that broke the
  * song to export it.
  */
-export async function bounceStems(say?: (p: StemProgress) => void): Promise<Stem[]> {
+export async function bounceStems(
+  say?: (p: StemProgress) => void,
+  sing?: SingLap,
+): Promise<Stem[]> {
   const st = loopState()
-  const parts: { id: string; kind: 'layer' | 'take'; name: string }[] = [
+  const parts: { id: string; kind: 'layer' | 'take' | 'voice'; name: string }[] = [
     ...st.layers.map((l, i) => ({
       id: l.id,
       kind: 'layer' as const,
       name: `${i + 1}-${l.instrument}`,
     })),
     ...st.takes.map((t, i) => ({ id: t.id, kind: 'take' as const, name: `take-${i + 1}` })),
+    /* ⚠️ THE SUNG WORDS ARE A PART TOO (16 Nov 2026). They are not a layer or a take, they are
+       sung over the song when ▶ Sing is on, so a bounce of layers and takes left them out of
+       every stem: a song with words exported without its voice. Sung here with everything else
+       silent, from the same top as the rest. */
+    ...(sing && st.layers.some(hasLyrics)
+      ? [{ id: 'voice', kind: 'voice' as const, name: 'voice' }]
+      : []),
   ]
   if (!parts.length) return []
 
@@ -129,12 +152,14 @@ export async function bounceStems(say?: (p: StemProgress) => void): Promise<Stem
   const mutedLayers = new Set(st.layers.filter((l) => l.muted).map((l) => l.id))
   const mutedTakes = new Set(st.takes.filter((t) => t.muted).map((t) => t.id))
 
-  const isMuted = (id: string, kind: 'layer' | 'take') =>
-    kind === 'layer'
-      ? (loopState().layers.find((l) => l.id === id)?.muted ?? false)
-      : (loopState().takes.find((t) => t.id === id)?.muted ?? false)
-  const setMuted = (id: string, kind: 'layer' | 'take', want: boolean) => {
-    if (isMuted(id, kind) === want) return
+  const isMuted = (id: string, kind: 'layer' | 'take' | 'voice') =>
+    kind === 'voice'
+      ? false
+      : kind === 'layer'
+        ? (loopState().layers.find((l) => l.id === id)?.muted ?? false)
+        : (loopState().takes.find((t) => t.id === id)?.muted ?? false)
+  const setMuted = (id: string, kind: 'layer' | 'take' | 'voice', want: boolean) => {
+    if (kind === 'voice' || isMuted(id, kind) === want) return
     if (kind === 'layer') toggleMute(id)
     else muteTake(id)
   }
@@ -154,7 +179,12 @@ export async function bounceStems(say?: (p: StemProgress) => void): Promise<Stem
          parts that only fit together if you knew how far in each one started. */
       stopLoop()
       startLoop()
+      /* one pass and no more: the capture runs a little past the end, and the next pass's first
+         beat used to be in it — see endPassAt */
+      endPassAt(loopOrigin() + len)
+      const hush = me.kind === 'voice' ? sing!(loopOrigin()) : null
       const samples = await capture(ctx, sum, len)
+      hush?.()
       stopLoop()
       out.push({
         name: `${safe(me.name)}.wav`,

@@ -1,6 +1,8 @@
 import {
   useEffect,
+  useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type Dispatch,
   type ReactNode,
@@ -15,6 +17,7 @@ import {
   toggleMute,
   type loopState,
 } from '../audio/looper'
+import { setSongName } from './songName'
 import { library, removeFromLibrary, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { songNotes, songToLayers } from '../audio/songFile'
 import { hasLyrics } from '../audio/lyricLines'
@@ -24,7 +27,8 @@ import { jam } from '../party/jam'
 import { motionReduced } from '../ui/motion'
 import { KeysVolume } from './KeysVolume'
 import { partLines } from './partName'
-import { singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
+import { ExportSong } from './ExportSong'
+import { singOneLap, singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
 
 export type Tool = 'beats' | 'mix' | 'voice' | 'songs'
 
@@ -43,7 +47,8 @@ type Loop = ReturnType<typeof loopState>
  *
  * 🥁 Beats is the beats and chords panel, unchanged. 🎚 Mix is every volume in one place: your
  * keys, each part, and each take on the loop. 🎤 Voice is the recorder and the singer. 📁 Songs is
- * keeping and opening: Keep this song, Stems, the kept songs and Clear all parts.
+ * keeping, opening and taking it elsewhere: Keep this song, Stems, Export song, MIDI, the kept
+ * songs and Clear all parts.
  *
  * ⚠️ A CLOSED TOOL STAYS MOUNTED, ONLY HIDDEN — the condition Evan approved one-at-a-time on.
  * `useTakes` stops its work when it unmounts, on purpose (a recording is kept and the microphone
@@ -294,6 +299,12 @@ function Songs({
 }) {
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
   const { parts, bouncing, doBounce, stems } = takes
+  /* one recording of the song at a time: stems and the export each play it through */
+  const [exporting, setExporting] = useState(false)
+  /* ⚠️ each stem's address made once and let go — it was a new object URL every render, each
+     holding its file in memory for as long as the page lived */
+  const stemUrls = useMemo(() => stems.map((st) => URL.createObjectURL(st.blob)), [stems])
+  useEffect(() => () => stemUrls.forEach((u) => URL.revokeObjectURL(u)), [stemUrls])
   return (
     <div className="inst-songs">
       <div className="inst-row">
@@ -309,9 +320,9 @@ function Songs({
         {parts > 0 && (
           <button
             className={'btn btn-ghost' + (bouncing ? ' is-on' : '')}
-            disabled={!!bouncing}
-            onClick={() => void doBounce()}
-            title="Bounce every part and every take to its own WAV, in real time"
+            disabled={!!bouncing || exporting}
+            onClick={() => void doBounce(singOneLap)}
+            title="Bounce every part, every take and the sung words to its own WAV, in real time"
           >
             {bouncing
               ? `Bouncing ${bouncing.doing || '…'} (${bouncing.done}/${bouncing.of})`
@@ -319,15 +330,11 @@ function Songs({
           </button>
         )}
       </div>
+      <ExportSong loop={loop} busy={!!bouncing} setBusy={setExporting} />
       {stems.length > 0 && (
         <div className="inst-row inst-takes-stems">
-          {stems.map((st) => (
-            <a
-              key={st.name}
-              className="btn btn-ghost"
-              href={URL.createObjectURL(st.blob)}
-              download={st.name}
-            >
+          {stems.map((st, k) => (
+            <a key={st.name} className="btn btn-ghost" href={stemUrls[k]} download={st.name}>
               {st.name}
             </a>
           ))}
@@ -358,6 +365,7 @@ function Songs({
                   className="btn"
                   onClick={() => {
                     loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
+                    setSongName(it.name)
                     setEditing(null)
                     // ⚠️ offered, not pushed — see jam.offerSong. A no-op when nobody is jamming.
                     jam.offerSong(it.song)

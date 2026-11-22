@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Mancala by turns: step 10 of the Lab multiplayer plan, the first of the
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_mancala_by_turns`, version 20261122004229:
+-- md5(statements[1]) = cb1f2d095268898eb0a88426b8b6ee2e, this file's body. The record is
+-- supabase/migrations/20261122004229_lab_mancala_by_turns.sql.
+--
+-- (as drafted) Mancala by turns: step 10 of the Lab multiplayer plan, the first of the
 -- toys whose rules were written for the call rooms (Mancala, Nine men's morris, Hex, …).
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and Mancala

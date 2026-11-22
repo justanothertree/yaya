@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Pool by turns: step 7 of docs/2026-11-14-lab-async-matches-plan.md.
+-- ✅ APPLIED to production 17 Nov 2026 (UTC) as migration `lab_pool_by_turns`, version 20261117004038:
+-- md5(statements[1]) = 55040414f1e9e3ce784252d2243ee158, this file's body. The record is
+-- supabase/migrations/20261117004038_lab_pool_by_turns.sql.
+--
+-- (as drafted) Pool by turns: step 7 of docs/2026-11-14-lab-async-matches-plan.md.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and Pool
 -- joins Reversi and Chess. Nothing else changes: no table, no column, no grant. `create or replace`

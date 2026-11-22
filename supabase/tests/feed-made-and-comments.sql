@@ -3,7 +3,7 @@
 -- and only where the room each one lives in would already show it.
 --
 -- ⛔ NEEDS THE DRAFT APPLIED FIRST, and refuses to run otherwise:
---      docs/2026-11-14-feed-made-and-comments.DRAFT.sql
+--      docs/applied/2026-11-14-feed-made-and-comments.DRAFT.sql
 -- It is not applied to production. This file runs only where a throwaway database has been built
 -- from the schema baseline and seed -- the `db guards` CI job, by way of a scratch-probe branch --
 -- and it rolls back. NEVER against production: it writes a page, notes, comments and suspensions.
