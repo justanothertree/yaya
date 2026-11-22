@@ -1,7 +1,7 @@
 -- Does the cron log trim delete only finished runs older than seven days, and nothing else?
 --
--- HOW TO RUN: db-guards.yml reads the job's command out of docs/2026-11-22-cron-log-trim.DRAFT.sql
--- (the text between its $job$ quotes) and passes it in as :trim_command, so what runs here is the
+-- HOW TO RUN: db-guards.yml reads the job's command out of
+-- supabase/migrations/20261122225001_cron_log_trim.sql (the text between its $job$ quotes) and passes it in as :trim_command, so what runs here is the
 -- statement production will schedule, never a second copy typed in beside it:
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -v trim_command="$cmd" -f supabase/tests/cron-log-trim.sql

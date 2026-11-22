@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-22-cron-log-trim.DRAFT.sql: the job unscheduled. It deletes nothing,
+-- ROLLBACK for supabase/migrations/20261122225001_cron_log_trim.sql: the job unscheduled. It deletes nothing,
 -- and puts back nothing the job already deleted — run history older than seven days is gone for
 -- good once the job has run, which is what was asked for.
 --

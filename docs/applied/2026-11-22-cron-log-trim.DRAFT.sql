@@ -1,4 +1,8 @@
--- ⏳ DRAFT, NOT APPLIED. A daily job that deletes pg_cron's run history older than seven days.
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `cron_log_trim`, version 20261122225001:
+-- md5(statements[1]) = 45c475bbc3dfe3feab3135a3983c1ca8, this file's body. The record is
+-- supabase/migrations/20261122225001_cron_log_trim.sql.
+--
+-- (as drafted) A daily job that deletes pg_cron's run history older than seven days.
 -- Evan, 22 Nov 2026: "Cron log trim: YES, set up a daily job that deletes only
 -- cron.job_run_details rows older than 7 days. Nothing else, and no user tables."
 --
