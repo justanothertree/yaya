@@ -27,11 +27,16 @@ import {
 } from './bowling'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
-import { bowlingRules, type BowlingGame } from './bowlingRoom'
+import { bowlingRules, replay, type BowlingGame } from './bowlingRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK: Record<
@@ -136,15 +141,33 @@ export function BowlingDemo() {
   const overRef = useRef(over)
   overRef.current = over
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the lane over whatever else was showing; leaving it puts the toy back as it was.
+     ⚠️ NO PREVIEW: a ball shown knocking pins down before Send could be bowled, watched and
+     taken back until it struck. Letting go only proposes it; the server bowls it and the ball
+     rolls when the card comes back, as a call's balls do. */
+  const lm = useLabMatch('bowling', { preview: false })
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as BowlingGame | null) : null
+
   /* ── the call's room: a frame each, seat 0 first; the game travels as its balls */
   const [mode, setMode] = useState<Mode>('bot')
   const lab = useLabRoom('bowling', bowlingRules)
   const words = tableSeats(lab, bowlingRules)
-  const room = mode === 'call' ? lab.room : null
-  /** whether this player may bowl now: their frame alone, or their turn at the call's table */
-  const canBowl = room
-    ? lab.live && myTurn(bowlingRules, room) && !busy
-    : mode === 'bot' && !busy && up === 0 && !over
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** shared with somebody, in a call or a match: the balls arrive and roll, the line is theirs */
+  const shared = !!room || inMatch
+  /** my seat in a match or a call, null when I only watch */
+  const mySeat = inMatch ? (lm.view?.you ?? null) : words.mySeat
+  /** the mode of the shared game: versus, or together against the computer */
+  const sharedMode = inMatch ? lm.view?.mode : room?.mode
+  /** whether this player may bowl now: their frame alone, or their turn in a match or a call */
+  const canBowl = inMatch
+    ? lm.canPlay && !busy
+    : room
+      ? lab.live && myTurn(bowlingRules, room) && !busy
+      : mode === 'bot' && !busy && up === 0 && !over
 
   /** play a ball's frames on the canvas, or jump to where everything lies under reduced motion */
   const animate = (roll: Roll, who: Side, after: () => void) => {
@@ -275,9 +298,10 @@ export function BowlingDemo() {
     const at = needle(t)
     const s = { ...shot, hook: shot.hook * mirror, angle: shot.angle + strayFor(at) }
     setSaved((x) => ({ ...x, stance: shot }))
-    if (room) {
-      // in the call the host bowls it, and the ball comes back to everybody
+    if (shared) {
+      // the host or the server bowls it, and the ball comes back to everybody
       if (Math.abs(at) > 0.6) setSaid(`Let go ${at > 0 ? 'late' : 'early'} — the line strays.`)
+      if (inMatch) return void lm.play(s)
       return lab.act({ t: 'move', move: s })
     }
     setBusy(true)
@@ -311,15 +335,23 @@ export function BowlingDemo() {
   const queue = useRef<BowlingGame[]>([])
   const [said, setSaid] = useState('')
   const callName = (w: Side) =>
-    !room
-      ? ''
-      : room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 1
           ? 'Computer'
-          : words.mySeat !== null
-            ? 'Your side'
-            : 'The team'
-        : words.who(room.seats[w])
+          : 'You two'
+        : w === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : !room
+        ? ''
+        : room.mode === 'together'
+          ? w === 1
+            ? 'Computer'
+            : words.mySeat !== null
+              ? 'Your side'
+              : 'The team'
+          : words.who(room.seats[w])
   const callBall = (g: BowlingGame) => {
     const { by, standing: at, roll } = g.last!
     const strike = roll.felled.length === 10 && at.length === 10
@@ -345,7 +377,7 @@ export function BowlingDemo() {
     const g = queue.current.shift()
     if (!g) return setBusy(false)
     const { by, standing: at, roll } = g.last!
-    const ours = room && (room.mode === 'together' ? by === 0 : by === words.mySeat)
+    const ours = shared && (sharedMode === 'together' ? by === 0 : by === mySeat)
     setBusy(true)
     setStanding(at)
     standingRef.current = at
@@ -355,16 +387,23 @@ export function BowlingDemo() {
       playNext()
     })
   }
-  const callGame = room?.game
+  const callGame = matchGame ?? room?.game
   useEffect(() => {
     if (!callGame) {
+      // nothing shared yet (a match still waiting for its friend): nothing of the last one is said
       seen.current = null
       queue.current = []
+      setSaid('')
       return
     }
     const n = callGame.balls.length
     if (seen.current === n) return
-    const next1 = seen.current !== null && n === seen.current + 1 && !!callGame.last
+    // a match can come back several balls on — yours and the computer's whole frame, or a
+    // friend's frame bowled while you were away — and each is rolled in turn, the card before
+    // the last replayed from the balls, since only the last ball's roll travels with it
+    const from = seen.current
+    const more = from === null ? 0 : n - from
+    const next1 = more >= 1 && more <= 4 && !!callGame.last
     seen.current = n
     if (!next1) {
       // a new game, or one joined part way: the card as it stands, nothing to roll
@@ -374,6 +413,10 @@ export function BowlingDemo() {
       setSaid('')
       setBusy(false)
       return
+    }
+    for (let k = from! + 1; k < n; k++) {
+      const g = replay(callGame.balls.slice(0, k).map((b) => [b.x, b.angle, b.speed, b.hook]))
+      if (g?.last) queue.current.push(g)
     }
     queue.current.push(callGame)
     if (!show.current) playNext()
@@ -416,6 +459,19 @@ export function BowlingDemo() {
       later(900, () => computerBall(all, g.standing))
     }
   }
+
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's card */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) {
+      stopHere()
+      setMode('bot')
+      fresh()
+    }
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
 
   /* -------------------------------------------------------------------- the lane in perspective */
 
@@ -482,57 +538,63 @@ export function BowlingDemo() {
 
   return (
     <div className={`lab-keys bw-room is-${saved.lane}`}>
-      <div className="lab-controls">
-        {(lab.live || mode === 'call') && (
-          <div className="lab-group" role="group" aria-label="Opponent">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={mode === 'bot'}
-              onClick={() => {
-                if (mode === 'bot') return
-                stopHere()
-                setMode('bot')
-                fresh()
-              }}
-            >
-              Against the computer
-            </button>
-            <button
-              className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                stopHere()
-                setMode('call')
-              }}
-            >
-              👥 With the call
-            </button>
-          </div>
-        )}
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer bowls">
-            {LEVELS.map((l) => (
+      {inMatch && <MatchBar lm={lm} sides={['the first bowler', 'the second bowler']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          {(lab.live || mode === 'call') && (
+            <div className="lab-group" role="group" aria-label="Opponent">
               <button
-                key={l}
                 className="btn btn-ghost"
-                aria-pressed={saved.level === l}
+                aria-pressed={mode === 'bot'}
                 onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (untouched || over) fresh(l)
+                  if (mode === 'bot') return
+                  stopHere()
+                  setMode('bot')
+                  fresh()
                 }}
               >
-                {LEVEL_NAMES[l]}
+                Against the computer
               </button>
-            ))}
-          </div>
-        )}
-        {mode === 'bot' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => {
+                  stopHere()
+                  setMode('call')
+                }}
+              >
+                👥 With the call
+              </button>
+            </div>
+          )}
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer bowls">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (untouched || over) fresh(l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === 'bot' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
+            </button>
+          )}
+          {signedIn && mode === 'bot' && (
+            <MatchChallenge demo="bowling" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
+        </div>
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={bowlingRules}
@@ -570,7 +632,7 @@ export function BowlingDemo() {
               let i = 0
               return (
                 <tr key={w} className={up === w && !over ? 'is-up' : ''}>
-                  <th scope="row">{room ? callName(w) : w === 0 ? 'You' : LEVEL_NAMES[level]}</th>
+                  <th scope="row">{shared ? callName(w) : w === 0 ? 'You' : LEVEL_NAMES[level]}</th>
                   {cards.map((f, k) => {
                     const marks = f.rolls.map((_, j) => mark(rs, i + j, j))
                     i += f.rolls.length
@@ -588,7 +650,7 @@ export function BowlingDemo() {
           </tbody>
         </table>
       </div>
-      {mode === 'call' ? (
+      {shared || mode === 'call' ? (
         said && (
           <p className="muted bw-said" aria-live="polite">
             {said}
@@ -614,7 +676,7 @@ export function BowlingDemo() {
       >
         <CanvasStage
           className="bw-stage"
-          label={`A bowling lane. Standing: ${standing.join(', ')}. ${mode === 'call' ? said : line}`}
+          label={`A bowling lane. Standing: ${standing.join(', ')}. ${shared || mode === 'call' ? said : line}`}
           onPointerDown={onDown}
           make={(ctx, c) => {
             let last = ''
@@ -857,7 +919,7 @@ export function BowlingDemo() {
           >
             🎳 Hold to swing, let go to bowl
           </button>
-          {mode === 'bot' && over && (
+          {mode === 'bot' && !inMatch && over && (
             <button className="btn" onClick={() => fresh()}>
               ↻ Play again
             </button>
@@ -865,7 +927,8 @@ export function BowlingDemo() {
         </div>
       </div>
 
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
@@ -874,7 +937,7 @@ export function BowlingDemo() {
           </span>
         </p>
       )}
-      {mode === 'bot' && level !== saved.level && !untouched && !over && (
+      {mode === 'bot' && !inMatch && level !== saved.level && !untouched && !over && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
       <div className="fw-panel">

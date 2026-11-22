@@ -1408,7 +1408,8 @@ records met.
     820 with the touch rules on, so it could not see this. They are 24 with a mouse, and 38 on
     touch as before.
 
-  Whether the stand-in stays is Evan's call; see §23. The Circuits panel's list has none.
+  Asked on 22 Nov whether to keep it or take it out, Evan had no preference, so it stays: it is
+  dev-only and the built bundle carries none of it. The Circuits panel's list has none.
 
 - ⏸ **22d, new**, below.
 
@@ -1440,6 +1441,5 @@ released. Nothing below can move without you.
 | 21c | Run, or approve running, `supabase db dump --linked`, the first of the four steps in `supabase/baseline/README.md`, so CI tests the schema production has. Until then nothing applied since 4 Nov is in the database `db guards` runs against                                                                                                                                                | It reads production, so it is yours                |
 | 19e | Who "the person" is in "the person confirms from their own account". `claim_person` is already a member claiming a row as themself, so a claim made that way cannot confirm itself; the likeliest meaning is that the member who added the row confirms, but that is a guess. Building either half is production SQL, and the only thing waiting on it is the conversion, which waits on 20d | Answered 9 Nov, not built                          |
 | 20d | A cutover date for the conversion. 20e (what a restore does to a converted cell) waits on it too                                                                                                                                                                                                                                                                                             | Nothing converts until then                        |
-| 22c | Keep the feed's stand-in that #444 added against your 10 Nov "no", or take it out. The three fixes stay either way                                                                                                                                                                                                                                                                           | Live since 21 Nov; dev-only, not in the bundle     |
 | 22d | Where a phone shows who gave a kudos                                                                                                                                                                                                                                                                                                                                                         | New, 21 Nov                                        |
 | 19f | The signed-in device checks, which grow with each build. The PRs since carry their own phone checklists (#434, #437, #440, #441, #444)                                                                                                                                                                                                                                                       | Only a signed-in phone can make them               |

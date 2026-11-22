@@ -18,11 +18,16 @@ import {
   type Who,
 } from './goboard'
 import { useKept } from './kept'
-import { goRules } from './goRoom'
+import { goRules, type GoGame } from './goRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = {
@@ -57,25 +62,43 @@ export function GoDemo() {
   const recorded = useRef(false)
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A point or
+     a pass shows at once and waits for Send; the server plays it and the board comes back. */
+  const lm = useLabMatch('go')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as GoGame | null) : null
+
   /* ── the call's room: the game travels as its moves, replayed by goboard.ts itself */
   const lab = useLabRoom('go', goRules)
   const words = tableSeats(lab, goRules)
-  const room = mode === 'call' ? lab.room : null
-  /** the game on screen: the call's in a call, else this one */
-  const view = room ? room.game.g : game
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** shared with somebody, in a call or a match: the rules speak through the note, not the line */
+  const shared = !!room || inMatch
+  /** the game on screen: the match's, the call's in a call, else this one */
+  const view = matchGame ? matchGame.g : room ? room.game.g : game
   /** the colour I play in a call: white only in seat 1 of a versus game */
   const mine: Who = room?.mode === 'versus' && words.mySeat === 1 ? 2 : 1
-  const myMove = !!room && lab.live && myTurn(goRules, room)
+  const myMove = inMatch ? lm.canPlay : !!room && lab.live && myTurn(goRules, room)
   const nameOf = (w: Who) =>
-    room
-      ? room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 1
-          ? 'Together'
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[w - 1])
-      : w === you
-        ? 'You'
-        : 'The computer'
+        : w - 1 === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? w === 1
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[w - 1])
+        : w === you
+          ? 'You'
+          : 'The computer'
   /**
    * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
    * keeping their colour — or starts a new game if that one was over.
@@ -144,12 +167,14 @@ export function GoDemo() {
   }
 
   const tap = (i: number) => {
-    if (room) {
-      // in the call the host decides: this asks it, and the board comes back with everybody's
+    if (shared) {
+      // in the call the host decides, in a match the server: this asks, and the board comes back
       if (!myMove) return
       const why = whyNot(view, i)
       setNote(why)
-      if (!why) lab.act({ t: 'move', move: i })
+      if (why) return
+      if (inMatch) lm.play(i)
+      else lab.act({ t: 'move', move: i })
       return
     }
     if (mode !== 'bot' || end || thinking || game.turn !== you) return
@@ -165,8 +190,11 @@ export function GoDemo() {
     )
   }
   const pass = () => {
-    if (room) {
-      if (myMove) lab.act({ t: 'move', move: PASS })
+    if (shared) {
+      if (!myMove) return
+      setNote(null)
+      if (inMatch) lm.play(PASS)
+      else lab.act({ t: 'move', move: PASS })
       return
     }
     if (end || thinking || game.turn !== you) return
@@ -203,6 +231,19 @@ export function GoDemo() {
     else setLine('You play black and move first.')
   }
 
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) {
+      setMode('bot')
+      setNote(null)
+      fresh()
+    }
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const d: Record<string, [number, number]> = {
       ArrowUp: [-1, 0],
@@ -223,8 +264,9 @@ export function GoDemo() {
   const r = saved.record[saved.level]
   return (
     <div className={`lab-keys go-room is-${saved.board}`}>
+      {inMatch && <MatchBar lm={lm} sides={['black', 'white']} />}
       <div className="lab-controls">
-        {(lab.live || mode === 'call') && (
+        {!inMatch && (lab.live || mode === 'call') && (
           <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
@@ -250,7 +292,7 @@ export function GoDemo() {
             </button>
           </div>
         )}
-        {mode === 'bot' && (
+        {mode === 'bot' && !inMatch && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
             {LEVELS.map((l) => (
               <button
@@ -270,11 +312,11 @@ export function GoDemo() {
         <button
           className="btn btn-ghost"
           onClick={pass}
-          disabled={room ? !myMove : mode !== 'bot' || !!end || thinking || game.turn !== you}
+          disabled={shared ? !myMove : mode !== 'bot' || !!end || thinking || game.turn !== you}
         >
           Pass
         </button>
-        {mode === 'bot' && (
+        {mode === 'bot' && !inMatch && (
           <>
             <button className="btn btn-ghost" onClick={resign} disabled={!!end || game.moves === 0}>
               Resign
@@ -282,10 +324,11 @@ export function GoDemo() {
             <button className="btn btn-ghost" onClick={() => fresh()}>
               ↻ New game
             </button>
+            {signedIn && <MatchChallenge demo="go" settings={{}} levelNames={LEVEL_NAMES} />}
           </>
         )}
       </div>
-      {mode === 'call' && (
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={goRules}
@@ -302,7 +345,7 @@ export function GoDemo() {
         {([1, 2] as Who[]).map((w) => (
           <div
             key={w}
-            className={`dice-score${view.turn === w && !(room ? view.over : end) ? ' is-up' : ''}`}
+            className={`dice-score${view.turn === w && !(shared ? view.over : end) ? ' is-up' : ''}`}
           >
             <span>
               {nameOf(w)} · {colourName(w)}
@@ -314,7 +357,7 @@ export function GoDemo() {
           </div>
         ))}
       </div>
-      {mode === 'call' ? (
+      {shared || mode === 'call' ? (
         note && (
           <p className="muted mc-note" aria-live="polite">
             {note}
@@ -374,7 +417,8 @@ export function GoDemo() {
           </button>
         ))}
       </div>
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost} · you play{' '}
@@ -382,7 +426,7 @@ export function GoDemo() {
           </span>
         </p>
       )}
-      {mode === 'bot' && level !== saved.level && game.moves > 0 && !end && (
+      {mode === 'bot' && !inMatch && level !== saved.level && game.moves > 0 && !end && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
       <div className="fw-panel">

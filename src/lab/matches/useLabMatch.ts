@@ -30,6 +30,10 @@ import { matchHash } from './words'
  * board with Undo beside it; Send is what reaches `lab-move`, which plays it by the toy's own rules
  * against the board at `seq` and refuses it if somebody moved first. A move is never sent behind
  * the player's back, and a refusal leaves the board as the server says it is.
+ *
+ * The one exception is `commit`, for a toy whose move is performed live rather than chosen: a
+ * curling throw is swept while it slides, so by the time it is a move the player has watched it
+ * come to rest. Offering Undo then would let a stone be thrown again until it lay well.
  */
 export type LabMatch = ReturnType<typeof useLabMatch>
 
@@ -45,7 +49,17 @@ const WATCH_MS = 20000
  * outcome IS the physics. Its chosen move is shown as itself (the aim), never applied, and only
  * the server's answer moves anything.
  */
-export function useLabMatch(demo: string, { preview = true }: { preview?: boolean } = {}) {
+export function useLabMatch(
+  demo: string,
+  {
+    preview = true,
+    bring,
+  }: {
+    preview?: boolean
+    /** what accepting brings, for a toy that keeps the friend's side hidden: their fleet */
+    bring?: () => unknown
+  } = {},
+) {
   const [id, setId] = useState<string | null>(() => idFor(demo))
   const [view, setView] = useState<MatchView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -191,6 +205,16 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
       () => undo(),
     )
   }
+  /**
+   * Play and send in one, for a move the player has just performed live (see the note above):
+   * pressing Throw and sweeping it was the choosing, so nothing is sent behind their back. A
+   * refusal shows the board as the server says it is, as Send's does.
+   */
+  const commit = (m: unknown) => {
+    if (!canPlay || !id || !view || !rules || !game || !rules.legal(game, m, side)) return false
+    void run(() => sendMove(id, view.seq, m))
+    return true
+  }
   /** go to a match by its address: pushed, so Back returns to where you were */
   const open = (matchId: string) => {
     location.hash = matchHash(demo, matchId)
@@ -217,18 +241,21 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
     play,
     undo,
     send,
+    commit,
     open,
     leave,
     reload: load,
-    accept: () => id && run(() => acceptMatch(id)),
+    accept: () => id && run(() => acceptMatch(id, bring?.())),
     decline: () => id && run(() => declineMatch(id)),
     resign: () => id && run(() => resignMatch(id)),
     claim: () => id && run(() => claimMatch(id)),
     rematch: () => {
       if (!view) return
       const other = view.seats[view.you === 0 ? 1 : 0].id
+      // the asker is the new challenger; a toy with sides says which they take now
+      const settings = matchToy(view.demo)?.rematch?.(view) ?? view.settings
       return run(
-        () => challenge(other, view.demo, view.mode, view.settings, view.id),
+        () => challenge(other, view.demo, view.mode, settings, view.id),
         (v) => open(v.id),
       )
     },

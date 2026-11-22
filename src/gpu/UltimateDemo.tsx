@@ -16,11 +16,16 @@ import {
   type Who,
 } from './ultimate'
 import { useKept } from './kept'
-import { ultimateRules } from './ultimateRoom'
+import { ultimateRules, type UltimateGame } from './ultimateRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -70,29 +75,45 @@ export function UltimateDemo() {
 
   const marks = MARK_SETS[saved.marks]
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A square
+     shows at once and waits for Send; the server plays it and the board comes back. */
+  const lm = useLabMatch('ultimate')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as UltimateGame | null) : null
+
   /* ── the call's room: the game travels as its squares, replayed by ultimate.ts itself */
   const lab = useLabRoom('ultimate', ultimateRules)
   const words = tableSeats(lab, ultimateRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
   /** the mark I play: the second only in seat 1 of a versus game; together, the team is first */
   const mySide: Who = room?.mode === 'versus' && words.mySeat === 1 ? 2 : 1
   /** the board on screen: the call's in a call, else this one */
-  const view = room ? room.game.g : game
+  const view = matchGame ? matchGame.g : room ? room.game.g : game
 
   const nameOf = (w: Who) =>
-    room
-      ? room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 1
-          ? 'Together'
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[w - 1])
-      : mode === 'bot'
-        ? w === you
+        : w - 1 === lm.view.you
           ? 'You'
-          : 'The computer'
-        : `${marks[w - 1]}`
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? w === 1
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[w - 1])
+        : mode === 'bot'
+          ? w === you
+            ? 'You'
+            : 'The computer'
+          : `${marks[w - 1]}`
   const legal = new Set(moves(view))
-  const computerTurn = mode === 'bot' && !game.winner && game.turn !== you
+  const computerTurn = mode === 'bot' && !inMatch && !game.winner && game.turn !== you
 
   const afterMove = (g: Game, by: Who) => {
     setGame(g)
@@ -127,6 +148,10 @@ export function UltimateDemo() {
     )
   }
   const tap = (i: number) => {
+    if (inMatch) {
+      if (legal.has(i)) lm.play(i)
+      return
+    }
     // in the call the host decides: this asks it, and the board comes back with everybody's
     if (room) {
       if (legal.has(i) && lab.live && myTurn(ultimateRules, room)) lab.act({ t: 'move', move: i })
@@ -182,6 +207,12 @@ export function UltimateDemo() {
           : 'The computer moves first this time…',
     )
   }
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const d: Record<string, [number, number]> = {
@@ -203,56 +234,62 @@ export function UltimateDemo() {
   const record = saved.record[saved.level]
   return (
     <div className={`lab-keys ut-room is-${saved.theme}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['first', 'second']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => setMode('call')}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => setMode('call')}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (!game.cells.some((c) => c) || game.winner) fresh(mode, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
             </button>
           )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge demo="ultimate" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
         </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
-              <button
-                key={l}
-                className="btn btn-ghost"
-                aria-pressed={saved.level === l}
-                onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (!game.cells.some((c) => c) || game.winner) fresh(mode, l)
-                }}
-              >
-                {LEVEL_NAMES[l]}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' ? (
+      )}
+      {inMatch ? null : mode === 'call' ? (
         <CallTable
           table={lab}
           rules={ultimateRules}
@@ -319,7 +356,8 @@ export function UltimateDemo() {
           )
         })}
       </div>
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -327,9 +365,13 @@ export function UltimateDemo() {
           </span>
         </p>
       )}
-      {mode === 'bot' && game.cells.some((c) => c) && !game.winner && level !== saved.level && (
-        <p className="muted mc-note">The new level starts with the next game.</p>
-      )}
+      {mode === 'bot' &&
+        !inMatch &&
+        game.cells.some((c) => c) &&
+        !game.winner &&
+        level !== saved.level && (
+          <p className="muted mc-note">The new level starts with the next game.</p>
+        )}
 
       <div className="fw-panel">
         <section aria-label="Looks">

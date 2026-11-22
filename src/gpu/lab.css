@@ -2059,6 +2059,16 @@ html:has(.lab) {
   border-top: 1px dashed rgba(255, 255, 255, 0.35);
   padding-top: 6px;
 }
+/* a match: the row the palette fills — the code being hidden, or the guess — is ringed */
+.cb-row.is-code {
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.35);
+  padding-bottom: 6px;
+}
+.cb-row.is-editing {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 1px;
+  border-radius: 8px;
+}
 .cb-n {
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -7024,4 +7034,32 @@ html:has(.lab) {
 .your-game.is-yours .your-game-state {
   color: inherit;
   font-weight: 600;
+}
+
+/* Shadow box by turns: each round's score over par, and the boxes shown once it is over */
+.sbx-rounds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.sbx-rounds li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.8rem;
+}
+
+/* Dominoes by turns: the hands as a round ended, a row each */
+.dm-ended {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.3rem 0;
+}
+.dm-last {
+  display: grid;
+  gap: 0.2rem;
 }

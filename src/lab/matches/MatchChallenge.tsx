@@ -16,11 +16,17 @@ export function MatchChallenge({
   demo,
   settings,
   levelNames,
+  sides,
 }: {
   demo: string
   /** what the challenge plays on, from the toy's own settings: a board size, say */
   settings: Record<string, unknown>
   levelNames: Record<string, string>
+  /**
+   * A lopsided game's sides, for versus: the challenger picks theirs (sent as `side`), the first
+   * being the default, and the friend plays the other. Together, the team plays the toy's own side.
+   */
+  sides?: readonly { value: string; name: string }[]
 }) {
   const toy = matchToy(demo)
   const [open, setOpen] = useState(false)
@@ -28,6 +34,7 @@ export function MatchChallenge({
   const [who, setWho] = useState<string | null>(null)
   const [mode, setMode] = useState<'versus' | 'together'>('versus')
   const [level, setLevel] = useState<string>(toy?.levels[1] ?? toy?.levels[0] ?? '')
+  const [side, setSide] = useState<string | null>(sides?.[0]?.value ?? null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,7 +59,11 @@ export function MatchChallenge({
         who,
         demo,
         mode,
-        mode === 'together' ? { ...settings, level } : settings,
+        mode === 'together'
+          ? { ...settings, level }
+          : side === null
+            ? settings
+            : { ...settings, side },
       )
       setOpen(false)
       location.hash = matchHash(demo, v.id)
@@ -116,6 +127,20 @@ export function MatchChallenge({
                   🤝 Together against the computer
                 </button>
               </div>
+              {mode === 'versus' && sides && sides.length > 1 && (
+                <div className="lab-controls" role="group" aria-label="Your side">
+                  {sides.map((s) => (
+                    <button
+                      key={s.value}
+                      className="btn btn-ghost"
+                      aria-pressed={side === s.value}
+                      onClick={() => setSide(s.value)}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              )}
               {mode === 'together' && (
                 <div className="lab-controls" role="group" aria-label="How well the computer plays">
                   {toy.levels.map((l) => (

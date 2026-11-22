@@ -153,3 +153,65 @@ export const curlingRules: Rules<CurlingGame, Throw> = {
 export function pack(t: Throw): unknown[] {
   return [t.shot.angle, t.shot.speed, t.shot.spin, t.sweeps.map(([a, b]) => [a, b])]
 }
+
+/**
+ * ⚠️ A MATCH BY TURNS IS KEPT, AND WHAT IS KEPT HAS A SIZE. A call holds its game in memory, so
+ * the room above takes up to MAX_SPANS sweeps a throw; a match stores every throw in a row whose
+ * state is capped at 16 KB, and each throw again in a history row capped at 200 bytes. The
+ * computer's sweepers toggle up to 65 times a throw (measured on 16 Nov 2026: 692 bytes), so a
+ * five-end game against it could reach about 28 KB and stop the match at the database. In a match
+ * a throw carries at most MATCH_SPANS sweeps and its numbers to four places: about 190 bytes, and
+ * about 8 KB for the longest game. The toy rounds and caps its own throws before sliding them, so
+ * the slide the thrower watched is the one the server makes.
+ */
+export const MATCH_SPANS = 8
+/** a shot's numbers to four places, as a match keeps them */
+export const roundShot = (s: Shot): Shot => ({
+  angle: Math.round(s.angle * 1e4) / 1e4,
+  speed: Math.round(s.speed * 1e4) / 1e4,
+  spin: s.spin,
+})
+/**
+ * A sweep cut down to at most `max` spans by joining the two closest together, again and again:
+ * a sweeper who keeps sweeping through the shortest pauses. Still a sweep any thrower could send.
+ */
+export function fewerSpans(spans: Spans, max: number): Spans {
+  const out = spans.map(([a, b]) => [a, b] as [number, number])
+  while (out.length > max) {
+    let k = 0
+    for (let i = 1; i < out.length - 1; i++)
+      if (out[i + 1][0] - out[i][1] < out[k + 1][0] - out[k][1]) k = i
+    out.splice(k, 2, [out[k][0], out[k + 1][1]])
+  }
+  return out
+}
+const fits = (t: Throw) =>
+  t.sweeps.length <= MATCH_SPANS &&
+  t.shot.angle === roundShot(t.shot).angle &&
+  t.shot.speed === roundShot(t.shot).speed
+
+/** the computer's throw in a match: its own, rounded, and its sweep worked out again and cut down */
+export function matchThrow(cg: CurlingGame, level: Level, rand: () => number): Throw {
+  const t = computerThrow(cg, level, rand)
+  const shot = roundShot(t.shot)
+  const plan = t.sweeps.length ? sweptOn(t.sweeps) : null
+  return {
+    shot,
+    sweeps: fewerSpans(spansOf(cg.g.stones, shot, toThrow(cg.g), plan), MATCH_SPANS),
+  }
+}
+
+/** curling as a match by turns keeps it: the room's rules, with throws a match can store */
+export const curlingMatchRules: Rules<CurlingGame, Throw> = {
+  ...curlingRules,
+  legal: (cg, t, by) => curlingRules.legal(cg, t, by) && fits(t),
+  readMove: (x) => {
+    const t = readThrow(x)
+    return t && fits(t) ? t : null
+  },
+  computer: {
+    side: 1,
+    levels: LEVELS,
+    choose: (cg, level) => matchThrow(cg, level as Level, Math.random),
+  },
+}

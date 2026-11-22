@@ -19,6 +19,38 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   fourrow: [{}, { size: 'small' }, { size: 'wide', need: 5 }, { size: 'classic', level: 'hard' }],
   mancala: [{}, { pits: 4 }, { seeds: 6, captures: false }, { pits: 5, seeds: 3, level: 'hard' }],
   morris: [{}, { level: 'hard' }],
+  hex: [{}, { size: 7 }, { size: 11, swap: true }, { swap: false, level: 'hard' }],
+  ultimate: [{}, { level: 'hard' }],
+  breakthrough: [{}, { size: 6 }, { size: 8, level: 'hard' }],
+  fences: [{}, { size: 7 }, { size: 9, level: 'hard' }],
+  halma: [{}, { level: 'hard' }],
+  go: [{}, { level: 'hard' }],
+  fox: [{}, { level: 'hard' }, { side: 'geese' }, { side: 'fox' }],
+  cube: [{}, { level: 'hard' }],
+  artillery: [{}, { level: 'hard' }],
+  bowling: [{}, { level: 'hard' }],
+  curling: [{}, { level: 'hard' }],
+  putt: [{}, { level: 'hard' }],
+  darts: [{}, { level: 'hard' }],
+  backgammon: [{}, { level: 'hard' }],
+  seabattle: [
+    {},
+    { size: 8 },
+    { size: 10, fleet: 'swarm', apart: false, again: true, level: 'hard' },
+  ],
+  dice: [{}, { level: 'fair' }],
+  yacht: [{}, { level: 'hard' }],
+  shut: [{}, { level: 'hard' }],
+  codebreaker: [
+    {},
+    { length: 3, colours: 4 },
+    { length: 5, colours: 8, repeats: false, tries: 12, level: 'hard' },
+  ],
+  shadowbox: [{}, { rounds: 1 }, { rounds: 5, level: 'hard' }],
+  rps: [{}, { firstTo: 5 }, { firstTo: 10, level: 'hard' }],
+  gin: [{}, { target: 100 }, { target: 50, level: 'hard' }],
+  cribbage: [{}, { level: 'hard' }],
+  dominoes: [{}, { target: 50 }, { target: 100, level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -30,6 +62,30 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   fourrow: [{ size: 'small', need: 5 }, { size: 'huge' }, { need: 3 }, { size: 7 }],
   mancala: [{ pits: 7 }, { pits: '6' }, { seeds: 2 }, { captures: 'yes' }],
   morris: [],
+  hex: [{ size: 8 }, { size: '9' }, { swap: 'yes' }, { size: 13 }],
+  ultimate: [],
+  breakthrough: [{ size: 7 }, { size: '8' }, { size: 10 }],
+  fences: [{ size: 8 }, { size: '9' }, { size: 11 }],
+  halma: [],
+  go: [],
+  fox: [{ side: 'goose' }, { side: 'Fox' }, { side: 1 }],
+  cube: [],
+  artillery: [],
+  bowling: [],
+  curling: [],
+  putt: [],
+  darts: [],
+  backgammon: [],
+  seabattle: [{ size: 9 }, { fleet: 'armada' }, { apart: 'yes' }, { again: 1 }],
+  dice: [],
+  yacht: [],
+  shut: [],
+  codebreaker: [{ length: 6 }, { colours: 9 }, { repeats: 'no' }, { tries: 7 }],
+  shadowbox: [{ rounds: 2 }, { rounds: '3' }, { rounds: 0 }],
+  rps: [{ firstTo: 4 }, { firstTo: '3' }, { firstTo: 0 }],
+  gin: [{ target: 75 }, { target: '50' }, { target: 0 }],
+  cribbage: [],
+  dominoes: [{ target: 75 }, { target: '100' }, { target: 0 }],
 }
 
 describe('the match toys', () => {
@@ -74,5 +130,22 @@ describe('the match toys', () => {
 
   it('all offer the levels a profile’s challenge lists without loading the rules', () => {
     for (const toy of Object.values(MATCH_TOYS)) expect(toy.levels).toEqual(MATCH_LEVELS)
+  })
+})
+
+describe('a rematch', () => {
+  it('swaps the sides of Fox and geese, whoever asks for it, and keeps every other toy’s settings', () => {
+    const fox = MATCH_TOYS.fox.rematch!
+    // the challenger had the geese: asking again they take the fox, and the friend asking takes the geese
+    expect(fox({ you: 0, mode: 'versus', settings: {} })).toEqual({ side: 'fox' })
+    expect(fox({ you: 1, mode: 'versus', settings: {} })).toEqual({ side: 'geese' })
+    expect(fox({ you: 0, mode: 'versus', settings: { side: 'fox' } })).toEqual({ side: 'geese' })
+    expect(fox({ you: 1, mode: 'versus', settings: { side: 'fox' } })).toEqual({ side: 'fox' })
+    // together the team plays the geese either way
+    expect(fox({ you: 1, mode: 'together', settings: { level: 'hard' } })).toEqual({
+      level: 'hard',
+    })
+    for (const [demo, toy] of Object.entries(MATCH_TOYS))
+      if (demo !== 'fox') expect(toy.rematch).toBeUndefined()
   })
 })
