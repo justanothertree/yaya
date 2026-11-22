@@ -7,6 +7,11 @@ export function localISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** Day `d` (counting from 1) of a `YYYY-MM` month, as `YYYY-MM-DD`. */
+export function dayOfMonth(ym: string, d: number): string {
+  return `${ym}-${String(d).padStart(2, '0')}`
+}
+
 /** Today as a local YYYY-MM-DD. */
 export function todayISO(): string {
   return localISO(new Date())

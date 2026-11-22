@@ -16,9 +16,9 @@ import {
   wobble,
   type Course,
   type Flight,
-  type Saved,
 } from './skip'
 import { createSkip, type SkipView } from './skipEngine'
+import { useKept } from './kept'
 
 type Props = {
   running: boolean
@@ -29,17 +29,9 @@ type Props = {
 const FREE = 'free'
 const OPEN: Course = { shore: 60 }
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(SKIP_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
-
 export function SkipDemo({ running, setRunning, onAdapter }: Props) {
   const [live, setLive] = useState(false)
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(SKIP_KEY, readSaved)
   const [pick, setPick] = useState<string>(FREE)
   const [pull, setPull] = useState(0.6)
   const [angle, setAngle] = useState(0)
@@ -49,14 +41,6 @@ export function SkipDemo({ running, setRunning, onAdapter }: Props) {
   const [flying, setFlying] = useState(false)
   const challenge = CHALLENGES.find((c) => c.id === pick) ?? null
   const course = challenge?.course ?? OPEN
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SKIP_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   // what the frame loop reads, without re-making the stage
   const clock = useRef(0)

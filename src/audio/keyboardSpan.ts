@@ -73,3 +73,11 @@ export const OCTAVE_HIGH = 6
 /** Move the octave by `by`, staying inside the range the room offers. */
 export const shiftOctave = (from: number, by: number): number =>
   Math.max(OCTAVE_LOW, Math.min(OCTAVE_HIGH, Math.round(from) + by))
+
+/**
+ * Whether a key is black — C♯ D♯ F♯ G♯ A♯ in every octave, below MIDI 0 too.
+ *
+ * ⚠️ ONE COPY. The keyboard and the note editor each had their own, character for character the
+ * same, which is the shape that drifts the first time one of them is touched.
+ */
+export const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)

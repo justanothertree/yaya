@@ -14,6 +14,7 @@ import {
   coveredPct,
   dayBounds,
   gapSince,
+  inkOf,
   lane,
   localMidnight,
   metSession,
@@ -632,6 +633,27 @@ describe('the colours an activity may be given', () => {
       expect(lum(c), `${c} is too pale for a light page`).toBeLessThan(0.75)
     }
   })
+
+  /**
+   * ⚠️ EVERY ACTIVITY HAS A DOT NOW, and this is the rule for its colour: the one you gave it, or
+   * its kind's — which is how the week grid has always drawn its blocks. The kinds' colours are
+   * CSS variables; `scripts/chron-ink.test.mjs` checks the stylesheet declares one for each.
+   */
+  it('draws an activity in its own colour when it has one', () => {
+    expect(inkOf({ colour: '#4caf50', cat: 'free' })).toBe('#4caf50')
+    expect(inkOf({ colour: '#4caf50', cat: 'locked' })).toBe('#4caf50')
+  })
+
+  it('draws one with no colour of its own in its kind’s', () => {
+    expect(inkOf({ colour: null, cat: 'locked' })).toBe('var(--chron-locked)')
+    expect(inkOf({ colour: null, cat: 'free' })).toBe('var(--chron-free)')
+    expect(inkOf({ colour: null, cat: 'life' })).toBe('var(--chron-life)')
+  })
+
+  it('draws a kind it does not know as Free Time, as the week grid does, never as nothing', () => {
+    expect(inkOf({ colour: null, cat: 'hobby' })).toBe('var(--chron-free)')
+    expect(inkOf({ colour: null, cat: '' })).toBe('var(--chron-free)')
+  })
 })
 
 describe('how long nothing has been recorded', () => {
@@ -1093,6 +1115,8 @@ describe('finding the block a tap meant', () => {
     activity: 'a',
     left,
     width,
+    /* an ordinary 24-hour day, where a block's length is its width of the day */
+    ms: (width / 100) * 86_400_000,
     cut: false,
   })
   /* 9am–10am and 2pm–2.30pm, as percentages of a day */

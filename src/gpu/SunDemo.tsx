@@ -27,6 +27,7 @@ import {
   type Sky,
 } from './sun'
 import { createSun, type SunView } from './sunEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -78,7 +79,7 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(SUN_KEY, JSON.stringify(saved))
+      writeKept(SUN_KEY, JSON.stringify(saved))
     } catch {
       /* private mode: kept for this visit */
     }

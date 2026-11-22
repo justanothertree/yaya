@@ -192,6 +192,76 @@ describe('whether the prices behind “worth today” can still be trusted', () 
     expect(n.pricedAsOf).toBeNull()
     expect(n.pricesStale).toBe(false)
   })
+
+  /**
+   * ⚠️ THE SECOND QUESTION, AND THE FIXTURE ABOVE IS WHY IT NEEDED ASKING. “Takes the newest
+   * price as the account’s age” is a deliberate rule about the FEED, and it is also what makes a
+   * single abandoned symbol invisible — the same `mixed` account that correctly reports
+   * `pricesStale: false` is carrying a 40-day-old price on a holding worth $10.
+   */
+  it('names the holding whose own price is old, even while the feed is fresh', () => {
+    const mixed = account({
+      holdings: [
+        hold({
+          symbol: 'OLD',
+          units: 1,
+          price: 10,
+          priceAt: new Date(NOW - 40 * DAY).toISOString(),
+        }),
+        hold({
+          symbol: 'VOO',
+          units: 2,
+          price: 50,
+          priceAt: new Date(NOW - 0.5 * DAY).toISOString(),
+        }),
+      ],
+    })
+    const n = accountNumbers(mixed, timeline(), NOW)
+    expect(n.pricesStale).toBe(false)
+    expect(n.stalePriced.map((h) => h.symbol)).toEqual(['OLD'])
+    expect(n.stalePricedWorth).toBeCloseTo(10, 6)
+  })
+
+  /**
+   * From the sentence, not the constant: the rule is “a single missed run is tolerated, two in a
+   * row means something broke”, and it has to mean the same thing per holding as per feed.
+   */
+  it('tolerates one missed day on a holding exactly as it does on the feed', () => {
+    const n = accountNumbers(
+      account({
+        holdings: [hold({ symbol: 'VOO', priceAt: new Date(NOW - 1.9 * DAY).toISOString() })],
+      }),
+      timeline(),
+      NOW,
+    )
+    expect(n.stalePriced).toEqual([])
+  })
+
+  it('counts an unpriced holding as unknown rather than as stale', () => {
+    const n = accountNumbers(
+      account({ holdings: [hold({ symbol: 'PRIV', price: null, priceAt: null })] }),
+      timeline(),
+      NOW,
+    )
+    expect(n.unpriced).toBe(1)
+    expect(n.stalePriced).toEqual([])
+    expect(n.stalePricedWorth).toBe(0)
+  })
+
+  it('puts the oldest price first, so the worst one is the one you read', () => {
+    const n = accountNumbers(
+      account({
+        holdings: [
+          hold({ symbol: 'MID', priceAt: new Date(NOW - 10 * DAY).toISOString() }),
+          hold({ symbol: 'WORST', priceAt: new Date(NOW - 58 * DAY).toISOString() }),
+          hold({ symbol: 'NEW', priceAt: new Date(NOW - 3 * DAY).toISOString() }),
+        ],
+      }),
+      timeline(),
+      NOW,
+    )
+    expect(n.stalePriced.map((h) => h.symbol)).toEqual(['WORST', 'MID', 'NEW'])
+  })
 })
 
 describe('today’s move', () => {

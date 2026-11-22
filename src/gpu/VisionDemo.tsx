@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { LabStage } from './LabStage'
 import { PICTURES, type PictureId } from './jigsaw'
 import { fitImage, toImage } from './palette'
@@ -13,10 +13,10 @@ import {
   readSaved,
   seen,
   simulation,
-  type Saved,
   type V3,
 } from './vision'
 import { createVision, type VisionView } from './visionEngine'
+import { useKept } from './kept'
 
 type Props = {
   running: boolean
@@ -28,14 +28,6 @@ type Source = 'chart' | PictureId | 'own'
 /** the working size of a picture: plenty for judging colour, small enough to keep in memory */
 const WORK = 1024
 const PHOTO_LIMIT = 25 * 1024 * 1024
-
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(VISION_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 /**
  * The test card: what colour-blind readers report trouble with most — lines and a legend in a common
@@ -130,7 +122,7 @@ function drawChart(): { data: Uint8ClampedArray<ArrayBuffer>; w: number; h: numb
 
 export function VisionDemo({ running, setRunning, onAdapter }: Props) {
   const [live, setLive] = useState(false)
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(VISION_KEY, readSaved)
   const [source, setSource] = useState<Source>('chart')
   const [split, setSplit] = useState(0.5)
   const [next, setNext] = useState<'a' | 'b'>('a')
@@ -145,14 +137,6 @@ export function VisionDemo({ running, setRunning, onAdapter }: Props) {
   const { kind, severity } = saved
   const a = parseHex(saved.a) ?? [1, 0, 0]
   const b = parseHex(saved.b) ?? [0, 1, 0]
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(VISION_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const matrix = useMemo(() => simulation(kind, severity), [kind, severity])
   const now = useRef({ matrix, split, marks })

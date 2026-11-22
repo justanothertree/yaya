@@ -2,12 +2,13 @@ import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
 import { makeVoiceChain, PLAIN_VOICE, readVoiceFx, type VoiceChain, type VoiceFx } from './takeFx'
 import { chopEnvelope, stutterAt, NO_CHOP, type Chop } from './chop'
-import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
+import { fxSnapshot, noteOff, noteOn, SAFE_START, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
-import { getTake } from './takes'
+import { getTake, keepOnTake } from './takes'
 import { decodeTake } from './recordTake'
 import { followLastBar, growPlan, partAt, partsIn } from './arrange'
+import { tidyLyrics } from './lyricLines'
 import { logNow, readLog } from './takeEdit'
 import { editedBuffer } from './takeAudio'
 
@@ -135,6 +136,25 @@ export type Layer = {
    * the count-in ran is stored as you finally left it rather than as you first tried it.
    */
   fx: Fx
+  /**
+   * The words this part sings: one line per bar of the SONG, `''` for a bar with none — see
+   * songLyrics.ts. Absent on every part nobody has written on, which is nearly all of them.
+   *
+   * ⚠️ ON THE PART RATHER THAN BESIDE THE LAYERS, so the room's undo, the bench a reload puts
+   * back, a kept song and the jam all carry it without learning anything new: each of them
+   * already copies a part's fields. A field one of them forgot would be a delete — see the
+   * round trip in songFile.test.ts, which fills this in.
+   */
+  lyrics?: string[]
+  /**
+   * How loud the words are sung, 0 to 2, 1 being as the voice comes — the lyrics row's own fader
+   * (Evan, 21 Nov 2026: "easy volume for every part … the lyrics track"). Absent means 1.
+   *
+   * ⚠️ ON THE PART, BESIDE ITS WORDS, for the same reason the words are: the undo, the bench, a
+   * kept song and the jam already copy a part's fields, so it travels without any of them learning
+   * a thing. It moves with the words (moveLyrics), because it is how loud THEY are.
+   */
+  wordsGain?: number
 }
 
 type State = {
@@ -278,8 +298,19 @@ let state: State = {
 const heard = new Map<string, AudioBuffer>()
 /* one voice chain per placed take, living as long as the take is on the loop — see takeFx */
 const chains = new Map<string, VoiceChain>()
+/**
+ * Each placed take's volume, as a node in front of its chain that lives as long as the chain does.
+ *
+ * ⚠️ A NODE THAT STAYS, NOT THE GAIN EACH PASS IS SCHEDULED WITH. A take is scheduled once a pass,
+ * so a volume read when it is scheduled is heard from the next time round — a fader that answers
+ * a pass late, which for a long take is no fader at all. This one is ramped where it stands, so
+ * the take already singing gets quieter under your finger, the way a part's does.
+ */
+const levels = new Map<string, GainNode>()
 /* named apart from `sounding`, which is the note voices — two different things being kept alive */
 const playing = new Set<AudioBufferSourceNode>()
+/* which take a sounding source belongs to, so one recording can be stopped without the rest */
+const takeOfSource = new WeakMap<AudioBufferSourceNode, string>()
 
 const listeners = new Set<() => void>()
 let snapshot = state
@@ -328,6 +359,8 @@ let timer = 0
 let loopStart = 0
 /** How far ahead we have already scheduled, as an absolute audio time. */
 let scheduledTo = 0
+/** nothing is scheduled from here on, when a recording asked for one pass — see endPassAt */
+let lastAt: number | null = null
 /**
  * The exact audio time a waiting take will begin at.
  *
@@ -510,12 +543,14 @@ function scheduleWindow(from: number, to: number) {
       const src = ctx.createBufferSource()
       src.buffer = buf
       /* ⚠️ the takes' own bus, NOT makeGain — see takeBus for what that costs */
+      /* this pass's own gain carries the chop's shape and nothing else: the take's volume is its
+         level node, which outlives the pass (see `levels`) */
       const g = ctx.createGain()
-      g.gain.value = take.gain ?? 1
+      g.gain.value = 1
       src.connect(g)
-      /* ⚠️ through its own chain if it has one, and straight to the bus if it does not.
-         The chain outlives the source: it is per TAKE, and a new source is made every pass. */
-      g.connect(chains.get(take.id)?.in ?? takeBus())
+      /* ⚠️ through its level and its own chain if it has them, and straight to the bus if not.
+         Both outlive the source: they are per TAKE, and a new source is made every pass. */
+      g.connect(levels.get(take.id) ?? chains.get(take.id)?.in ?? takeBus())
       /**
        * ⚠️ THE GAIN OUTLIVES THE SOURCE THAT MADE IT, and this cost an hour. `g` used to be
        * disconnected when the main source ended — which is correct right up until a stutter,
@@ -541,6 +576,7 @@ function scheduleWindow(from: number, to: number) {
         done()
       }
       playing.add(src)
+      takeOfSource.set(src, take.id)
       const room = base + len - at
       const ends = at + Math.min(buf.duration, room)
 
@@ -559,14 +595,14 @@ function scheduleWindow(from: number, to: number) {
         if (pts.length) {
           /* ⚠️ an anchor first, or the first linearRamp has nothing to ramp FROM and the
              browser is entitled to start it at whatever the value happened to be */
-          g.gain.setValueAtTime(take.gain ?? 1, at)
+          g.gain.setValueAtTime(1, at)
           for (let b = 0; b < state.bars; b++) {
             const barAt = base + b * barLen
             if (barAt + barLen < at || barAt > ends) continue
             for (const pt of pts) {
               const when = barAt + pt.t
               if (when < at + 1e-6 || when > ends) continue
-              const v = (take.gain ?? 1) * pt.v
+              const v = pt.v
               if (pt.snap) g.gain.setValueAtTime(v, when)
               else g.gain.linearRampToValueAtTime(v, when)
             }
@@ -596,6 +632,7 @@ function scheduleWindow(from: number, to: number) {
             done()
           }
           playing.add(echo)
+          takeOfSource.set(echo, take.id)
           echo.start(when, into, Math.min(rep.len, buf.duration - into))
         }
       }
@@ -863,7 +900,7 @@ function tick() {
     }
   }
 
-  const target = now + lookahead
+  const target = Math.min(now + lookahead, lastAt ?? Infinity)
   if (scheduledTo < now) scheduledTo = now
   if (target > scheduledTo) {
     scheduleWindow(scheduledTo, target)
@@ -883,6 +920,7 @@ function tick() {
  */
 export function startLoop(leadIn = 0) {
   if (state.playing) return
+  lastAt = null
   resumeAudio()
   const c = sharedCtx()
   loopStart = c.currentTime + 0.08 + Math.max(0, leadIn)
@@ -913,6 +951,20 @@ export function startLoop(leadIn = 0) {
  * last-change-wins rule — which is what you want, because a loop with two different origins is
  * not one loop.
  */
+/**
+ * Make the pass that is playing the last: nothing is scheduled from `t` on, for a recording of the
+ * song (⬇ Stems, ⬇ Export song). Cleared by stopLoop and startLoop.
+ *
+ * ⚠️ STOPPING AT THE END IS TOO LATE (found 16 Nov 2026, measured). The scheduler works 140ms
+ * ahead, so by the song's last beat the next pass's first is already on the audio clock, and a
+ * drum hit once scheduled plays whatever is released: an export's ring-out opened on a full-level
+ * kick, and every stem ended on the first 40ms of the next pass. Not scheduling it is the only
+ * cut that leaves the song's own ending alone.
+ */
+export function endPassAt(t: number | null) {
+  lastAt = t
+}
+
 export function seekTo(t: number) {
   if (!state.playing) return
   const c = sharedCtx()
@@ -929,6 +981,7 @@ export function seekTo(t: number) {
 export function stopLoop() {
   if (timer) clearInterval(timer)
   timer = 0
+  lastAt = null
   // ⚠️ before commitTake, not after: a take being committed can add a layer, and releasing
   // afterwards would then chase notes that were never started
   releaseAllLayers()
@@ -1361,6 +1414,19 @@ function hushTakes() {
   playing.clear()
 }
 
+/** Stop one take where it is sounding or scheduled, and leave the others singing. */
+function hushTake(id: string) {
+  for (const src of playing) {
+    if (takeOfSource.get(src) !== id) continue
+    try {
+      src.stop()
+    } catch {
+      /* already finished, or never started */
+    }
+    playing.delete(src)
+  }
+}
+
 function restart() {
   releaseAllLayers()
   hushTakes()
@@ -1490,7 +1556,33 @@ export function addEmptyLayer(instrument: InstrumentId): string {
   return id
 }
 
-/** Put a layer back in every bar. */
+/**
+ * An empty part shaped like another — its sound, its length, its volume and its arrangement — for
+ * "copy all its notes to a new part" (PartPanel). The notes arrive through the new part's own
+ * editor, so its ↶ takes them back.
+ *
+ * ⚠️ NO PICKER'S MARK ON THE ID, so a copy of the chords is not a second "chords" for the beats
+ * panel to swap — see patternMark.ts.
+ */
+export function addPartLike(id: string): string {
+  const l = state.layers.find((x) => x.id === id)
+  if (!l || layersFull()) return ''
+  const nid = `${Date.now()}-copy`
+  const copy: Layer = {
+    id: nid,
+    instrument: l.instrument,
+    events: [],
+    muted: false,
+    fx: { ...l.fx },
+    len: l.len,
+    ...(l.gain !== undefined ? { gain: l.gain } : {}),
+    ...(l.plan ? { plan: [...l.plan] } : {}),
+    ...(l.play ? { play: [...l.play] } : {}),
+  }
+  set({ layers: [...state.layers, copy] })
+  return nid
+}
+
 /**
  * How many bars of its own a take holds — the blocks there are to arrange.
  */
@@ -1598,6 +1690,71 @@ export function setLayerGain(id: string, gain: number) {
 
 export function setLayerFx(id: string) {
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, fx: fxSnapshot() } : l)) })
+}
+
+/**
+ * One of a part's own effects, from its menu — the echo of the bassline without touching the
+ * knobs your hands are playing through (Evan, 15 Nov 2026: a part's "extra sound settings" in
+ * the menu its notes open in). Heard from the part's next note, as a re-stamp is.
+ */
+export function setLayerFxValue(id: string, k: keyof Fx, v: number) {
+  const x = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0
+  set({
+    layers: state.layers.map((l) => (l.id === id ? { ...l, fx: { ...l.fx, [k]: x } } : l)),
+  })
+}
+
+/**
+ * A part's lyrics, or none. Nothing is released: the notes are the same notes.
+ *
+ * ⚠️ TIDIED ON THE WAY IN (tidyLyrics), so what the room holds is what a file would hold, and a
+ * part whose last word was deleted carries no field at all rather than a list of empty lines.
+ */
+export function setLayerLyrics(id: string, lines: readonly string[] | undefined) {
+  const lyrics = tidyLyrics(lines, MAX_BARS)
+  set({
+    layers: state.layers.map((l) => {
+      if (l.id !== id) return l
+      const next = { ...l, lyrics }
+      if (!lyrics) delete next.lyrics
+      return next
+    }),
+  })
+}
+
+/**
+ * The words onto a different part's notes — one change, so one undo takes the move back whole.
+ * Whatever the other part had is replaced: a song is sung on one part at a time from the box.
+ */
+export function moveLyrics(from: string, to: string) {
+  const was = state.layers.find((l) => l.id === from)
+  const words = was?.lyrics
+  if (from === to || !words || !state.layers.some((l) => l.id === to)) return
+  /* how loud they are sung goes with them, and the part they leave keeps no level for words it
+     no longer has */
+  const level = was.wordsGain
+  set({
+    layers: state.layers.map((l) => {
+      if (l.id === to) {
+        const next = { ...l, lyrics: words }
+        if (level === undefined) delete next.wordsGain
+        else next.wordsGain = level
+        return next
+      }
+      if (l.id !== from) return l
+      const next = { ...l }
+      delete next.lyrics
+      delete next.wordsGain
+      return next
+    }),
+  })
+}
+
+/** How loud a part's words are sung, 0 to 2 — see Layer.wordsGain. */
+export function setLayerWordsGain(id: string, gain: number) {
+  if (!Number.isFinite(gain)) return
+  const v = Math.max(0, Math.min(2, gain))
+  set({ layers: state.layers.map((l) => (l.id === id ? { ...l, wordsGain: v } : l)) })
 }
 
 /**
@@ -1948,6 +2105,8 @@ export function soleDrumPiece(l: Layer): number | null {
  * to another machine, which is the cost takes.ts documents.
  */
 export async function placeTake(id: string, at = 0): Promise<boolean> {
+  /* a place that is not a number of seconds into the song is the top, never a scheduler that throws */
+  if (!Number.isFinite(at) || at < 0) at = 0
   const row = await getTake(id)
   if (!heard.has(id)) {
     if (!row) return false
@@ -1981,11 +2140,21 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
     chain.set(fx)
     chains.set(id, chain)
   }
-  const had = state.takes.some((t) => t.id === id)
+  const had = state.takes.find((t) => t.id === id)
+  /* a new placement comes back as loud as the recording was last left (setTakeGain keeps it on the
+     row); one already placed keeps the volume it has */
+  const kept = typeof row?.gain === 'number' && Number.isFinite(row.gain) ? row.gain : 1
+  const gain = had ? (had.gain ?? 1) : Math.max(0, Math.min(2, kept))
+  if (!levels.has(id)) {
+    const level = sharedCtx().createGain()
+    level.gain.value = gain
+    level.connect(chains.get(id)!.in)
+    levels.set(id, level)
+  }
   set({
     takes: had
       ? state.takes.map((t) => (t.id === id ? { ...t, at } : t))
-      : [...state.takes, { id, at, fx }],
+      : [...state.takes, { id, at, fx, ...(gain !== 1 ? { gain } : {}) }],
   })
   return true
 }
@@ -2043,7 +2212,64 @@ export function liftTake(id: string) {
      render quantum whether or not anything feeds it — see the note in takeFx. */
   chains.get(id)?.dispose()
   chains.delete(id)
+  levels.get(id)?.disconnect()
+  levels.delete(id)
   set({ takes: state.takes.filter((t) => t.id !== id) })
+}
+
+/**
+ * How loud a placed take is, 0 to 2, 1 being as recorded — the same scale and the same travel as
+ * a part's fader, so the two sit side by side on the timeline and mean the same thing.
+ */
+export function setTakeGain(id: string, gain: number) {
+  if (!Number.isFinite(gain) || !state.takes.some((t) => t.id === id)) return
+  const v = Math.max(0, Math.min(2, gain))
+  const level = levels.get(id)
+  /* ⚠️ ramped, never set outright: a step in a gain that is sounding is a click. And from
+     SAFE_START ahead, the house rule (synth.ts): currentTime is behind the render head, so a ramp
+     stamped there begins in the past and lands half its distance in one sample */
+  if (level) level.gain.setTargetAtTime(v, sharedCtx().currentTime + SAFE_START, 0.015)
+  set({ takes: state.takes.map((t) => (t.id === id ? { ...t, gain: v } : t)) })
+  owe(id, { gain: v })
+}
+
+/**
+ * What a placed take's recording is owed: where it was moved and how loud it was set, written onto
+ * the recording once the moving stops (keepOnTake), so taking it off the song and putting it back
+ * brings it back as it was left — as its sound already comes back.
+ *
+ * ⚠️ NOT ON EVERY MOVE: a write rewrites the whole stored row, recording included, and a slider
+ * dragged across its travel or an arrow key held down is dozens of changes. The loop has every
+ * value at once; this is only the memory for after it.
+ *
+ * ⚠️ AND SETTLED BEFORE ANYTHING READS IT BACK, the rule keepSound in useTakes already keeps.
+ * Putting a take back reads its recording, so `settleTake` is awaited there first; and the page
+ * going away settles them all (`settleTakes`, from the bench's pagehide). Otherwise a take put
+ * back within the wait came back where it was before, and the late write then made the recording
+ * disagree with the loop.
+ */
+const owed = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; songAt?: number; gain?: number }
+>()
+function owe(id: string, patch: { songAt?: number; gain?: number }) {
+  const was = owed.get(id)
+  if (was) clearTimeout(was.timer)
+  owed.set(id, { ...was, ...patch, timer: setTimeout(() => void settleTake(id), 400) })
+}
+
+/** Write what a take's recording is owed now, rather than when the moving stops. */
+export async function settleTake(id: string): Promise<void> {
+  const o = owed.get(id)
+  if (!o) return
+  owed.delete(id)
+  clearTimeout(o.timer)
+  await keepOnTake(id, { songAt: o.songAt, gain: o.gain })
+}
+
+/** Every take's owed write, now — the page is going away. */
+export function settleTakes() {
+  for (const id of [...owed.keys()]) void settleTake(id)
 }
 
 export function muteTake(id: string) {
@@ -2051,8 +2277,38 @@ export function muteTake(id: string) {
   set({ takes: state.takes.map((t) => (t.id === id ? { ...t, muted: !t.muted } : t)) })
 }
 
+/**
+ * Move a recording on the song — the timeline's drag (timeline.ts works out where to).
+ *
+ * ⚠️ WHAT IS SOUNDING OF IT STOPS, AND ONLY IT. A take is scheduled a moment ahead, so one dragged
+ * while it plays would otherwise go on singing from where it used to be, over the top of itself
+ * arriving at the new place. The other recordings are left alone: muting does hush them all, but
+ * a drag is made while listening to everything else, which is the point of making it there.
+ */
+export function moveTake(id: string, at: number) {
+  if (!Number.isFinite(at) || at < 0) return
+  const was = state.takes.find((t) => t.id === id)
+  if (!was || was.at === at) return
+  hushTake(id)
+  set({ takes: state.takes.map((t) => (t.id === id ? { ...t, at } : t)) })
+  /* and where it went is kept on the recording, so off the song and back on returns it here */
+  owe(id, { songAt: at })
+}
+
+/** The sound a placed take plays, as the loop holds it — for drawing it on the timeline. */
+export const takeSound = (id: string): AudioBuffer | undefined => heard.get(id)
+
 /** Which takes are on the loop, for a song file and for the panel. */
 export const placedTakes = (): SongTake[] => state.takes
+
+/** Each placed take's place and the length of what it plays, for working out what a new take is sung over. */
+export const placedSpans = () =>
+  state.takes.map((t) => ({
+    id: t.id,
+    at: t.at,
+    muted: t.muted,
+    dur: heard.get(t.id)?.duration ?? 0,
+  }))
 
 /** Change how a take is cut up — see chop.ts. */
 export function takeChop(id: string, chop: Partial<Chop>) {

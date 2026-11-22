@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { tilesFor, type Sat } from './nowTiles'
+import { recentFirst, tilesFor, usualFirst, type Sat } from './nowTiles'
 import { dayBounds, type Activity } from './record'
 /* the project's own local-date formatter, rather than a fourth copy of the same three lines */
 import { localISO } from '../circuit/dates'
@@ -251,5 +251,136 @@ describe('the buttons the switch row offers', () => {
       'd',
       'l',
     ])
+  })
+})
+
+/**
+ * The chips under ▶ Start something: what you started last, then everything else by name.
+ *
+ * ⚠️ THE FIXTURE STARTS THE BUSIEST ONE FIRST AND A SHORT ONE LAST, so "recent" and "most minutes"
+ * give different answers — a fixture where they agreed would pass with `tilesFor` in its place.
+ *
+ * ⚠️ AND NEITHER ANSWER IS ALPHABETICAL. The first version expected Art, Bass, Cooking — the
+ * names' own order — so with the recency sort deleted outright, two of these stayed green. Found by
+ * making them fail before believing them (CLAUDE.md §2); the last-started is never the first name.
+ */
+describe('the most recently started first', () => {
+  const acts = [
+    act({ id: 'a', name: 'Art' }),
+    act({ id: 'b', name: 'Bass' }),
+    act({ id: 'c', name: 'Cooking' }),
+    act({ id: 'd', name: 'Drift', auto: true }),
+    act({ id: 'e', name: 'Embroidery', archived: true }),
+  ]
+
+  it('puts the last thing started first, even when something else ran longer', () => {
+    /* Bass ran two hours this morning; Cooking ran five minutes just now */
+    const log = [sat('b', 300, 180), sat('c', 10, 5)]
+    expect(tilesFor(acts, log, DAY.fromMs, DAY.toMs, NOW)[0].id).toBe('b')
+    expect(recentFirst(acts, log).map((a) => a.id)).toEqual(['c', 'b', 'a'])
+  })
+
+  it('reads a sitting by when it started, and the latest start of each wins', () => {
+    /* Bass started first AND last; Cooking in between */
+    const log = [sat('b', 200, 190), sat('c', 100, 90), sat('b', 50, null)]
+    expect(recentFirst(acts, log).map((a) => a.id)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('falls back to the names when nothing has run, and never offers auto or archived', () => {
+    expect(recentFirst(acts, []).map((a) => a.id)).toEqual(['a', 'b', 'c'])
+    const log = [sat('d', 5, 1), sat('e', 4, 2)]
+    expect(recentFirst(acts, log).map((a) => a.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('ignores a start it cannot read rather than sorting it to the front', () => {
+    const log: Sat[] = [{ activity: 'c', start: 'not a date', end: null }, sat('b', 30, 20)]
+    expect(recentFirst(acts, log).map((a) => a.id)).toEqual(['b', 'a', 'c'])
+  })
+})
+
+/**
+ * What you usually start around now, first.
+ *
+ * ⚠️ FOUR WEEKS OF A LIFE, ON THE LOCAL CLOCK, and every expectation is what that life would ask
+ * for at the moment named: Gym at seven on weekdays, Drawing at nine every evening, Guitar at half
+ * past seven on Saturdays, Reading at ten to midnight, and one stray morning of Dishes. Writing
+ * and Dishes were started most recently, so plain recency would put them first; each test below
+ * says which habit should beat that, or why none does. Built with `new Date(y, m, d, h, min)`, so
+ * the fixture means the same wall-clock times in whatever timezone the suite runs in.
+ */
+describe('what you usually start around now', () => {
+  const gym = act({ id: 'gym', name: 'Gym' })
+  const draw = act({ id: 'draw', name: 'Drawing' })
+  const guitar = act({ id: 'guitar', name: 'Guitar' })
+  const read = act({ id: 'read', name: 'Reading' })
+  const write = act({ id: 'write', name: 'Writing' })
+  const dishes = act({ id: 'dishes', name: 'Dishes' })
+  const gone = act({ id: 'gone', name: 'Archery', archived: true })
+  const site = act({ id: 'site', name: 'The site', auto: true })
+  const acts = [gym, draw, guitar, read, write, dishes, gone, site]
+
+  const at = (d: Date, h: number, m = 0) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).toISOString()
+  const start = (activity: string, iso: string): Sat => ({ activity, start: iso, end: iso })
+
+  /* the 28 days before Saturday 14 November 2026 */
+  const past: Sat[] = []
+  for (let i = 28; i >= 1; i--) {
+    const d = new Date(2026, 10, 14 - i)
+    const dow = d.getDay()
+    if (dow >= 1 && dow <= 5) past.push(start('gym', at(d, 7)))
+    if (dow === 6) past.push(start('guitar', at(d, 7, 30)))
+    past.push(start('draw', at(d, 21)))
+    past.push(start('read', at(d, 23, 50)))
+    /* archived and the site's own, at exactly seven every day: never offered however strong */
+    past.push(start('gone', at(d, 7)), start('site', at(d, 7)))
+  }
+  /* one Wednesday morning of Dishes, the stray */
+  past.push(start('dishes', at(new Date(2026, 10, 11), 7, 15)))
+  /* what plain recency would put first: Writing on Friday afternoon, Dishes at Friday lunch */
+  const lately = [
+    start('write', at(new Date(2026, 10, 13), 15)),
+    start('dishes', at(new Date(2026, 10, 13), 12)),
+  ]
+  const order = (when: Date) => usualFirst(acts, past, lately, when.getTime()).map((a) => a.id)
+
+  it('puts the weekday habit first on a weekday morning, ahead of what ran last', () => {
+    /* Monday 16 November, 07:10 */
+    expect(order(new Date(2026, 10, 16, 7, 10)).slice(0, 3)).toEqual(['gym', 'guitar', 'write'])
+  })
+
+  it('puts this weekday’s habit before one that happens on the other five', () => {
+    /* Saturday 14 November, 07:30: Guitar is Saturday's, Gym is every other morning's */
+    expect(order(new Date(2026, 10, 14, 7, 30)).slice(0, 2)).toEqual(['guitar', 'gym'])
+  })
+
+  it('puts the evening habit first in the evening', () => {
+    expect(order(new Date(2026, 10, 16, 21, 5))[0]).toBe('draw')
+  })
+
+  it('counts ten to midnight as twenty minutes from ten past', () => {
+    expect(order(new Date(2026, 10, 17, 0, 10))[0]).toBe('read')
+  })
+
+  it('does not make a routine out of one stray morning', () => {
+    /* Wednesday 18 November, 07:15 — the stray Dishes was a Wednesday at exactly this time */
+    const o = order(new Date(2026, 10, 18, 7, 15))
+    expect(o.slice(0, 2)).toEqual(['gym', 'guitar'])
+    /* and Dishes keeps its place by recency, behind Writing, started later on Friday */
+    expect(o.indexOf('dishes')).toBeGreaterThan(o.indexOf('write'))
+  })
+
+  it('is exactly the recency order with no history, and with nothing near the time', () => {
+    const now = new Date(2026, 10, 16, 14, 0).getTime()
+    expect(usualFirst(acts, [], lately, now)).toEqual(recentFirst(acts, lately))
+    /* two in the afternoon is more than ninety minutes from every habit above */
+    expect(usualFirst(acts, past, lately, now)).toEqual(recentFirst(acts, lately))
+  })
+
+  it('never offers an archived activity or the site’s own, however regular', () => {
+    const o = order(new Date(2026, 10, 16, 7, 0))
+    expect(o).not.toContain('gone')
+    expect(o).not.toContain('site')
+    expect(o).toHaveLength(6)
   })
 })

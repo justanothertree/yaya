@@ -6,6 +6,7 @@ import { useCircuit } from '../store'
 import { Modal } from './Modal'
 import { currentStreak, dayTotal, logPoints, monthLabel, monthTotal } from '../scoring'
 import { catColor } from '../catColors'
+import { dayOfMonth } from '../dates'
 import { peekPersistedUserId } from '../../finance/auth'
 import type { DayLog, Person } from '../types'
 
@@ -91,7 +92,7 @@ export function CircuitPersonProfile({
       goalDays = 0
     const cats: Record<string, number> = {}
     for (let d = 1; d <= daysInMonth; d++) {
-      const date = `${ym}-${String(d).padStart(2, '0')}`
+      const date = dayOfMonth(ym, d)
       const dt = dayTotal(person, logs, date)
       if (dt > 0) {
         daysLogged++

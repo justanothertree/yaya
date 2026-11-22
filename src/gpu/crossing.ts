@@ -326,3 +326,33 @@ export function toWorld(size: V2, cam: V2, span: number, p: V2): V2 {
 }
 
 export const CROSSING_KEY = 'lab_crossing_v1'
+
+/** fastest crossing kept per course, by name, in seconds */
+export type Best = Record<string, number>
+/**
+ * What Night crossing keeps: the course it was on and the fastest time per course. Moved here
+ * unchanged from CrossingDemo so the Lab's share card reads it the toy's own way.
+ */
+export function readSaved(text: string | null): { course: number; best: Best } {
+  try {
+    const v = JSON.parse(text ?? 'null') as {
+      course?: unknown
+      best?: Record<string, unknown>
+    } | null
+    const course =
+      typeof v?.course === 'number' &&
+      Number.isInteger(v.course) &&
+      v.course >= 0 &&
+      v.course < COURSES.length
+        ? v.course
+        : 0
+    const best: Best = {}
+    for (const c of COURSES) {
+      const t = v?.best?.[c.name]
+      if (typeof t === 'number' && Number.isFinite(t) && t > 0) best[c.name] = t
+    }
+    return { course, best }
+  } catch {
+    return { course: 0, best: {} }
+  }
+}

@@ -16,6 +16,7 @@ import {
   type Saved,
 } from './glide'
 import { createGlide, type GlideView } from './glideEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -66,7 +67,7 @@ export function GlideDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(GLIDE_KEY, JSON.stringify(bests))
+      writeKept(GLIDE_KEY, JSON.stringify(bests))
     } catch {
       /* private mode: kept for this visit */
     }

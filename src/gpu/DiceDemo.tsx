@@ -10,33 +10,22 @@ import {
   scoreOf,
   setAside,
   wantsBank,
-  type Saved,
   type Turn,
 } from './dice'
 import { BeatShare } from '../lab/BeatShare'
 import { useChallenge } from '../lab/useChallenge'
 import { beatsDice, dealRand, newSeed, type Beat } from '../lab/beat'
+import { DieFace } from './DieFace'
+import { useKept } from './kept'
+import { type DiceGame } from './diceRoom'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** against the computer, two at one screen, or alone against the turn count on a numbered deal */
 type Mode = 'bot' | 'two' | 'race'
-
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(DICE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
-
-/** which of the nine places on a die's face hold a pip, for 1 to 6 */
-const PIPS: Record<number, number[]> = {
-  1: [4],
-  2: [0, 8],
-  3: [0, 4, 8],
-  4: [0, 2, 6, 8],
-  5: [0, 2, 4, 6, 8],
-  6: [0, 2, 3, 5, 6, 8],
-}
 
 function Die({
   face,
@@ -49,13 +38,7 @@ function Die({
   onClick?: () => void
   still?: boolean
 }) {
-  const pips = (
-    <span className="die-face" aria-hidden>
-      {Array.from({ length: 9 }, (_, i) => (
-        <span key={i} className={PIPS[face].includes(i) ? 'pip' : undefined} />
-      ))}
-    </span>
-  )
+  const pips = <DieFace face={face} />
   if (still)
     return (
       <span className="die is-kept" role="img" aria-label={`${face}`}>
@@ -77,7 +60,7 @@ function Die({
 const pct = (p: number) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`
 
 export function DiceDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(DICE_KEY, readSaved)
   /** a friend's race to beat, from the address: it opens on their deal */
   const [challenge, leaveChallenge] = useChallenge('dice')
   const [mode, setMode] = useState<Mode>(() => (challenge ? 'race' : 'bot'))
@@ -97,13 +80,24 @@ export function DiceDemo() {
   const turns = useRef([0, 0])
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). The server
+     rolls every die (diceRoom.ts): your decisions are made on the dice it rolled, proposed and
+     sent, and the next roll comes back with the board. */
+  const lm = useLabMatch('dice')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const [mPicked, setMPicked] = useState<number[]>([])
+  const mg = inMatch ? (lm.shown as DiceGame | null) : null
+  const tableKey = mg ? `${mg.log.length}|${lm.hasPending}` : ''
+  useEffect(() => setMPicked([]), [tableKey])
+  const wasInMatch = useRef(inMatch)
   useEffect(() => {
-    try {
-      localStorage.setItem(DICE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
+    if (wasInMatch.current && !inMatch) reset('bot')
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
 
   const names =
     mode === 'bot' ? ['You', 'Computer'] : mode === 'race' ? ['You'] : ['Player 1', 'Player 2']
@@ -266,6 +260,143 @@ export function DiceDemo() {
       say(`${names[who]} rolled nothing that scores and lost ${after.points.toLocaleString()}.`)
   }
 
+  if (inMatch) {
+    const v = lm.view
+    const together = v?.mode === 'together'
+    const me: 0 | 1 = together ? 0 : v?.you === 1 ? 1 : 0
+    const them: 0 | 1 = me === 0 ? 1 : 0
+    const theirName = !v ? 'They' : together ? 'The computer' : otherName(v)
+    const label = (s: 0 | 1) => (s === me ? (together ? 'You two' : 'You') : theirName)
+    /* the turns the log tells of, each with its side and what it banked (null for a bust) */
+    const told: { side: 0 | 1; banked: number | null }[] = []
+    if (mg) {
+      let side: 0 | 1 = 0
+      let pts = 0
+      let table: number[] | null = null
+      for (const e of mg.log) {
+        if ('roll' in e) {
+          if (table) {
+            told.push({ side, banked: null })
+            side = side === 0 ? 1 : 0
+            pts = 0
+          }
+          table = e.roll
+          continue
+        }
+        pts += scoreOf(e.keep.map((i) => table![i])) ?? 0
+        table = null
+        if (e.bank) {
+          told.push({ side, banked: pts })
+          side = side === 0 ? 1 : 0
+          pts = 0
+        }
+      }
+    }
+    const lastTheirs = [...told].reverse().find((t) => t.side === them)
+    const table = mg?.table ?? null
+    const pickedScore = table && mPicked.length ? scoreOf(mPicked.map((i) => table[i])) : null
+    const left = mg ? mg.free - mPicked.length : 0
+    const next = left === 0 ? 6 : left
+    const decideNow = (bank: boolean) => lm.play({ keep: mPicked, bank })
+    return (
+      <div className="lab-keys dice-room">
+        <MatchBar lm={lm} sides={['the first roller', 'the second roller']} />
+        {mg && (
+          <div className="dice-scores">
+            {([me, them] as (0 | 1)[]).map((s) => (
+              <div key={s} className={`dice-score${mg.turn === s ? ' is-up' : ''}`}>
+                <span>{label(s)}</span>
+                <strong>{mg.scores[s].toLocaleString()}</strong>
+                <span className="dice-bar" aria-hidden>
+                  <span style={{ width: `${Math.min(100, (mg.scores[s] / TARGET) * 100)}%` }} />
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {lastTheirs && (
+          <p className="muted dice-said">
+            {theirName}{' '}
+            {lastTheirs.banked === null
+              ? 'rolled nothing that scores, and lost the turn.'
+              : `banked ${lastTheirs.banked.toLocaleString()}.`}
+          </p>
+        )}
+        {mg && (
+          <div className="dice-table" aria-live="polite">
+            {mg.winner !== null ? (
+              <p className="dice-big">
+                {mg.winner === 'draw'
+                  ? 'A draw: four hundred turns and nobody home.'
+                  : mg.winner === me
+                    ? `🏆 ${together ? 'You two win' : 'You win'}!`
+                    : `${theirName} wins.`}
+              </p>
+            ) : !table ? (
+              <p className="muted">
+                {lm.hasPending
+                  ? 'Send it, and the server rolls.'
+                  : `${label(mg.turn ?? them)} to roll.`}
+              </p>
+            ) : (
+              <>
+                <div className="dice-row" role="group" aria-label="The roll">
+                  {table.map((f, i) => (
+                    <Die
+                      key={i}
+                      face={f}
+                      picked={mPicked.includes(i)}
+                      still={!lm.canPlay}
+                      onClick={() =>
+                        setMPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]))
+                      }
+                    />
+                  ))}
+                </div>
+                <p className="dice-line">
+                  {mg.turn === me ? 'This turn' : `${theirName}’s turn`}:{' '}
+                  <strong>{mg.points.toLocaleString()}</strong>
+                  {lm.canPlay &&
+                    mPicked.length > 0 &&
+                    (pickedScore === null ? (
+                      <span className="rps-bad"> · those don’t all score</span>
+                    ) : (
+                      <> · keeping them adds {pickedScore.toLocaleString()}</>
+                    ))}
+                </p>
+              </>
+            )}
+          </div>
+        )}
+        {lm.canPlay && table && (
+          <div className="lab-controls">
+            <button
+              className="btn"
+              disabled={pickedScore === null}
+              onClick={() => decideNow(false)}
+            >
+              Keep and roll{pickedScore === null ? '' : ` ${next}`}
+            </button>
+            <button
+              className="btn btn-ghost"
+              disabled={pickedScore === null}
+              onClick={() => decideNow(true)}
+            >
+              Keep and bank{' '}
+              {pickedScore === null ? '' : (mg!.points + pickedScore).toLocaleString()}
+            </button>
+            <span className="muted lab-score">
+              {pickedScore === null
+                ? 'Tap the dice to keep'
+                : `${next} dice: ${pct(BUST[next])} chance of nothing`}
+            </span>
+          </div>
+        )}
+        <MatchSend lm={lm} />
+      </div>
+    )
+  }
+
   return (
     <div className="lab-keys dice-room">
       {mode === 'race' && challenge && (
@@ -310,6 +441,13 @@ export function DiceDemo() {
         <button className="btn btn-ghost" onClick={() => reset()}>
           ↻ New game
         </button>
+        {signedIn && (
+          <MatchChallenge
+            demo="dice"
+            settings={{}}
+            levelNames={{ easy: 'Easy', fair: 'Fair', hard: 'Hard' }}
+          />
+        )}
       </div>
 
       <div className="dice-scores">

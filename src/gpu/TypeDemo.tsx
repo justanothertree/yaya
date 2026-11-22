@@ -27,14 +27,8 @@ import {
   type Saved,
   type Style,
 } from './typeface'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(TYPE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const SLIDERS: { k: keyof typeof RANGES; label: string; step: number }[] = [
   { k: 'weight', label: 'Weight', step: 0.05 },
   { k: 'slant', label: 'Slant', step: 0.01 },
@@ -326,7 +320,7 @@ function startFont(saved: Saved): { font: Font; message: string; fromLink: boole
 }
 
 export function TypeDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(TYPE_KEY, readSaved)
   const [start] = useState(() => startFont(saved))
   const [font, setFont] = useState<Font>(start.font)
   const [message, setMessage] = useState(start.message)
@@ -338,15 +332,8 @@ export function TypeDemo() {
   const code = useMemo(() => encode(font, message), [font, message])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(TYPE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
-  useEffect(() => {
     if (!fromLink) setSaved((s) => ({ ...s, current: code }))
-  }, [code, fromLink])
+  }, [code, fromLink, setSaved])
 
   const change = (f: (x: Font) => Font) => {
     setFont(f)

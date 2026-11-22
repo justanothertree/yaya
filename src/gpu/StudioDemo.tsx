@@ -23,6 +23,7 @@ import {
   type Thing,
 } from './studio'
 import { createStudio, type StudioView } from './studioEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -94,7 +95,7 @@ export function StudioDemo({ running, setRunning, onAdapter }: Props) {
     engine.current?.scene(scene)
     const id = window.setTimeout(() => {
       try {
-        localStorage.setItem(SCENE_KEY, JSON.stringify(scene))
+        writeKept(SCENE_KEY, JSON.stringify(scene))
       } catch {
         /* private mode: the scene lasts this visit */
       }

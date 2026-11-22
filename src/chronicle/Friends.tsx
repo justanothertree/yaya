@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { friendsLog, type FriendSitting } from './cloud'
+import { localISO } from '../circuit/dates'
 import { countText, spanText } from './record'
 import { today as todayISO } from './goal'
 
@@ -18,11 +19,7 @@ import { today as todayISO } from './goal'
 const DAYS = 7
 
 /** the local calendar day an instant falls in, for grouping — never a UTC slice */
-const dayKey = (iso: string): string => {
-  const d = new Date(iso)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
+const dayKey = (iso: string): string => localISO(new Date(iso))
 
 const dayName = (key: string, todayKey: string): string => {
   if (key === todayKey) return 'Today'

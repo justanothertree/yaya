@@ -3,6 +3,7 @@ import { noteOff, noteOn } from '../audio/synth'
 import { Holds, keySource } from './holds'
 import { LabStage } from './LabStage'
 import {
+  readSaved,
   DEFAULT_TABLE,
   FILE_LIMIT,
   HZ,
@@ -23,6 +24,7 @@ import {
   type V2,
 } from './pinball'
 import { createPinball, type PinballView } from './pinballEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -42,19 +44,12 @@ type Held = { left: boolean; right: boolean; plunger: boolean }
 /** seconds of holding the plunger for a full pull */
 const PULL_TIME = 0.9
 
-const load = (): { table: Table; best: Record<string, number> } => {
+/* what the toy keeps, read by the toy's module (so the share card reads it the same way) */
+const load = () => {
   try {
-    const v = JSON.parse(localStorage.getItem(PINBALL_KEY) ?? 'null') as {
-      table?: unknown
-      best?: Record<string, unknown>
-    } | null
-    const t = readTable(JSON.stringify(v?.table ?? null))
-    const best: Record<string, number> = {}
-    for (const [k, n] of Object.entries(v?.best ?? {}).slice(0, 50))
-      if (typeof n === 'number' && Number.isInteger(n) && n >= 0) best[k.slice(0, 40)] = n
-    return { table: typeof t === 'string' ? DEFAULT_TABLE : t, best }
+    return readSaved(localStorage.getItem(PINBALL_KEY))
   } catch {
-    return { table: DEFAULT_TABLE, best: {} }
+    return readSaved(null)
   }
 }
 const download = (blob: Blob, name: string) => {
@@ -98,7 +93,7 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(PINBALL_KEY, JSON.stringify({ table, best }))
+      writeKept(PINBALL_KEY, JSON.stringify({ table, best }))
     } catch {
       /* private mode: kept for this visit */
     }
@@ -375,7 +370,7 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
           )}
           {mode === 'play' && (
             <button className="btn btn-ghost" onClick={() => newBall()}>
-              🔄 New game
+              ↻ New game
             </button>
           )}
           <button

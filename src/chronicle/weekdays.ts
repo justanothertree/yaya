@@ -2,7 +2,7 @@ import { localMidnight } from './record'
 
 /**
  * Selected-weekday recurrence for a repeating day goal: "swim on Tuesdays", "floss every day but
- * Sunday". It is the logic half of docs/2026-11-08-chronicle-weekdays.DRAFT.sql, and the one rule
+ * Sunday". It is the logic half of docs/applied/2026-11-08-chronicle-weekdays.DRAFT.sql, and the one rule
  * Evan set for it — a schedule change affects FUTURE occurrences, never the completion history
  * already recorded — is a property of this arithmetic rather than of the table.
  *
@@ -51,13 +51,6 @@ export function maskOf(days: readonly number[]): DayMask {
   let m = 0
   for (const d of days) if (Number.isInteger(d) && d >= 0 && d <= 6) m |= 1 << d
   return m
-}
-
-/** The weekday numbers a mask holds, Sunday first. */
-export function daysOf(mask: DayMask): number[] {
-  const out: number[] = []
-  for (let d = 0; d <= 6; d++) if (mask & (1 << d)) out.push(d)
-  return out
 }
 
 /**

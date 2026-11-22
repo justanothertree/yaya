@@ -16,17 +16,9 @@ import {
   suitOf,
   type Action,
   type Card,
-  type Saved,
   type Table,
 } from './poker'
-
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(POKER_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
+import { useKept } from './kept'
 
 /** the three computer players, each with a way of playing that shows */
 const BOTS = [
@@ -83,20 +75,13 @@ function said(t: Table, a: Action, you: boolean): string {
 }
 
 export function PokerDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(POKER_KEY, readSaved)
   const table = useRef<Table | null>(null)
   const [, redraw] = useReducer((n: number) => n + 1, 0)
   const [log, setLog] = useState<string[]>([])
   const [raiseTo, setRaiseTo] = useState(0)
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(POKER_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   const say = (line: string) => setLog((l) => [line, ...l].slice(0, 8))
 
   const t = table.current
