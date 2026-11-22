@@ -72,6 +72,25 @@ import {
 } from '../../../src/gpu/fox'
 import { replay as foxReplay } from '../../../src/gpu/foxRoom'
 import { cubeRules } from '../../../src/gpu/cubeRoom'
+import { gunner, LIFE } from '../../../src/gpu/artillery'
+import { replay as artReplay } from '../../../src/gpu/artilleryRoom'
+import { LANE_HALF, plan as bowlPlan, wobble as bowlWobble } from '../../../src/gpu/bowling'
+import { inside as bowlInside, replay as bowlReplay } from '../../../src/gpu/bowlingRoom'
+import { HOUSE_R, STONE_R, TEE } from '../../../src/gpu/curling'
+import {
+  fewerSpans,
+  matchThrow,
+  MATCH_SPANS,
+  MAX_THROWS as MAX_CURL_THROWS,
+  pack as curlPack,
+  replay as curlReplay,
+} from '../../../src/gpu/curlingRoom'
+import { COURSE, PICK_UP, stroke as puttStroke } from '../../../src/gpu/putt'
+import { replay as puttReplay } from '../../../src/gpu/puttRoom'
+import { aimFor, hitAt, land, SPREAD } from '../../../src/gpu/darts'
+import { dartsMatchRules, MAX_DARTS, tidy } from '../../../src/gpu/dartsRoom'
+import { plays as bgPlays } from '../../../src/gpu/backgammon'
+import { MAX_TURNS as BG_MAX_TURNS, replay as bgReplay } from '../../../src/gpu/backgammonRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -1817,5 +1836,743 @@ describe('noughts and crosses in a cube by turns: four in a line, any way throug
     expect(status(decide(row, B, move(row.seq, -1)))).toBe(400)
     expect(status(decide(row, B, move(row.seq, 1.5)))).toBe(400)
     expect(status(decide({ ...row, state: { moves: [5, 5] } }, B, move(row.seq, 6)))).toBe(500)
+  })
+})
+
+describe('artillery by turns: the server fires the shot, the seed and the shots are the game', () => {
+  const ar = (over: Partial<Row> = {}) => invite({ demo_id: 'artillery', settings: {}, ...over })
+  const game = (state: unknown) => {
+    const o = state as { seed: number; shots: unknown[] }
+    return artReplay(o.seed, o.shots)!
+  }
+
+  it('deals a field of its own on accept, from a seed the server chose', () => {
+    const p = decide(ar(), B, { op: 'accept' })
+    if (p.kind !== 'begin') throw new Error('refused')
+    const st = p.state as { seed: number; shots: unknown[] }
+    expect(Number.isInteger(st.seed) && st.seed >= 0 && st.seed < 2 ** 31).toBe(true)
+    expect(st.shots).toEqual([])
+  })
+
+  it('plays versus to the end, the winner the gun still standing, the score what each has left', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 10; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(ar(), (r) => {
+        const g = game(r.state)
+        // steady hands both sides, with a wild shot now and then
+        const s = gunner(g.f, 'fair', rnd)
+        return rnd() < 0.15 ? [5 + rnd() * 80, 0.1 + rnd() * 0.9] : [s.angle, s.charge]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      const life = g.f.guns.map((x) => x.life)
+      expect(last.result!.score).toBe(`${life[0]}–${life[1]}`)
+      if (last.result!.winner === 'draw') {
+        seen.add('draw')
+        continue
+      }
+      const w = last.result!.winner as 0 | 1
+      // asked of the guns: the loser's is out of action and the winner's is not
+      expect(life[1 - w]).toBeLessThanOrEqual(0)
+      expect(life[w]).toBeGreaterThan(0)
+      expect(life[w]).toBeLessThanOrEqual(LIFE)
+      seen.add(String(w))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('stores each shot exactly as sent, and the field it leaves is what the seed and the shots make', () => {
+    let row = after(ar(), decide(ar(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, { angle: 47.25, charge: 0.73 })))
+    row = after(row, decide(row, B, move(row.seq, [33, 0.5])))
+    const st = row.state as { seed: number; shots: unknown[] }
+    expect(st.shots).toEqual([
+      [47.25, 0.73],
+      [33, 0.5],
+    ])
+    // the same shots on another field land somewhere else: the seed is part of the game
+    const here = game(st).f.ground.join()
+    const there = artReplay((st.seed + 1) % 2 ** 31, st.shots)!.f.ground.join()
+    expect(here).not.toBe(there)
+  })
+
+  it('together: the computer’s gun answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = ar({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, [45, 0.5]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  })
+
+  it('refuses a barrel or a charge past the toy’s own limits, a shot that is not numbers, and a stored game no seed could make', () => {
+    const row = after(ar(), decide(ar(), B, { op: 'accept' }))
+    for (const bad of [[4, 0.5], [86, 0.5], [45, 0], [45, 1.01], ['45', 0.5], { angle: 45 }])
+      expect(status(decide(row, A, move(row.seq, bad)))).toBe(400)
+    const st = row.state as { seed: number }
+    expect(
+      status(decide({ ...row, state: { seed: -1, shots: [] } }, A, move(row.seq, [45, 0.5]))),
+    ).toBe(500)
+    expect(
+      status(
+        decide(
+          { ...row, state: { seed: st.seed, shots: [[90, 0.5]] } },
+          A,
+          move(row.seq, [45, 0.5]),
+        ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('bowling by turns: a frame each, the server bowls every ball', () => {
+  const bw = (over: Partial<Row> = {}) => invite({ demo_id: 'bowling', settings: {}, ...over })
+  const game = (state: unknown) => bowlReplay((state as { balls: unknown[] }).balls)!
+  /**
+   * A scorecard added up here rather than by bowling.ts: ten frames, a strike counting the next
+   * two balls and a spare the next one, and the balls a tenth frame's bonus earns, no more.
+   */
+  const tenPin = (r: readonly number[]) => {
+    let total = 0
+    let i = 0
+    for (let f = 0; f < 9; f++) {
+      if (r[i] === 10) {
+        total += 10 + r[i + 1] + r[i + 2]
+        i += 1
+      } else {
+        total += r[i] + r[i + 1] + (r[i] + r[i + 1] === 10 ? r[i + 2] : 0)
+        i += 2
+      }
+    }
+    // the tenth: its own balls, three of them after a strike or a spare and two otherwise
+    const third = r[i] === 10 || r[i] + r[i + 1] === 10
+    total += r[i] + r[i + 1] + (third ? r[i + 2] : 0)
+    return { total, balls: i + (third ? 3 : 2) }
+  }
+  /* ⚠️ THE TEST'S OWN AIM WAS NINE TENTHS OF ITS TIME: the toy's planner bowls two to four hundred
+     balls to choose one, and measured on 17 Nov 2026 it took 5.5–7.7s of each 6–8.6s game, so eight
+     games sat on the 60s limit and failed on a slower machine. What it plans depends only on the pins
+     standing, so it is planned once per set of pins; the hand's wobble still varies every ball. */
+  const planned = new Map<string, ReturnType<typeof bowlPlan>>()
+  const aim = (standing: number[], rnd: () => number) => {
+    const key = standing.join()
+    let p = planned.get(key)
+    if (!p) planned.set(key, (p = bowlPlan(standing, 'fair', rnd)))
+    return bowlInside(bowlWobble(p, 'fair', rnd))
+  }
+
+  it('plays versus to the end, the winner the higher scorecard, every ball accounted for', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(bw(), (r) => {
+        const s = aim(game(r.state).standing, rnd)
+        return [s.x, s.angle, s.speed, s.hook]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      const [a, b] = g.rolls.map((r) => tenPin(r).total)
+      // each card is exactly ten frames and the bonus they earned
+      for (const r of g.rolls) expect(r.length).toBe(tenPin(r).balls)
+      expect(last.result!.score).toBe(`${a}–${b}`)
+      expect(last.result!.winner).toBe(a > b ? 0 : b > a ? 1 : 'draw')
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('keeps the turn with a bowler between the balls of a frame, and passes it on a strike', () => {
+    let row = after(bw(), decide(bw(), B, { op: 'accept' }))
+    // off the edge of the lane at a crawl: a gutter ball, so the frame goes on
+    row = after(row, decide(row, A, move(row.seq, [LANE_HALF, 0.1, 5, 1])))
+    expect(game(row.state).rolls[0]).toEqual([0])
+    expect(row.turn).toBe(0)
+    expect(status(decide(row, B, move(row.seq, [0, 0, 8, 0])))).toBe(409)
+    row = after(row, decide(row, A, move(row.seq, [LANE_HALF, 0.1, 5, 1])))
+    expect(row.turn).toBe(1)
+  })
+
+  it('together: the computer bowls its whole frame in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = bw({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      let frames = 0
+      for (let k = 0; k < 8 && row.status === 'active' && frames < 2; k++) {
+        const before = game(row.state).rolls[1].length
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, [0.05, 0, 8, 0]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        row = after(row, p)
+        const g = game(row.state)
+        // the replies are kept when they fit the history row and counted when they do not
+        const h = p.move as { then?: unknown[]; replies?: number }
+        const replies = h.then?.length ?? h.replies ?? 0
+        if (replies) {
+          // a frame is one ball on a strike and two otherwise, and it is the team's turn again
+          const n = g.rolls[1].length - before
+          expect(replies).toBe(n)
+          if (n === 1) expect(g.rolls[1].at(-1)).toBe(10)
+          else expect(n).toBe(2)
+          expect(g.up).toBe(0)
+          frames++
+        }
+      }
+      expect(frames).toBe(2)
+    }
+  }, 30000)
+
+  it('refuses a ball off the lane, too fast, too slow, too much hook, not numbers, and a stored game no balls could make', () => {
+    const row = after(bw(), decide(bw(), B, { op: 'accept' }))
+    for (const bad of [
+      [LANE_HALF + 0.01, 0, 8, 0],
+      [0, 0.11, 8, 0],
+      [0, 0, 4.9, 0],
+      [0, 0, 10.1, 0],
+      [0, 0, 8, 1.1],
+      [0, 0, '8', 0],
+      [0, 0, 8],
+    ])
+      expect(status(decide(row, A, move(row.seq, bad)))).toBe(400)
+    expect(
+      status(decide({ ...row, state: { balls: [[0, 0, 11, 0]] } }, A, move(row.seq, [0, 0, 8, 0]))),
+    ).toBe(500)
+    expect(
+      status(
+        decide(
+          { ...row, state: { balls: Array(43).fill([0, 0, 8, 0]) } },
+          A,
+          move(row.seq, [0, 0, 8, 0]),
+        ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('history rows: a move too big for its row', () => {
+  it('is noted without itself, so the insert cannot fail the whole move', () => {
+    const big = { sweeps: Array.from({ length: 30 }, (_, i) => [i * 10, i * 10 + 5]) }
+    expect(jsonbBytes({ m: big })).toBeGreaterThan(HISTORY_BYTES)
+    expect(historyRow(big, [])).toEqual({ m: null })
+    expect(historyRow(big, [1, 2])).toEqual({ m: null, replies: 2 })
+    expect(jsonbBytes(historyRow(big, [1, 2]))).toBeLessThanOrEqual(HISTORY_BYTES)
+  })
+})
+
+describe('curling by turns: a throw and its sweep, kept small enough to keep', () => {
+  const cu = (over: Partial<Row> = {}) => invite({ demo_id: 'curling', settings: {}, ...over })
+  const game = (state: unknown) => curlReplay((state as { throws: unknown[] }).throws)!
+  /** an end's points recounted from where the stones lie: the button at (0, TEE) */
+  const recount = (stones: readonly { x: number; y: number; team: number }[]) => {
+    const near = stones
+      .map((s) => ({ d: Math.hypot(s.x, s.y - TEE), team: s.team }))
+      .filter((s) => s.d < HOUSE_R + STONE_R)
+      .sort((a, b) => a.d - b.d)
+    let n = 0
+    while (n < near.length && near[n].team === near[0]?.team) n++
+    return near.length ? { team: near[0].team, points: n } : { team: null, points: 0 }
+  }
+
+  it('cuts a sweep down by joining its closest spans, and never sweeps a step it did not', () => {
+    const spans: [number, number][] = [
+      [0, 10],
+      [12, 20],
+      [40, 41],
+      [41, 50],
+      [90, 95],
+      [300, 310],
+    ]
+    const out = fewerSpans(spans, 3)
+    expect(out).toHaveLength(3)
+    // every step swept before is swept after, and the joins are the shortest gaps: 0, 2, then 20
+    for (const [a, b] of spans)
+      for (let i = a; i < b; i++) expect(out.some(([x, y]) => i >= x && i < y)).toBe(true)
+    expect(out).toEqual([
+      [0, 50],
+      [90, 95],
+      [300, 310],
+    ])
+  })
+
+  it('keeps the longest game a match can hold inside its 16 KB column, every throw at its widest', () => {
+    // five ends of eight stones, each with the most sweeps a match keeps, at four-digit steps
+    const widest = [
+      -0.5999,
+      9.9999,
+      -1,
+      Array.from({ length: MATCH_SPANS }, (_, i) => [4000 + i * 100, 4050 + i * 100]),
+    ]
+    const state = { throws: Array.from({ length: MAX_CURL_THROWS }, () => widest) }
+    expect(MAX_CURL_THROWS).toBe(40)
+    expect(jsonbBytes(state)).toBeLessThanOrEqual(16384)
+  })
+
+  it('plays versus to the end, each end scored as the stones lay, every throw small enough to keep', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 6; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(cu(), (r) => curlPack(matchThrow(game(r.state), 'fair', rnd)))
+      expect(row.status).toBe('finished')
+      const ends: [number, number][] = []
+      for (const p of plans) {
+        if (p.kind !== 'commit') throw new Error('refused')
+        expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+        expect(jsonbBytes(p.state)).toBeLessThanOrEqual(16384)
+        const last = game(p.state).last!
+        if (last.ended) {
+          const c = recount(last.stones)
+          expect([last.ended.team, last.ended.points]).toEqual([c.team, c.points])
+          ends.push(c.team === null ? [0, 0] : c.team === 0 ? [c.points, 0] : [0, c.points])
+        }
+      }
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const [a, b] = ends.reduce((t, e) => [t[0] + e[0], t[1] + e[1]], [0, 0])
+      expect(last.result!.score).toBe(`${a}–${b}`)
+      expect(last.result!.winner).toBe(a > b ? 0 : b > a ? 1 : 'draw')
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.size).toBeGreaterThan(1)
+  }, 60000)
+
+  it('together: the computer throws in the same call at every level, its sweep cut to fit', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = cu({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const rnd = seeded(7)
+      for (let k = 0; k < 4 && row.status === 'active'; k++) {
+        const t = matchThrow(game(row.state), 'fair', rnd)
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, curlPack(t)))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+        row = after(row, p)
+        for (const th of game(row.state).throws)
+          expect(th.sweeps.length).toBeLessThanOrEqual(MATCH_SPANS)
+      }
+    }
+  }, 30000)
+
+  it('refuses a throw with more sweeps than a match keeps, or numbers past four places, and what the room refuses', () => {
+    const row = after(cu(), decide(cu(), B, { op: 'accept' }))
+    const nine = Array.from({ length: MATCH_SPANS + 1 }, (_, i) => [i * 10, i * 10 + 5])
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.5, 1, nine.slice(0, MATCH_SPANS)])))).toBe(
+      'commit',
+    )
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.5, 1, nine])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.012345, 2.5, 1, []])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.50001, 1, []])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.7, 2.5, 1, []])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.5, 0, []])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.5, 1, [[5, 3]]])))).toBe(400)
+    expect(
+      status(
+        decide(
+          { ...row, state: { throws: [[0.01, 99, 1, []]] } },
+          A,
+          move(row.seq, [0.01, 2.5, 1, []]),
+        ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('putt by turns: each ball putts its hole out, the server rolls every putt', () => {
+  const pt = (over: Partial<Row> = {}) => invite({ demo_id: 'putt', settings: {}, ...over })
+  const game = (state: unknown) => puttReplay((state as { putts: unknown[] }).putts)!
+
+  it('plays versus to the end, the lower round winning, every hole holed out or picked up', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(pt(), (r) => {
+        const g = game(r.state)
+        const p = puttStroke(COURSE[g.hole], g.at, rnd() < 0.5 ? 'easy' : 'fair', rnd)
+        return [p.angle, p.power]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      // every hole has both balls' strokes, each between one and the pick-up
+      for (const c of g.card)
+        for (const n of c) expect(n !== null && n >= 1 && n <= PICK_UP).toBe(true)
+      // and every putt is one of them: a ball's putts on a hole are no more than its strokes there
+      const putts = new Map<string, number>()
+      let walk = game({ putts: [] })
+      for (const x of (last.state as { putts: unknown[] }).putts) {
+        const key = `${walk.hole}:${walk.up}`
+        putts.set(key, (putts.get(key) ?? 0) + 1)
+        walk = puttReplay([...walk.putts.map((q) => [q.angle, q.power]), x])!
+      }
+      for (const [key, n] of putts) {
+        const [h, side] = key.split(':').map(Number)
+        expect(n).toBeLessThanOrEqual(g.card[h][side]!)
+      }
+      const [a, b] = g.card.reduce((t, c) => [t[0] + c[0]!, t[1] + c[1]!], [0, 0])
+      expect(last.result!.score).toBe(`${a}–${b}`)
+      expect(last.result!.winner).toBe(a < b ? 0 : b < a ? 1 : 'draw')
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.size).toBeGreaterThan(1)
+  }, 60000)
+
+  it('keeps the turn with a ball until it holes out, then hands the hole to the other', () => {
+    let row = after(pt(), decide(pt(), B, { op: 'accept' }))
+    // a putt barely struck stays out, and the same ball plays again
+    row = after(row, decide(row, A, move(row.seq, [0, 0.02])))
+    expect(row.turn).toBe(0)
+    expect(status(decide(row, B, move(row.seq, [0, 0.5])))).toBe(409)
+    expect(game(row.state).strokes).toBe(1)
+  })
+
+  it('together: the computer putts its ball out in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = pt({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const rnd = seeded(3)
+      let holes = 0
+      for (let k = 0; k < 30 && row.status === 'active' && holes < 2; k++) {
+        const g0 = game(row.state)
+        const p = puttStroke(COURSE[g0.hole], g0.at, 'hard', rnd)
+        const plan = decide(row, row.turn === 0 ? A : B, move(row.seq, [p.angle, p.power]))
+        expect(plan.kind).toBe('commit')
+        if (plan.kind !== 'commit') break
+        row = after(row, plan)
+        const h = plan.move as { then?: unknown[]; replies?: number }
+        if (h.then || h.replies) {
+          // the computer's whole hole came back: both balls have a score there, and it is the team's
+          const g = game(row.state)
+          expect(g.card[g0.hole][1]).not.toBeNull()
+          expect(g.up === 0 || g.up === null).toBe(true)
+          holes++
+        }
+      }
+      expect(holes).toBe(2)
+    }
+  }, 30000)
+
+  it('refuses a putt aimed past the toy’s limits, with no strength or too much, not numbers, and a stored round no putts could make', () => {
+    const row = after(pt(), decide(pt(), B, { op: 'accept' }))
+    for (const bad of [[10.1, 0.5], [0, 0], [0, 1.01], ['0', 0.5], [0], { angle: 0 }])
+      expect(status(decide(row, A, move(row.seq, bad)))).toBe(400)
+    expect(status(decide({ ...row, state: { putts: [[0, 2]] } }, A, move(row.seq, [0, 0.5])))).toBe(
+      500,
+    )
+    expect(
+      status(
+        decide({ ...row, state: { putts: Array(97).fill([0, 0.02]) } }, A, move(row.seq, [0, 0.5])),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('darts by turns: 501, double out, first to two legs; a dart is where it went in', () => {
+  const dt = (over: Partial<Row> = {}) => invite({ demo_id: 'darts', settings: {}, ...over })
+  const dartsOf = (state: unknown) => (state as { darts: [number, number][] }).darts
+  /**
+   * The match these darts make, counted here rather than by darts.ts: a leg is 501 down to
+   * exactly nothing on a double; a turn is three darts unless it busts (below nothing, one left,
+   * or nothing on anything but a double), which puts the score back to where the turn began; the
+   * first throw of each leg goes to each side in turn. Only the board — what a landing hits — is
+   * the toy's.
+   */
+  const count = (darts: readonly [number, number][]) => {
+    const legs = [0, 0]
+    let legNo = 0
+    let left = [501, 501]
+    let up = 0
+    let from = 501
+    let inTurn = 0
+    for (const [x, y] of darts) {
+      const h = hitAt(x, y)
+      const after = left[up] - h.n * h.mult
+      inTurn++
+      const pass = () => {
+        up = 1 - up
+        from = left[up]
+        inTurn = 0
+      }
+      if (after < 0 || after === 1 || (after === 0 && h.mult !== 2)) {
+        left[up] = from
+        pass()
+      } else if (after === 0) {
+        legs[up]++
+        if (Math.max(...legs) >= 2) break
+        legNo++
+        left = [501, 501]
+        up = legNo % 2
+        from = 501
+        inTurn = 0
+      } else {
+        left[up] = after
+        if (inTurn === 3) pass()
+      }
+    }
+    return legs
+  }
+  const throwFor = (state: unknown, rnd: () => number) => {
+    const g = dartsMatchGame(state)
+    const p = tidy(land(aimFor(g.leg, 'fair'), SPREAD.fair, rnd))
+    return [p.x, p.y]
+  }
+  const dartsMatchGame = (state: unknown) => dartsMatchRules.decode(state)!
+
+  it('keeps the longest match a match can hold inside its 16 KB column, every dart at its widest', () => {
+    const state = { darts: Array.from({ length: MAX_DARTS }, () => [-299.9, -299.9]) }
+    expect(jsonbBytes(state)).toBeLessThanOrEqual(16384)
+  })
+
+  it('plays versus to the end, the legs what a 501 counted in the test makes of the darts', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(dt(), (r) => throwFor(r.state, rnd), 1000)
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const legs = count(dartsOf(last.state))
+      expect(Math.max(...legs)).toBe(2)
+      expect(last.result!.score).toBe(`${legs[0]}–${legs[1]}`)
+      expect(last.result!.winner).toBe(legs[0] > legs[1] ? 0 : 1)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('keeps the turn for three darts, then hands it on', () => {
+    let row = after(dt(), decide(dt(), B, { op: 'accept' }))
+    // three singles, well clear of a bust
+    for (let k = 0; k < 3; k++) {
+      expect(row.turn).toBe(0)
+      row = after(row, decide(row, A, move(row.seq, [0, 120])))
+    }
+    expect(row.turn).toBe(1)
+  })
+
+  it('together: the computer throws its turn in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = dt({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      let turns = 0
+      for (let k = 0; k < 9 && row.status === 'active' && turns < 2; k++) {
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, [0, 120]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        row = after(row, p)
+        const h = p.move as { then?: unknown[]; replies?: number }
+        const n = h.then?.length ?? h.replies ?? 0
+        if (n) {
+          // a turn is three darts unless it busts or wins
+          expect(n).toBeGreaterThanOrEqual(1)
+          expect(n).toBeLessThanOrEqual(3)
+          turns++
+        }
+      }
+      expect(turns).toBe(2)
+    }
+  })
+
+  it('refuses a dart past the board’s neighbourhood, one not to a tenth of a millimetre, not numbers, and a stored match no darts could make', () => {
+    const row = after(dt(), decide(dt(), B, { op: 'accept' }))
+    for (const bad of [[0, 300.2], [0.05, 120], [0, 120.123], ['0', 120], [0], { x: 0 }])
+      expect(status(decide(row, A, move(row.seq, bad)))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [-12.3, 99.9])))).toBe('commit')
+    expect(
+      status(decide({ ...row, state: { darts: [[0, 999]] } }, A, move(row.seq, [0, 120]))),
+    ).toBe(500)
+    expect(
+      status(
+        decide(
+          { ...row, state: { darts: Array(MAX_DARTS + 1).fill([0, 120]) } },
+          A,
+          move(row.seq, [0, 120]),
+        ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('backgammon by turns: the server rolls every die', () => {
+  const bg = (over: Partial<Row> = {}) => invite({ demo_id: 'backgammon', settings: {}, ...over })
+  const game = (state: unknown) => bgReplay(state)!
+  /** the server's dice, as a test means them to come up */
+  const dice = (...faces: number[]) => {
+    let k = 0
+    return vi
+      .spyOn(Math, 'random')
+      .mockImplementation(() => (faces[k++ % faces.length] - 1) / 6 + 0.01)
+  }
+  afterEach(() => vi.restoreAllMocks())
+  const turnFor = (state: unknown, rnd: () => number) => {
+    const g = game(state)
+    const list = bgPlays(g.pos, g.turn!, g.dice!)
+    return list[Math.floor(rnd() * list.length)].steps.map((s) => [s.from, s.to])
+  }
+
+  it('keeps the longest game a match can hold inside its 16 KB column, every turn at its widest', () => {
+    // a double played four times, each step two two-digit points, for every turn there can be
+    const widest = [6, 6, 23, 17, 17, 11, 11, 15, 15, 24]
+    const state = {
+      open: [6, 5],
+      turns: Array.from({ length: BG_MAX_TURNS }, () => widest),
+      dice: [6, 6],
+    }
+    expect(BG_MAX_TURNS).toBe(300)
+    expect(jsonbBytes(state)).toBeLessThanOrEqual(16384)
+  })
+
+  it('lets the opening roll say who starts: the higher die, playing both', () => {
+    dice(2, 5)
+    const p = decide(bg(), B, { op: 'accept' })
+    if (p.kind !== 'begin') throw new Error('refused')
+    // side 1 (the challenger's) rolled 2, side 2 rolled 5: the friend starts, with 5–2
+    expect(p.turn).toBe(1)
+    expect(p.state).toEqual({ open: [2, 5], turns: [], dice: [5, 2] })
+  })
+
+  it('together: a computer that wins the opening plays at once, and the challenger moves next', () => {
+    dice(1, 6, 3, 2, 5, 4)
+    const p = decide(bg({ mode: 'together', settings: { level: 'fair' } }), B, { op: 'accept' })
+    if (p.kind !== 'begin') throw new Error('refused')
+    const g = game(p.state)
+    expect(p.turn).toBe(0)
+    expect(g.turns).toHaveLength(1)
+    expect(g.turns[0].by).toBe(2)
+    expect(g.turns[0].dice).toEqual([6, 1])
+    // and the team holds the next roll (the computer's choice draws on the same dice, so which)
+    expect(g.turn).toBe(1)
+    expect(g.dice!.every((d) => d >= 1 && d <= 6)).toBe(true)
+  })
+
+  it('plays versus to the end, the winner whoever bore all fifteen off, the score what it was worth', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(seed * 7))
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(bg(), (r) => turnFor(r.state, rnd), 400)
+      vi.restoreAllMocks()
+      expect(row.status).toBe('finished')
+      for (const p of plans)
+        if (p.kind === 'commit') expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      // asked of the board: fifteen off for the winner; the loser's off, bar and home say the worth
+      const w = g.pos.off[1] === 15 ? 1 : 2
+      const l = w === 1 ? 2 : 1
+      expect(g.pos.off[w]).toBe(15)
+      expect(last.result!.winner).toBe(w === 1 ? 0 : 1)
+      const home = (i: number) => (w === 1 ? i <= 5 : i >= 18)
+      const stuck =
+        g.pos.bar[l] > 0 || g.pos.board.some((c, i) => (l === 1 ? c > 0 : c < 0) && home(i))
+      expect(last.result!.score).toBe(
+        g.pos.off[l] > 0 ? '1 point' : stuck ? 'a backgammon, 3 points' : 'a gammon, 2 points',
+      )
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('together: the computer rolls and plays its turn in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(11))
+      const start = bg({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const rnd = seeded(2)
+      for (let k = 0; k < 4 && row.status === 'active'; k++) {
+        const before = game(row.state).turns.length
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, turnFor(row.state, rnd)))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        row = after(row, p)
+        const g = game(row.state)
+        // the team's turn, then the computer's (and a pass, if a roll gave anybody nothing)
+        expect(g.turns.length).toBeGreaterThanOrEqual(before + 2)
+        expect(g.turn).toBe(1)
+        expect(g.dice).not.toBeNull()
+      }
+      vi.restoreAllMocks()
+    }
+  }, 30000)
+
+  it('refuses a turn the dice do not allow, out of turn, and a stored game no rolls could make', () => {
+    dice(6, 1)
+    const row = after(bg(), decide(bg(), B, { op: 'accept' }))
+    vi.restoreAllMocks()
+    expect(row.turn).toBe(0)
+    expect(status(decide(row, A, move(row.seq, [[12, 6]])))).toBe(400)
+    expect(
+      status(
+        decide(
+          row,
+          A,
+          move(row.seq, [
+            [12, 7],
+            [7, 6],
+          ]),
+        ),
+      ),
+    ).toBe(400)
+    expect(
+      status(
+        decide(
+          row,
+          A,
+          move(row.seq, [
+            [3, 2],
+            [3, 2],
+            [3, 2],
+            [3, 2],
+            [3, 2],
+          ]),
+        ),
+      ),
+    ).toBe(400)
+    expect(
+      status(
+        decide(
+          row,
+          B,
+          move(row.seq, [
+            [0, 6],
+            [11, 12],
+          ]),
+        ),
+      ),
+    ).toBe(409)
+    expect(
+      status(
+        decide(
+          row,
+          A,
+          move(row.seq, [
+            [12, 6],
+            [7, 6],
+          ]),
+        ),
+      ),
+    ).toBe('commit')
+    expect(
+      status(
+        decide(
+          { ...row, state: { open: [4, 4], turns: [], dice: [4, 4] } },
+          A,
+          move(row.seq, [
+            [12, 6],
+            [7, 6],
+          ]),
+        ),
+      ),
+    ).toBe(500)
   })
 })

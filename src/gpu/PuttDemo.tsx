@@ -26,11 +26,16 @@ import {
 } from './putt'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
-import { puttRules, totals, type PuttGame } from './puttRoom'
+import { puttRules, replay, totals, type PuttGame } from './puttRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 type Theme = Saved['theme']
@@ -161,26 +166,36 @@ export function PuttDemo() {
   const [cursor, setCursor] = useState(5 * W + 5)
   const [removing, setRemoving] = useState<number | null>(null)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts), on the
+     toy's own course. It takes the green over whatever else was showing; leaving it puts the toy
+     back as it was. ⚠️ NO PREVIEW: a putt shown rolling before Send could be struck, watched and
+     taken back until it dropped. Letting go only proposes it; the server rolls it and the ball
+     moves when the card comes back, as a call's putts do. */
+  const lm = useLabMatch('putt', { preview: false })
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as PuttGame | null) : null
+
   /* ── the call's round: the course, seat 0 putting each hole out first; it travels as putts */
   const [opp, setOpp] = useState<Opponent>('bot')
   const lab = useLabRoom('putt', puttRules)
   const words = tableSeats(lab, puttRules)
-  const room = opp === 'call' && mode === 'play' ? lab.room : null
+  const room = opp === 'call' && mode === 'play' && !inMatch ? lab.room : null
+  /** shared with somebody, in a call or a match: the putts arrive and roll, the line is theirs */
+  const shared = !!room || inMatch
+  /** my seat in a match or a call, null when I only watch */
+  const mySeat = inMatch ? (lm.view?.you ?? null) : words.mySeat
+  const sharedMode = inMatch ? lm.view?.mode : room?.mode
   /** the call's round as it is on screen: behind the room's while a putt rolls */
   const [shown, setShown] = useState<PuttGame | null>(null)
   const [busy, setBusy] = useState(false)
   /** this player's ball: their seat's, or the team's together */
-  const myBall: 0 | 1 = room?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
-  const cv = room && shown ? shown : null
+  const myBall: 0 | 1 = sharedMode === 'versus' && mySeat === 1 ? 1 : 0
+  const cv = shared && shown ? shown : null
   const vCourse = cv ? CALL_COURSE : course
   const vIdx = cv ? Math.min(cv.hole, COURSE.length - 1) : idx
-  const vPhase: Phase = cv
-    ? cv.up === null
-      ? 'done'
-      : lab.live && myTurn(puttRules, room!) && !busy
-        ? 'aim'
-        : 'cpu'
-    : phase
+  const myGo = inMatch ? lm.canPlay : !!room && lab.live && myTurn(puttRules, room)
+  const vPhase: Phase = cv ? (cv.up === null ? 'done' : myGo && !busy ? 'aim' : 'cpu') : phase
   const vBall = cv ? (cv.up === myBall ? cv.at : COURSE[vIdx].tee) : ball
   const vCpu = cv ? (cv.up !== null && cv.up !== myBall ? cv.at : null) : cpuBall
   const refs = useRef({
@@ -330,6 +345,12 @@ export function PuttDemo() {
   }
 
   const putt = (angle: number, power: number) => {
+    if (inMatch) {
+      // proposed, and sent with Send: the server rolls it and the ball moves for everybody
+      aim.current.power = 0
+      lm.play({ angle, power })
+      return
+    }
     if (room) {
       // in the call the host rolls it, and the putt comes back to everybody
       aim.current.power = 0
@@ -383,15 +404,23 @@ export function PuttDemo() {
   const queue = useRef<PuttGame[]>([])
   const [said, setSaid] = useState('')
   const callName = (w: 0 | 1) =>
-    !room
-      ? ''
-      : room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 1
           ? 'Computer'
-          : words.mySeat !== null
-            ? 'You'
-            : 'The team'
-        : words.who(room.seats[w])
+          : 'You'
+        : w === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : !room
+        ? ''
+        : room.mode === 'together'
+          ? w === 1
+            ? 'Computer'
+            : words.mySeat !== null
+              ? 'You'
+              : 'The team'
+          : words.who(room.seats[w])
   const puttWords = (g: PuttGame) => {
     const l = g.last!
     const who = callName(l.by)
@@ -413,7 +442,7 @@ export function PuttDemo() {
     const g = queue.current.shift()
     if (!g) return setBusy(false)
     const l = g.last!
-    const ours = room && (room.mode === 'together' ? l.by === 0 : l.by === words.mySeat)
+    const ours = shared && (sharedMode === 'together' ? l.by === 0 : l.by === mySeat)
     setBusy(true)
     animate(l.roll.frames.length ? l.roll.frames : [l.from.x, l.from.y], ours ? 0 : 1, () => {
       setShown(g)
@@ -421,16 +450,22 @@ export function PuttDemo() {
       playNext()
     })
   }
-  const callGame = room?.game
+  const callGame = matchGame ?? room?.game
   useEffect(() => {
     if (!callGame) {
+      // nothing shared yet (a match still waiting for its friend): nothing of the last one is said
       seen.current = null
       queue.current = []
+      setSaid('')
       return
     }
     const n = callGame.putts.length
     if (seen.current === n) return
-    const next1 = seen.current !== null && n === seen.current + 1 && !!callGame.last
+    // a match can come back several putts on — the computer's whole hole after yours, or a
+    // friend's hole putted while you were away — and each is replayed and rolled in turn
+    const from = seen.current
+    const more = from === null ? 0 : n - from
+    const next1 = more >= 1 && more <= 2 * PICK_UP + 1 && !!callGame.last
     seen.current = n
     if (!next1) {
       // a new round, or one joined part way: the card as it stands, nothing to roll
@@ -441,10 +476,28 @@ export function PuttDemo() {
       setBusy(false)
       return
     }
+    for (let k = from! + 1; k < n; k++) {
+      const g = replay(callGame.putts.slice(0, k).map((q) => [q.angle, q.power]))
+      if (g?.last) queue.current.push(g)
+    }
     queue.current.push(callGame)
     if (!show.current) playNext()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a new game state is the only cue
   }, [callGame])
+
+  /* a match is played on the green, never in the builder; leaving it starts the toy afresh */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (inMatch) setMode('play')
+    if (wasInMatch.current && !inMatch) {
+      stopHere()
+      setOpp('bot')
+      start(course)
+    }
+    wasInMatch.current = inMatch
+    // only entering or leaving the match changes anything here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
 
   const stopHere = () => {
     timers.current.forEach((t) => window.clearTimeout(t))
@@ -731,67 +784,73 @@ export function PuttDemo() {
 
   return (
     <div className={`lab-keys pt-room is-${saved.theme}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Play or build">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'play'}
-            onClick={() => setMode('play')}
-          >
-            ⛳ Play
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'build'}
-            onClick={() => setMode('build')}
-          >
-            ✎ Build a hole
-          </button>
-        </div>
-        {mode === 'play' && (lab.live || opp === 'call') && (
-          <div className="lab-group" role="group" aria-label="Opponent">
+      {inMatch && <MatchBar lm={lm} sides={['the first ball', 'the second ball']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Play or build">
             <button
               className="btn btn-ghost"
-              aria-pressed={opp === 'bot'}
-              onClick={() => {
-                if (opp === 'bot') return
-                stopHere()
-                setOpp('bot')
-                start(course)
-              }}
+              aria-pressed={mode === 'play'}
+              onClick={() => setMode('play')}
             >
-              Against the computer
+              ⛳ Play
             </button>
             <button
               className="btn btn-ghost"
-              aria-pressed={opp === 'call'}
-              onClick={() => {
-                stopHere()
-                setOpp('call')
-              }}
+              aria-pressed={mode === 'build'}
+              onClick={() => setMode('build')}
             >
-              👥 With the call
+              ✎ Build a hole
             </button>
           </div>
-        )}
-        {mode === 'play' && opp === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer putts">
-            {LEVELS.map((l) => (
+          {mode === 'play' && (lab.live || opp === 'call') && (
+            <div className="lab-group" role="group" aria-label="Opponent">
               <button
-                key={l}
                 className="btn btn-ghost"
-                aria-pressed={saved.level === l}
+                aria-pressed={opp === 'bot'}
                 onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (phase === 'done' || (idx === 0 && strokes === 0)) start(course, l)
+                  if (opp === 'bot') return
+                  stopHere()
+                  setOpp('bot')
+                  start(course)
                 }}
               >
-                {LEVEL_NAMES[l]}
+                Against the computer
               </button>
-            ))}
-          </div>
-        )}
-      </div>
+              <button
+                className="btn btn-ghost"
+                aria-pressed={opp === 'call'}
+                onClick={() => {
+                  stopHere()
+                  setOpp('call')
+                }}
+              >
+                👥 With the call
+              </button>
+            </div>
+          )}
+          {mode === 'play' && opp === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer putts">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (phase === 'done' || (idx === 0 && strokes === 0)) start(course, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {signedIn && mode === 'play' && opp === 'bot' && (
+            <MatchChallenge demo="putt" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
+        </div>
+      )}
 
       {room && (
         <CallTable
@@ -809,7 +868,7 @@ export function PuttDemo() {
       )}
       {mode === 'play' && (
         <>
-          {!room && (
+          {!shared && (
             <div className="lab-controls" role="group" aria-label="Which holes">
               <button
                 className="btn btn-ghost"
@@ -890,7 +949,7 @@ export function PuttDemo() {
               </tbody>
             </table>
           </div>
-          {room ? (
+          {shared ? (
             said && (
               <p className="muted pt-said" aria-live="polite">
                 {said}
@@ -936,7 +995,7 @@ export function PuttDemo() {
           label={
             mode === 'build'
               ? `A hole being built: ${draftHole ? 'it can be played' : 'the cup cannot be reached from the tee yet'}.`
-              : `Hole ${vIdx + 1}, ${hole.name}. ${room ? said : line}`
+              : `Hole ${vIdx + 1}, ${hole.name}. ${shared ? said : line}`
           }
           onPointerDown={onDown}
           onPointerMove={onMove}
@@ -1040,7 +1099,8 @@ export function PuttDemo() {
         />
       </div>
 
-      {mode === 'play' && !room && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'play' && !shared && (
         <div className="lab-controls">
           {phase === 'between' && (
             <button className="btn" onClick={nextHole}>
@@ -1163,7 +1223,7 @@ export function PuttDemo() {
         </>
       )}
 
-      {!room && (
+      {!shared && (
         <p className="sun-reading">
           <span className="muted">
             Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost}
@@ -1172,7 +1232,7 @@ export function PuttDemo() {
           </span>
         </p>
       )}
-      {!room && mode === 'play' && level !== saved.level && phase !== 'done' && (
+      {!shared && mode === 'play' && level !== saved.level && phase !== 'done' && (
         <p className="muted mc-note">The new level starts with the next round.</p>
       )}
       <div className="fw-panel">

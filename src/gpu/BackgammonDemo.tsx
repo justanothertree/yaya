@@ -18,9 +18,16 @@ import {
   type Pos,
   type Saved,
   type Step,
+  type Who,
 } from './backgammon'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { type BackgammonGame, type Turn } from './backgammonRoom'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 type Phase = 'opening' | 'roll' | 'move' | 'cpu' | 'over'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
@@ -43,7 +50,6 @@ const sameStep = (a: Step, b: Step) => a.from === b.from && a.to === b.to && a.d
 /** the points in the order they are drawn: the top row left to right, then the bottom row left to right */
 const TOP = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
 const BOTTOM = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
-const ORDER = [...TOP, BAR, ...BOTTOM, OFF]
 const placeName = (i: number) =>
   i === BAR ? 'the bar' : i === OFF ? 'off the board' : `point ${i + 1}`
 
@@ -64,6 +70,31 @@ export function BackgammonDemo() {
   const timers = useRef<number[]>([])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
+
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). The server
+     rolls every die (backgammonRoom.ts): a turn is played here step by step as alone, from the
+     dice the server rolled, then proposed and sent; the board waits for the next roll. */
+  const lm = useLabMatch('backgammon')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const mg = inMatch ? (lm.shown as BackgammonGame | null) : null
+  /** my side: the second only in seat 1 of a versus match; together, the team plays the first */
+  const me: Who = inMatch && lm.view?.mode === 'versus' && lm.view.you === 1 ? 2 : 1
+  const them: Who = me === 1 ? 2 : 1
+  /**
+   * The board turned half round for the second side, so its checkers run to its own home at the
+   * bottom right as the first side's do: point i is drawn where 23 - i would be, and numbered
+   * from that side, 24 - i.
+   */
+  const flip = me === 2
+  const top = flip ? TOP.map((i) => 23 - i) : TOP
+  const bottom = flip ? BOTTOM.map((i) => 23 - i) : BOTTOM
+  const order = [...top, BAR, ...bottom, OFF]
+  const num = (i: number) => (flip ? 24 - i : i + 1)
+  const together = lm.view?.mode === 'together'
+  const theirName = !inMatch || together || !lm.view ? 'the computer' : otherName(lm.view)
+  const whose = (w: Who) => (w === me ? 'of yours' : `of ${theirName}’s`)
+  const named = (w: Who) => (w === me ? (together ? 'You two' : 'You') : theirName)
 
   const finish = (p: Pos) => {
     const r = result(p)
@@ -167,6 +198,60 @@ export function BackgammonDemo() {
     setLine('Each side rolls one die: the higher starts, and plays both numbers.')
   }
 
+  /* the match as the server has it: its board and dice, and a turn to play when it is ours */
+  const turnWords = (t: Turn) =>
+    t.steps.length
+      ? `${named(t.by)} played ${t.dice[0]}–${t.dice[1]}${
+          t.steps.some((x) => x.hit)
+            ? `, hitting ${t.by === me ? `one of ${theirName}’s` : 'one of yours'}`
+            : ''
+        }.`
+      : `${named(t.by)} rolled ${t.dice[0]}–${t.dice[1]} and could not move.`
+  const matchLine = (g: BackgammonGame) => {
+    const lastTwo = g.turns.slice(-2).filter((t) => t.by === them || g.turns.length === 1)
+    const before = lastTwo.map(turnWords).join(' ')
+    if (g.turn === null) {
+      const r = result(g.pos)
+      if (!r) return 'Three hundred turns and nobody home: a draw.'
+      const kind = r.points === 3 ? 'a backgammon' : r.points === 2 ? 'a gammon' : 'the game'
+      return `${before} ${named(r.winner)} ${r.winner === me && !together ? 'win' : 'wins'} ${kind} — ${r.points} ${r.points === 1 ? 'point' : 'points'}.`.trim()
+    }
+    const open =
+      g.turns.length === 0 && g.opening
+        ? `Opening roll: ${named(1)} ${g.opening[0]}, ${named(2)} ${g.opening[1]}. `
+        : ''
+    if (lm.hasPending) return 'Your turn is played: send it, and the server rolls for the next.'
+    if (g.turn === me && lm.canPlay && g.dice)
+      return `${open}${before ? before + ' ' : ''}You rolled ${g.dice[0]}–${g.dice[1]}${g.dice[0] === g.dice[1] ? ' — a double, four moves' : ''}. ${g.pos.bar[me] ? 'Bring your checker in from the bar first.' : 'Pick a checker, then where it goes.'}`
+    return `${open}${before ? before + ' ' : ''}${g.turn === me ? 'Your teammate’s roll.' : `${theirName[0].toUpperCase()}${theirName.slice(1)} to play${g.dice ? ` ${g.dice[0]}–${g.dice[1]}` : ''}.`}`
+  }
+  useEffect(() => {
+    if (!inMatch || !mg) return
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    setPos(mg.pos)
+    setDice(mg.dice)
+    setPicked(null)
+    if (lm.canPlay && mg.dice && mg.turn === me) {
+      setTurn({ start: mg.pos, all: plays(mg.pos, me, mg.dice, true), taken: [] })
+      setPhase('move')
+    } else {
+      setTurn(null)
+      setPhase(mg.turn === null ? 'over' : 'cpu')
+    }
+    setLine(matchLine(mg))
+    // a new board from the server, or my turn coming round, is the only cue
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch, mg, lm.canPlay, lm.hasPending])
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh()
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   // the steps that may come next: the next step of every legal whole turn that starts with the ones taken
   const fits = turn
     ? turn.all.filter((pl) => turn.taken.every((s, k) => pl.steps[k] && sameStep(pl.steps[k], s)))
@@ -179,11 +264,12 @@ export function BackgammonDemo() {
 
   const take = (st: Step) => {
     if (!turn) return
-    const next = apply(pos, 1, st)
+    const next = apply(pos, me, st)
     const taken = [...turn.taken, st]
     setPos(next)
     setPicked(null)
-    if (finish(next)) return
+    // in a match the server says when the game is won; alone, the board here does
+    if (!inMatch && finish(next)) return
     const more = turn.all.some(
       (pl) => pl.steps.length > taken.length && taken.every((s, k) => sameStep(pl.steps[k], s)),
     )
@@ -192,6 +278,11 @@ export function BackgammonDemo() {
       setLine(
         `${st.hit ? 'Hit! ' : ''}${placeName(st.from)} to ${placeName(st.to)}. ${next.bar[1] ? 'Another from the bar.' : 'Next move.'}`,
       )
+    } else if (inMatch) {
+      // the whole turn, proposed: Send plays it, and the server rolls for whoever is next
+      setTurn(null)
+      setPhase('cpu')
+      lm.play(taken.map((s) => [s.from, s.to]))
     } else {
       setTurn(null)
       setLine(`${st.hit ? 'Hit! ' : ''}Turn played. The computer rolls…`)
@@ -210,7 +301,7 @@ export function BackgammonDemo() {
     if (!turn || !turn.taken.length) return
     let p = turn.start
     const taken = turn.taken.slice(0, -1)
-    for (const s of taken) p = apply(p, 1, s)
+    for (const s of taken) p = apply(p, me, s)
     setPos(p)
     setTurn({ ...turn, taken })
     setPicked(null)
@@ -222,13 +313,13 @@ export function BackgammonDemo() {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) return
     e.preventDefault()
     e.stopPropagation()
-    let at = ORDER.indexOf(cursor)
+    let at = order.indexOf(cursor)
     if (k === 'ArrowLeft') at = Math.max(0, at - 1)
-    else if (k === 'ArrowRight') at = Math.min(ORDER.length - 1, at + 1)
+    else if (k === 'ArrowRight') at = Math.min(order.length - 1, at + 1)
     else if (k === 'ArrowUp' && at > 12) at = Math.max(0, at - 13)
-    else if (k === 'ArrowDown' && at < 13) at = Math.min(ORDER.length - 1, at + 13)
-    setCursor(ORDER[at])
-    refs.current.get(ORDER[at])?.focus()
+    else if (k === 'ArrowDown' && at < 13) at = Math.min(order.length - 1, at + 13)
+    setCursor(order[at])
+    refs.current.get(order[at])?.focus()
   }
 
   const used = turn ? turn.taken.map((s) => s.die) : []
@@ -272,7 +363,7 @@ export function BackgammonDemo() {
           .filter(Boolean)
           .join(' ')}
         tabIndex={cursor === i ? 0 : -1}
-        aria-label={`Point ${i + 1}: ${n ? `${n} ${side === 1 ? 'of yours' : 'of the computer’s'}` : 'empty'}${canFrom ? ', can move' : ''}${isTarget ? ', can go here' : ''}${picked === i ? ', picked' : ''}`}
+        aria-label={`Point ${num(i)}: ${n ? `${n} ${whose(side)}` : 'empty'}${canFrom ? ', can move' : ''}${isTarget ? ', can go here' : ''}${picked === i ? ', picked' : ''}`}
         onFocus={() => setCursor(i)}
         onClick={() => {
           setCursor(i)
@@ -281,32 +372,37 @@ export function BackgammonDemo() {
       >
         <span className="bg-stack">{n ? stack(n, side) : null}</span>
         <span className="bg-num" aria-hidden>
-          {i + 1}
+          {num(i)}
         </span>
       </button>
     )
   }
 
   const r = saved.record[saved.level]
+  /** the two sides by the checkers chosen: "ivory" and "ebony", the first side's first */
+  const colours = CHECKER_NAMES[saved.checkers].toLowerCase().split(' and ') as [string, string]
   return (
     <div className={`lab-keys bg-room is-${saved.board} men-${saved.checkers}`}>
+      {inMatch && <MatchBar lm={lm} sides={colours} />}
       <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="How well the computer plays">
-          {LEVELS.map((l) => (
-            <button
-              key={l}
-              className="btn btn-ghost"
-              aria-pressed={saved.level === l}
-              onClick={() => {
-                setSaved((s) => ({ ...s, level: l }))
-                if (phase === 'opening' || phase === 'over') fresh(l)
-              }}
-            >
-              {LEVEL_NAMES[l]}
-            </button>
-          ))}
-        </div>
-        {phase === 'opening' && (
+        {!inMatch && (
+          <div className="lab-group" role="group" aria-label="How well the computer plays">
+            {LEVELS.map((l) => (
+              <button
+                key={l}
+                className="btn btn-ghost"
+                aria-pressed={saved.level === l}
+                onClick={() => {
+                  setSaved((s) => ({ ...s, level: l }))
+                  if (phase === 'opening' || phase === 'over') fresh(l)
+                }}
+              >
+                {LEVEL_NAMES[l]}
+              </button>
+            ))}
+          </div>
+        )}
+        {phase === 'opening' && !inMatch && (
           <button className="btn" onClick={opening}>
             🎲 Opening roll
           </button>
@@ -321,9 +417,14 @@ export function BackgammonDemo() {
             ↶ Undo
           </button>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {!inMatch && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
+        {!inMatch && signedIn && (
+          <MatchChallenge demo="backgammon" settings={{}} levelNames={LEVEL_NAMES} />
+        )}
       </div>
 
       <p className="mc-line" aria-live="polite">
@@ -344,7 +445,7 @@ export function BackgammonDemo() {
         ))}
         {saved.pips && (
           <span className="muted bg-pips">
-            Pips: you {pips(pos, 1)}, computer {pips(pos, 2)}
+            Pips: you {pips(pos, me)}, {theirName} {pips(pos, them)}
           </span>
         )}
       </div>
@@ -356,9 +457,9 @@ export function BackgammonDemo() {
         onKeyDown={onKey}
       >
         <div className="bg-half is-top">
-          {TOP.slice(0, 6).map((i) => point(i, true))}
+          {top.slice(0, 6).map((i) => point(i, true))}
           <div className="bg-bar-gap" aria-hidden />
-          {TOP.slice(6).map((i) => point(i, true))}
+          {top.slice(6).map((i) => point(i, true))}
         </div>
         <button
           ref={(el) => {
@@ -366,21 +467,21 @@ export function BackgammonDemo() {
           }}
           className={`bg-bar${picked === BAR ? ' is-picked' : ''}${phase === 'move' && froms.has(BAR) && saved.hints && picked === null ? ' can-move' : ''}`}
           tabIndex={cursor === BAR ? 0 : -1}
-          aria-label={`The bar: ${pos.bar[1]} of yours, ${pos.bar[2]} of the computer’s${froms.has(BAR) ? ', bring one in' : ''}`}
+          aria-label={`The bar: ${pos.bar[me]} of yours, ${pos.bar[them]} of ${theirName}’s${froms.has(BAR) ? ', bring one in' : ''}`}
           onFocus={() => setCursor(BAR)}
           onClick={() => {
             setCursor(BAR)
             tap(BAR)
           }}
         >
-          {stack(pos.bar[2], 2)}
-          {stack(pos.bar[1], 1)}
+          {stack(pos.bar[them], them)}
+          {stack(pos.bar[me], me)}
           {!pos.bar[1] && !pos.bar[2] && <span className="muted">bar</span>}
         </button>
         <div className="bg-half is-bottom">
-          {BOTTOM.slice(0, 6).map((i) => point(i, false))}
+          {bottom.slice(0, 6).map((i) => point(i, false))}
           <div className="bg-bar-gap" aria-hidden />
-          {BOTTOM.slice(6).map((i) => point(i, false))}
+          {bottom.slice(6).map((i) => point(i, false))}
         </div>
         <button
           ref={(el) => {
@@ -388,7 +489,7 @@ export function BackgammonDemo() {
           }}
           className={`bg-off${targets.has(OFF) ? ' is-target' : ''}`}
           tabIndex={cursor === OFF ? 0 : -1}
-          aria-label={`Borne off: ${pos.off[1]} of yours, ${pos.off[2]} of the computer’s${targets.has(OFF) ? ', bear off here' : ''}`}
+          aria-label={`Borne off: ${pos.off[me]} of yours, ${pos.off[them]} of ${theirName}’s${targets.has(OFF) ? ', bear off here' : ''}`}
           onFocus={() => setCursor(OFF)}
           onClick={() => {
             setCursor(OFF)
@@ -397,17 +498,20 @@ export function BackgammonDemo() {
         >
           <span>Off</span>
           <strong>
-            {pos.off[1]} · {pos.off[2]}
+            {pos.off[me]} · {pos.off[them]}
           </strong>
         </button>
       </div>
-      <p className="sun-reading">
-        <span className="muted">
-          Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost} · points {r.points} to{' '}
-          {r.against}
-        </span>
-      </p>
-      {level !== saved.level && phase !== 'opening' && phase !== 'over' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {!inMatch && (
+        <p className="sun-reading">
+          <span className="muted">
+            Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost} · points {r.points} to{' '}
+            {r.against}
+          </span>
+        </p>
+      )}
+      {!inMatch && level !== saved.level && phase !== 'opening' && phase !== 'over' && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
 
@@ -457,7 +561,8 @@ export function BackgammonDemo() {
         </section>
       </div>
       <p className="muted lab-hint">
-        You play the light checkers, moving round from point 24 to point 1 and then off. Each die
+        You play the {colours[me - 1]} checkers, moving round from point 24 to point 1 and then off
+        {flip ? ' — your board turned round, so your points count from your side' : ''}. Each die
         moves one checker that many points, onto a point that is empty, yours, or holds a single one
         of theirs — which you hit, sending it to the bar to start again. Two or more of a side on a
         point block it. A checker on the bar must come in before anything else moves. With all
@@ -465,7 +570,9 @@ export function BackgammonDemo() {
         larger. First to bear off all fifteen wins: double if the other side has borne none off (a
         gammon), triple if one of theirs is still on the bar or in your home (a backgammon). Easy
         judges loosely, Fair carefully, Hard also counts the rolls that would hit each lone checker.
-        Keys: arrows move between points, Enter picks and moves, U undoes.
+        Keys: arrows move between points, Enter picks and moves, U undoes. Challenge a friend and
+        the server rolls every die, so neither of you can see a roll before it is made; the higher
+        of the opening roll starts.
       </p>
     </div>
   )

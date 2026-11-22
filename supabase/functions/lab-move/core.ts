@@ -37,6 +37,14 @@ import { score as goScore } from '../../../src/gpu/goboard'
 import { goRules, type GoGame } from '../../../src/gpu/goRoom'
 import { foxMatchRules, readFoxSide } from '../../../src/gpu/foxRoom'
 import { cubeRules } from '../../../src/gpu/cubeRoom'
+import { artilleryRules, type ArtilleryGame } from '../../../src/gpu/artilleryRoom'
+import { score as bowlingScore } from '../../../src/gpu/bowling'
+import { bowlingRules, type BowlingGame } from '../../../src/gpu/bowlingRoom'
+import { totals as curlingTotals } from '../../../src/gpu/curling'
+import { curlingMatchRules, type CurlingGame } from '../../../src/gpu/curlingRoom'
+import { puttRules, totals as puttTotals, type PuttGame } from '../../../src/gpu/puttRoom'
+import { dartsMatchRules, type DartsGame } from '../../../src/gpu/dartsRoom'
+import { backgammonRules, worth, type BackgammonGame } from '../../../src/gpu/backgammonRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -116,6 +124,36 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     return side ? { rules: foxMatchRules(side) } : null
   },
   cube: () => ({ rules: cubeRules }),
+  artillery: () => ({
+    rules: artilleryRules,
+    // what each gun has left, left gun first
+    score: (g: ArtilleryGame) => `${g.f.guns[0].life}–${g.f.guns[1].life}`,
+  }),
+  bowling: () => ({
+    rules: bowlingRules,
+    // the two scorecards' totals, the first bowler's first
+    score: (g: BowlingGame) => `${bowlingScore(g.rolls[0])}–${bowlingScore(g.rolls[1])}`,
+  }),
+  curling: () => ({
+    rules: curlingMatchRules,
+    // the ends' points added up, yellow's first
+    score: (cg: CurlingGame) => curlingTotals(cg.g).join('–'),
+  }),
+  putt: () => ({
+    rules: puttRules,
+    // strokes over the round, the first ball's first: the lower wins
+    score: (g: PuttGame) => puttTotals(g).join('–'),
+  }),
+  darts: () => ({
+    rules: dartsMatchRules,
+    // legs won, the first thrower's first
+    score: (g: DartsGame) => g.legs.join('–'),
+  }),
+  backgammon: () => ({
+    rules: backgammonRules,
+    // what the game was worth: a single game, a gammon or a backgammon
+    score: (g: BackgammonGame) => worth(g) ?? '',
+  }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
@@ -184,9 +222,16 @@ export const HISTORY_BYTES = 180
 export const jsonbBytes = (x: unknown) =>
   new TextEncoder().encode(JSON.stringify(x).replace(/([,:])/g, '$1 ')).length
 export function historyRow(m: unknown, then: unknown[]) {
-  if (!then.length) return { m }
-  const whole = { m, then }
-  return jsonbBytes(whole) <= HISTORY_BYTES ? whole : { m, replies: then.length }
+  // the fullest row that fits: the replies kept, then counted, then the move itself only noted,
+  // so a move too big for its own row can never fail the insert and with it the whole move
+  const rows = then.length
+    ? [
+        { m, then },
+        { m, replies: then.length },
+        { m: null, replies: then.length },
+      ]
+    : [{ m }, { m: null }]
+  return rows.find((r) => jsonbBytes(r) <= HISTORY_BYTES) ?? rows[rows.length - 1]
 }
 
 /** the most moves the computer makes in a row before the team moves again: passes, in Reversi */
@@ -194,7 +239,8 @@ const MAX_REPLIES = 64
 
 /**
  * What to do about `ask`, from `me`, on the match `row` as stored. Pure: the same three things in
- * give the same plan out, except for the computer's choice where a toy's computer rolls dice.
+ * give the same plan out, except for the computer's choice where a toy's computer rolls dice, and
+ * a toy's own dice, which the server rolls here (`Rules.roll`) and nowhere else.
  */
 export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAMES = GAMES): Plan {
   // ⚠️ the same answer for a match that does not exist and one that is not yours, as
@@ -213,16 +259,44 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
   const level = row.mode === 'together' ? levelOf(game, settings) : null
   if (row.mode === 'together' && level === null)
     return refuse(422, 'this match asks for a computer level the toy does not have')
+  /** the dice for whoever moves next, for a toy that has them */
+  const roll = (g: unknown) => (rules.roll ? rules.roll(g, Math.random) : g)
+  /** together: the computer answers now, as many times as the game gives it the move */
+  const answer = (g0: unknown): { g: unknown; then: unknown[] } | null => {
+    let g = g0
+    const then: unknown[] = []
+    if (row.mode !== 'together') return { g, then }
+    const cpu = rules.computer!
+    while (rules.turn(g) === cpu.side && then.length < MAX_REPLIES) {
+      const reply = cpu.choose(g, level!)
+      if (!rules.legal(g, reply, cpu.side)) return null
+      g = roll(rules.apply(g, reply, cpu.side))
+      then.push(reply)
+    }
+    return { g, then }
+  }
 
   if (ask.op === 'accept') {
     if (row.status !== 'invited') return refuse(409, 'that invitation is no longer open')
     if (seat !== 1) return refuse(403, 'only the friend who was challenged can accept')
     const g = rules.fresh(row.mode)
-    // the first of the team moves first together; in versus, whoever the board says, which is the
-    // challenger unless they took a side that moves second (Fox and geese's fox)
-    const t = rules.turn(g)
-    const first: Seat = row.mode === 'versus' && (t === 0 || t === 1) ? t : 0
-    return { kind: 'begin', state: rules.encode(g), turn: first }
+    if (!rules.roll) {
+      // the first of the team moves first together; in versus, whoever the board says, which is
+      // the challenger unless they took a side that moves second (Fox and geese's fox)
+      const t = rules.turn(g)
+      const first: Seat = row.mode === 'versus' && (t === 0 || t === 1) ? t : 0
+      return { kind: 'begin', state: rules.encode(g), turn: first }
+    }
+    // ⚠️ a toy with dice: its opening roll says who starts, and together the computer may, so it
+    // plays at once; the team's first move is the challenger's whoever opened
+    const opened = answer(rules.roll(g, Math.random))
+    if (!opened) return refuse(500, 'the computer could not move')
+    const t = rules.turn(opened.g)
+    return {
+      kind: 'begin',
+      state: rules.encode(opened.g),
+      turn: row.mode === 'together' || t === null || t === 'any' ? 0 : t,
+    }
   }
 
   if (row.status !== 'active') return refuse(409, 'that match is not going')
@@ -237,19 +311,9 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
   const side: Seat = row.mode === 'together' ? 0 : seat
   if (rules.turn(g0) !== side) return refuse(500, 'this match’s turn and board disagree')
   if (!rules.legal(g0, move, side)) return refuse(400, 'that move is not allowed there')
-  let g = rules.apply(g0, move, side)
-
-  // together: the computer answers now, as many times as the game gives it the move
-  const then: unknown[] = []
-  if (row.mode === 'together') {
-    const cpu = rules.computer!
-    while (rules.turn(g) === cpu.side && then.length < MAX_REPLIES) {
-      const reply = cpu.choose(g, level!)
-      if (!rules.legal(g, reply, cpu.side)) return refuse(500, 'the computer could not move')
-      g = rules.apply(g, reply, cpu.side)
-      then.push(reply)
-    }
-  }
+  const answered = answer(roll(rules.apply(g0, move, side)))
+  if (!answered) return refuse(500, 'the computer could not move')
+  const { g, then } = answered
 
   const over = rules.turn(g) === null
   const winner = over ? (rules.result?.(g) ?? 'draw') : null

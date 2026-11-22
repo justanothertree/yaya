@@ -24,6 +24,12 @@ export const MATCH_NAMES: Record<string, string> = {
   go: 'Go',
   fox: 'Fox and geese',
   cube: 'Noughts and crosses in a cube',
+  artillery: 'Artillery',
+  bowling: 'Bowling',
+  curling: 'Curling',
+  putt: 'Putt',
+  darts: 'Darts',
+  backgammon: 'Backgammon',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */

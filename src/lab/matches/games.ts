@@ -32,6 +32,18 @@ import { LEVELS as FOX_LEVELS } from '../../gpu/fox'
 import { foxMatchRules, foxSideOf, readFoxSide } from '../../gpu/foxRoom'
 import { LEVELS as CUBE_LEVELS } from '../../gpu/cube'
 import { cubeRules } from '../../gpu/cubeRoom'
+import { LEVELS as ARTILLERY_LEVELS } from '../../gpu/artillery'
+import { artilleryRules } from '../../gpu/artilleryRoom'
+import { LEVELS as BOWLING_LEVELS } from '../../gpu/bowling'
+import { bowlingRules } from '../../gpu/bowlingRoom'
+import { LEVELS as CURLING_LEVELS } from '../../gpu/curling'
+import { curlingMatchRules } from '../../gpu/curlingRoom'
+import { LEVELS as PUTT_LEVELS } from '../../gpu/putt'
+import { puttRules } from '../../gpu/puttRoom'
+import { LEVELS as DARTS_LEVELS } from '../../gpu/darts'
+import { dartsMatchRules } from '../../gpu/dartsRoom'
+import { LEVELS as BACKGAMMON_LEVELS } from '../../gpu/backgammon'
+import { backgammonRules } from '../../gpu/backgammonRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -162,6 +174,20 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     },
   },
   cube: { name: MATCH_NAMES.cube, rulesFor: () => cubeRules, levels: CUBE_LEVELS },
+  artillery: {
+    name: MATCH_NAMES.artillery,
+    rulesFor: () => artilleryRules,
+    levels: ARTILLERY_LEVELS,
+  },
+  bowling: { name: MATCH_NAMES.bowling, rulesFor: () => bowlingRules, levels: BOWLING_LEVELS },
+  curling: { name: MATCH_NAMES.curling, rulesFor: () => curlingMatchRules, levels: CURLING_LEVELS },
+  putt: { name: MATCH_NAMES.putt, rulesFor: () => puttRules, levels: PUTT_LEVELS },
+  darts: { name: MATCH_NAMES.darts, rulesFor: () => dartsMatchRules, levels: DARTS_LEVELS },
+  backgammon: {
+    name: MATCH_NAMES.backgammon,
+    rulesFor: () => backgammonRules,
+    levels: BACKGAMMON_LEVELS,
+  },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
