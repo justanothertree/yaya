@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Five in a row by turns: step 4 of the Lab multiplayer plan, the first of
+-- ✅ APPLIED to production 17 Nov 2026 (UTC) as migration `lab_gomoku_by_turns`, version 20261117043810:
+-- md5(statements[1]) = 63e4587ba8e271e2dc56dbf96cc233a5, this file's body. The record is
+-- supabase/migrations/20261117043810_lab_gomoku_by_turns.sql.
+--
+-- (as drafted) Five in a row by turns: step 4 of the Lab multiplayer plan, the first of
 -- the remaining versus toys (Five in a row, Draughts, Dots, Four in a row).
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and Five in

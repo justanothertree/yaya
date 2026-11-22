@@ -66,6 +66,7 @@ import { readPresets } from '../audio/vizPresets'
 import { packSong } from '../audio/songFile'
 import { ArtBlock } from '../profile/ProfileArt'
 import { CONFIG_LIMIT, PROFILE_LIMIT, configSize } from '../profile/blockSize'
+import { ARROW_STEP, gridKey } from '../profile/gridKeys'
 import { PetBlock, PetPicker } from '../pets/PetBlock'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
 import { fitDrawing, frameCount, packDrawing, readDrawing } from '../draw/strokes'
@@ -2289,22 +2290,6 @@ const STARTERS: Starter[] = [
   },
 ]
 
-/**
- * Every arrow, mapped to one step along the page's reading order.
- *
- * ⚠️ ALL FOUR MEAN THE SAME MOVE, because the grid is not always a grid. At Column width the
- * page is one block per row and left/right is the wrong word for what you want; at Wide it is
- * six across and up/down is. Both are "one step along the order the blocks are saved in", which
- * is the only order that exists — a 2D walk would need rows, and blocks of three different
- * widths do not sit in rows you could walk.
- */
-const ARROW_STEP: Record<string, -1 | 1 | undefined> = {
-  ArrowLeft: -1,
-  ArrowUp: -1,
-  ArrowRight: 1,
-  ArrowDown: 1,
-}
-
 /** The "arrange your page" panel — owner only, shown behind an Edit toggle in Profile.tsx. */
 export function ProfileBlocksEditor({
   initial,
@@ -3213,30 +3198,35 @@ export function ProfileBlocksEditor({
          * away from unsaved work is not worth matching an idiom for.
          */
         onKeyDown={(e) => {
-          if (e.ctrlKey || e.metaKey || e.altKey) return
-          /* ⚠️ THE EDITOR RENDERS THE REAL BLOCKS, so a block can contain a text field — the
+          /* ⚠️ THE EDITOR RENDERS THE REAL BLOCKS, so a block can contain a field — the
              guestbook has one, and it is inside this grid. Without this, typing a message and
              correcting a typo would delete the guestbook: Backspace would bubble out of the
-             input, find a cell around it, and mean something else entirely. */
-          const el = e.target as HTMLElement
-          const tag = el.tagName
-          if (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) return
-          const cell = el.closest('[data-cell]')
+             input, find a cell around it, and mean something else entirely. Which elements
+             count as a field is `isTypingTarget`'s answer, dropdowns included (see gridKeys). */
+          const action = gridKey({
+            key: e.key,
+            ctrlKey: e.ctrlKey,
+            metaKey: e.metaKey,
+            altKey: e.altKey,
+            shiftKey: e.shiftKey,
+            target: e.target as HTMLElement,
+          })
+          if (!action) return
+          const cell = (e.target as HTMLElement).closest('[data-cell]')
           const i = cell ? Number(cell.getAttribute('data-cell')) : NaN
           if (!Number.isInteger(i) || i < 0 || i >= blocks.length) return
 
-          const step = ARROW_STEP[e.key]
-          if (step) {
-            const j = i + step
+          if (action.kind === 'step') {
+            const j = i + action.step
             if (j < 0 || j >= blocks.length) return
             e.preventDefault()
             e.stopPropagation()
-            if (e.shiftKey) move(i, step)
+            if (action.move) move(i, action.step)
             else setOpenIdx(j)
             focusCell(j)
             return
           }
-          if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (action.kind === 'remove') {
             e.preventDefault()
             e.stopPropagation()
             removeAt(i)

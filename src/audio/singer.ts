@@ -80,7 +80,8 @@ export const PRESETS: Record<PresetId, Voice> = {
     air: 0.08,
     width: 0.85,
     formant: 1,
-    glide: 0.07,
+    /* 70ms until 16 Nov 2026; a glide is an S now, slow at both ends, and wants the time */
+    glide: 0.085,
     scoop: 0.4,
     vibrato: { delay: 0.32, rise: 0.35, rate: 5.6, cents: 28 },
     humanize: { cents: 5, ms: 6, db: 1, drift: 4 },
@@ -101,7 +102,7 @@ export const PRESETS: Record<PresetId, Voice> = {
     air: 0.45,
     width: 1.15,
     formant: 1,
-    glide: 0.11,
+    glide: 0.12,
     scoop: 0.9,
     vibrato: { delay: 0.38, rise: 0.45, rate: 5.1, cents: 38 },
     humanize: { cents: 7, ms: 8, db: 1.5, drift: 5 },
@@ -191,6 +192,8 @@ export type Event = {
   pitches: { at: number; midi: number }[]
   /** extra starts of the syllable, for the stutter */
   stutter: number[]
+  /** the syllable starts a word — see WORD_START */
+  word: boolean
 }
 
 /**
@@ -237,6 +240,7 @@ export function planLine(sung: readonly SungNote[], start: number, opts: SingOpt
         end: at + n.dur,
         pitches: [{ at, midi: p.pitch(n.midi) }],
         stutter: stutter && onBar ? [0, 1, 2].map((k) => at + (k * opts.beat) / 8) : [],
+        word: n.start !== false,
       }
       out.push(cur)
     }
@@ -635,12 +639,26 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
         /* hard tune: the jump hides in the consonant when there is one, and is the sound when not */
         pitch.push({ t: k === 0 ? cFrom : t, v: target, how: 'set' })
       } else {
+        /* ⚠️ AN S, NOT A RAMP (16 Nov 2026). One exponential ramp is a straight line in cents:
+           the pitch sets off at full speed and stops dead, two corners a synth makes and a throat
+           does not. A raised cosine leaves slowly, moves fastest between the notes and settles
+           into the new one. A wider leap takes a little longer, starting earlier and arriving at
+           the same place just after the beat, so the vowel still lands where the note is. */
         const last = pitch[pitch.length - 1].t
+        const semis = Math.abs(12 * Math.log2(target / prevHz))
         let arrive = t + v.glide * 0.35
-        const leave = Math.max(last, arrive - v.glide)
+        const leave = Math.max(last, arrive - v.glide * glideStretch(semis))
         if (arrive <= leave) arrive = leave + 0.01
         pitch.push({ t: leave, v: prevHz, how: 'set' })
-        pitch.push({ t: arrive, v: target, how: 'exp' })
+        for (let j = 1; j <= GLIDE_STEPS; j++) {
+          const u = j / GLIDE_STEPS
+          const s = (1 - Math.cos(Math.PI * u)) / 2
+          pitch.push({
+            t: leave + (arrive - leave) * u,
+            v: prevHz * (target / prevHz) ** s,
+            how: 'exp',
+          })
+        }
       }
       prevHz = target
       /* vibrato only on what is held long enough to settle first */
@@ -650,10 +668,20 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
 
     /* ── the onset: each consonant in turn, then the vowel ── */
     const ons = e.phones.onsets
+    /* ⚠️ A WORD'S FIRST SOUND IS SAID, A SYLLABLE'S IS SUNG THROUGH (16 Nov 2026). A singer
+       leans on the consonant that starts a word, "Pull", "close", and runs the ones inside it
+       together, "a-way". So at a word's start its noise is louder and its dip deeper: the voice
+       sinks further under an m, an l or a w, and a word that starts on its vowel is heard to
+       begin. Inside a word nothing changes. */
+    const crisp = e.word ? WORD_START.noise : 1
+    const sink = e.word ? WORD_START.sink : 1
+    const onset = (b: Omit<Burst, 'level'> & { level: number }) =>
+      noise({ ...b, level: b.level * crisp })
     if (i === 0) allTo(ons.length ? at(ons[0]) : vt, from, 'set')
     muffleTo(OPEN, cFrom, 0.004)
+    /* a vowel straight after a vowel makes its own dip, which starts before cFrom — see below */
     if (!legatoIn) say(cFrom, 0, 'set')
-    else say(cFrom, level, 'set')
+    else if (ons.length) say(cFrom, level, 'set')
     const atk = v.attack
     const rise = (t: number, to = L) => {
       if (e.stutter.length) return
@@ -663,9 +691,16 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
     if (!ons.length) {
       allTo(vt, cFrom, 'target', 0.022)
       if (legatoIn) {
-        /* a vowel straight after a vowel: a small dip so the new syllable is heard to start */
-        say(Math.max(cFrom, vowelAt - 0.03), level, 'set')
-        say(vowelAt - 0.008, 0.5 * L)
+        /* a vowel straight after a vowel: a small dip so the new syllable is heard to start,
+           deeper when it starts a word.
+           ⚠️ HELD UNTIL THE DIP, THEN DOWN AND BACK UP — fixed 16 Nov 2026. With no consonant,
+           cFrom IS the vowel, so "level at max(cFrom, vowel - 30ms)" was stamped at the vowel,
+           after the dip it was meant to start. Sorted, the dip ramped from the last syllable's
+           own rise: the voice faded across the whole vowel before ("my" in "my own" fell to half)
+           and jumped back to full at the next one, a step in level rather than a dip. */
+        const dipFrom = Math.max(voicing[voicing.length - 1].t, vowelAt - 0.03)
+        say(dipFrom, level, 'set')
+        say(Math.max(dipFrom + 0.004, vowelAt - 0.008), (e.word ? WORD_START.vowel : 0.5) * L)
         rise(vowelAt + 0.03)
       } else {
         say(Math.max(cFrom, vowelAt - 0.002), 0, 'set')
@@ -702,11 +737,11 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
             muffleTo(BAR, a, 0.004)
             muffleTo(OPEN, release, 0.002)
           } else say(a + 0.008, 0)
-          noise({ at: release, len: blen, ...burstOf(c, vt), through: 'band', rise: CLICK })
+          onset({ at: release, len: blen, ...burstOf(c, vt), through: 'band', rise: CLICK })
           if (c.place === 'palate') {
             /* ch and j: a stop released into a sh */
             const sh = HISS.palate
-            noise({
+            onset({
               at: release + blen / 2,
               len: b - release + 0.01,
               hz: sh.hz * v.formant,
@@ -716,7 +751,7 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
               rise: 0.004,
             })
           } else if (!voiced)
-            noise({
+            onset({
               at: release + blen,
               len: Math.max(0.004, b - release - blen + 0.008),
               hz: 0,
@@ -735,7 +770,7 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
           allTo(then, a, 'target', 0.015)
           say(a, level, 'set')
           say(a + 0.02, 0)
-          noise({
+          onset({
             at: a,
             len: b - a + 0.02,
             hz: 0,
@@ -757,7 +792,7 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
             muffleTo(BUZZ, a, 0.006)
             muffleTo(OPEN, after(b - 0.004), 0.003)
           } else say(a + 0.015, 0)
-          noise({
+          onset({
             at: a,
             len: b - a + 0.01,
             hz: band.hz * v.formant,
@@ -778,7 +813,7 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
           allTo(at(c), a, 'target', 0.01)
           muffleTo(m.muffle, a, 0.005)
           say(a, level, 'set')
-          say(a + 0.02, 0.55 * L)
+          say(a + 0.02, 0.55 * sink * L)
           muffleTo(OPEN, after(b - 0.004), 0.003)
           allTo(locus(c.place, vt, v.formant), after(b - 0.004), 'target', 0.004)
           allTo(then, b + 0.004, 'target', 0.016)
@@ -792,7 +827,7 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
           const quick = c.shape === 'l' || c.shape === 'dl'
           allTo(at(c), a, 'target', 0.012)
           say(a, level, 'set')
-          say(a + 0.02, 0.45 * L)
+          say(a + 0.02, 0.45 * sink * L)
           allTo(then, after(quick ? b - 0.015 : b - 0.035), 'target', quick ? 0.01 : 0.028)
           if (last) rise(b + 0.035)
         }
@@ -966,7 +1001,9 @@ function lateVibrato(list: Step[], a: number, b: number, v: Voice) {
   const { delay, rise, cents } = v.vibrato
   if (cents <= 0) return
   const on = a + delay
-  if (b - on < 0.15) return
+  /* ⚠️ NONE THAT CANNOT GROW. Half its rise is the least a vibrato needs to be heard as one; less
+     is a wobble a few cents deep at the end of a note, which reads as a voice unsteady on it */
+  if (b - on < Math.max(0.15, rise * 0.5)) return
   const full = Math.min(on + rise, b - 0.05)
   const depth = cents * Math.min(1, (full - on) / rise)
   list.push({ t: on, v: 0, how: 'set' })
@@ -974,6 +1011,26 @@ function lateVibrato(list: Step[], a: number, b: number, v: Voice) {
   list.push({ t: Math.max(full, b - 0.06), v: depth, how: 'set' })
   list.push({ t: b, v: 0, how: 'ramp' })
 }
+
+/** how a vibrato's speed wanders: this often, by this share of itself */
+const VIB_DRIFT = { hz: 0.25, share: 0.04 }
+
+/** points along a glide's S — enough that no straight piece of it is heard */
+const GLIDE_STEPS = 8
+
+/**
+ * How much longer than the voice's own glide a leap takes: a tone or less is the glide itself,
+ * then a little more for each semitone, up to a third longer. Kept so it never leaves before
+ * `glide` ahead of the beat, which is how far back the note before is promised to hold.
+ */
+export const glideStretch = (semis: number) => Math.min(1.33, 1 + 0.065 * Math.max(0, semis - 2))
+
+/**
+ * A word's first sound against a syllable's inside it: its noise this much louder (about 3.5dB),
+ * the voice under an m, an n or a glide sinking to this share of what it would, and the dip into
+ * a word that starts on its vowel this deep (inside a word it is half).
+ */
+export const WORD_START = { noise: 1.5, sink: 0.8, vowel: 0.25 }
 
 /** the late vibrato's wait into a note, the time it takes to grow, and its speed */
 const LATE = { delay: 0.5, rise: 0.55, rate: 5.1 }
@@ -1274,6 +1331,16 @@ function build(c: BaseAudioContext, dest: AudioNode, ph: Phrase, v: Voice, o: Bu
 
   const vib = c.createOscillator()
   vib.frequency.value = v.vibrato.rate
+  if (v.vibrato.cents > 0) {
+    /* a person's vibrato is never a metronome: its speed drifts a few percent, slowly */
+    const wob = c.createOscillator()
+    wob.frequency.value = VIB_DRIFT.hz * (0.8 + Math.random() * 0.4)
+    const wd = add(c.createGain())
+    wd.gain.value = v.vibrato.rate * VIB_DRIFT.share
+    wob.connect(wd)
+    wd.connect(vib.frequency)
+    source(wob, ph.from, ph.to)
+  }
   const vibDepth = add(c.createGain())
   vibDepth.gain.value = 0
   apply(vibDepth.gain, ph.vibrato)

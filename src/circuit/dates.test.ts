@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { localISO } from './dates'
+import { localISO, todayMonth } from './dates'
 
 /**
  * `localISO` is the one spelling of a local calendar day, and Chronicle's own copies of it were
@@ -23,5 +23,23 @@ describe('a local calendar day, spelled YYYY-MM-DD', () => {
     const lateEvening = new Date(2026, 10, 10, 23, 30)
     expect(lateEvening.toISOString().slice(0, 10)).toBe('2026-11-11')
     expect(localISO(lateEvening)).toBe('2026-11-10')
+  })
+
+  /**
+   * ⚠️ AND THE SAME TRAP ONE UNIT UP, WHICH IS WHERE IT ACTUALLY BIT. The call-usage figure was
+   * filed under `toISOString().slice(0, 7)` and read back the same way, so on the last evening of
+   * a month it was written to the NEXT month and the panel agreed with it. The month somebody
+   * means is the one on their own calendar.
+   */
+  it('is the local month on the last evening of one, when UTC has already turned over', () => {
+    const lastEvening = new Date(2026, 10, 30, 20, 0)
+    expect(lastEvening.toISOString().slice(0, 7)).toBe('2026-12')
+    expect(localISO(lastEvening).slice(0, 7)).toBe('2026-11')
+  })
+
+  it('todayMonth is this month on the local calendar', () => {
+    const now = new Date()
+    const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    expect(todayMonth()).toBe(local)
   })
 })
