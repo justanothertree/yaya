@@ -2523,6 +2523,11 @@ export const pvSaveRoutine = (
    * about it is the only thing that caught it; the order of two checks is not something a
    * sensible guess gets right.
    */
+  /* ⚠️ THE NAME, IN WORDS, FIRST — chronicle_routine_save since `chronicle_routine_refusals` went
+     live on 22 Nov 2026 (#146), straight after its suspension check. Before it the live site
+     showed `violates check constraint "chronicle_routines_name_check"` and this let it through. */
+  if (btrim(name ?? '') === '') return { why: 'a routine needs a name' }
+  if (chars(btrim(name)) > 60) return { why: 'that is longer than a name — 60 characters' }
   if (steps.length > 40) return { why: 'that is more than forty steps' }
   /* ⚠️ a step naming an activity that is not yours is dropped, as chronicle_routine_save does */
   const mine = steps
