@@ -1,3 +1,67 @@
+-- ⛔ SCRATCH BRANCH circuit/ci-probe-claims ONLY — never to be merged. Proves the claims draft on
+-- the baseline: the test against the functions as they are (must fail), the draft applied, the
+-- test (must pass), the draft again (must refuse), the rollback (must restore all three texts),
+-- and the draft once more so the standing guards below run with it in place.
+\pset format unaligned
+\pset tuples_only on
+\echo '#### claims PLAN'
+select md5(pg_get_functiondef('public.claim_person(text)'::regprocedure)) as m1,
+       md5(pg_get_functiondef('public.add_self_to_circuit(uuid, text, text)'::regprocedure)) as m2,
+       md5(pg_get_functiondef('public._circuit_add_self(uuid)'::regprocedure)) as m3 \gset
+\echo '#### MD5 BEFORE claim_person' :m1
+\echo '#### MD5 BEFORE add_self_to_circuit' :m2
+\echo '#### MD5 BEFORE _circuit_add_self' :m3
+\setenv M1 :m1
+\setenv M2 :m2
+\setenv M3 :m3
+\! sed -e "s/0\{31\}1/$M1/" -e "s/0\{31\}2/$M2/" -e "s/0\{31\}3/$M3/" docs/2026-11-22-circuit-claims-need-approval.DRAFT.sql > /tmp/claims-draft.sql && echo "#### DRAFT placeholders left: $(grep -c '0\{31\}[123]' /tmp/claims-draft.sql) / in the file itself: $(grep -c '0\{31\}[123]' docs/2026-11-22-circuit-claims-need-approval.DRAFT.sql)"
+\! sed '/^-- ── 0\./,/^end \$\$;$/d' supabase/tests/circuit-claims.sql > /tmp/claims-control.sql && echo "#### CONTROL guard lines left: $(grep -c 'before this file' /tmp/claims-control.sql)"
+\echo '#### CONTROL: the test against the functions as they are now, which must fail'
+\set ON_ERROR_STOP 0
+\i /tmp/claims-control.sql
+\set ON_ERROR_STOP 1
+\echo '#### APPLY'
+\i /tmp/claims-draft.sql
+select '#### MD5 AFTER claim_person ' || md5(pg_get_functiondef('public.claim_person(text)'::regprocedure));
+select '#### MD5 AFTER add_self_to_circuit ' || md5(pg_get_functiondef('public.add_self_to_circuit(uuid, text, text)'::regprocedure));
+select '#### MD5 AFTER _circuit_add_self ' || md5(pg_get_functiondef('public._circuit_add_self(uuid)'::regprocedure));
+select '#### MD5 AFTER ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid))
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname in ('_circuit_ask_for_person', 'circuit_person_owner_guard',
+       'my_person_claims', 'withdraw_person_claim', 'admin_list_person_claims', 'admin_decide_person_claim')
+ order by p.proname;
+\echo '#### THE TEST, which must pass'
+\ir circuit-claims.sql
+\echo '#### APPLY AGAIN, which must refuse on its guard and change nothing'
+\set ON_ERROR_STOP 0
+begin;
+\i /tmp/claims-draft.sql
+rollback;
+\set ON_ERROR_STOP 1
+select '#### after APPLY AGAIN, claim_person ' || md5(pg_get_functiondef('public.claim_person(text)'::regprocedure));
+\echo '#### ROLLBACK'
+\ir ../../docs/2026-11-22-circuit-claims-need-approval.ROLLBACK.sql
+select '#### ROLLED BACK claim_person ' || (md5(pg_get_functiondef('public.claim_person(text)'::regprocedure)) = :'m1')
+    || ' add_self_to_circuit ' || (md5(pg_get_functiondef('public.add_self_to_circuit(uuid, text, text)'::regprocedure)) = :'m2')
+    || ' _circuit_add_self ' || (md5(pg_get_functiondef('public._circuit_add_self(uuid)'::regprocedure)) = :'m3')
+    || ' table gone ' || (to_regclass('public.circuit_person_claims') is null)
+    || ' functions left ' || (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                               where n.nspname = 'public' and p.proname in ('_circuit_ask_for_person',
+                                 'circuit_person_owner_guard', 'my_person_claims', 'withdraw_person_claim',
+                                 'admin_list_person_claims', 'admin_decide_person_claim'))
+    || ' trigger left ' || (select count(*) from pg_trigger where tgname = 'circuit_people_owner_guard')
+    || ' grants claim_person member=' || has_function_privilege('authenticated', 'public.claim_person(text)', 'execute')
+    || ' anon=' || has_function_privilege('anon', 'public.claim_person(text)', 'execute');
+\echo '#### THE TEST AFTER ROLLBACK, which must refuse on its own guard'
+\set ON_ERROR_STOP 0
+\ir circuit-claims.sql
+\set ON_ERROR_STOP 1
+\echo '#### APPLY ONCE MORE, so the standing guards below run with the draft in place'
+\i /tmp/claims-draft.sql
+\pset format aligned
+\pset tuples_only off
+\echo '#### STANDING GUARDS'
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
