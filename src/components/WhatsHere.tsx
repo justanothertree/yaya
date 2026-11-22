@@ -29,6 +29,7 @@ export function WhatsHere({
   canvasOpen,
   canvasCapable,
   desktop,
+  roomKeys,
 }: {
   viewer: Viewer
   onClose: () => void
@@ -41,6 +42,13 @@ export function WhatsHere({
   canvasOpen: boolean
   canvasCapable: boolean
   desktop: boolean
+  /**
+   * The keys the room you are in answers, printed under the site's own — Chronicle's, for now.
+   *
+   * ⚠️ HERE RATHER THAN IN AN OVERLAY OF ITS OWN, because ? already opens this one everywhere, and
+   * a room that opened its own on the same key would race it for the press.
+   */
+  roomKeys?: { room: string; keys: ReadonlyArray<readonly [string, string]> }
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null)
   /* Escape closes it, focus moves in and is trapped, and whatever opened it gets focus back.
@@ -166,6 +174,24 @@ export function WhatsHere({
             <kbd>Esc</kbd> closes it.
           </p>
         )}
+        {desktop && roomKeys ? (
+          <div className="muted wh-keys wh-room-keys">
+            <p>In {roomKeys.room}:</p>
+            <ul>
+              {roomKeys.keys.map(([k, what]) => (
+                <li key={k}>
+                  {k.split(' ').map((x, i) => (
+                    <span key={x}>
+                      {i ? ' ' : ''}
+                      <kbd>{x}</kbd>
+                    </span>
+                  ))}{' '}
+                  {what}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         <div style={{ textAlign: 'right' }}>
           <button className="btn" onClick={onClose}>

@@ -85,12 +85,15 @@ export function LyricsPanel({
   loop,
   close,
   at,
+  on,
   scale,
 }: {
   loop: ReturnType<typeof loopState>
   close: () => void
   /** the bar whose words were pressed, if one was */
   at?: number
+  /** the part to sing on, when the box was opened from that part's menu */
+  on?: string
   /** the room's scale, for the sample line */
   scale: { degrees: readonly number[]; root: number }
 }) {
@@ -102,7 +105,7 @@ export function LyricsPanel({
     (l) => hasLyrics(l) || (l.instrument !== 'drums' && l.events.some((e) => e.on)),
   )
   const worded = loop.layers.find(hasLyrics) ?? null
-  const [pick, setPick] = useState<string | null>(null)
+  const [pick, setPick] = useState<string | null>(on ?? null)
   const part: Layer | null =
     worded ?? candidates.find((l) => l.id === pick) ?? candidates[candidates.length - 1] ?? null
   const lines = part ? linesFor(part, loop.bars) : []

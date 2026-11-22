@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { columns, coveredLine, coveredSoFar, hours, weekOf } from './week'
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { columns, coveredLine, coveredSoFar, dragSpan, hours, weekOf, type Column } from './week'
 import { blockAt, spanText, type Activity, type Entry } from './record'
 import { todayISO } from '../circuit/dates'
 
@@ -20,6 +20,13 @@ import { todayISO } from '../circuit/dates'
  * that list was checked against the app's STORE, and a store cannot tell you the shape of the
  * thing built on it. Every field was present and the room still read like a settings page.
  */
+/** how long a finger has to be still on a lane before it is drawing a span rather than scrolling */
+const HOLD_MS = 350
+
+/** a time on the ghost block: short, because the block is a seventh of the width */
+const clockOf = (ms: number) =>
+  new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+
 export function WeekGrid({
   on,
   log,
@@ -27,6 +34,7 @@ export function WeekGrid({
   onPick,
   onOpen,
   onEmpty,
+  onSpan,
   quiet,
 }: {
   /** any day in the week to draw */
@@ -48,6 +56,15 @@ export function WeekGrid({
   onOpen?: (day: string, entry: string) => void
   /** tap a bare patch of a day: somewhere nothing was recorded, at roughly that hour */
   onEmpty?: (day: string, hour: number) => void
+  /**
+   * Drag down a bare patch of a day: a session you forgot, from where the drag began to where it
+   * ended — see `dragSpan` for the snapping and the rule that it never runs into the future.
+   *
+   * ⚠️ A SHORTCUT, NOT THE ONLY WAY. Dragging is the one gesture some people cannot make, which is
+   * WCAG 2.5.7's point: the tap on a bare patch still opens Log a past session at that hour, and
+   * the button for it is in the Start sheet. This only saves typing two times you have just drawn.
+   */
+  onSpan?: (day: string, fromMs: number, toMs: number) => void
   /**
    * Leave off the line underneath, because whatever holds the grid already says it.
    *
@@ -73,9 +90,133 @@ export function WeekGrid({
   /* only the days that have begun — a week you are three days into is not 60% empty */
   const said = coveredSoFar(cols, Date.now())
 
+  /**
+   * The drag in progress, if any, and the span it is drawing.
+   *
+   * ⚠️ A MOUSE DRAGS AT ONCE AND A FINGER HOLDS FIRST. A finger moving down a lane is somebody
+   * scrolling the page, nearly always, so on touch the drag begins only after the finger has been
+   * still for `HOLD_MS`; moving before that is a scroll, and it is left alone. Once it has begun,
+   * the page must not scroll under it, which a React touch handler cannot prevent (React attaches
+   * those passive), hence the native listener below.
+   */
+  const drag = useRef<{
+    col: Column
+    top: number
+    height: number
+    y0: number
+    x0: number
+    live: boolean
+    hold: number
+  } | null>(null)
+  const [ghost, setGhostState] = useState<{ day: string; fromMs: number; toMs: number } | null>(
+    null,
+  )
+  /* the same span, readable in the pointerup that ends the drag without waiting for a render */
+  const last = useRef<typeof ghost>(null)
+  const setGhost = (g: typeof ghost) => {
+    last.current = g
+    setGhostState(g)
+  }
+  /* the click that follows the pointerup of a drag is not a tap */
+  const swallow = useRef(false)
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el || !onSpan) return
+    const stop = (e: TouchEvent) => {
+      if (drag.current?.live) e.preventDefault()
+    }
+    el.addEventListener('touchmove', stop, { passive: false })
+    return () => el.removeEventListener('touchmove', stop)
+  }, [onSpan])
+  const spanAt = (y: number) => {
+    const g = drag.current
+    if (!g) return null
+    return dragSpan(
+      g.col.fromMs,
+      g.col.toMs,
+      (g.y0 - g.top) / g.height,
+      (y - g.top) / g.height,
+      Date.now(),
+    )
+  }
+  const endDrag = () => {
+    if (drag.current) window.clearTimeout(drag.current.hold)
+    drag.current = null
+    setGhost(null)
+  }
+  const down = (ev: PointerEvent<HTMLDivElement>, c: Column) => {
+    if (!onSpan || ev.button !== 0) return
+    const r = ev.currentTarget.getBoundingClientRect()
+    if (!(r.height > 0)) return
+    /* a press on a block is that block's, which the click opens */
+    const pct = ((ev.clientY - r.top) / r.height) * 100
+    if (blockAt(c.blocks, pct, (14 / r.height) * 100)) return
+    const el = ev.currentTarget
+    const id = ev.pointerId
+    /* the hold has passed: the finger is drawing now, so show it the span it has drawn so far */
+    const begin = () => {
+      const g = drag.current
+      if (!g) return
+      g.live = true
+      /* the quarter hour under the finger, so a hold that never moves still means something */
+      const f0 = (g.y0 - g.top) / g.height
+      const s = dragSpan(c.fromMs, c.toMs, f0, f0 + (15 * 60_000) / (c.toMs - c.fromMs), Date.now())
+      setGhost(s ? { day: c.on, ...s } : null)
+      /* ⚠️ the drag goes first and the capture is allowed to fail — see CLAUDE.md on
+         setPointerCapture, which throws for a pointer the browser does not know */
+      try {
+        el.setPointerCapture(id)
+      } catch {
+        /* the drag still works while the pointer stays over the lane */
+      }
+    }
+    drag.current = {
+      col: c,
+      top: r.top,
+      height: r.height,
+      y0: ev.clientY,
+      x0: ev.clientX,
+      live: false,
+      hold: ev.pointerType === 'mouse' ? 0 : window.setTimeout(begin, HOLD_MS),
+    }
+  }
+  const move = (ev: PointerEvent<HTMLDivElement>) => {
+    const g = drag.current
+    if (!g) return
+    const far = Math.hypot(ev.clientX - g.x0, ev.clientY - g.y0)
+    if (!g.live) {
+      if (ev.pointerType !== 'mouse') {
+        /* a finger that moved before the hold is scrolling, and keeps scrolling */
+        if (far > 8) endDrag()
+        return
+      }
+      if (far <= 4) return
+      g.live = true
+      try {
+        ev.currentTarget.setPointerCapture(ev.pointerId)
+      } catch {
+        /* as above */
+      }
+    }
+    const s = spanAt(ev.clientY)
+    setGhost(s ? { day: g.col.on, ...s } : null)
+  }
+  const up = (ev: PointerEvent<HTMLDivElement>) => {
+    const g = drag.current
+    if (!g) return
+    const s = g.live ? (spanAt(ev.clientY) ?? last.current) : null
+    const day = g.col.on
+    const wasLive = g.live
+    endDrag()
+    /* a drag that drew nothing falls through to the tap, which opens the hour */
+    if (wasLive && s) swallow.current = true
+    if (s && onSpan) onSpan(day, s.fromMs, s.toMs)
+  }
+
   return (
     <div className="chron-week">
-      <div className="chron-week-grid">
+      <div className="chron-week-grid" ref={gridRef}>
         {/* the hour labels, once down the left rather than once per column */}
         <div className="chron-week-hours" aria-hidden>
           {rows.map((h) => (
@@ -118,7 +259,22 @@ export function WeekGrid({
               </button>
 
               <div
-                className={'chron-week-lane' + (onOpen || onEmpty ? ' is-tappable' : '')}
+                className={
+                  'chron-week-lane' +
+                  (onOpen || onEmpty ? ' is-tappable' : '') +
+                  (onSpan ? ' is-draggable' : '')
+                }
+                onPointerDown={onSpan ? (ev) => down(ev, c) : undefined}
+                onPointerMove={onSpan ? move : undefined}
+                onPointerUp={onSpan ? up : undefined}
+                onPointerCancel={onSpan ? endDrag : undefined}
+                onContextMenu={
+                  onSpan
+                    ? (ev) => {
+                        if (drag.current) ev.preventDefault()
+                      }
+                    : undefined
+                }
                 /**
                  * ⚠️ THE EMPTY SPACE IS THE CONTROL HERE, which is why this is a handler on the
                  * lane rather than a grid of hour buttons: twenty-four targets per column times
@@ -135,6 +291,10 @@ export function WeekGrid({
                 onClick={
                   onOpen || onEmpty
                     ? (ev) => {
+                        if (swallow.current) {
+                          swallow.current = false
+                          return
+                        }
                         const r = ev.currentTarget.getBoundingClientRect()
                         if (!(r.height > 0)) return
                         const pct = ((ev.clientY - r.top) / r.height) * 100
@@ -185,6 +345,18 @@ export function WeekGrid({
                   )
                 })}
                 {c.now != null && <i className="chron-week-now" style={{ top: `${c.now}%` }} />}
+                {ghost && ghost.day === c.on ? (
+                  <span
+                    className="chron-week-ghost"
+                    style={{
+                      top: `${((ghost.fromMs - c.fromMs) / (c.toMs - c.fromMs)) * 100}%`,
+                      height: `${((ghost.toMs - ghost.fromMs) / (c.toMs - c.fromMs)) * 100}%`,
+                    }}
+                    aria-hidden
+                  >
+                    {clockOf(ghost.fromMs)}–{clockOf(ghost.toMs)}
+                  </span>
+                ) : null}
               </div>
             </div>
           )

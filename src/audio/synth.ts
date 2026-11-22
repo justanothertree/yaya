@@ -2765,6 +2765,14 @@ export function partInput(part: string, fx: Fx, gain?: number): AudioNode {
 }
 
 /**
+ * Build the synth's graph now, if no note has yet — for something that taps its output before
+ * anything plays. `outputTap` is null until then, and a recorder wired to null hears nothing.
+ */
+export function wakeSynth() {
+  ensure()
+}
+
+/**
  * The post-limiter node, for the debug recorder — the same fork the visualiser draws from, so a
  * capture is the signal your speakers were asked for rather than an idealised one.
  */

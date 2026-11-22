@@ -19,6 +19,7 @@ import {
 } from './golf'
 import { rng } from './bricks'
 import { card } from './poker'
+import { NIGHTLY, named } from './testMatches'
 
 /** every way through, by the rules alone: no memory, no bounds, nothing shared with the solver */
 function brute(g: Game): number {
@@ -105,9 +106,17 @@ describe('par', () => {
       expect(s.result()).toEqual(solve(g))
     }
   })
+  // Par for a deal takes up to four seconds to work out and the twenty-five took a minute under a
+  // full run, so every push asks three deals and the nightly run all twenty-five (testMatches.ts).
+  // The three are the quickest of the twenty-five to solve; par beat playing every card that fits
+  // on all twenty-five, so on these three it has to beat it too, not merely tie.
   it('is never worse than playing every card that fits, and often better', () => {
+    const deals = named(
+      [11, 13, 14],
+      Array.from({ length: 25 }, (_, i) => i + 1),
+    )
     let better = 0
-    for (let seed = 1; seed <= 25; seed++) {
+    for (const seed of deals) {
       let g = deal(seed)
       while (!over(g)) g = playable(g).length ? take(g, playable(g)[0]) : turn(g)
       const p = solve(deal(seed))
@@ -115,7 +124,7 @@ describe('par', () => {
       if (p.best < score(g)) better++
       expect(left(deal(seed))).toBe(35)
     }
-    expect(better).toBeGreaterThan(15)
+    expect(better).toBeGreaterThan(NIGHTLY ? 15 : deals.length - 1)
   }, 120000)
 })
 

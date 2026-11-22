@@ -127,7 +127,7 @@ src/
   main.tsx           # entry point
   index.css          # global styles + design tokens
   sections/          # one module per nav section (EvanCook, Circuit, Ratings, SnakeGame,
-                     #   Investments, Profile, People, ChatPage, SignIn, AccountSettings,
+                     #   Investments, Profile, ChatPage, SignIn, AccountSettings,
                      #   AdminPanel, AcceptInvite, ContactForm)
   components/        # shared shell pieces (MobileNav, SettingsMenu, AmbientBackdrop, Icons,
                      #   NotificationBell, UsagePanel, FundPanel, VisibilityPicker)

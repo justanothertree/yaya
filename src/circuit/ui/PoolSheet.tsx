@@ -240,7 +240,7 @@ export function PoolSheet({
             <div className="cz-pick-people">
               {candidates.length === 0 && (
                 <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
-                  Nobody to add yet — add a friend on the People page first.
+                  Nobody to add yet — add a friend in Chat first.
                 </p>
               )}
               {[
