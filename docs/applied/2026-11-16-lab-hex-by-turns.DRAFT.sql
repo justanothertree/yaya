@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Hex by turns: step 10 of the Lab multiplayer plan, the third of the toys whose rules were written for the call rooms (Mancala, Nine men's morris, Hex, …).
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_hex_by_turns`, version 20261122023840:
+-- md5(statements[1]) = 1c1fcb6ebb6db9397687d2aa04188782, this file's body. The record is
+-- supabase/migrations/20261122023840_lab_hex_by_turns.sql.
+--
+-- (as drafted) Hex by turns: step 10 of the Lab multiplayer plan, the third of the toys whose rules were written for the call rooms (Mancala, Nine men's morris, Hex, …).
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and Hex joins
 -- Reversi, Chess, Pool, Five in a row, Draughts, Dots, Four in a row, Mancala and Nine men's morris. Nothing else changes:

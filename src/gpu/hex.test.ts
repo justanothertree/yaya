@@ -17,6 +17,7 @@ import {
   type Player,
   type Stone,
 } from './hex'
+import { NIGHTLY } from './testMatches'
 
 const seeded = (seed: number) => {
   let s = seed >>> 0 || 1
@@ -103,9 +104,24 @@ describe('the computer', () => {
     for (const level of ['fair', 'hard'] as Level[])
       expect(choose(win, 2, level, seeded(2))).toBe(4 * 5)
   })
+  // If the two levels played alike, a seed's two games would be one game with the seats swapped,
+  // and the level under test would lose one of them (measured too: equal levels split every seed
+  // tried, twelve each for Easy and Fair on 7×7 and four for Hard). Winning one seed from BOTH
+  // seats is the claim in four games, then, and a level that plays like the one below cannot
+  // pass it. Seed 40 is the first the test below plays. 7×7 because it is the smallest board the
+  // room offers; Hard thinks 20,000 playouts a move whatever the board, so this is the costly one.
+  it('wins the same seed from both seats, level by level', () => {
+    for (const [hi, lo] of [
+      ['fair', 'easy'],
+      ['hard', 'fair'],
+    ] as const)
+      for (const seat of [1, 2] as Player[]) expect(game(hi, lo, seat, 7, 40)).toBe(true)
+  })
   // Measured from both seats: fair beat easy 16 of 16 and hard beat fair 13 of 16 on 9×9. This
-  // checks 7×7, which is quicker. Seeded, so the same every run.
-  it('each level beats the one below it, from either seat', () => {
+  // checks 7×7, which is quicker. Seeded, so the same every run. Nine seconds alone, and most of
+  // the 60-second limit under a full run, so it runs nightly.
+  it('each level beats the one below it, from either seat', ({ skip }) => {
+    skip(!NIGHTLY, 'runs nightly: see testMatches.ts')
     const wins = (hi: Level, lo: Level, games: number) => {
       let w = 0
       for (let g = 0; g < games; g++)

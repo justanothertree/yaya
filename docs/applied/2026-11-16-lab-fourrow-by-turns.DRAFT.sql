@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Four in a row by turns: step 4 of the Lab multiplayer plan, the last of
+-- ✅ APPLIED to production 17 Nov 2026 (UTC) as migration `lab_fourrow_by_turns`, version 20261117044939:
+-- md5(statements[1]) = 5618c6407353a4a274471b7103b19cf9, this file's body. The record is
+-- supabase/migrations/20261117044939_lab_fourrow_by_turns.sql.
+--
+-- (as drafted) Four in a row by turns: step 4 of the Lab multiplayer plan, the last of
 -- the remaining versus toys (Five in a row, Draughts, Dots, Four in a row).
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and Four in
