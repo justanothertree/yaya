@@ -1,7 +1,7 @@
 -- A Circuit person changes hands only when an admin approves a claim (OPEN-DECISIONS §19e), asked
 -- of the real functions as three seeded members: the admin, and two others.
 --
--- ⛔ NEEDS docs/2026-11-22-circuit-claims-need-approval.DRAFT.sql APPLIED FIRST, and refuses to run
+-- ⛔ NEEDS docs/applied/2026-11-22-circuit-claims-need-approval.DRAFT.sql APPLIED FIRST, and refuses to run
 -- otherwise. It runs only where a throwaway database has been built from the baseline and seed
 -- (the `db guards` CI job), and it rolls back. NEVER against production: it writes rows.
 --
@@ -52,7 +52,7 @@ update who set claims = json_build_object('sub', uid::text, 'role', 'authenticat
 do $$
 begin
   if to_regclass('public.circuit_person_claims') is null then
-    raise exception 'apply docs/2026-11-22-circuit-claims-need-approval.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-22-circuit-claims-need-approval.DRAFT.sql before this file';
   end if;
 end $$;
 

@@ -1,7 +1,7 @@
 /**
  * Claiming a Circuit person is a REQUEST that an admin answers (OPEN-DECISIONS §19e).
  *
- * Until docs/2026-11-22-circuit-claims-need-approval.DRAFT.sql, pressing "This is me" put your
+ * Until docs/applied/2026-11-22-circuit-claims-need-approval.DRAFT.sql, pressing "This is me" put your
  * account on that person's board at once, which handed every day logged on it to whoever pressed
  * first. Now the three ways in (This is me, Add me with a matching name, joining with a code when
  * your first name matches) write a request and change nothing, and only an admin's approval sets

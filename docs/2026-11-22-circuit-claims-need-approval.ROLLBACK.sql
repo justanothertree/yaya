@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-22-circuit-claims-need-approval.DRAFT.sql. ⛔ Not applied, like the draft.
+-- ROLLBACK for docs/applied/2026-11-22-circuit-claims-need-approval.DRAFT.sql. ⛔ Not applied, like the draft.
 --
 -- Puts the three claim functions back byte for byte (this is their text in the schema baseline,
 -- which CI builds as production's), then drops what the draft added. Check A of

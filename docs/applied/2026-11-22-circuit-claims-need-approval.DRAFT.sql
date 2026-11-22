@@ -1,5 +1,9 @@
--- ⛔ DRAFT — NOT APPLIED. Nothing here runs until Evan approves it. The plan is
--- docs/2026-11-22-circuit-claims-plan.md, and the question it answers is OPEN-DECISIONS §19e.
+-- ✅ APPLIED to production 22 Nov 2026 as migration `circuit_claims_need_approval`, version
+-- 20261122233938: md5(statements[1]) = dd9fc6bb1f13c7ef3b8d90d255453017, this file's body. The
+-- record is supabase/migrations/20261122233938_circuit_claims_need_approval.sql.
+--
+-- (as drafted) The plan is docs/2026-11-22-circuit-claims-plan.md, and the question it answers is
+-- OPEN-DECISIONS §19e.
 --
 -- A Circuit person changes hands only when an admin approves a claim.
 --

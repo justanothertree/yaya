@@ -1,7 +1,12 @@
 # A claim on a Circuit person is a request an admin answers (OPEN-DECISIONS §19e)
 
-⛔ **DRAFT, NOT APPLIED.** Nothing here has touched production. Applying it is Evan's call, and
-the steps are at the end.
+✅ **APPLIED to production 22 Nov 2026 at 6:39 PM EST** as migration `circuit_claims_need_approval`,
+version 20261122233938, with Evan's approval ("Apply both"). Check A matched every text it was
+written against; Check B matched all nine texts, the grants, an unchanged owners fingerprint and a
+deny-all empty table; production's md5 of what it ran is the record file's body. Live, as a member
+in a transaction that rolled back: This is me left the person unclaimed with one pending request,
+the asker could not write its days, the admin list said "admin only" to them, and an owner handing
+their board on was refused in words while the ordinary save still worked.
 
 Evan's answer of 22 Nov: _"If you build a draft, start with admin approval (unambiguous), and treat
 'the person confirms from their own account' as the claimed person confirming in a separate step,
@@ -30,7 +35,7 @@ adopted a same-name person; Add me adopted one; an owner handed their board to a
 
 ## What the draft does
 
-`docs/2026-11-22-circuit-claims-need-approval.DRAFT.sql`:
+`docs/applied/2026-11-22-circuit-claims-need-approval.DRAFT.sql`:
 
 - **`circuit_person_claims`**, deny-all like every member table (RLS on, no policy, no grant):
   who asked for which person, through which door, and the answer.

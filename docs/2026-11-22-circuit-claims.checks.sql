@@ -1,4 +1,4 @@
--- Read-only checks for docs/2026-11-22-circuit-claims-need-approval.DRAFT.sql. Nothing here writes.
+-- Read-only checks for docs/applied/2026-11-22-circuit-claims-need-approval.DRAFT.sql. Nothing here writes.
 -- The plan is docs/2026-11-22-circuit-claims-plan.md.
 
 -- ── CHECK A, before applying: production is the text the draft was written against ───────────
