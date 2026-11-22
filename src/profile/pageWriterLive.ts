@@ -70,10 +70,13 @@ export function writerFor(uid: string): PageWriter {
   const sb = getSupabaseClient()
   const live: Pick<Deps, 'rpc' | 'session'> = {
     rpc: async (fn, args, token): Promise<Answer> => {
-      const r = await sb
-        .rpc(fn, args)
-        .setHeader('Authorization', `Bearer ${token}`)
-        .abortSignal(AbortSignal.timeout(15000))
+      const q = sb.rpc(fn, args).setHeader('Authorization', `Bearer ${token}`)
+      /* ⚠️ AbortSignal.timeout is missing before Safari 16 and Firefox 100; without it a request
+         simply waits, which is slower and never wrong */
+      const r = await (typeof AbortSignal !== 'undefined' &&
+      typeof AbortSignal.timeout === 'function'
+        ? q.abortSignal(AbortSignal.timeout(15000))
+        : q)
       return { data: r.data, error: r.error, status: r.status }
     },
     session: async () => {

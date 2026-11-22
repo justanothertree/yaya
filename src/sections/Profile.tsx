@@ -168,20 +168,29 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
   const [orphan, setOrphan] = useState<{ blocks: ProfileBlock[]; why: string } | null>(null)
   /** whose session this is: the page writer is per member (the preview's own id in the harness) */
   const [writerUid, setWriterUid] = useState<string | null>(null)
+  /** no session could be read (a token refresh failing offline): the door offers Try again */
+  const [noSession, setNoSession] = useState(false)
+  const [sessionTry, setSessionTry] = useState(0)
   useEffect(() => {
+    setNoSession(false)
     if (!authed) return setWriterUid(null)
     if (import.meta.env.DEV && previewMember) return setWriterUid(PREVIEW_ME.id)
     let live = true
     void getSupabaseClient()
       .auth.getSession()
       .then(({ data }) => {
-        if (live) setWriterUid(data.session?.user.id ?? null)
+        if (!live) return
+        setWriterUid(data.session?.user.id ?? null)
+        setNoSession(!data.session)
       })
     return () => {
       live = false
     }
-  }, [authed])
+  }, [authed, sessionTry])
   const writer = writerUid ? writerFor(writerUid) : null
+  /* for an effect that only wants the writer when it runs, not to run again when it arrives */
+  const writerRef = useRef(writer)
+  writerRef.current = writer
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [trophies, setTrophies] = useState<ProfileTrophy[]>([])
   /* every module's achievements, earned and locked, derived server-side — see
@@ -419,7 +428,8 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
        check" in the one place whose whole job is showing what somebody else was sent. Only your
        own page: a visitor's blocks come from the server and are not the thing being previewed. */
     if (preview) {
-      take({ data: previewMyBlocks(), error: null })
+      const held = writerRef.current?.known()
+      take({ data: held?.name === u ? held.page : previewMyBlocks(), error: null })
       return () => {
         live = false
       }
@@ -467,11 +477,28 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * The read view follows what the writer wrote or read — a song put on from the Instrument room,
    * an editor's last save, another tab's — so it is never a version behind what is stored.
    */
+  /**
+   * ⚠️ AN ORPHAN IS COLLECTED, NOT ONLY HEARD. The exit save of an editor runs after the page that
+   * held it has gone — leaving for another room unmounts both at once — so its "didn't save" event
+   * reaches no listener. The writer keeps it; your own page picks it up when it next opens, and it
+   * is taken from the writer only when you decide (Open them again, Let them go). And a different
+   * account never sees the last one's.
+   */
+  useEffect(() => {
+    setOrphan(null)
+  }, [writer])
+  useEffect(() => {
+    if (!writer || !mine) return
+    const held = writer.peekOrphan()
+    if (held) setOrphan(held)
+  }, [writer, mine])
   useEffect(() => {
     if (!writer) return
     return writer.subscribe((e) => {
-      if (e.type === 'orphan') setOrphan({ blocks: e.blocks, why: e.why })
-      else if (
+      if (e.type === 'orphan') {
+        if (shownU.current.toLowerCase() === (writer.known()?.name ?? '').toLowerCase())
+          setOrphan({ blocks: e.blocks, why: e.why })
+      } else if (
         (e.type === 'written' || e.type === 'advanced') &&
         shownU.current.toLowerCase() === e.name.toLowerCase()
       )
@@ -1228,7 +1255,8 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           copy being arranged, done-editing shows what was actually saved. */}
       {/* ⚠️ WHAT AN EDITOR COULD NOT SAVE ON ITS WAY OUT, offered back rather than lost with it */}
       {p.is_me && orphan && (
-        <p className="muted profile-door" role="status">
+        /* ⚠️ role=alert, and not muted: this is the one line on the page about something lost */
+        <p className="profile-door profile-orphan" role="alert">
           Your last changes didn’t save: {ORPHAN_SAYS[orphan.why] ?? 'something went wrong'}.{' '}
           <button
             className="btn btn-ghost"
@@ -1236,18 +1264,32 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
               /* the copy, in an editor that can be read and copied from; its version is not the
                  page's, so it will not save over what is there — it says so, with Reload it */
               setSeed({ for: u, page: orphan.blocks, rev: -1 })
+              writer?.takeOrphan()
               setOrphan(null)
               setEditing(true)
             }}
           >
             Open them again
           </button>{' '}
-          <button className="btn btn-ghost" onClick={() => setOrphan(null)}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              writer?.takeOrphan()
+              setOrphan(null)
+            }}
+          >
             Let them go
           </button>
         </p>
       )}
-      {p.is_me && editing && doorFor(u, seed?.for ?? null, refused) !== 'editor' ? (
+      {p.is_me && editing && !writer && noSession ? (
+        <p className="muted profile-door" role="status">
+          Your session couldn’t be read, so your page can’t be edited yet.{' '}
+          <button className="btn btn-ghost" onClick={() => setSessionTry((n) => n + 1)}>
+            Try again
+          </button>
+        </p>
+      ) : p.is_me && editing && doorFor(u, seed?.for ?? null, refused) !== 'editor' ? (
         /* ⚠️ NOT THE EDITOR UNTIL ITS PAGE HAS ARRIVED — see `seed` */
         <p className="muted profile-door" role="status">
           {doorFor(u, seed?.for ?? null, refused) === 'opening' ? (

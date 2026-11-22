@@ -90,7 +90,12 @@ export type Event =
   | { type: 'orphan'; blocks: Block[]; why: string }
 
 type Known = { rev: number; name: string; page: Block[]; lists: 'exact' | 'sent' }
-type Draft = { blocks: Block[]; json: string }
+/**
+ * A copy of the page, waiting to be checked and sent. `seq` orders the copies of one lineage, so a
+ * caller waiting on one copy is answered by the job that took it — or a newer one — and never by an
+ * older save that happened to be in flight when it asked.
+ */
+type Draft = { blocks: Block[]; json: string; seq: number }
 type Lineage = {
   id: number
   rev: number
@@ -100,11 +105,18 @@ type Lineage = {
   waiting: boolean
   running: Draft | null
   detached: boolean
+  /** Reload it was pressed: what it held is let go deliberately, never offered back */
+  discarded: boolean
   conflict: Conflict | 'not-you' | null
   last: Outcome | null
   apply: Apply | null
-  /** resolved by the next job of this lineage that sends its newest copy */
-  waiters: Array<(o: Outcome) => void>
+  /** the editor's newest copy, sendable or not — what Reload would drop if it differs from sentJson */
+  latest: string | null
+  /** the newest copy cannot be sent at all (too big, too many): a Put must not go into it */
+  unsendable: boolean
+  seq: number
+  /** answered by the job that takes a copy at least as new as theirs */
+  waiters: Array<{ seq: number; resolve: (o: Outcome) => void }>
   tries: number
 }
 
@@ -137,10 +149,17 @@ export function createPageWriter(deps: Deps) {
     return next
   }
 
-  /** the session this job is pinned to, or why it may write nothing */
-  async function pin(): Promise<{ token: string } | { refuse: 'not-you' | 'signed-out' }> {
+  /**
+   * The session this job is pinned to, or why it may write nothing.
+   *
+   * ⚠️ NO SESSION IS NOT A SIGN-OUT. auth-js answers `null` while an expired token's refresh fails
+   * on the network, and the app keeps the member signed in through that on purpose. So it is a
+   * check that could not be made — tried again — and a real sign-out is the app dropping every
+   * writer (writerRegistry.dropWriters). Somebody ELSE's session is final: that copy is not theirs.
+   */
+  async function pin(): Promise<{ token: string } | { refuse: 'not-you' | 'unverified' }> {
     const s = await deps.session()
-    if (!s) return { refuse: 'signed-out' }
+    if (!s) return { refuse: 'unverified' }
     if (s.uid !== deps.uid) return { refuse: 'not-you' }
     return { token: s.token }
   }
@@ -211,31 +230,55 @@ export function createPageWriter(deps: Deps) {
   }
 
   /**
-   * A job of this lineage finished. Anybody waiting on it hears how; and a lineage whose editor has
-   * gone, with nothing more to try, is closed — reporting what it could not save as an orphan
-   * rather than letting it disappear with the editor.
+   * A job of this lineage finished, having taken `took` (or nothing). Whoever waits on that copy or
+   * an older one hears how it went; and a lineage whose editor has gone, with nothing more to try,
+   * is closed — offering what it could not save back to the page (an orphan) rather than letting
+   * it disappear with the editor.
    */
-  function settle(L: Lineage, o: Outcome) {
-    L.last = o
-    const waiters = L.waiters
-    L.waiters = []
-    for (const w of waiters) w(o)
-    if (L.detached && L.timer === null && !L.waiting && !L.running) {
-      if (L.draft && o.kind !== 'saved' && o.kind !== 'nothing') {
-        orphan = { blocks: L.draft.blocks, why: o.kind }
-        emit({ type: 'orphan', blocks: L.draft.blocks, why: o.kind })
+  function settle(L: Lineage, o: Outcome, took: Draft | null) {
+    /* a job that found nothing to do says nothing about the last one that did */
+    if (o.kind !== 'nothing') L.last = o
+    if (took) {
+      const keep: Lineage['waiters'] = []
+      for (const w of L.waiters) {
+        if (w.seq <= took.seq) w.resolve(o)
+        else keep.push(w)
       }
+      L.waiters = keep
+    }
+    if (L.detached && L.timer === null && !L.waiting && !L.running) {
+      const failed = o.kind !== 'saved' && o.kind !== 'nothing'
+      const lost = L.draft ?? (failed ? took : null)
+      if (lost && failed && !L.discarded) {
+        orphan = { blocks: lost.blocks, why: o.kind }
+        emit({ type: 'orphan', blocks: lost.blocks, why: o.kind })
+      }
+      for (const w of L.waiters) w.resolve(o)
+      L.waiters = []
       lineages.delete(L.id)
     }
     status()
   }
 
-  /** put a copy back to wait, unless a newer one has been staged since */
-  function putBack(L: Lineage, d: Draft) {
-    if (!L.draft) L.draft = d
+  /** a lineage's unsaved copy is let go on purpose: nothing is sent and nothing is offered back */
+  function letGo(L: Lineage) {
+    if (L.timer !== null) deps.clearTimeout(L.timer)
+    L.timer = null
+    L.draft = null
+    L.detached = true
+    L.discarded = true
+    L.apply = null
+    for (const w of L.waiters) w.resolve({ kind: 'stale' })
+    L.waiters = []
+    if (!L.waiting && !L.running) lineages.delete(L.id)
   }
 
-  /** try again later, with a growing wait, for a check that could not reach the server */
+  /** put a copy back to wait, unless a newer one has been staged since or it was let go */
+  function putBack(L: Lineage, d: Draft) {
+    if (!L.draft && !L.discarded) L.draft = d
+  }
+
+  /** try again later, with a growing wait, for a check that could not be made */
   function retry(L: Lineage) {
     L.tries++
     if (L.detached && L.tries > 3) return
@@ -250,53 +293,64 @@ export function createPageWriter(deps: Deps) {
   async function saveJob(L: Lineage): Promise<void> {
     L.waiting = false
     const d = L.draft
-    if (!d) return settle(L, { kind: 'nothing' })
+    if (!d) return settle(L, { kind: 'nothing' }, null)
     L.draft = null
     L.running = d
     status()
     const done = (o: Outcome, keep: boolean) => {
       L.running = null
       if (keep) putBack(L, d)
-      settle(L, o)
+      settle(L, o, d)
     }
-
-    const p = await pin()
-    if ('refuse' in p) {
-      if (p.refuse === 'not-you') L.conflict = 'not-you'
-      return done({ kind: p.refuse }, true)
-    }
-    /* ⚠️ THE LINEAGE IS CHECKED HERE, WHEN THE JOB STARTS — not when the copy was staged — so a
-       save of ours still ahead of it in the queue is part of the history it is checked against,
-       never "somebody else" */
-    if (!known || L.rev !== known.rev || L.conflict) {
-      if (!L.conflict) L.conflict = 'stale'
-      return done({ kind: 'stale' }, true)
-    }
-    const r = await readMine(known.name, p.token)
-    if (r.kind === 'unverified') {
+    /** a check that could not be made: the copy waits and is tried again */
+    const later = (o: Outcome) => {
       L.running = null
       putBack(L, d)
       retry(L)
-      return settle(L, { kind: 'unverified' })
+      settle(L, o, d)
     }
-    if (r.kind === 'not-yours') {
-      L.conflict = 'not-yours'
-      return done({ kind: 'not-yours' }, true)
-    }
-    if (!matchesKnown(r.page)) {
-      const landed = altLanded(r.page)
-      if (landed === null) {
-        L.conflict = 'changed'
-        return done({ kind: 'changed' }, true)
+    try {
+      const p = await pin()
+      if ('refuse' in p) {
+        if (p.refuse === 'unverified') return later({ kind: 'unverified' })
+        L.conflict = 'not-you'
+        return done({ kind: 'not-you' }, true)
       }
-      if (landed !== L.id) {
+      /* ⚠️ THE LINEAGE IS CHECKED HERE, WHEN THE JOB STARTS — not when the copy was staged — so a
+         save of ours still ahead of it in the queue is part of the history it is checked against,
+         never "somebody else" */
+      if (L.conflict) return done({ kind: L.conflict }, true)
+      if (!known || L.rev !== known.rev) {
         L.conflict = 'stale'
         return done({ kind: 'stale' }, true)
       }
-    } else alt = null
-    L.tries = 0
-    if (d.json === L.sentJson) return done({ kind: 'saved', narrowed: [] }, false)
-    return done(await send(L, d.blocks, d.json, p.token), false)
+      const r = await readMine(known.name, p.token)
+      if (r.kind === 'unverified') return later({ kind: 'unverified' })
+      if (r.kind === 'not-yours') {
+        L.conflict = 'not-yours'
+        return done({ kind: 'not-yours' }, true)
+      }
+      if (!matchesKnown(r.page)) {
+        const landed = altLanded(r.page)
+        if (landed === null) {
+          L.conflict = 'changed'
+          return done({ kind: 'changed' }, true)
+        }
+        if (landed !== L.id) {
+          L.conflict = 'stale'
+          return done({ kind: 'stale' }, true)
+        }
+      } else if (alt?.by === L.id) alt = null
+      L.tries = 0
+      if (d.json === L.sentJson) return done({ kind: 'saved', narrowed: [] }, false)
+      const out = await send(L, d.blocks, d.json, p.token)
+      if (out.kind === 'unacknowledged') return later(out)
+      return done(out, false)
+    } catch {
+      /* ⚠️ A THROW IS A CHECK THAT COULD NOT BE MADE, never a jammed queue: without this a job that
+         threw (an old browser, a lock auth-js could not take) left the copy "Saving…" for good */
+      return later({ kind: 'unverified' })
+    }
   }
 
   /** the save itself, and what its answer proves */
@@ -313,7 +367,6 @@ export function createPageWriter(deps: Deps) {
         kind: 'error',
         message: String((res.error as { message?: unknown } | null)?.message ?? 'refused'),
       }
-    if (c === 'auth') return { kind: 'signed-out' }
     const exp = c === 'ok' ? expectStored(blocks, res.data) : ({ kind: 'unacknowledged' } as const)
     if (exp.kind === 'unacknowledged') {
       /* ⚠️ it may or may not have happened; the next owner-proven read decides (altLanded) */
@@ -321,10 +374,6 @@ export function createPageWriter(deps: Deps) {
         page: blocks.map((b) => ({ ...b, certain: b.visibility === 'certain' ? b.certain : [] })),
         json: sentJson,
         by: L?.id ?? null,
-      }
-      if (L) {
-        L.draft ??= { blocks, json: sentJson }
-        retry(L)
       }
       return { kind: 'unacknowledged' }
     }
@@ -354,6 +403,13 @@ export function createPageWriter(deps: Deps) {
     return { kind: 'saved', narrowed: exp.narrowed }
   }
 
+  /** a new copy for this lineage, numbered after every copy before it */
+  const draftOf = (L: Lineage, blocks: Block[], j = json(blocks)): Draft => ({
+    blocks,
+    json: j,
+    seq: ++L.seq,
+  })
+
   return {
     /**
      * The page an editor may start from: read and proved, queued behind every save already
@@ -362,36 +418,70 @@ export function createPageWriter(deps: Deps) {
     load(name: string) {
       flushAll()
       return run(async () => {
-        const p = await pin()
-        if ('refuse' in p) return { failed: p.refuse } as const
-        const r = await readMine(name, p.token)
-        if (r.kind !== 'owner') return { failed: r.kind } as const
-        if (!altLanded(r.page) && !matchesKnown(r.page)) {
-          alt = null
-          advance(name, r.page)
+        try {
+          const p = await pin()
+          if ('refuse' in p) return { failed: p.refuse } as const
+          const r = await readMine(name, p.token)
+          if (r.kind !== 'owner') return { failed: r.kind } as const
+          if (!altLanded(r.page) && !matchesKnown(r.page)) {
+            alt = null
+            advance(name, r.page)
+          }
+          /* the name just proved is the page's name now — a handle renamed in this tab is followed */
+          known = { ...known!, name }
+          return {
+            page: known.page,
+            rev: known.rev,
+            doubled: duplicatePositions(r.page),
+          } as const
+        } catch {
+          return { failed: 'unverified' } as const
         }
-        return { page: known!.page, rev: known!.rev, doubled: duplicatePositions(r.page) } as const
       })
     },
 
-    /** an editor starting from a loaded page: its copies descend from `rev` */
+    /**
+     * An editor starting from a loaded page: its copies descend from `rev`.
+     *
+     * ⚠️ A NEGATIVE `rev` IS A RECOVERED COPY (Profile's "Open them again"): not a version of the
+     * page, so it starts refused and unsaved — its banner says so, Reload is offered, and leaving
+     * offers it back again rather than letting it go with the editor.
+     */
     attach(o: { seedRev: number; seedBlocks: Block[]; apply?: Apply }): number {
       const id = ++ids
-      lineages.set(id, {
+      const recovered = o.seedRev < 0
+      const L: Lineage = {
         id,
         rev: o.seedRev,
-        sentJson: json(o.seedBlocks),
+        sentJson: recovered ? '' : json(o.seedBlocks),
         draft: null,
         timer: null,
         waiting: false,
         running: null,
         detached: false,
-        conflict: null,
+        discarded: false,
+        conflict: recovered ? 'stale' : null,
         last: null,
         apply: o.apply ?? null,
+        latest: json(o.seedBlocks),
+        unsendable: false,
+        seq: 0,
         waiters: [],
         tries: 0,
-      })
+      }
+      if (recovered) {
+        L.draft = draftOf(L, o.seedBlocks)
+        /* ⚠️ THE SAME COPY OPENED AGAIN TAKES IT OVER. React's development double mount attaches,
+           releases and attaches before any job runs, and the release of a recovered copy offers it
+           back — so the page showed "didn't save" beside the editor holding exactly that. A
+           recovered copy that went unchanged, identical to the one being opened, is let go: this
+           editor holds it now, and offers it back itself when it goes. One that was changed is a
+           different copy and is still offered. */
+        for (const old of lineages.values())
+          if (old.detached && !old.discarded && old.sentJson === '' && old.latest === L.latest)
+            letGo(old)
+      }
+      lineages.set(id, L)
       status()
       return id
     },
@@ -401,14 +491,20 @@ export function createPageWriter(deps: Deps) {
       const L = lineages.get(id)
       if (!L || L.detached) return
       const j = json(blocks)
-      if (j === L.sentJson || j === L.running?.json) {
+      L.latest = j
+      L.unsendable = false
+      /* ⚠️ BACK TO WHAT WAS LAST SAVED IS ONLY "NOTHING TO DO" WHEN NOTHING IS IN FLIGHT. While a
+         save of a newer copy is running, or its answer was lost, the server may already hold that
+         newer copy — so an Undo back to the saved one is a change to send, not a change to drop. */
+      const settledSent = !L.running && !(alt && alt.by === L.id)
+      if ((j === L.sentJson && settledSent) || j === L.running?.json) {
         L.draft = null
         if (L.timer !== null) deps.clearTimeout(L.timer)
         L.timer = null
         if (L.last?.kind === 'error') L.last = null
         return status()
       }
-      L.draft = { blocks, json: j }
+      L.draft = draftOf(L, blocks, j)
       if (L.timer !== null) deps.clearTimeout(L.timer)
       L.timer = deps.setTimeout(() => {
         L.timer = null
@@ -417,22 +513,27 @@ export function createPageWriter(deps: Deps) {
       status()
     },
 
-    /** a copy that cannot be sent (too big): nothing waits to save it */
-    unstage(id: number) {
+    /** a copy that cannot be sent (too big, too many): nothing waits to save it */
+    unstage(id: number, blocks?: Block[]) {
       const L = lineages.get(id)
       if (!L) return
+      if (blocks) L.latest = json(blocks)
+      L.unsendable = true
       L.draft = null
       if (L.timer !== null) deps.clearTimeout(L.timer)
       L.timer = null
       status()
     },
 
-    /** save this copy now, and say what happened to it */
+    /** save this copy now, and say what happened to it — or to a newer copy that replaced it */
     flushNow(id: number, blocks: Block[]): Promise<Outcome> {
       const L = lineages.get(id)
       if (!L) return Promise.resolve({ kind: 'stale' })
-      L.draft = { blocks, json: json(blocks) }
-      const p = new Promise<Outcome>((res) => L.waiters.push(res))
+      const d = draftOf(L, blocks)
+      L.draft = d
+      L.latest = d.json
+      L.unsendable = false
+      const p = new Promise<Outcome>((resolve) => L.waiters.push({ seq: d.seq, resolve }))
       enqueue(L)
       return p
     },
@@ -455,11 +556,7 @@ export function createPageWriter(deps: Deps) {
     discard(id: number) {
       const L = lineages.get(id)
       if (!L) return
-      if (L.timer !== null) deps.clearTimeout(L.timer)
-      L.draft = null
-      L.detached = true
-      L.apply = null
-      if (!L.waiting && !L.running) lineages.delete(id)
+      letGo(L)
       status()
     },
 
@@ -475,25 +572,36 @@ export function createPageWriter(deps: Deps) {
     }): Promise<PutOutcome> {
       flushAll()
       return run(async (): Promise<PutOutcome> => {
-        const p = await pin()
-        if ('refuse' in p) return { kind: p.refuse }
-        if (o.uid0 !== deps.uid) return { kind: 'not-you' }
-        const name = known?.name ?? o.name
-        const r = await readMine(name, p.token)
-        if (r.kind !== 'owner') return { kind: r.kind }
-        if (!known) {
-          known = { rev: 1, name, page: r.page, lists: 'exact' }
-        } else if (!altLanded(r.page) && !matchesKnown(r.page)) advance(name, r.page)
-        const ws = withSong(r.page, o.song)
-        if (!ws.ok) return { kind: 'cannot', why: ws.why }
-        if (ws.how === 'updated' && ws.name !== o.approved) return { kind: 'ask', name: ws.name }
-        const out = await send(null, ws.blocks, json(ws.blocks), p.token)
-        /* a save from outside every editor: their copies descend from the page before it */
-        if (out.kind === 'saved')
-          for (const L of lineages.values())
-            if (L.rev !== known?.rev && !L.conflict) L.conflict = 'stale'
-        status()
-        return { ...out, song: ws.name, how: ws.how }
+        try {
+          const p = await pin()
+          if ('refuse' in p) return { kind: p.refuse }
+          if (o.uid0 !== deps.uid) return { kind: 'not-you' }
+          /* the name this tab last proved, then the one the app holds — a handle renamed elsewhere
+             leaves one of them behind, and a page found under neither is not written */
+          let name = known?.name ?? o.name
+          let r = await readMine(name, p.token)
+          if (r.kind === 'not-yours' && o.name !== name) {
+            name = o.name
+            r = await readMine(name, p.token)
+          }
+          if (r.kind !== 'owner') return { kind: r.kind }
+          if (!known) {
+            known = { rev: 1, name, page: r.page, lists: 'exact' }
+          } else if (!altLanded(r.page) && !matchesKnown(r.page)) advance(name, r.page)
+          known = { ...known, name }
+          const ws = withSong(r.page, o.song)
+          if (!ws.ok) return { kind: 'cannot', why: ws.why }
+          if (ws.how === 'updated' && ws.name !== o.approved) return { kind: 'ask', name: ws.name }
+          const out = await send(null, ws.blocks, json(ws.blocks), p.token)
+          /* a save from outside every editor: their copies descend from the page before it */
+          if (out.kind === 'saved')
+            for (const L of lineages.values())
+              if (L.rev !== known?.rev && !L.conflict) L.conflict = 'stale'
+          status()
+          return { ...out, song: ws.name, how: ws.how }
+        } catch {
+          return { kind: 'unverified' }
+        }
       })
     },
 
@@ -501,13 +609,17 @@ export function createPageWriter(deps: Deps) {
     probe() {
       if (!known) return Promise.resolve()
       return run(async () => {
-        const p = await pin()
-        if ('refuse' in p || !known) return
-        const r = await readMine(known.name, p.token)
-        if (r.kind === 'owner' && !altLanded(r.page) && !matchesKnown(r.page)) {
-          advance(known.name, r.page)
-          for (const L of lineages.values()) if (!L.conflict) L.conflict = 'stale'
-          status()
+        try {
+          const p = await pin()
+          if ('refuse' in p || !known) return
+          const r = await readMine(known.name, p.token)
+          if (r.kind === 'owner' && !altLanded(r.page) && !matchesKnown(r.page)) {
+            advance(known.name, r.page)
+            for (const L of lineages.values()) if (!L.conflict) L.conflict = 'stale'
+            status()
+          }
+        } catch {
+          /* a probe is a courtesy: the next save checks anyway */
         }
       })
     },
@@ -517,10 +629,15 @@ export function createPageWriter(deps: Deps) {
       const L = lineages.get(id)
       if (!L) return { kind: 'idle' }
       if (L.conflict)
-        return { kind: 'conflict', why: L.conflict, unsaved: !!(L.draft || L.running) }
+        return {
+          kind: 'conflict',
+          why: L.conflict,
+          /* what Reload would drop: a copy waiting or going, or one that differs from the last saved */
+          unsaved: !!(L.draft || L.running) || (L.latest !== null && L.latest !== L.sentJson),
+        }
       if (L.running) return { kind: 'saving' }
       const last = L.last
-      /* a check or a save that could not reach the server is being tried again: say that, not "Saving" */
+      /* a check or a save that could not be made is being tried again: say that, not "Saving" */
       if (L.timer !== null && !L.waiting && last?.kind === 'unverified')
         return { kind: 'unverified' }
       if (L.timer !== null && !L.waiting && last?.kind === 'unacknowledged')
@@ -533,18 +650,21 @@ export function createPageWriter(deps: Deps) {
       return { kind: 'idle' }
     },
 
-    /** an editor a Put may hand its song to: attached, current, and able to take it */
+    /** an editor a Put may hand its song to: attached, current, and able to send what it holds */
     liveLineage(): { id: number; apply: Apply } | null {
       let best: Lineage | null = null
       for (const L of lineages.values()) {
-        if (L.detached || !L.apply || L.conflict || L.last?.kind === 'error') continue
+        if (L.detached || !L.apply || L.conflict || L.unsendable) continue
+        if (L.last?.kind === 'error') continue
         if (!known || L.rev !== known.rev) continue
         if (!best || L.id > best.id) best = L
       }
       return best ? { id: best.id, apply: best.apply! } : null
     },
 
-    /** what was lost on the way out, once, for the page to offer back */
+    /** what an editor could not save on its way out, without taking it — for a page mounting later */
+    peekOrphan: () => orphan,
+    /** the same, taken: the person has decided what to do with it */
     takeOrphan() {
       const o = orphan
       orphan = null

@@ -100,6 +100,8 @@ export function ProfileSong({
         >
           {busy ? 'Putting it on your page…' : '🎵 Put it on my profile'}
         </button>
+        {/* a disabled button says why, where a phone can see it */}
+        {!notes && <span className="muted inst-note">Play or draw some notes first.</span>}
       </div>
       {/* ⚠️ always mounted, so a reader hears it change rather than a region arriving full */}
       <p className="muted inst-note inst-profile-said" role="status">

@@ -2780,7 +2780,9 @@ export function ProfileBlocksEditor({
    * The status line below is the writer's account of it, derived, never set.
    *
    * ⚠️ AND IT ATTACHES ONCE, ON MOUNT, FROM `initial` AND `seedRev`. StrictMode's attach, release,
-   * attach is harmless: releasing a lineage with nothing waiting simply closes it.
+   * attach is harmless: releasing a lineage with nothing waiting simply closes it, and a recovered
+   * copy (Open them again), which does have something waiting, is taken over by the second attach
+   * rather than offered back beside the editor holding it.
    */
   const commitRef = useRef<(song: Song, approved: string | null) => Promise<PutOutcome>>(
     async () => ({ kind: 'stale' }),
@@ -2832,7 +2834,7 @@ export function ProfileBlocksEditor({
      */
     const pf = preflight(blocks)
     if (pf) {
-      writer.unstage(lineage)
+      writer.unstage(lineage, blocks)
       setBlocked(null)
       setErr(
         pf.why === 'block too big'
@@ -2876,10 +2878,22 @@ export function ProfileBlocksEditor({
    * it, or from nowhere in particular (the page body) just after a click or a focus inside it.
    */
   const rootRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * ⚠️ THE EDITOR IS MORE THAN ITS BOX: the block settings panel is portaled to the body, and Undo
+   * has to work there too — right after Remove this block above all. So everything that is this
+   * editor carries `data-profile-editor` with this editor's own id (two can be open at once, the
+   * page and a pinned window, and each answers only its own keys).
+   */
+  const editorId = useId()
+  const isMine = useCallback(
+    (n: EventTarget | null) =>
+      n instanceof Element && !!n.closest(`[data-profile-editor="${editorId}"]`),
+    [editorId],
+  )
   const ownsKeys = useRef(false)
   useEffect(() => {
     const mark = (e: Event) => {
-      ownsKeys.current = !!rootRef.current && rootRef.current.contains(e.target as Node)
+      ownsKeys.current = isMine(e.target)
     }
     window.addEventListener('pointerdown', mark, true)
     window.addEventListener('focusin', mark, true)
@@ -2887,14 +2901,14 @@ export function ProfileBlocksEditor({
       window.removeEventListener('pointerdown', mark, true)
       window.removeEventListener('focusin', mark, true)
     }
-  }, [])
+  }, [isMine])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z' || e.defaultPrevented) return
       const el = e.target as HTMLElement | null
       const tag = el?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return
-      const inside = !!rootRef.current && !!el && rootRef.current.contains(el)
+      const inside = isMine(el)
       const fromNowhere = !el || el === document.body || el === document.documentElement
       if (!inside && !(fromNowhere && ownsKeys.current)) return
       e.preventDefault()
@@ -2903,7 +2917,7 @@ export function ProfileBlocksEditor({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [stepBack, stepForward])
+  }, [stepBack, stepForward, isMine])
 
   /**
    * ⚠️ ESCAPE IS THE ONE THAT BELONGS ON THE WINDOW. Holding a look and holding a block are
@@ -2947,6 +2961,7 @@ export function ProfileBlocksEditor({
   return (
     <div
       ref={rootRef}
+      data-profile-editor={editorId}
       /**
        * ⚠️ THE EDITOR MAKES ROOM FOR THE PANEL rather than being covered by it. Asked for in
        * those words: to the side of the profile, not over it.
@@ -3526,6 +3541,7 @@ export function ProfileBlocksEditor({
         createPortal(
           <div
             className={'profile-inspector'}
+            data-profile-editor={editorId}
             role="dialog"
             /**
              * ⚠️ NOT `aria-modal`, AND NO SCRIM, because the page behind this is still live and
@@ -4042,11 +4058,9 @@ export function ProfileBlocksEditor({
             {CONFLICT_SAYS[saving.why]}{' '}
             {saving.why === 'stale' || saving.why === 'changed' || saving.why === 'collided' ? (
               <>
-                {saving.why === 'collided'
-                  ? ''
-                  : saving.unsaved
-                    ? 'Your last change didn\u2019t save, and reloading drops it, so copy anything you want first. '
-                    : 'Nothing of yours is unsaved. '}
+                {saving.unsaved
+                  ? 'Your last change didn\u2019t save, and reloading drops it, so copy anything you want first. '
+                  : 'Nothing of yours is unsaved. '}
                 <button
                   className="btn"
                   onClick={() => {
@@ -4058,6 +4072,8 @@ export function ProfileBlocksEditor({
                 </button>
               </>
             ) : null}
+            {/* what could not be sent at all is still said, under the banner rather than hidden by it */}
+            {err && <> Also: {err}.</>}
           </span>
         ) : (
           <span className={err || saving.kind === 'error' ? 'profile-editor-err' : 'muted'}>

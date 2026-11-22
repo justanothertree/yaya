@@ -481,3 +481,271 @@ describe('another writer of the page, and other tabs', () => {
     expect(w.statusOf(L)).toMatchObject({ kind: 'conflict', why: 'stale' })
   })
 })
+
+describe('what the review of the first version found', () => {
+  it('an Undo back to the saved copy while a save is in flight is sent, not dropped', async () => {
+    const t = world()
+    await t.seed([bio('one'), bio('keep me')])
+    const w = t.writer()
+    const { L, page } = await open(w)
+    t.srv.hold('save_my_profile_blocks')
+    w.stage(L, [page[0]])
+    t.tick()
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    /* Undo, while the delete is being saved */
+    w.stage(L, page)
+    t.srv.release('save_my_profile_blocks')
+    t.tick()
+    await w.idle()
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['one', 'keep me'])
+    expect(w.statusOf(L).kind).toBe('saved')
+  })
+
+  it('an Undo after a save whose answer was lost is sent once the answer is known', async () => {
+    const t = world()
+    await t.seed([bio('one'), bio('keep me')])
+    const w = t.writer()
+    const { L, page } = await open(w)
+    t.srv.drop('save_my_profile_blocks', 'response')
+    w.stage(L, [page[0]])
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['one'])
+    t.srv.drop('save_my_profile_blocks', null)
+    w.stage(L, page)
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['one', 'keep me'])
+  })
+
+  it('a Put into an open editor is answered by its own save, not by an older one in flight', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    t.srv.hold('save_my_profile_blocks')
+    w.stage(L, [bio('one, edited')])
+    t.tick()
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    let answered: string | null = null
+    const put = w
+      .flushNow(L, [bio('one, edited'), bio('the song')])
+      .then((o) => (answered = o.kind))
+    /* the older save answers first, and the song's own check is held: the Put must still wait */
+    t.srv.hold('get_profile_blocks')
+    t.srv.release('save_my_profile_blocks')
+    for (let i = 0; i < 30; i++) await Promise.resolve()
+    expect(t.page()).toEqual(['one, edited'])
+    expect(answered).toBeNull()
+    t.srv.release('get_profile_blocks')
+    await put
+    expect(answered).toBe('saved')
+    expect(t.page()).toEqual(['one, edited', 'the song'])
+  })
+
+  it('a recovered copy (Open them again) starts refused and unsaved, and leaving offers it back again', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    await w.load('ann')
+    const L = w.attach({ seedRev: -1, seedBlocks: [bio('what did not save')] })
+    expect(w.statusOf(L)).toEqual({ kind: 'conflict', why: 'stale', unsaved: true })
+    const saves = t.srv.calls('save_my_profile_blocks').length
+    w.release(L)
+    await w.idle()
+    expect(t.srv.calls('save_my_profile_blocks')).toHaveLength(saves)
+    expect(w.takeOrphan()?.blocks.map((b) => b.config.text)).toEqual(['what did not save'])
+  })
+
+  it('StrictMode opening a recovered copy twice offers nothing back while the second editor holds it', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    await w.load('ann')
+    const lost = [bio('what did not save')]
+    /* React's development double mount: attach, release, attach — all before any job can run */
+    w.release(w.attach({ seedRev: -1, seedBlocks: lost }))
+    const L = w.attach({ seedRev: -1, seedBlocks: lost })
+    await w.idle()
+    expect(w.takeOrphan()).toBeNull()
+    expect(w.statusOf(L)).toEqual({ kind: 'conflict', why: 'stale', unsaved: true })
+    /* and the editor that stayed still offers it back when it goes */
+    w.release(L)
+    await w.idle()
+    expect(w.takeOrphan()?.blocks.map((b) => b.config.text)).toEqual(['what did not save'])
+  })
+
+  it('a recovered copy that was CHANGED before its editor went is still offered back beside a new one', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    await w.load('ann')
+    const first = w.attach({ seedRev: -1, seedBlocks: [bio('what did not save')] })
+    w.stage(first, [bio('what did not save, and more')])
+    w.release(first)
+    w.attach({ seedRev: -1, seedBlocks: [bio('what did not save')] })
+    await w.idle()
+    expect(w.takeOrphan()?.blocks.map((b) => b.config.text)).toEqual([
+      'what did not save, and more',
+    ])
+  })
+
+  it('a copy the server refuses on the way out is offered back, not lost', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    const refused = { ...bio('x'), block_type: 'not-a-block' as Block['block_type'] }
+    w.stage(L, [bio('one'), refused])
+    w.release(L)
+    await w.idle()
+    const o = w.takeOrphan()
+    expect(o?.why).toBe('error')
+    expect(o?.blocks).toHaveLength(2)
+  })
+
+  it('a job that finds nothing to do does not wipe the line that said Saved', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    /* a save is queued, and an edit arms its timer before that save starts — the save takes the
+       newer copy, and the timer, firing after, finds nothing left to do */
+    const queued = w.flushNow(L, [bio('two')])
+    w.stage(L, [bio('three')])
+    await queued
+    expect(t.page()).toEqual(['three'])
+    expect(w.statusOf(L).kind).toBe('saved')
+    t.tick()
+    await w.idle()
+    expect(w.statusOf(L).kind).toBe('saved')
+  })
+
+  it('no session for a moment (a token refresh failing offline) is tried again, not taken for a sign-out', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    t.signIn(null)
+    w.stage(L, [bio('two')])
+    t.tick()
+    await w.idle()
+    expect(w.statusOf(L).kind).toBe('unverified')
+    t.signIn({ uid: 'A', token: t.ann })
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['two'])
+  })
+
+  it('a job that throws is tried again rather than jamming the queue', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    let reads = 0
+    const w = createPageWriter({
+      uid: 'A',
+      rpc: async (fn, args, token) => {
+        /* the second read (the save's check; the first was the editor opening) throws */
+        if (fn === 'get_profile_blocks' && ++reads === 2)
+          throw new TypeError('AbortSignal.timeout is not a function')
+        return t.srv.rpc(fn, args, token)
+      },
+      session: async () => ({ uid: 'A', token: t.ann }),
+      lock: (_, fn) => fn(),
+      setTimeout: (fn) => {
+        queueMicrotask(fn)
+        return 0
+      },
+      clearTimeout: () => {},
+    })
+    const { L } = await open(w)
+    expect(await w.flushNow(L, [bio('two')])).toMatchObject({ kind: 'unverified' })
+    await w.idle()
+    await w.idle()
+    expect(t.page()).toEqual(['two'])
+  })
+
+  it('Reload it while the save is in flight lets the copy go, and offers nothing back', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    await t.seed([bio('one'), bio('elsewhere')], t.ann2)
+    t.srv.hold('get_profile_blocks')
+    w.stage(L, [bio('typed')])
+    t.tick()
+    for (let i = 0; i < 5; i++) await Promise.resolve()
+    w.discard(L)
+    t.srv.release('get_profile_blocks')
+    await w.idle()
+    expect(w.takeOrphan()).toBeNull()
+  })
+
+  it('Reload it during a check that could not be made: the copy is not sent when the check is tried again', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    t.srv.hold('get_profile_blocks')
+    const saves = t.srv.calls('save_my_profile_blocks').length
+    w.stage(L, [bio('typed, then let go')])
+    t.tick()
+    for (let i = 0; i < 5; i++) await Promise.resolve()
+    w.discard(L)
+    /* the check in flight fails, which normally puts the copy back to be tried again */
+    t.srv.drop('get_profile_blocks', 'request')
+    t.srv.release('get_profile_blocks')
+    await w.idle()
+    t.srv.drop('get_profile_blocks', null)
+    for (let i = 0; i < 3; i++) {
+      t.tick()
+      await w.idle()
+    }
+    expect(t.page()).toEqual(['one'])
+    expect(t.srv.calls('save_my_profile_blocks')).toHaveLength(saves)
+    expect(w.takeOrphan()).toBeNull()
+  })
+
+  it('after a refused save, a conflict says something is unsaved, so Reload does not drop it unwarned', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const { L } = await open(w)
+    const refused = { ...bio('x'), block_type: 'not-a-block' as Block['block_type'] }
+    await w.flushNow(L, [bio('one, typed'), refused])
+    expect(w.statusOf(L).kind).toBe('error')
+    await t.seed([bio('one'), bio('elsewhere')], t.ann2)
+    await w.probe()
+    expect(w.statusOf(L)).toEqual({ kind: 'conflict', why: 'stale', unsaved: true })
+  })
+
+  it('an editor whose copy cannot be sent is not handed a song', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    const s = await w.load('ann')
+    if ('failed' in s) throw new Error(s.failed)
+    const L = w.attach({
+      seedRev: s.rev,
+      seedBlocks: s.page,
+      apply: { peek: () => [], commit: async () => ({ kind: 'stale' }) },
+    })
+    expect(w.liveLineage()?.id).toBe(L)
+    w.unstage(L, [bio('x'.repeat(70000))])
+    expect(w.liveLineage()).toBeNull()
+  })
+
+  it('a handle renamed in this tab is followed once the new name is opened', async () => {
+    const t = world()
+    await t.seed([bio('one')])
+    const w = t.writer()
+    await open(w)
+    t.srv.rename('A', 'anna')
+    const { L } = await open(w, 'anna')
+    w.stage(L, [bio('one, after the rename')])
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['one, after the rename'])
+  })
+})

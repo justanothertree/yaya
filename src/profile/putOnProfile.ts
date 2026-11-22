@@ -57,8 +57,11 @@ function sayOutcome(o: PutOutcome): string {
       return 'Your page was saved from two places at once. Open it to check what it holds.'
     case 'error':
       return `Your page did not save: ${o.message}`
-    default:
+    case 'stale':
+    case 'changed':
       return 'Your page changed while this was saving. Try again.'
+    default:
+      return 'That didn’t go through. Try again.'
   }
 }
 
