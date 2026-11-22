@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { GAMES } from '../../../supabase/functions/lab-move/core'
 import { MATCH_TOYS } from './games'
-import { MATCH_LEVELS, MATCH_NAMES } from './names'
+import { MATCH_LEVELS, MATCH_NAMES, VERSUS_ONLY } from './names'
 
 /**
  * The browser's list of match toys against the server's. A toy the server can play and the
@@ -56,6 +56,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   eights: [{}, { target: 50 }, { target: 100, level: 'hard' }],
   liars: [{}, { wild: false }, { wild: true, level: 'hard' }],
   poker: [{}, { level: 'hard' }],
+  lamps: [{}, { size: 4, pattern: 'cross' }, { size: 7 }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -96,6 +97,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   eights: [{ target: 75 }, { target: '100' }, { target: 0 }],
   liars: [{ wild: 'yes' }, { wild: 1 }],
   poker: [],
+  lamps: [{ size: 8 }, { size: '5' }, { pattern: 'diagonal' }],
 }
 
 describe('the match toys', () => {
@@ -135,11 +137,22 @@ describe('the match toys', () => {
 
   it('offer exactly the computer levels the server will accept', () => {
     for (const [demo, toy] of Object.entries(MATCH_TOYS))
-      expect(toy.levels).toEqual(GAMES[demo]({})!.rules.computer!.levels)
+      expect(toy.levels, demo).toEqual(GAMES[demo]({})!.rules.computer?.levels ?? [])
+  })
+
+  it('are versus alone exactly where the server offers no Together, which the challenges hide', () => {
+    for (const demo of Object.keys(MATCH_TOYS)) {
+      const rules = GAMES[demo]({})!.rules
+      const together = (rules.modes ?? ['versus']).includes('together')
+      expect(VERSUS_ONLY.has(demo), demo).toBe(!together)
+      // a toy with Together has the computer to play it against, and one without has none
+      expect(!!rules.computer, demo).toBe(together)
+    }
   })
 
   it('all offer the levels a profile’s challenge lists without loading the rules', () => {
-    for (const toy of Object.values(MATCH_TOYS)) expect(toy.levels).toEqual(MATCH_LEVELS)
+    for (const [demo, toy] of Object.entries(MATCH_TOYS))
+      if (!VERSUS_ONLY.has(demo)) expect(toy.levels, demo).toEqual(MATCH_LEVELS)
   })
 })
 

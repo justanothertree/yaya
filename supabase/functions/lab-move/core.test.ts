@@ -107,6 +107,8 @@ import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
 import { packMove as packFence, replay as fencesReplay } from '../../../src/gpu/fencesRoom'
 import { holdemRules } from '../../../src/gpu/holdemRoom'
+import { boardOf } from '../../../src/gpu/lampsDuel'
+import { solve as lampsSolve } from '../../../src/gpu/lamps'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -3986,5 +3988,65 @@ describe('hold’em by turns: the deck and both pairs of hole cards kept back', 
       expect(row.turn).toBe(1)
       expect(row.status).toBe('active')
     }
+  })
+})
+
+describe('lamps as a duel by turns: the same board, the first solve sealed', () => {
+  const ld = (over: Partial<Row> = {}) => invite({ demo_id: 'lamps', settings: {}, ...over })
+  const parFor = (row: Row) => {
+    const st = row.state as { seed: number }
+    return lampsSolve(boardOf({ seed: st.seed, size: 5, pattern: 'plus' })!, 5, 'plus')!
+  }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data
+  }
+
+  it('makes the board with the yes, and the friend solves first', () => {
+    const p0 = decide(ld(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    expect(p0.turn).toBe(1)
+    expect(p0.state).toMatchObject({ solves: [null, null], sealed: false })
+    expect(Number.isInteger((p0.state as { seed: number }).seed)).toBe(true)
+  })
+
+  it('seals the friend’s solve, then shows both: the fewer presses win', () => {
+    let row = after(ld(), decide(ld(), B, { op: 'accept' }))
+    const par = parFor(row)
+    const slow = [par[0], -1, ...par]
+    expect(status(decide(row, A, move(row.seq, { solve: par })))).toBe(409)
+    const p1 = decide(row, B, move(row.seq, { solve: slow }))
+    if (p1.kind !== 'commit') throw new Error('refused')
+    row = after(row, p1)
+    expect(JSON.stringify(row.state)).not.toContain(JSON.stringify(slow))
+    expect(JSON.stringify(p1.move)).not.toContain('solve')
+    expect(row.secret).toEqual({ pending: slow })
+    expect(mine(row, B)).toEqual(slow)
+    expect(mine(row, A)).toBeNull()
+    const p2 = decide(row, A, move(row.seq, { solve: par }))
+    if (p2.kind !== 'commit') throw new Error('refused')
+    row = after(row, p2)
+    expect(row.state).toMatchObject({ solves: [par, slow], sealed: false })
+    expect(p2.result).toMatchObject({ winner: 0, score: `${par.length}–${par.length + 2}` })
+  })
+
+  it('refuses a solve that leaves a lamp lit, a sealed solve that is not one, and Together', () => {
+    const row = after(ld(), decide(ld(), B, { op: 'accept' }))
+    const par = parFor(row)
+    expect(status(decide(row, B, move(row.seq, { solve: par.slice(1) })))).toBe(400)
+    const sealed = after(row, decide(row, B, move(row.seq, { solve: par })))
+    expect(
+      status(
+        decide(
+          { ...sealed, secret: { pending: par.slice(1) } },
+          A,
+          move(sealed.seq, { solve: par }),
+        ),
+      ),
+    ).toBe(500)
+    expect(
+      status(decide(ld({ mode: 'together', settings: { level: 'easy' } }), B, { op: 'accept' })),
+    ).toBe(422)
   })
 })
