@@ -10,10 +10,14 @@
 
 do $$
 begin
-  /* the sweep exists only where pg_cron does, and unscheduling a name that is not there raises */
-  if exists (select 1 from pg_extension where extname = 'pg_cron')
-     and exists (select 1 from cron.job where jobname = 'push-sweep') then
-    perform cron.unschedule('push-sweep');
+  /* the sweep exists only where pg_cron does, and unscheduling a name that is not there raises.
+     ⚠️ NESTED, NOT ONE CONDITION: PL/pgSQL plans a whole expression before evaluating it, so
+     `cron.job` in the same IF as the extension check fails on a stack with no pg_cron even
+     though the first half is false. The inner IF is only planned once it is reached. */
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    if exists (select 1 from cron.job where jobname = 'push-sweep') then
+      perform cron.unschedule('push-sweep');
+    end if;
   end if;
 end $$;
 

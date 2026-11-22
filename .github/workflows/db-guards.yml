@@ -213,6 +213,8 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-phone-alerts.DRAFT.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/phone-alerts.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-phone-alerts.ROLLBACK.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/phone-alerts-rollback.sql
 
       - name: Stop the database
         if: always()
