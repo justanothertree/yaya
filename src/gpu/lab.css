@@ -7050,3 +7050,16 @@ html:has(.lab) {
   align-items: center;
   gap: 0.3rem 0.8rem;
 }
+
+/* Dominoes by turns: the hands as a round ended, a row each */
+.dm-ended {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.3rem 0;
+}
+.dm-last {
+  display: grid;
+  gap: 0.2rem;
+}
