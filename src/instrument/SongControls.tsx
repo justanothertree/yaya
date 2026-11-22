@@ -15,6 +15,7 @@ import {
   startLoop,
   stopLoop,
 } from '../audio/looper'
+import { setSongName } from './songName'
 import { NumField, Why } from './rowParts'
 import { Sheet } from './Sheet'
 import { tempoFace } from './tempoFace'
@@ -293,6 +294,7 @@ export function SongControls({
               const o = jamming.offer
               if (!o) return
               loadSong(o.song.bpm, o.song.bars, songToLayers(o.song))
+              setSongName(o.song.name)
               jam.clearOffer()
             }}
             title="Replaces the parts you have now"
