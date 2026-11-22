@@ -211,6 +211,7 @@ jobs:
             -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-chat-songs.DRAFT.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chat-songs.sql
+          bash supabase/tests/chat-songs-race.sh "$DB_URL"
           # ⚠️ AND THE STANDING GUARDS AGAIN, WITH THE DRAFT IN PLACE. The step above ran them before
           # any draft existed, so block H (no new anon-callable definer) and block K (a writer must
           # refuse a suspended member, chat_song_remove exempted) have never seen these functions.
