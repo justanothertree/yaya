@@ -60,6 +60,7 @@ import { dominoRules, readDominoSettings } from '../../gpu/dominoesRoom'
 import { heartsRules, readHeartsSettings } from '../../gpu/heartsRoom'
 import { readSpadesSettings, spadesRules } from '../../gpu/spadesRoom'
 import { eightsRules, readEightsSettings } from '../../gpu/eightsRoom'
+import { liarsRules, readLiarsSettings } from '../../gpu/liarsRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -282,6 +283,14 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     rulesFor: (s) => {
       const set = readEightsSettings(s)
       return set === null ? null : eightsRules(set.target)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  liars: {
+    name: MATCH_NAMES.liars,
+    rulesFor: (s) => {
+      const set = readLiarsSettings(s)
+      return set === null ? null : liarsRules(set.wild)
     },
     levels: ['easy', 'fair', 'hard'],
   },
