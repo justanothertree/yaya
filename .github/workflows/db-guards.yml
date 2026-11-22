@@ -189,11 +189,11 @@ jobs:
           done
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-nudge-guards.sql
 
-      # ⏳ A DRAFT, NOT YET APPLIED TO PRODUCTION: the profile save that refuses to overwrite a page
-      # that changed since it was read, and no longer doubles a page under two saves at once. It is
-      # loaded from docs/ in one transaction, the way apply_migration will run it, then asked about
-      # by its two test files — the race needs real sessions, so it is a script. When it is applied
-      # this line moves to its migration, like the Lab's three above.
+      # The profile save that refuses to overwrite a page that changed since it was read, and no
+      # longer doubles a page under two saves at once — applied 22 Nov 2026 as 20261122215917. The
+      # migration is loaded in one transaction, as production ran it, then asked about by its two
+      # test files (the race needs real sessions, so it is a script), then its rollback is run and
+      # checked, so the way back stays a tested one.
       - name: Run the profile page version checks and race
         run: |
           DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
@@ -209,7 +209,7 @@ jobs:
             -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.DRAFT.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f supabase/migrations/20261122215917_profile_page_version.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-version.sql
           bash supabase/tests/profile-page-race.sh "$DB_URL"
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.ROLLBACK.sql

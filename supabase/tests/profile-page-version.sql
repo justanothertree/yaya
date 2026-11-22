@@ -1,8 +1,8 @@
 -- Does a profile save refuse to overwrite a page that changed since it was read, and does a save
 -- that does not ask (every bundle before 22 Nov 2026) still work exactly as it did?
 --
--- HOW TO RUN: db-guards.yml loads docs/2026-11-22-profile-page-version.DRAFT.sql (or, once applied,
--- its migration) and then this file. Everything is in one transaction that rolls back. It raises,
+-- HOW TO RUN: db-guards.yml loads supabase/migrations/20261122215917_profile_page_version.sql
+-- and then this file. Everything is in one transaction that rolls back. It raises,
 -- listing every failed check, if anything is wrong, and says how many it asked otherwise.
 --
 -- Its race-condition half needs two real sessions and lives in profile-page-race.sh.

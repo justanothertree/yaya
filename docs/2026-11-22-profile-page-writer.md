@@ -188,7 +188,7 @@ there through `App.tsx` on main (see CLAUDE.md on code splitting); this adds not
   - In prose: the function would take an optional expected fingerprint of the page, lock the
     member's `profiles` row, compare, and refuse with "page changed".
   - **Evan's call, and he said yes on 22 Nov.** It is
-    `docs/2026-11-22-profile-page-version.DRAFT.sql`; see "The server's own check" below.
+    `supabase/migrations/20261122215917_profile_page_version.sql`; see "The server's own check" below.
 - **The chronicle's sharing switch** also writes this table, and a review found it could be saved
   over. It is Chronicle's code, which another thread owns, so it is not routed through the writer
   here.
@@ -200,9 +200,9 @@ there through `App.tsx` on main (see CLAUDE.md on code splitting); this adds not
   writes a wrong page silently.
 - **Tabs still running a bundle from before this ships** save without any check until reloaded.
 
-## The server's own check (22 Nov, draft until applied)
+## The server's own check (applied 22 Nov 2026)
 
-`docs/2026-11-22-profile-page-version.DRAFT.sql` gives `save_my_profile_blocks` an optional
+`supabase/migrations/20261122215917_profile_page_version.sql` (applied 22 Nov 2026) gives `save_my_profile_blocks` an optional
 `p_expected_page`, and `my_profile_page_version()` to read it from. Its header has the reasoning:
 
 - the version is of what is stored, so no write path can be missed;

@@ -4,7 +4,7 @@
 #
 #   supabase/tests/profile-page-race.sh "$DB_URL"
 #
-# Needs a THROWAWAY database with docs/2026-11-22-profile-page-version.DRAFT.sql (or its migration)
+# Needs a THROWAWAY database with supabase/migrations/20261122215917_profile_page_version.sql
 # loaded. db-guards.yml runs it on the stack it builds and throws away. It commits — a race needs
 # committed rows — and puts seedowner's page back as it found it at the end, pass or fail.
 #

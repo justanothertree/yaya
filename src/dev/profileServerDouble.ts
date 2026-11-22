@@ -7,7 +7,7 @@
  * with SELECT-only queries on 21 Nov 2026, and quoted beside the code that copies it. When one of
  * those functions changes, this file is wrong until it is changed to match.
  *
- * ⚠️ BY DEFAULT IT IS THE SERVER AFTER docs/2026-11-22-profile-page-version.DRAFT.sql: page
+ * ⚠️ BY DEFAULT IT IS THE SERVER AFTER supabase/migrations/20261122215917_profile_page_version.sql: page
  * versions, and a save that locks the page and refuses an expected version that no longer matches.
  * `legacy()` is the server before it — no version function, no lock, no `p_expected_page` — which
  * is production until that draft is applied, and again after its rollback.

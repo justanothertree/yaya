@@ -1,4 +1,5 @@
--- ROLLBACK for docs/2026-11-22-profile-page-version.DRAFT.sql: the single-argument save as it was on
+-- ROLLBACK for supabase/migrations/20261122215917_profile_page_version.sql (drafted as
+-- docs/applied/2026-11-22-profile-page-version.DRAFT.sql): the single-argument save as it was on
 -- 22 Nov 2026 (md5(prosrc) 0603655260224be367a971ecc3b88a9f), and the two version functions gone.
 --
 -- ⚠️ A TAB OPENED WHILE THE VERSION EXISTED keeps sending p_expected_page after this, and gets

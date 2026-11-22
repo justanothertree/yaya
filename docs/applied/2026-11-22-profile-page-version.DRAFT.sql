@@ -1,4 +1,8 @@
--- ⏳ DRAFT, NOT APPLIED. A save of a profile page refuses to overwrite a page that changed since it
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `profile_page_version`, version
+-- 20261122215917: md5(statements[1]) = 9c3695205007c7925bce5243b3361669, this file's body. The record is
+-- supabase/migrations/20261122215917_profile_page_version.sql.
+--
+-- (as drafted) A save of a profile page refuses to overwrite a page that changed since it
 -- was read. Evan, 22 Nov 2026: "Server check: yes, do it ... Old clients that don't send it must
 -- keep working ... ask me before the production apply."
 --
