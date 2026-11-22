@@ -163,3 +163,86 @@ tap-to-open. Everything before that is checked here: the encryption against the 
 RPCs against the live database in rolled-back transactions, the worker in the Chromium pane
 (`showNotification` from a test push), and the queue's numbers. The first real delivery is Evan's
 phone, with "Send a test".
+
+## Step 2, as built: the server (22 Nov 2026)
+
+Not applied and not deployed. The client half (`sw.js`, "📱 Phone alerts") is built separately.
+
+- **`docs/2026-11-22-phone-alerts.DRAFT.sql`**: the three tables, plus `push_config`, all
+  deny-all. Member RPCs: `push_device_add`, `push_device_remove`, `push_devices_mine`,
+  `push_prefs_get`, `push_prefs_set` and `push_test`. Service-role RPCs: `push_claim`,
+  `push_done`, `push_device_ok` and `push_device_gone`. Admin RPC: `push_stuck`. Also the kick,
+  its statement trigger and the one-minute `push-sweep` cron.
+- **`supabase/tests/phone-alerts.sql`**, run by a new db-guards step after the draft is loaded.
+  The visibility guards then run a second time, so H and K see the new functions.
+- **`supabase/functions/push/`**: `webpush.ts` (pure, WebCrypto only), its test, and `index.ts`.
+
+### Where it differs from the plan above, and why
+
+- **`push_config`**, one row, created empty. The kick reads the URL and the anon key from it, so
+  neither is in the repository.
+- **`push_outbox.claimed_at`, a two-minute lease.** `for update skip locked` holds only inside
+  the claiming transaction, and an RPC is its own transaction. Without the lease, two kicks a
+  second apart would both deliver a row.
+- **Five tries, then the row stays unsent** and `push_stuck` counts it.
+- **`tag` is required.** A retried row reaches a phone that already had it. That is harmless only
+  because a notification with the same tag replaces the first without sounding again.
+- **Endpoints must belong to a push service** (FCM, Mozilla, Apple or Windows). The function
+  POSTs to whatever is stored, so an endpoint is a member choosing where the server sends a
+  request. `index.ts` does not follow redirects, for the same reason.
+- **Ten live devices per member.**
+- **`push_http_post`** wraps `net.http_post`. A test can replace it on a stack where pg_net
+  belongs to someone else, so the kick's checks run on every stack.
+
+### What the client can rely on
+
+- **`push_device_add(endpoint, p256dh, auth, label)`** returns the device id. It accepts
+  base64 or base64url keys.
+- **`push_device_remove(endpoint)`** returns a boolean.
+- **`push_devices_mine()`** returns `[{id, endpoint, label, created_at, last_ok_at}]`, never the
+  keys.
+- **`push_prefs_get()`** and **`push_prefs_set(p_ring, p_message, p_post, p_challenge,
+p_chronicle)`** return the five booleans. A null argument leaves that kind as it was.
+- **`push_test()`** returns how many devices the test is going to.
+- **Refusals:**
+  - `28000`: signed out.
+  - `42501`: suspended.
+  - `22023`: not a push service, bad keys, or ten devices already.
+  - `P0002`: no device.
+  - `PT429`: one test a minute; PostgREST answers HTTP 429.
+- **What the phone receives** is JSON `{kind, title, body, url, tag}`. If it is too big, the body
+  is shortened first.
+
+### What was checked
+
+- **`webpush.test.ts`, 19 tests.**
+  - Every intermediate value in RFC 8291 Appendix A, and the exact body in §5. The values were
+    re-read from rfc-editor.org on 22 Nov.
+  - A body the RFC's own browser key opens, with record size 4096 and the 0x02 delimiter.
+  - The 4096-octet limit, with one octet over refused.
+  - A VAPID JWT that verifies with its `k=`, for the service's origin, under a day, from
+    `https://evancook.dev`.
+  - The status rule: 201 and 202 delivered, 404 and 410 gone, everything else retried.
+- **21 bugs were put back one at a time.** 20 turned it red. The one that stayed green was a
+  signature check that always passes, because Node refuses a mismatched key pair at import before
+  the signature is ever asked (measured). That half is unexercised until it runs on Deno.
+- **`index.ts` typechecked** with strict settings and a stand-in for `Deno`. Nothing here can run
+  it.
+- **The SQL has not run anywhere yet.** There is no Postgres on this machine. It was checked by
+  reading it against the 4 Nov baseline and the seed. Its first run will be CI's, on the draft PR.
+
+### What waits for the secret, and for Evan's yes
+
+1. **Apply the draft as a migration** (ask first). Decide whether to trim `cron.job_run_details`
+   at the same time. The sweep adds 1,440 rows a day, an estimated ~80 MB a year (not measured).
+   Trimming means a DELETE, so it is Evan's call.
+2. **Deploy `push`**, then diff `get_edge_function` against both files. Before the secret exists,
+   POST `{op: 'send'}` must answer the function's own 503 "phone alerts are not configured", and
+   it must claim nothing.
+3. **Generate the VAPID pair locally and show Evan.** Then set the secrets `VAPID_PUBLIC_KEY` and
+   `VAPID_PRIVATE_KEY`, and put the public half in `src/notify/vapid.ts`.
+4. **Fill `push_config`** with the function's URL and the anon key, as one UPDATE in the
+   database. Then read the first kick back from `net._http_response`. It must be the function's
+   answer, not the gateway's: the gateway refused the legacy anon JWT on 21 Aug. If it still
+   does, deploy `push` with verify_jwt off. That costs nothing, because the key is public.
+5. **"Send a test" from the Pixel**, then check that `push_stuck` reads 0.

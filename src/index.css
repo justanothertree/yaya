@@ -3157,6 +3157,48 @@ section[id] {
   opacity: 1;
 }
 
+/**
+ * 📱 Phone alerts' switches, in Account (src/notify/PhoneAlertsCard.tsx). The WHOLE ROW is the
+ * button, so the target is the card's width and 2.5rem tall — over the 1.77rem line that clears
+ * WCAG 2.5.8's 24px at every UI scale, and nothing to aim at with a thumb but the row itself. The
+ * switch drawn at its end is the menu's own, so a switch looks like one switch across the site.
+ * It stops at a phone's width, because a full-width card at 1440 put every switch 1,200px from the
+ * words it answers to.
+ */
+.alerts-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 26rem;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: var(--r-sm, 7px);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+.alerts-switch:hover:not(:disabled) {
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
+}
+.alerts-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* six rows stacked 2px apart and pressed with a thumb: the comfortable 44 on a touch screen, in
+   pixels because the root size is fluid, and gated on the pointer as well as the width because a
+   width query is not a pointer (CLAUDE.md §6) */
+@media (max-width: 640px), (pointer: coarse) {
+  .alerts-switch {
+    min-height: 44px;
+  }
+}
+
 /* ── the canvas menu ──
    Its own bar (the nav navigates pages; this one manages windows) but deliberately the
    SAME design language: the nav's bar treatment, the nav's button size, the nav's accent
