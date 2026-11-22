@@ -3,6 +3,9 @@ import { useVoiceSession } from './useVoiceSession'
 import type { VoicePeer } from './voiceSession'
 import { callWord, peerWord, speakingNames } from './callWords'
 import { CallRoster } from './CallRoster'
+import { MicSettings } from './MicSettings'
+import { CallChat } from './CallChat'
+import { useCallMessages } from './useCallMessages'
 import { routeIsPrivate } from '../party/party'
 import { together } from '../party/together'
 import { shared } from '../party/shared'
@@ -74,11 +77,21 @@ const devMeter = () => {
 }
 
 export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
-  const [rosterOpen, setRosterOpen] = useState(false)
+  /**
+   * Which of the anchor's panels is open — one slot, never two.
+   *
+   * ⚠️ They all rise from the same place, directly above the dock, so two open at once is one
+   * hidden behind the other. A single value makes opening one the same act as closing the rest.
+   */
+  const [panel, setPanel] = useState<'roster' | 'mic' | 'chat' | null>(null)
+  const rosterOpen = panel === 'roster'
+  const setRosterOpen = (on: boolean | ((was: boolean) => boolean)) =>
+    setPanel((was) => ((typeof on === 'function' ? on(was === 'roster') : on) ? 'roster' : null))
   const {
     inCall,
     roomId,
     roomName,
+    roomKind,
     peers,
     muted,
     leave,
@@ -95,6 +108,8 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
     setShareMode,
   } = useVoiceSession()
   const [volume, setVolume] = useState(readVol)
+  /* the call's chat is followed for the whole call, so its button can say something arrived */
+  const chat = useCallMessages(inCall ? roomId : null, inCall ? roomKind : null, panel === 'chat')
 
   useEffect(() => {
     setMaster(volume)
@@ -146,6 +161,12 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
       delete el.dataset.inCall
       el.style.removeProperty('--dock-h')
     }
+  }, [inCall])
+
+  /* a panel belongs to the call it was opened in: hang up with one showing and the next call
+     would otherwise start with it already open, over whatever page you happen to be on */
+  useEffect(() => {
+    if (!inCall) setPanel(null)
   }, [inCall])
 
   if (!inCall) return null
@@ -206,6 +227,30 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
         <CallRoster
           onClose={() => setRosterOpen(false)}
           showMeter={isAdmin || (import.meta.env.DEV && devMeter())}
+        />
+      )}
+      {/* Text, while you talk. ⚠️ The room name beside this is a link BACK to the conversation,
+          which takes you off the page you are on — the wrong door when you are mid-game with
+          somebody and only want to paste them a link. This opens the same conversation here. */}
+      <button
+        className={'btn call-dock-chat' + (panel === 'chat' ? ' is-on' : '')}
+        onClick={() => setPanel((was) => (was === 'chat' ? null : 'chat'))}
+        aria-expanded={panel === 'chat'}
+        aria-label={
+          chat.unseen > 0 ? `Chat for this call, ${chat.unseen} new` : 'Chat for this call'
+        }
+        title="Text the call without leaving this page"
+      >
+        💬{chat.unseen > 0 && <span className="call-dock-new">{chat.unseen}</span>}
+      </button>
+      {panel === 'chat' && (
+        <CallChat
+          roomId={roomId}
+          roomName={roomName}
+          msgs={chat.msgs}
+          inRoom={chat.inRoom}
+          err={chat.err}
+          onClose={() => setPanel(null)}
         />
       )}
       {/* A refusal has to be SEEN. This lived only in the button's tooltip, so hitting share
@@ -315,6 +360,31 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
       >
         {muted ? '🔇' : '🎙'}
       </button>
+      {/* Beside the mic it configures. ⚠️ It was only inside the conversation the call started
+          in, so fixing a too-sensitive mic from any other page meant leaving that page first —
+          the one trip this anchor exists to save. Same panel as the chat's ⚙, see MicSettings. */}
+      <button
+        className={'btn' + (panel === 'mic' ? ' is-on' : '')}
+        onClick={() => setPanel((was) => (was === 'mic' ? null : 'mic'))}
+        aria-expanded={panel === 'mic'}
+        aria-label="Microphone settings"
+        title="Microphone sensitivity, noise removal and how loud each person is"
+      >
+        ⚙
+      </button>
+      {panel === 'mic' && (
+        <div className="call-pop" role="dialog" aria-label="Microphone settings">
+          <div className="callroster-head">
+            <strong>Your microphone</strong>
+            <button className="btn" onClick={() => setPanel(null)} aria-label="Close">
+              ✕
+            </button>
+          </div>
+          <div className="call-pop-body">
+            <MicSettings />
+          </div>
+        </div>
+      )}
       {/* wrapped so the click event isn't passed as leave()'s `silent` flag — see VoiceBar */}
       <button className="btn voice-leave" onClick={() => leave()} title="Leave the call">
         Leave

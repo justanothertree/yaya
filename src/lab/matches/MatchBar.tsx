@@ -24,6 +24,11 @@ export function MatchBar({ lm, sides }: { lm: LabMatch; sides: [string, string] 
           {lm.error ?? 'Opening the match…'}
         </p>
         <div className="lab-controls">
+          {lm.needsSignIn && (
+            <a className="btn" href="#signin">
+              🔑 Sign in
+            </a>
+          )}
           <button className="btn btn-ghost" onClick={lm.leave}>
             ← Back to {lm.error ? 'the toy' : 'playing alone'}
           </button>
