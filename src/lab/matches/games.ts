@@ -47,6 +47,10 @@ import { backgammonRules } from '../../gpu/backgammonRoom'
 import { LEVELS as SEA_LEVELS, SIZES as SEA_SIZES } from '../../gpu/seabattle'
 import { readSeaSettings, seaRules } from '../../gpu/seabattleRoom'
 import { LEVELS as DICE_LEVELS, diceRules } from '../../gpu/diceRoom'
+import { LEVELS as YACHT_LEVELS } from '../../gpu/yacht'
+import { yachtRules } from '../../gpu/yachtRoom'
+import { LEVELS as SHUT_LEVELS } from '../../gpu/shut'
+import { shutRules } from '../../gpu/shutRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -201,6 +205,8 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     sizes: SEA_SIZES,
   },
   dice: { name: MATCH_NAMES.dice, rulesFor: () => diceRules, levels: DICE_LEVELS },
+  yacht: { name: MATCH_NAMES.yacht, rulesFor: () => yachtRules, levels: YACHT_LEVELS },
+  shut: { name: MATCH_NAMES.shut, rulesFor: () => shutRules, levels: SHUT_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
