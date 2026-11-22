@@ -81,10 +81,27 @@ export function readNudge(x: unknown): number | null {
 }
 
 /**
- * Listen on a match's channel while `on`, calling `heard` for each nudge from the other player;
- * the returned function tells the other player this one has acted.
+ * A chat line said, on the same topic: `{ line }`, the id lab_match_say gave it, and nothing else.
+ * Like a nudge it carries no words — the other page reads the line through lab_match_lines, so
+ * what it shows is still only what the server kept.
  */
-export function useNudge(id: string | null, on: boolean, heard: () => void) {
+export function readSaid(x: unknown): number | null {
+  const o = x as { line?: unknown } | null
+  if (!o || typeof o !== 'object' || Object.keys(o).join() !== 'line') return null
+  return Number.isInteger(o.line) && (o.line as number) >= 1 ? (o.line as number) : null
+}
+
+/**
+ * Listen on a match's channel while `on`, calling `heard` for each nudge from the other player and
+ * `heardSaid` for each chat line they say; `moved` tells the other player this one has acted, and
+ * `said` that this one has written. Both sides of both keep the gap.
+ */
+export function useNudge(
+  id: string | null,
+  on: boolean,
+  heard: () => void,
+  heardSaid: () => void = () => {},
+) {
   const life = useRealtimeLife()
   const chan = useRef<RealtimeChannel | null>(null)
   /* ⚠️ A NUDGE SAID BEFORE THE JOIN IS HELD, NOT DROPPED. The commonest moment to act is straight
@@ -93,17 +110,26 @@ export function useNudge(id: string | null, on: boolean, heard: () => void) {
      held for the MATCH, not the channel: a token refresh rebuilds the channel (`life`), and a hold
      cleared with it lost that same accept a second time. */
   const held = useRef<{ id: string; seq: number } | null>(null)
+  /* a chat line said before the join is held the same way, and for the same reason: measured on
+     the local stack, a line written within seconds of opening the link was never heard */
+  const heldSaid = useRef<{ id: string; line: number } | null>(null)
   const heardRef = useRef(heard)
   heardRef.current = heard
+  const heardSaidRef = useRef(heardSaid)
+  heardSaidRef.current = heardSaid
   useEffect(() => {
     if (!id || !on) return
     const sb = getSupabaseClient()
     // however fast the other page nudges, this one looks at most once a gap
     const hear = coalesce<null>(() => heardRef.current(), NUDGE_GAP_MS)
+    const hearSaid = coalesce<null>(() => heardSaidRef.current(), NUDGE_GAP_MS)
     const ch = sb
       .channel(nudgeTopic(id), { config: { broadcast: { self: false }, private: true } })
       .on('broadcast', { event: 'moved' }, ({ payload }) => {
         if (readNudge(payload) !== null) hear.call(null)
+      })
+      .on('broadcast', { event: 'said' }, ({ payload }) => {
+        if (readSaid(payload) !== null) hearSaid.call(null)
       })
       .subscribe((status) => {
         /* ⚠️ A REFUSED JOIN IS LET GO, NOT RETRIED. supabase-js rejoins a refused channel on a
@@ -115,15 +141,20 @@ export function useNudge(id: string | null, on: boolean, heard: () => void) {
           void sb.removeChannel(ch)
           return
         }
+        if (status !== 'SUBSCRIBED') return
         const h = held.current
-        if (status !== 'SUBSCRIBED' || !h) return
         held.current = null
-        if (h.id === id)
+        if (h && h.id === id)
           void ch.send({ type: 'broadcast', event: 'moved', payload: { seq: h.seq } })
+        const said = heldSaid.current
+        heldSaid.current = null
+        if (said && said.id === id)
+          void ch.send({ type: 'broadcast', event: 'said', payload: { line: said.line } })
       })
     chan.current = ch
     return () => {
       hear.cancel()
+      hearSaid.cancel()
       chan.current = null
       void sb.removeChannel(ch)
     }
@@ -140,6 +171,25 @@ export function useNudge(id: string | null, on: boolean, heard: () => void) {
       }, NUDGE_GAP_MS),
     [id],
   )
-  useEffect(() => () => say.cancel(), [say])
-  return useCallback((seq: number) => say.call(seq), [say])
+  /* a line said: the same gap, and held for the join like a move */
+  const sayLine = useMemo(
+    () =>
+      coalesce<number>((line) => {
+        const ch = chan.current
+        if (ch && ch.state === 'joined')
+          void ch.send({ type: 'broadcast', event: 'said', payload: { line } })
+        else if (id) heldSaid.current = { id, line }
+      }, NUDGE_GAP_MS),
+    [id],
+  )
+  useEffect(
+    () => () => {
+      say.cancel()
+      sayLine.cancel()
+    },
+    [say, sayLine],
+  )
+  const moved = useCallback((seq: number) => say.call(seq), [say])
+  const said = useCallback((line: number) => sayLine.call(line), [sayLine])
+  return { moved, said }
 }
