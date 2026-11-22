@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { doorFor, seedFrom } from './seedGate'
+import { doorFor, proveEmpty, seedFrom } from './seedGate'
 
 /**
  * The editor's gate, asked with what `get_profile_blocks` really answers: the owner gets an array
@@ -21,8 +21,17 @@ describe('what the editor may start from', () => {
     expect(seedFrom({ data: mine, error: null })).toEqual({ ok: true, blocks: mine })
   })
 
-  it('an empty page, on the profile’s word that it is yours', () => {
+  it('an empty page, once it is proved yours by asking after it was read', () => {
     expect(seedFrom({ data: [], error: null })).toEqual({ ok: true, blocks: [] })
+    expect(proveEmpty({ data: { username: 'evan', is_me: true }, error: null })).toBe('yours')
+  })
+
+  it('never an empty page that is not yours: a name nobody has, or another account now', () => {
+    /* the server answers [] for both, and get_member_profile says which */
+    expect(proveEmpty({ data: null, error: null })).toBe('not-yours')
+    expect(proveEmpty({ data: { username: 'evan', is_me: false }, error: null })).toBe('not-yours')
+    expect(proveEmpty({ data: { username: 'evan', is_me: 'true' }, error: null })).toBe('not-yours')
+    expect(proveEmpty({ data: null, error: new Error('offline') })).toBe('failed')
   })
 
   it('never a read that failed, which used to leave the editor starting empty', () => {

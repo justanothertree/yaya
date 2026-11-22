@@ -27,9 +27,11 @@ export type Seed<B> = { ok: true; blocks: B[] } | { ok: false; why: 'failed' | '
 /**
  * The blocks the editor may start from, or why it may not.
  *
- * ⚠️ AN EMPTY PAGE IS ACCEPTED ON THE PROFILE'S WORD. `[]` carries no `certain` to prove whose it
- * is, and the server answers `[]` for a name nobody has; the caller only asks this for a page the
- * profile request just said is yours (`is_me`), from the same navigation.
+ * ⚠️ AN EMPTY PAGE PROVES NOTHING, so `ok` with no blocks still needs `proveEmpty`. `[]` carries no
+ * `certain` to say whose it is, and the server answers `[]` for a name nobody has and for a page
+ * that shows this viewer nothing. It was first taken on the profile's `is_me`, and a review found
+ * two ways that word goes stale: a late answer from the activity picker putting your profile on
+ * another member's page, and an account switched in another tab before Try again.
  */
 export function seedFrom<B>(read: BlocksRead): Seed<B> {
   if (read.error || !Array.isArray(read.data)) return { ok: false, why: 'failed' }
@@ -38,6 +40,20 @@ export function seedFrom<B>(read: BlocksRead): Seed<B> {
       return { ok: false, why: 'not-yours' }
   }
   return { ok: true, blocks: read.data as B[] }
+}
+
+/**
+ * Whether an empty page is yours, from `get_member_profile` asked AFTER the empty read — so a name
+ * that stopped being yours in between answers no. `is_me` is worked out from the session making
+ * the call, so it also says no after the account was switched in another tab.
+ */
+export function proveEmpty(answer: {
+  data: unknown
+  error: unknown
+}): 'yours' | 'not-yours' | 'failed' {
+  if (answer.error) return 'failed'
+  const d = answer.data as { is_me?: unknown } | null
+  return d && typeof d === 'object' && d.is_me === true ? 'yours' : 'not-yours'
 }
 
 /** What stands where the editor goes on your own page. */

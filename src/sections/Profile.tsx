@@ -11,7 +11,7 @@ import { SiteBackdrop } from '../profile/SiteBackdrop'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { setPaneLook } from '../circuit/ui/paneLook'
 import { ProfileCall } from '../voice/ProfileCall'
-import { doorFor, seedFrom, type BlocksRead } from '../profile/seedGate'
+import { doorFor, proveEmpty, seedFrom, type BlocksRead } from '../profile/seedGate'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -115,13 +115,18 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     | { kind: 'error'; msg: string }
     | { kind: 'ok'; p: ProfileData }
   >({ kind: 'loading' })
-  // blocks + activity load ALONGSIDE the profile, not gated behind it -- an empty array here
-  // just means "no blocks yet", which is the common case and shouldn't hold up the rest of
-  // the page rendering
+  // blocks + activity load ALONGSIDE the profile, not gated behind it, so the read view never waits
+  // on the profile. ⚠️ But an empty array here means "nothing yet" as well as "no blocks", which is
+  // why the EDITOR does not start from it: see `seed` below.
   const [blocks, setBlocks] = useState<ProfileBlock[]>([])
   /**
-   * Whose page `blocks` is a good read of, so the editor may start from it — null while the read
-   * is on its way. And whose read could not be one, and why.
+   * The page the editor may start from: a good, owner-proven read of it, and after that only what
+   * the editor's own saves confirmed — null while the read is on its way. And whose read could not
+   * be one, and why.
+   *
+   * ⚠️ ITS OWN COPY, NOT `blocks`. `blocks` is what the read view shows, and other things write it:
+   * the demo view puts the demo page there, and a save landing after you moved on used to put your
+   * page under somebody else's name. The editor starting from `blocks` would start from those.
    *
    * ⚠️ THE EDITOR WAITS FOR THIS (22 Nov 2026), AND ON main IT DID NOT. Your own page opens
    * straight into the editor when the profile answers, the blocks are a separate request that
@@ -130,7 +135,12 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * showing, and the first thing added saved a page of only that: `save_my_profile_blocks`
    * replaces the whole page. See profile/seedGate.ts.
    */
-  const [seededFor, setSeededFor] = useState<string | null>(null)
+  const [seed, setSeed] = useState<{ for: string; blocks: ProfileBlock[] } | null>(null)
+  /* the page shown now, for an answer that arrives after it changed */
+  const shownU = useRef(u)
+  useEffect(() => {
+    shownU.current = u
+  }, [u])
   const [refused, setRefused] = useState<{ for: string; why: 'failed' | 'not-yours' } | null>(null)
   /** bumped by "Try again", to read the blocks once more */
   const [blocksTry, setBlocksTry] = useState(0)
@@ -308,7 +318,9 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
   }, [pinned])
 
   /**
-   * Blocks + activity, alongside the main profile fetch below.
+   * Activity, trophies and achievements, alongside the main profile fetch below — and the place
+   * the blocks are cleared on a navigation; they are READ in their own effect below, so "Try again"
+   * can read them alone.
    *
    * ⚠️ CLEARED FIRST, ON EVERY NAVIGATION — and this comment used to CLAIM that while the code
    * did not do it. What actually happened: these arrays kept the PREVIOUS profile's contents
@@ -352,20 +364,30 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
 
   /**
    * The page's blocks — for showing, and, when they are a good read of your own page, for the
-   * editor to start from (`seededFor`). Its own effect so "Try again" can ask once more without
-   * clearing everything else on the page.
+   * editor to start from (`seed`). Its own effect so "Try again" can ask once more without clearing
+   * everything else on the page.
+   *
+   * ⚠️ AN EMPTY PAGE IS PROVED YOURS BY ASKING AFTER IT WAS READ (proveEmpty), never taken on the
+   * profile already on screen — a review found two ways that goes stale (see seedGate.ts).
    */
   useEffect(() => {
     if (!authed || !u) return
     let live = true
-    setSeededFor(null)
+    setSeed(null)
     setRefused(null)
-    const take = (read: BlocksRead) => {
+    const preview = previewMember && !!PREVIEW_PROFILES[u]?.is_me
+    const take = async (read: BlocksRead) => {
       if (!live) return
       setBlocks(Array.isArray(read.data) ? (read.data as ProfileBlock[]) : [])
-      const seed = seedFrom<ProfileBlock>(read)
-      if (seed.ok) setSeededFor(u)
-      else setRefused({ for: u, why: seed.why })
+      const got = seedFrom<ProfileBlock>(read)
+      if (!got.ok) return setRefused({ for: u, why: got.why })
+      if (got.blocks.length) return setSeed({ for: u, blocks: got.blocks })
+      const whose = preview
+        ? 'yours'
+        : proveEmpty(await getSupabaseClient().rpc('get_member_profile', { p_username: u }))
+      if (!live) return
+      if (whose === 'yours') setSeed({ for: u, blocks: [] })
+      else setRefused({ for: u, why: whose })
     }
     /* ⚠️ A STAND-IN FOR YOUR OWN PAGE, because without one the "Seen by" row filters an
        empty list and reports success at every level. `previewMember` has no session, so this RPC
@@ -373,16 +395,18 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
        check" in the one place whose whole job is showing what somebody else was sent. Only your
        own page: a visitor's blocks come from the server and are not the thing being previewed.
        ⚠️ Answered LATER, like the real read, and slow or failing on request
-       (localStorage `dev_profile_blocks` = 'slow' | 'fail'): answered at once, it could never
+       (localStorage `dev_profile_blocks` = 'slow' | 'fail' | 'empty'): answered at once, it could never
        show the editor opening before its page had arrived, which is the bug the gate is for. */
-    if (previewMember && PREVIEW_PROFILES[u]?.is_me) {
+    if (preview) {
       const how = localStorage.getItem('dev_profile_blocks')
       const t = window.setTimeout(
         () =>
-          take(
+          void take(
             how === 'fail'
               ? { data: null, error: new Error('the preview read was asked to fail') }
-              : { data: previewMyBlocks(), error: null },
+              : how === 'empty'
+                ? { data: [], error: null }
+                : { data: previewMyBlocks(), error: null },
           ),
         how === 'slow' ? 1500 : 0,
       )
@@ -393,7 +417,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     }
     void getSupabaseClient()
       .rpc('get_profile_blocks', { p_username: u })
-      .then(({ data, error }) => take({ data, error }))
+      .then(({ data, error }) => void take({ data, error }))
     return () => {
       live = false
     }
@@ -938,7 +962,14 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                        reply, which is the clamp's silence being repeated back as fact. */
                     if (!error) {
                       const stored = (typeof data === 'string' ? (data as Tier) : null) ?? tier
-                      setState({ kind: 'ok', p: { ...p, activity_visibility: stored } })
+                      /* ⚠️ onto the page it was changed on, and only if that is still the page
+                         shown: written back blind after you had moved on, it put YOUR profile
+                         (`is_me`) on another member's page, with Edit page under it */
+                      setState((was) =>
+                        was.kind === 'ok' && was.p.username === p.username
+                          ? { kind: 'ok', p: { ...was.p, activity_visibility: stored } }
+                          : was,
+                      )
                     }
                   }}
                   /* the "item" for an activity stream IS its owner, which is what
@@ -1139,12 +1170,12 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       {/* Optional customization -- only exists on the page at all once there's something to
           show. The editor and the read view are never both mounted: editing shows the working
           copy being arranged, done-editing shows what was actually saved. */}
-      {p.is_me && editing && doorFor(u, seededFor, refused) !== 'editor' ? (
-        /* ⚠️ NOT THE EDITOR UNTIL ITS PAGE HAS ARRIVED — see `seededFor` */
+      {p.is_me && editing && doorFor(u, seed?.for ?? null, refused) !== 'editor' ? (
+        /* ⚠️ NOT THE EDITOR UNTIL ITS PAGE HAS ARRIVED — see `seed` */
         <p className="muted profile-door" role="status">
-          {doorFor(u, seededFor, refused) === 'opening' ? (
+          {doorFor(u, seed?.for ?? null, refused) === 'opening' ? (
             'Opening your page…'
-          ) : doorFor(u, seededFor, refused) === 'not-yours' ? (
+          ) : doorFor(u, seed?.for ?? null, refused) === 'not-yours' ? (
             'Your page isn’t under this name any more. Reload the site to open it.'
           ) : (
             <>
@@ -1155,7 +1186,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
             </>
           )}
         </p>
-      ) : p.is_me && editing ? (
+      ) : p.is_me && editing && seed ? (
         <ProfileBlocksEditor
           page={pageStyle}
           onPage={(next) => {
@@ -1168,7 +1199,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                 if (!error) setPageStyle(data)
               })
           }}
-          initial={blocks}
+          initial={seed.blocks}
           username={p.username}
           activity={activity}
           trophies={trophies}
@@ -1177,7 +1208,13 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           /* Called after every autosave now, not once at the end — so leaving edit mode shows
              what is actually stored. It no longer closes the editor: you are done when you say
              you are done, not when the last keystroke lands. */
-          onSaved={(saved) => setBlocks(saved)}
+          onSaved={(saved) => {
+            /* ⚠️ a save that lands after you moved to somebody else's page is not theirs to show,
+               and it is the editor's next starting point only on the page it was saved from */
+            if (shownU.current !== u) return
+            setBlocks(saved)
+            setSeed((was) => (was && was.for === u ? { for: u, blocks: saved } : was))
+          }}
           /* ⚠️ THE SAME ACTION THE HEAD BUTTON TAKES, through one function, because two copies
              of "stop editing" is two places to forget rememberEditPref — see stopEditing. */
           onDone={stopEditing}
