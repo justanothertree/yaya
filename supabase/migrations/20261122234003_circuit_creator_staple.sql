@@ -1,27 +1,12 @@
--- ⛔ DRAFT — NOT APPLIED. Nothing here runs until Evan approves it. Found while drafting §19e
--- (#456); the plan is docs/2026-11-22-circuit-creator-staple-plan.md.
---
--- A circuit's creator could put ANY person into their own circuit, and so read that person.
---
--- `cpg_write` is one policy for every command on circuit_person_groups, and its third branch is
--- "you created this circuit", with nothing asked about the PERSON. That branch is right for taking
--- somebody out of your circuit, which is managing it, and wrong for putting somebody in, because
--- `circuit_can_see_person` lets every member of a circuit see the people in it, whatever their own
--- visibility says. So a member who knows a person's id can make a circuit, add the person, and read
--- every day they logged: a private board included. Measured on CI's database, as a seeded member:
--- 0 of a private person's logs before, all of them after (the plan has the run).
---
--- After this, ADDING a person to a circuit (insert, or an update that moves a row) needs what it
--- already needed for everybody else: you own the person and you are in the circuit, or you are the
--- admin. REMOVING one is unchanged, the creator's bypass included. No row is changed or removed:
--- whatever was added before stays, and the plan has a read-only query that lists those rows.
---
--- The client never writes this table (it only reads it); every add goes through a SECURITY
--- DEFINER function, which RLS does not apply to. So nothing on screen changes.
---
--- It refuses to run unless the table's policies are exactly cpg_select and cpg_write, cpg_write is
--- the permissive all-commands policy it was written against, and its two expressions are the same
--- and still hold the creator branch.
+-- ✅ APPLIED to production 22 Nov 2026 at 6:40 PM EST as migration `circuit_creator_staple`,
+-- version 20261122234003, with Evan's approval of #458 that evening. Production recorded
+-- md5(statements[1]) = 4daaca0334cd4319008bd58e6abff849, this file's body byte for byte.
+-- Before it: circuit_person_groups had exactly cpg_select and cpg_write, cpg_write the text CI built
+-- (59fb9c7a…). After: cpg_delete, cpg_insert, cpg_select, cpg_update, and the rows' fingerprint
+-- unchanged (fd470718…), so nothing was removed. Live, as a member and rolled back: the member made
+-- a circuit and was refused adding somebody else's private board to it, which stayed at 0 days
+-- seen; their own board still went in, and as creator they still took it out. Why:
+-- docs/2026-11-22-circuit-creator-staple-plan.md.
 
 do $mig$
 declare

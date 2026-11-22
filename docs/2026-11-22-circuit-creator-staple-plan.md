@@ -1,7 +1,12 @@
 # A circuit's creator could add anybody's board to their circuit, and so read it
 
-⛔ **DRAFT, NOT APPLIED.** Found on 22 Nov while drafting §19e (#456). Applying it is Evan's call;
-the steps are at the end.
+✅ **APPLIED to production 22 Nov 2026 at 6:40 PM EST** as migration `circuit_creator_staple`,
+version 20261122234003, with Evan's approval ("Apply both"). Before it the table's policies were
+exactly `cpg_select` and `cpg_write`, with `cpg_write` the text CI built; after it they are the
+four below, the rows' fingerprint unchanged; production's md5 of what it ran is the record file's
+body. Live, as a member in a transaction that rolled back: they made a circuit and were refused
+adding somebody else's private board to it, which stayed at 0 days seen; their own board still went
+in, and as creator they still took it out.
 
 ## The hole
 
@@ -33,7 +38,7 @@ an unfriending, or anybody who saw the board while it was more visible already h
 
 ## The fix
 
-`docs/2026-11-22-circuit-creator-staple.DRAFT.sql` splits `cpg_write` into three:
+`docs/applied/2026-11-22-circuit-creator-staple.DRAFT.sql` splits `cpg_write` into three:
 
 - **`cpg_delete`**: exactly what `cpg_write` allowed, the creator's bypass included. Managing who is
   in your circuit is unchanged.

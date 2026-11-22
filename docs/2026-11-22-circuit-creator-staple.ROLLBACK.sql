@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-22-circuit-creator-staple.DRAFT.sql. ⛔ Not applied, like the draft.
+-- ROLLBACK for docs/applied/2026-11-22-circuit-creator-staple.DRAFT.sql. ⛔ Not applied, like the draft.
 --
 -- Puts cpg_write back exactly as the schema baseline has it, and drops the three policies the draft
 -- split it into. ⚠️ It reopens the hole: a circuit's creator can again add any person to their own

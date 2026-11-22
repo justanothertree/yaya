@@ -2,7 +2,7 @@
 -- them that way; everything else about adding and removing people is unchanged. Asked of the real
 -- policies as the seeded admin and two members.
 --
--- ⛔ NEEDS docs/2026-11-22-circuit-creator-staple.DRAFT.sql APPLIED FIRST, and refuses to run
+-- ⛔ NEEDS docs/applied/2026-11-22-circuit-creator-staple.DRAFT.sql APPLIED FIRST, and refuses to run
 -- otherwise. It runs only where a throwaway database has been built from the baseline and seed
 -- (the `db guards` CI job), and it rolls back. NEVER against production: it writes rows.
 --
@@ -49,7 +49,7 @@ do $$
 begin
   if not exists (select 1 from pg_policy where polrelid = 'public.circuit_person_groups'::regclass
                     and polname = 'cpg_insert') then
-    raise exception 'apply docs/2026-11-22-circuit-creator-staple.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-22-circuit-creator-staple.DRAFT.sql before this file';
   end if;
 end $$;
 
