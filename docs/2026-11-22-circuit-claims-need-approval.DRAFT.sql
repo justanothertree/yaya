@@ -32,9 +32,9 @@ declare
   v_add   text := md5(pg_get_functiondef('public.add_self_to_circuit(uuid, text, text)'::regprocedure));
   v_join  text := md5(pg_get_functiondef('public._circuit_add_self(uuid)'::regprocedure));
 begin
-  if v_claim <> '00000000000000000000000000000001'
-  or v_add   <> '00000000000000000000000000000002'
-  or v_join  <> '00000000000000000000000000000003' then
+  if v_claim <> '9dcb6353aa8b46a142837b01619b5d40'
+  or v_add   <> 'bf6833376662902ffadb2ef66aa9f0fa'
+  or v_join  <> '380d9993d2019c5113f4543aad254eaf' then
     raise exception 'not the text this was written against: claim_person %, add_self_to_circuit %, _circuit_add_self %',
       v_claim, v_add, v_join;
   end if;
