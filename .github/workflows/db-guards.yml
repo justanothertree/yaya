@@ -2,7 +2,8 @@ name: db guards
 
 # Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, then
 # supabase/tests/lab-nudge-guards.sql, then the profile page version checks and race, then the chat
-# songs draft and its checks, against a throwaway local database on every push.
+# songs checks, then the cron log trim draft and its checks, against a throwaway local database on
+# every push.
 #
 # ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
 # `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
@@ -243,6 +244,34 @@ jobs:
           # refuse a suspended member, chat_song_remove exempted) have never seen these functions.
           # This is the only run in which they do.
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+
+      # ⏳ A DRAFT, NOT YET APPLIED TO PRODUCTION: a daily pg_cron job deleting run history older than
+      # seven days (docs/2026-11-22-cron-log-trim.DRAFT.sql). This stack has no pg_cron, so loading
+      # the draft and its rollback only proves they run as written; the test is of the job's
+      # COMMAND, read out of the draft so it is the statement production schedules, run against a
+      # stand-in table. Then two wrong versions of it — keyed on start_time, and a six-day line —
+      # must FAIL, so a test that stopped looking would be caught here rather than trusted.
+      - name: Run the cron log trim checks
+        run: |
+          DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
+          if [ -z "$DB_URL" ]; then
+            DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          fi
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-cron-log-trim.DRAFT.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-cron-log-trim.ROLLBACK.sql
+          cmd="$(sed -n 's/.*\$job\$\(.*\)\$job\$.*/\1/p' docs/2026-11-22-cron-log-trim.DRAFT.sql)"
+          if [ "$(printf '%s\n' "$cmd" | grep -c .)" != 1 ]; then
+            echo "::error::expected exactly one job command between \$job\$ quotes, found: $cmd"; exit 1
+          fi
+          echo "the job's command: $cmd"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -v trim_command="$cmd" -f supabase/tests/cron-log-trim.sql
+          for wrong in "${cmd/end_time/start_time}" "${cmd/7 days/6 days}"; do
+            if [ "$wrong" = "$cmd" ]; then echo "::error::a perturbation changed nothing"; exit 1; fi
+            if psql "$DB_URL" -v ON_ERROR_STOP=1 -v trim_command="$wrong" -f supabase/tests/cron-log-trim.sql > /tmp/trim.out 2>&1; then
+              echo "::error::the trim test passed a wrong command: $wrong"; exit 1
+            fi
+            echo "RED as it should be: $wrong"; grep -h "ERROR" /tmp/trim.out | head -2
+          done
 
       - name: Stop the database
         if: always()
