@@ -3246,3 +3246,214 @@ describe('codebreaker by turns: a race to crack each other’s hidden code', () 
     }
   })
 })
+
+describe('shadow box by turns: each rebuilds the other’s hidden box, scored over par', () => {
+  const sb2 = (over: Partial<Row> = {}, rounds = 1) =>
+    invite({ demo_id: 'shadowbox', settings: { rounds }, ...over })
+  const WALLS = { front: true, side: true, top: false }
+  const build = (cells: [number, number, number][]) => {
+    const b = Array(25).fill(0)
+    for (const [x, z, h] of cells) b[z * 5 + x] = h
+    return b
+  }
+  // Bo's: a 3 and a 2 in different columns and rows (par 5); Ann's: two 2s (par 4)
+  const BO = {
+    build: build([
+      [1, 1, 3],
+      [3, 2, 2],
+    ]),
+    show: WALLS,
+  }
+  const AN = {
+    build: build([
+      [0, 0, 2],
+      [2, 2, 2],
+    ]),
+    show: WALLS,
+  }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data
+  }
+  const begun = (rounds = 1) =>
+    after(sb2({}, rounds), decide(sb2({}, rounds), B, { op: 'accept', brought: BO }))
+
+  it('takes the friend’s box with the yes and the challenger’s with the first move, and shows each only theirs', () => {
+    expect(status(decide(sb2(), B, { op: 'accept' }))).toBe(400)
+    expect(
+      status(
+        decide(sb2(), B, { op: 'accept', brought: { build: Array(25).fill(0), show: WALLS } }),
+      ),
+    ).toBe(400)
+    let row = begun()
+    expect(JSON.stringify(row.state)).not.toContain('"build"')
+    expect(mine(row, B)).toEqual([BO])
+    expect(mine(row, A)).toEqual([])
+    // a rebuild that is Bo's own box is fine — it throws its shadows — but the box must come too
+    expect(status(decide(row, A, move(row.seq, { rebuild: BO.build })))).toBe(400)
+    const p = decide(row, A, move(row.seq, { rebuild: BO.build, box: AN }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.move).toEqual({ m: { rebuild: BO.build } })
+    row = after(row, p)
+    expect(JSON.stringify(row.state)).not.toContain('"build"')
+    expect(mine(row, A)).toEqual([AN])
+    expect(mine(row, B)).toEqual([BO])
+  })
+
+  it('ends when both have rebuilt, the fewer over par winning, and shows the boxes', () => {
+    let row = begun()
+    // Ann rebuilds Bo's at par (5); Bo rebuilds Ann's with a block to spare, inside both shadows
+    const extra = build([
+      [0, 0, 2],
+      [2, 2, 2],
+      [0, 2, 1],
+    ])
+    row = after(row, decide(row, A, move(row.seq, { rebuild: BO.build, box: AN })))
+    expect(status(decide(row, B, move(row.seq, { rebuild: extra, box: BO })))).toBe(400)
+    const p = decide(row, B, move(row.seq, { rebuild: extra }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.result).toEqual({ winner: 0, score: '0–1' })
+    row = after(row, p)
+    expect((row.state as { boxes?: unknown }).boxes).toEqual([[AN], [BO]])
+    // at par both ways it is a draw
+    let tie = begun()
+    tie = after(tie, decide(tie, A, move(tie.seq, { rebuild: BO.build, box: AN })))
+    const q = decide(tie, B, move(tie.seq, { rebuild: AN.build }))
+    if (q.kind !== 'commit') throw new Error('refused')
+    expect(q.result).toEqual({ winner: 'draw', score: '0–0' })
+  })
+
+  it('refuses a stored match whose shadows its boxes do not throw, or boxes shown early', () => {
+    let row = begun(3)
+    row = after(row, decide(row, A, move(row.seq, { rebuild: BO.build, box: AN })))
+    const st = row.state as { clues: { front: number[] }[][]; rebuilds: string[][] }
+    const lied = { ...st, clues: [[{ ...st.clues[0][0], front: [3, 0, 0, 0, 0] }], st.clues[1]] }
+    const sideLied = {
+      ...lied,
+      clues: [[{ ...lied.clues[0][0], side: [3, 0, 0, 0, 0] }], st.clues[1]],
+    }
+    expect(
+      status(
+        decide(
+          { ...row, state: sideLied },
+          B,
+          move(row.seq, { rebuild: build([[0, 0, 3]]), box: BO }),
+        ),
+      ),
+    ).toBe(500)
+    expect(
+      status(
+        decide(
+          { ...row, state: { ...st, boxes: [[AN], [BO]] } },
+          B,
+          move(row.seq, { rebuild: AN.build, box: BO }),
+        ),
+      ),
+    ).toBe(500)
+  })
+
+  it('together: the computer’s box is chosen on the server, and it rebuilds the team’s with its next box in the same call', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = invite({
+        demo_id: 'shadowbox',
+        mode: 'together',
+        settings: { rounds: 3, level },
+      })
+      const p0 = decide(start, B, { op: 'accept' })
+      if (p0.kind !== 'begin') throw new Error('refused')
+      const cpu = (p0.secret as { boxes: { build: number[] }[][] }).boxes[1][0]
+      expect(cpu.build).toHaveLength(25)
+      let row = after(start, p0)
+      const st0 = row.state as { clues: { front: number[] }[][] }
+      // the team rebuilds the computer's box from its shadows alone, with the fullest stacks
+      const c = st0.clues[1][0] as unknown as { front: number[]; side: number[]; top?: string }
+      const full = Array.from({ length: 25 }, (_, i) =>
+        c.top && c.top[i] === '0' ? 0 : Math.min(c.front[i % 5], c.side[Math.floor(i / 5)]),
+      )
+      const p = decide(row, A, move(row.seq, { rebuild: full, box: AN }))
+      if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+      row = after(row, p)
+      const st = row.state as { rebuilds: string[][]; clues: unknown[][] }
+      // the computer's rebuild of Ann's box, and its second box, in the same call
+      expect(st.rebuilds[1]).toHaveLength(1)
+      expect(st.clues[1]).toHaveLength(2)
+      expect(st.rebuilds[1][0].replace(/0/g, '').length).toBeGreaterThan(0)
+      expect(String(row.turn)).toBe('1')
+    }
+  })
+})
+
+describe('rock, paper, scissors by turns: the first move of each round sealed', () => {
+  const rp = (over: Partial<Row> = {}) => invite({ demo_id: 'rps', settings: {}, ...over })
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data
+  }
+  const begun = () => after(rp(), decide(rp(), B, { op: 'accept' }))
+
+  it('keeps the challenger’s move from the state and the history, and shows it only to them', () => {
+    let row = begun()
+    expect(row.state).toEqual({ rounds: [], sealed: false })
+    const p = decide(row, A, move(row.seq, { play: 1 }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.move).toEqual({ m: {} })
+    row = after(row, p)
+    expect(row.state).toEqual({ rounds: [], sealed: true })
+    expect(row.turn).toBe(1)
+    expect(mine(row, A)).toBe(1)
+    expect(mine(row, B)).toBeNull()
+    // Bo answers: the round is shown whole
+    row = after(row, decide(row, B, move(row.seq, { play: 0 })))
+    expect(row.state).toEqual({ rounds: [[1, 0]], sealed: false })
+    expect(row.turn).toBe(0)
+  })
+
+  it('ends at the first to three, the score the rounds won', () => {
+    let row = begun()
+    // Ann: paper, paper, rock, paper; Bo: rock, scissors, scissors, rock
+    for (const [a, b] of [
+      [1, 0],
+      [1, 2],
+      [0, 2],
+    ]) {
+      row = after(row, decide(row, A, move(row.seq, { play: a })))
+      row = after(row, decide(row, B, move(row.seq, { play: b })))
+    }
+    expect(row.status).toBe('active')
+    row = after(row, decide(row, A, move(row.seq, { play: 1 })))
+    const p = decide(row, B, move(row.seq, { play: 0 }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.result).toEqual({ winner: 0, score: '3–1' })
+  })
+
+  it('refuses a stored match whose sealed move and state disagree', () => {
+    let row = begun()
+    row = after(row, decide(row, A, move(row.seq, { play: 1 })))
+    expect(
+      status(decide({ ...row, secret: { pending: null } }, B, move(row.seq, { play: 0 }))),
+    ).toBe(500)
+    expect(
+      status(
+        decide({ ...row, state: { rounds: [], sealed: false } }, B, move(row.seq, { play: 0 })),
+      ),
+    ).toBe(500)
+  })
+
+  it('together: the computer answers the team in the same call, at every level, the round shown whole', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = rp({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const p = decide(row, A, move(row.seq, { play: 2 }))
+      if (p.kind !== 'commit') throw new Error('refused')
+      expect(p.move).toEqual({ m: {}, then: [{}] })
+      row = after(row, p)
+      const st = row.state as { rounds: number[][]; sealed: boolean }
+      expect(st.sealed).toBe(false)
+      expect(st.rounds).toHaveLength(1)
+      expect(st.rounds[0][0]).toBe(2)
+      expect(row.turn).toBe(1)
+    }
+  })
+})

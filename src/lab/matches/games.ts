@@ -52,6 +52,8 @@ import { yachtRules } from '../../gpu/yachtRoom'
 import { LEVELS as SHUT_LEVELS } from '../../gpu/shut'
 import { shutRules } from '../../gpu/shutRoom'
 import { codeRules, readCodeSettings } from '../../gpu/codebreakerRoom'
+import { boxRules, readBoxSettings } from '../../gpu/shadowboxRoom'
+import { readRpsSettings, rpsRules } from '../../gpu/rpsRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -213,6 +215,22 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     rulesFor: (s) => {
       const rules = readCodeSettings(s)
       return rules === null ? null : codeRules(rules)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  shadowbox: {
+    name: MATCH_NAMES.shadowbox,
+    rulesFor: (s) => {
+      const set = readBoxSettings(s)
+      return set === null ? null : boxRules(set.rounds)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  rps: {
+    name: MATCH_NAMES.rps,
+    rulesFor: (s) => {
+      const set = readRpsSettings(s)
+      return set === null ? null : rpsRules(set.firstTo)
     },
     levels: ['easy', 'fair', 'hard'],
   },
