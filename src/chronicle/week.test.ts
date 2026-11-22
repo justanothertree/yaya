@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columns, coveredLine, coveredSoFar, hours, weekOf } from './week'
+import { columns, coveredLine, coveredSoFar, DRAG_SNAP_MIN, dragSpan, hours, weekOf } from './week'
 import { localMidnight } from './record'
 
 /**
@@ -227,5 +227,88 @@ describe('how much of the week so far is written down', () => {
   it('calls a single day today, and several by their count', () => {
     expect(coveredLine({ pct: 7, days: 1 })).toBe('7% of today is written down')
     expect(coveredLine({ pct: 7, days: 6 })).toBe('7% of these 6 days is written down')
+  })
+})
+
+/**
+ * A drag down one day's lane, as a span of that day.
+ *
+ * ⚠️ WRITTEN AS CLOCK READINGS. A drag from "seven minutes past nine" is the fraction of the day
+ * that reading is, so the expectation is the quarter hour a person would round it to, not the
+ * function's own arithmetic. The days are local, built from their parts, so the clock-change days
+ * are the real ones wherever the suite runs.
+ */
+describe('a drag down a day', () => {
+  const day = (y: number, m: number, d: number) => ({
+    from: new Date(y, m, d).getTime(),
+    to: new Date(y, m, d + 1).getTime(),
+  })
+  const W = day(2026, 10, 10) /* an ordinary Tuesday */
+  const LATE = new Date(2026, 10, 12).getTime() /* "now" is after the whole day */
+  const frac = (w: { from: number; to: number }, h: number, m = 0) =>
+    (new Date(
+      new Date(w.from).getFullYear(),
+      new Date(w.from).getMonth(),
+      new Date(w.from).getDate(),
+      h,
+      m,
+    ).getTime() -
+      w.from) /
+    (w.to - w.from)
+  const clock = (ms: number) => {
+    const d = new Date(ms)
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+  const span = (s: { fromMs: number; toMs: number } | null) =>
+    s ? `${clock(s.fromMs)}–${clock(s.toMs)}` : null
+
+  it('snaps both ends to the nearest quarter hour', () => {
+    expect(DRAG_SNAP_MIN).toBe(15)
+    expect(span(dragSpan(W.from, W.to, frac(W, 9, 7), frac(W, 10, 52), LATE))).toBe('9:00–10:45')
+    expect(span(dragSpan(W.from, W.to, frac(W, 9, 8), frac(W, 10, 53), LATE))).toBe('9:15–11:00')
+  })
+
+  it('is the same span dragged upwards', () => {
+    expect(dragSpan(W.from, W.to, frac(W, 16), frac(W, 14, 30), LATE)).toEqual(
+      dragSpan(W.from, W.to, frac(W, 14, 30), frac(W, 16), LATE),
+    )
+    expect(span(dragSpan(W.from, W.to, frac(W, 16), frac(W, 14, 30), LATE))).toBe('14:30–16:00')
+  })
+
+  it('stops at the edges of the day when the pointer goes past them', () => {
+    const s = dragSpan(W.from, W.to, -0.2, frac(W, 1), LATE)
+    expect(s?.fromMs).toBe(W.from)
+    const e = dragSpan(W.from, W.to, frac(W, 23), 1.4, LATE)
+    expect(e?.toMs).toBe(W.to)
+  })
+
+  it('is no span at all under a quarter of an hour, so it stays a tap', () => {
+    expect(dragSpan(W.from, W.to, frac(W, 9), frac(W, 9, 5), LATE)).toBeNull()
+    expect(dragSpan(W.from, W.to, frac(W, 9), frac(W, 9), LATE)).toBeNull()
+  })
+
+  it('never runs into the future', () => {
+    /* now is 14:10 on that day: a drag from 13:00 to 15:00 ends at 14:10 */
+    const now = new Date(2026, 10, 10, 14, 10).getTime()
+    const s = dragSpan(W.from, W.to, frac(W, 13), frac(W, 15), now)
+    expect(span(s)).toBe('13:00–14:10')
+    /* a sliver cut short by now is under a quarter hour, so it stays a tap: 9:00 to 9:10 */
+    const early = new Date(2026, 10, 10, 9, 10).getTime()
+    expect(dragSpan(W.from, W.to, frac(W, 9), frac(W, 9, 30), early)).toBeNull()
+    /* and one entirely after now is nothing */
+    expect(dragSpan(W.from, W.to, frac(W, 15), frac(W, 17), now)).toBeNull()
+  })
+
+  it('lands on the quarter hours on the days the clocks change', () => {
+    /* US clocks: back on 1 November 2026, a 25-hour day; forward on 14 March 2027, 23 hours */
+    for (const [y, m, d] of [
+      [2026, 10, 1],
+      [2027, 2, 14],
+    ]) {
+      const D = day(y, m, d)
+      expect(span(dragSpan(D.from, D.to, frac(D, 9, 7), frac(D, 10, 52), LATE * 2))).toBe(
+        '9:00–10:45',
+      )
+    }
   })
 })

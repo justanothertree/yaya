@@ -52,6 +52,9 @@ export type PreviewPerson = {
 }
 export const PREVIEW_PEOPLE: PreviewPerson[] = [
   { user_id: 'preview-jordan', username: 'jordan_b', name: 'Jordan', rel: 'friend' },
+  // a friend WITH a long conversation, where Jordan is a friend with none: the merged list has
+  // to show both, and a thread's height can only be judged with enough messages to overflow it
+  { user_id: 'preview-morgan', username: 'morgan_k', name: 'Morgan', rel: 'friend' },
   { user_id: 'preview-riley', username: 'Riley', name: 'Riley', rel: 'out' },
   { user_id: 'preview-alex', username: 'Alex', name: 'Alex', rel: 'in' },
   { user_id: 'preview-sam', username: 'Sam', name: 'Sam', rel: 'none' },
@@ -72,7 +75,13 @@ export const PREVIEW_ACTIVITY: {
   { kind: 'pool', actor: 'Jordan', subject: 'pv-crew', detail: 'Friday film' },
 ]
 
-export type PreviewRoom = { id: string; kind: string; name: string }
+export type PreviewRoom = {
+  id: string
+  kind: string
+  name: string
+  /** a DM's other person, as list_chat_overview returns it — what the friends list matches on */
+  peer_user_id?: string
+}
 export type PreviewMsg = {
   id: string
   room_id: string
@@ -85,8 +94,28 @@ export type PreviewMsg = {
 export const PREVIEW_ROOMS: PreviewRoom[] = [
   { id: 'pv-crew', kind: 'circuit', name: 'The Crew' },
   { id: 'pv-lounge', kind: 'lounge', name: 'The Lounge' },
-  { id: 'pv-dm', kind: 'dm', name: 'Alex' },
+  // Alex has only ASKED to be friends, so this is a DM with a non-friend: it must stay reachable
+  // as a conversation without being offered the things only friends get
+  { id: 'pv-dm', kind: 'dm', name: 'Alex', peer_user_id: 'preview-alex' },
+  { id: 'pv-dm-morgan', kind: 'dm', name: 'Morgan', peer_user_id: 'preview-morgan' },
 ]
+
+/**
+ * The harness's open_dm: the room you already have with this friend, or a new empty one.
+ *
+ * ⚠️ IN THE SERVER'S OWN WORDS, because a double that is kinder than the server hides bugs:
+ * open_dm refuses anybody who is not an accepted friend, so this does too — null, where the real
+ * call raises.
+ */
+export function previewOpenDm(username: string): string | null {
+  const p = PREVIEW_PEOPLE.find((x) => x.username === username)
+  if (!p || p.rel !== 'friend') return null
+  const have = PREVIEW_ROOMS.find((r) => r.kind === 'dm' && r.peer_user_id === p.user_id)
+  if (have) return have.id
+  const id = 'pv-dm-' + p.username
+  PREVIEW_ROOMS.push({ id, kind: 'dm', name: p.name, peer_user_id: p.user_id })
+  return id
+}
 
 const t = (minsAgo: number) => new Date(Date.now() - minsAgo * 60000).toISOString()
 
@@ -114,6 +143,7 @@ export function previewOverview(): {
   last_author: string | null
   last_at: string | null
   unread: number
+  peer_user_id?: string
 }[] {
   return PREVIEW_ROOMS.filter((r) => r.kind !== 'lounge' || PREVIEW_LOUNGE_IN)
     .map((r) => {
@@ -245,6 +275,18 @@ export const previewMsgs = (): Record<string, PreviewMsg[]> =>
         created_at: t(38),
       },
     ],
+    // long on purpose: enough to overflow any thread, so its height is something you can see
+    'pv-dm-morgan': Array.from({ length: 40 }, (_, i) => ({
+      id: 'm' + i,
+      room_id: 'pv-dm-morgan',
+      user_id: i % 3 === 1 ? PREVIEW_ME.id : 'preview-morgan',
+      author_name: i % 3 === 1 ? 'Preview You' : 'Morgan',
+      body:
+        i % 7 === 0
+          ? `message ${i + 1}: a longer one, the kind that wraps onto a second line on a phone and shows how wide a bubble is allowed to get`
+          : `message ${i + 1}`,
+      created_at: t(600 - i * 9),
+    })),
   })
 
 /**

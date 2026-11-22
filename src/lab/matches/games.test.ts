@@ -25,7 +25,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   fences: [{}, { size: 7 }, { size: 9, level: 'hard' }],
   halma: [{}, { level: 'hard' }],
   go: [{}, { level: 'hard' }],
-  fox: [{}, { level: 'hard' }],
+  fox: [{}, { level: 'hard' }, { side: 'geese' }, { side: 'fox' }],
   cube: [{}, { level: 'hard' }],
   artillery: [{}, { level: 'hard' }],
   bowling: [{}, { level: 'hard' }],
@@ -69,7 +69,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   fences: [{ size: 8 }, { size: '9' }, { size: 11 }],
   halma: [],
   go: [],
-  fox: [],
+  fox: [{ side: 'goose' }, { side: 'Fox' }, { side: 1 }],
   cube: [],
   artillery: [],
   bowling: [],
@@ -132,5 +132,22 @@ describe('the match toys', () => {
 
   it('all offer the levels a profile’s challenge lists without loading the rules', () => {
     for (const toy of Object.values(MATCH_TOYS)) expect(toy.levels).toEqual(MATCH_LEVELS)
+  })
+})
+
+describe('a rematch', () => {
+  it('swaps the sides of Fox and geese, whoever asks for it, and keeps every other toy’s settings', () => {
+    const fox = MATCH_TOYS.fox.rematch!
+    // the challenger had the geese: asking again they take the fox, and the friend asking takes the geese
+    expect(fox({ you: 0, mode: 'versus', settings: {} })).toEqual({ side: 'fox' })
+    expect(fox({ you: 1, mode: 'versus', settings: {} })).toEqual({ side: 'geese' })
+    expect(fox({ you: 0, mode: 'versus', settings: { side: 'fox' } })).toEqual({ side: 'geese' })
+    expect(fox({ you: 1, mode: 'versus', settings: { side: 'fox' } })).toEqual({ side: 'fox' })
+    // together the team plays the geese either way
+    expect(fox({ you: 1, mode: 'together', settings: { level: 'hard' } })).toEqual({
+      level: 'hard',
+    })
+    for (const [demo, toy] of Object.entries(MATCH_TOYS))
+      if (demo !== 'fox') expect(toy.rematch).toBeUndefined()
   })
 })

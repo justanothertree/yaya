@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-16-lab-gin-by-turns.DRAFT.sql: back to the list before Gin rummy.
+-- ROLLBACK for docs/applied/2026-11-16-lab-gin-by-turns.DRAFT.sql: back to the list before Gin rummy.
 -- Gin rummy matches already open stay readable and finishable; only new challenges are refused.
 create or replace function public.lab_match_playable(p_demo text)
 returns boolean

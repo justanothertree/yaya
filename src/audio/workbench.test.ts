@@ -34,6 +34,7 @@ const layer = (over: Partial<Layer> = {}): Layer => ({
   fx,
   /* ⚠️ an empty bar between two lines, so a writer that closed the gap would move the words */
   lyrics: ['one two', '', 'three'],
+  wordsGain: 1.6,
   events: [
     { t: 0, midi: 36, on: true },
     { t: 0.25, midi: 36, on: false },
@@ -52,6 +53,7 @@ const bench = (over: Partial<Bench> = {}): Bench => ({
       id: 'take-a',
       at: 3.25,
       muted: true,
+      gain: 0.55,
       fx: { tone: -0.4, squeeze: 0.7, double: 0.3, echo: 0.2, echoTime: 0.45, space: 0.6 },
       chop: { shape: 'tremolo', rate: 16, amount: 0.65 },
     },
@@ -81,6 +83,7 @@ describe('a bench survives a reload', () => {
     expect(l.plan).toEqual([0, null, 1, 0])
     expect(l.fx).toEqual(fx)
     expect(l.lyrics, 'the words a reload would otherwise lose').toEqual(['one two', '', 'three'])
+    expect(l.wordsGain, 'and how loud they are sung').toBe(1.6)
     /* the notes, as pitches and moments rather than as a count */
     expect(l.events.filter((e) => e.on).map((e) => e.midi)).toEqual([36, 38])
     expect(l.events.filter((e) => e.on).map((e) => e.t)).toEqual([0, 1])
@@ -98,6 +101,7 @@ describe('a bench survives a reload', () => {
     expect(t.id).toBe('take-a')
     expect(t.at).toBe(3.25)
     expect(t.muted).toBe(true)
+    expect(t.gain, 'its volume, which a reload used to put back at 1').toBe(0.55)
     expect(t.fx).toEqual({
       tone: -0.4,
       squeeze: 0.7,

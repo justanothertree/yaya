@@ -103,6 +103,7 @@ describe('a song survives being written down', () => {
           plan: [1, null, 0, 2],
           /* ⚠️ a gap in the middle, so a reader that dropped empty lines would move the words */
           lyrics: ['glit-ter in the', '', 'dark _ to-night'],
+          wordsGain: 0.45,
           fx: { echo: 0.5, echoTime: 0.3, space: 0.2, vibrato: 0.1, glide: 0.4, tone: 0.8 },
           events: [
             { t: 0, midi: 41, on: true },
@@ -120,6 +121,7 @@ describe('a song survives being written down', () => {
         play: a.play,
         plan: a.plan,
         lyrics: a.lyrics,
+        wordsGain: a.wordsGain,
       },
       'the fixture itself has to be off its defaults or this test proves nothing',
     ).toEqual({
@@ -129,6 +131,7 @@ describe('a song survives being written down', () => {
       play: [true, false, true],
       plan: [1, null, 0, 2],
       lyrics: ['glit-ter in the', '', 'dark _ to-night'],
+      wordsGain: 0.45,
     })
 
     const b = readSong(packSong(loud))!.layers[0]
@@ -139,12 +142,27 @@ describe('a song survives being written down', () => {
     expect(b.plan, 'plan').toEqual(a.plan)
     expect(b.fx.tone, 'tone').toBeCloseTo(0.8, 2)
     expect(b.lyrics, 'lyrics — a bar with no words keeps its place').toEqual(a.lyrics)
+    expect(b.wordsGain, 'how loud the words are sung').toBeCloseTo(0.45, 2)
 
     const l = songToLayers(readSong(packSong(loud))!)[0]
     expect(
-      { muted: l.muted, gain: l.gain, play: l.play, plan: l.plan, lyrics: l.lyrics },
+      {
+        muted: l.muted,
+        gain: l.gain,
+        play: l.play,
+        plan: l.plan,
+        lyrics: l.lyrics,
+        wordsGain: l.wordsGain,
+      },
       'the last step before the looper used to drop gain and plan',
-    ).toEqual({ muted: a.muted, gain: a.gain, play: a.play, plan: a.plan, lyrics: a.lyrics })
+    ).toEqual({
+      muted: a.muted,
+      gain: a.gain,
+      play: a.play,
+      plan: a.plan,
+      lyrics: a.lyrics,
+      wordsGain: a.wordsGain,
+    })
   })
 
   it('and the notes land where they were', () => {
