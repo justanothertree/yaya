@@ -1,4 +1,4 @@
--- READ-ONLY CHECKS for docs/2026-11-14-card-hides-browsing.DRAFT.sql, to run against production.
+-- READ-ONLY CHECKS for docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql, to run against production.
 --
 -- Everything below runs inside a read-only transaction and ends with ROLLBACK, so even a mistake in
 -- it cannot write. Run the whole file in the Supabase SQL editor, or with psql. Each block says

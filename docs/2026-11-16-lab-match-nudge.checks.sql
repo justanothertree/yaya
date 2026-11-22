@@ -1,4 +1,4 @@
--- READ-ONLY CHECKS for docs/2026-11-16-lab-match-nudge.DRAFT.sql, to run against production.
+-- READ-ONLY CHECKS for docs/applied/2026-11-16-lab-match-nudge.DRAFT.sql, to run against production.
 --
 -- Each block runs in a transaction that ends with ROLLBACK, so nothing here can write. If any
 -- answer differs from what the block expects, stop: do not apply the draft (block A), or apply the

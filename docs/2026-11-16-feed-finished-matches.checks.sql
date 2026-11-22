@@ -1,4 +1,4 @@
--- READ-ONLY CHECKS for docs/2026-11-16-feed-finished-matches.DRAFT.sql, to run against production.
+-- READ-ONLY CHECKS for docs/applied/2026-11-16-feed-finished-matches.DRAFT.sql, to run against production.
 --
 -- Everything below runs inside a read-only transaction and ends with ROLLBACK, so even a mistake in
 -- it cannot write. Run block A before applying and block B after; if any answer differs from what

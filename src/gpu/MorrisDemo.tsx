@@ -20,11 +20,16 @@ import {
   type Who,
 } from './morris'
 import { useKept } from './kept'
-import { morrisRules } from './morrisRoom'
+import { morrisRules, type MorrisGame } from './morrisRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -108,35 +113,53 @@ export function MorrisDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A move
+     shows at once and waits for Send; the server plays it and the board comes back. */
+  const lm = useLabMatch('morris')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as MorrisGame | null) : null
+
   /* ── the call's room: the game travels as its moves, replayed by morris.ts itself */
   const lab = useLabRoom('morris', morrisRules)
   const words = tableSeats(lab, morrisRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
   /** the side I move for: the first in seat 0 and together, the second in seat 1 */
   const mySide: Who = room && room.mode === 'versus' && words.mySeat === 1 ? 2 : 1
   /** the board on screen: the call's in a call, else this one */
-  const view = room ? room.game.g : game
-  const viewLast = room ? room.game.last : last
+  const view = matchGame ? matchGame.g : room ? room.game.g : game
+  const viewLast = matchGame ? matchGame.last : room ? room.game.last : last
 
   const all = moves(view)
-  const yours = room
-    ? lab.live && myTurn(morrisRules, room)
-    : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === you)
-  const computerTurn = mode === 'bot' && !game.winner && game.turn !== you
+  const yours = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(morrisRules, room)
+      : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === you)
+  const computerTurn = mode === 'bot' && !inMatch && !game.winner && game.turn !== you
   const nameOf = (w: Who) =>
-    room
-      ? room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 1
-          ? 'Together'
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[w - 1])
-      : mode === 'bot'
-        ? w === you
+        : w - 1 === lm.view.you
           ? 'You'
-          : 'The computer'
-        : w === 1
-          ? 'Light'
-          : 'Dark'
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? w === 1
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[w - 1])
+        : mode === 'bot'
+          ? w === you
+            ? 'You'
+            : 'The computer'
+          : w === 1
+            ? 'Light'
+            : 'Dark'
   const placing = view.hand[view.turn] > 0
   const flying = !placing && count(view, view.turn) === 3
 
@@ -174,6 +197,11 @@ export function MorrisDemo() {
 
   /** a whole move, made: here, or in the call, where the host decides and the board comes back */
   const make = (m: Move) => {
+    if (inMatch) {
+      setPicked(null)
+      setPending(null)
+      return void lm.play(m)
+    }
     if (!room) return apply(m)
     setPicked(null)
     setPending(null)
@@ -272,9 +300,17 @@ export function MorrisDemo() {
     refs.current[next]?.focus()
   }
 
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
+
   const record = saved.record[saved.level]
   /** what the line says: the toy's own words, or in a call only a mill's question */
-  const lead = mode === 'call' ? (pending ? 'A mill! Pick one of their men to take.' : '') : line
+  const lead =
+    mode === 'call' || inMatch ? (pending ? 'A mill! Pick one of their men to take.' : '') : line
   /** where you are in your move, when it is yours */
   const stage =
     yours && !pending && !view.winner
@@ -288,60 +324,66 @@ export function MorrisDemo() {
       : null
   return (
     <div className={`lab-keys mo-room is-${saved.board} pieces-${saved.pieces}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['light', 'dark']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                setMode('call')
-                setPicked(null)
-                setPending(null)
-              }}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
             </button>
-          )}
-        </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
               <button
-                key={l}
                 className="btn btn-ghost"
-                aria-pressed={saved.level === l}
+                aria-pressed={mode === 'call'}
                 onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (!game.board.some((x) => x) || game.winner) fresh(mode, l)
+                  setMode('call')
+                  setPicked(null)
+                  setPending(null)
                 }}
               >
-                {LEVEL_NAMES[l]}
+                👥 With the call
               </button>
-            ))}
+            )}
           </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (!game.board.some((x) => x) || game.winner) fresh(mode, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
+            </button>
+          )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge demo="morris" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
+        </div>
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={morrisRules}
@@ -446,7 +488,8 @@ export function MorrisDemo() {
           )
         })}
       </div>
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
