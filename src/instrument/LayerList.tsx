@@ -76,6 +76,25 @@ const BEATS_PER_BAR = 4
  * remembered on this device, because it is a way of working rather than a property of a song.
  */
 const SNAP_KEY = 'inst.snap.v1'
+
+/**
+ * Where a take was moved to, written onto its recording once the moving stops (setTakePlace).
+ *
+ * ⚠️ NOT ON EVERY MOVE. Writing it rewrites the whole stored row, recording included, and an arrow
+ * key held down repeats about thirty times a second. The loop itself has the place at once — this
+ * is only the memory that brings it back after it is taken off the song and put on again.
+ */
+const placing = new Map<string, number>()
+function keepPlace(id: string, at: number) {
+  window.clearTimeout(placing.get(id))
+  placing.set(
+    id,
+    window.setTimeout(() => {
+      placing.delete(id)
+      void setTakePlace(id, at)
+    }, 400),
+  )
+}
 const snapAtFirst = () => {
   try {
     return localStorage.getItem(SNAP_KEY) !== '0'
@@ -198,13 +217,15 @@ export function LayerList({
     el.addEventListener('scroll', follow, true)
     return () => el.removeEventListener('scroll', follow, true)
   }, [])
-  /* a part that arrives, or a ruler that appears, starts where the others already are */
+  /* a part, a take or the words that arrive, or a ruler that appears, start where the others
+     already are — a take's row arriving at 0 beside rows scrolled to bar 9 would draw its clip under
+     the wrong bars */
   useEffect(() => {
     const strips = list.current?.querySelectorAll<HTMLElement>(BAR_STRIPS)
     if (!strips?.length) return
     const x = Math.max(...Array.from(strips, (s) => s.scrollLeft))
     for (const s of strips) if (s.scrollLeft !== x) s.scrollLeft = x
-  }, [loop.layers.length, loop.bars])
+  }, [loop.layers.length, loop.bars, loop.takes.length, anyWords])
 
   /**
    * ⚠️ THE BARS FILL THE STRIP, SO THE LIST IS A TIMELINE — Evan, 21 Nov 2026. A bar was a 12px
@@ -803,18 +824,26 @@ function TakeClip({
   scale: Scale
   snap: boolean
 }) {
-  const [drag, setDrag] = useState<{ x0: number; to: number } | null>(null)
+  /**
+   * Where the pointer went down, in a ref rather than in state: the move and the release are worked
+   * out from it and from where the pointer is NOW, so a release that arrives before the last move
+   * has been drawn still lands where the pointer let go. Only the picture of the move is state.
+   */
+  const startX = useRef<number | null>(null)
+  const [moving, setMoving] = useState<number | null>(null)
   const sound = takeSound(id)
-  const shown = drag ? drag.to : at
+  const shown = moving ?? at
   const secs = heardFor(shown, sound?.duration ?? 0, song.len)
   const width = Math.max(6, xAt(secs, scale))
   const put = (to: number) => {
     if (to === at) return
     moveTake(id, to)
-    void setTakePlace(id, to)
+    keepPlace(id, to)
   }
   /* Alt places it freely for one move, the way most music programs do */
   const snapping = (e: { altKey: boolean }) => snap && !e.altKey
+  const goes = (e: PointerEvent<HTMLButtonElement>) =>
+    dragTo(at, e.clientX - (startX.current ?? e.clientX), { ...song, snap: snapping(e), scale })
   const down = (e: PointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0) return
     try {
@@ -822,17 +851,22 @@ function TakeClip({
     } catch {
       /* a pointer the browser does not count as live — the move still works inside the clip */
     }
-    setDrag({ x0: e.clientX, to: at })
+    startX.current = e.clientX
+    setMoving(at)
   }
   const move = (e: PointerEvent<HTMLButtonElement>) => {
-    if (!drag) return
-    const to = dragTo(at, e.clientX - drag.x0, { ...song, snap: snapping(e), scale })
-    if (to !== drag.to) setDrag({ ...drag, to })
+    if (startX.current !== null) setMoving(goes(e))
   }
-  const up = () => {
-    if (!drag) return
-    put(drag.to)
-    setDrag(null)
+  const up = (e: PointerEvent<HTMLButtonElement>) => {
+    if (startX.current === null) return
+    const to = goes(e)
+    startX.current = null
+    setMoving(null)
+    put(to)
+  }
+  const cancel = () => {
+    startX.current = null
+    setMoving(null)
   }
   const key = (e: KeyboardEvent<HTMLButtonElement>) => {
     const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
@@ -844,7 +878,7 @@ function TakeClip({
   }
   return (
     <button
-      className={'inst-take-clip' + (drag ? ' is-moving' : '')}
+      className={'inst-take-clip' + (moving !== null ? ' is-moving' : '')}
       style={{ left: xAt(shown, scale), width }}
       role="slider"
       aria-label={`Take ${n}, where it plays`}
@@ -860,10 +894,10 @@ function TakeClip({
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
-      onPointerCancel={() => setDrag(null)}
+      onPointerCancel={cancel}
       onKeyDown={key}
     >
-      <TakeWave sound={sound} width={width} />
+      <TakeWave sound={sound} secs={secs} width={width} />
     </button>
   )
 }
@@ -875,7 +909,16 @@ function TakeClip({
  * ⚠️ DRAWN WHEN THE SOUND OR THE WIDTH CHANGES, never on the transport's tick: `peaks` looks at
  * every sample (see takeEdit.ts) and the list re-renders forty times a second while the song plays.
  */
-function TakeWave({ sound, width }: { sound: AudioBuffer | undefined; width: number }) {
+function TakeWave({
+  sound,
+  secs,
+  width,
+}: {
+  sound: AudioBuffer | undefined
+  /** how much of it is heard, from its start: all of it, unless the pass ends first */
+  secs: number
+  width: number
+}) {
   const ref = useRef<HTMLCanvasElement | null>(null)
   const w = Math.max(1, Math.round(width))
   useEffect(() => {
@@ -890,7 +933,10 @@ function TakeWave({ sound, width }: { sound: AudioBuffer | undefined; width: num
     g.clearRect(0, 0, c.width, c.height)
     if (!sound) return
     const cols = c.width
-    const p = peaks(sound.getChannelData(0), cols)
+    /* ⚠️ only what is heard, across the width that stands for it. A take cut where the pass ends is
+       drawn as long as what plays; squeezing the whole recording into that would put every word
+       to the left of where it is heard */
+    const p = peaks(sound.getChannelData(0), cols, 0, Math.round(secs * sound.sampleRate))
     const mid = c.height / 2
     g.fillStyle = getComputedStyle(c).color
     for (let i = 0; i < cols; i++) {
@@ -898,7 +944,7 @@ function TakeWave({ sound, width }: { sound: AudioBuffer | undefined; width: num
       const hi = Math.min(1, p[i * 2 + 1])
       g.fillRect(i, mid - hi * mid, 1, Math.max(1, (hi - lo) * mid))
     }
-  }, [sound, w])
+  }, [sound, secs, w])
   return <canvas ref={ref} className="inst-take-wave" style={{ width: w }} aria-hidden />
 }
 

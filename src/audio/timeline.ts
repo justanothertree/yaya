@@ -75,7 +75,10 @@ export function moveBy(from: number, by: number, o: Song & { snap: boolean }): n
     const last = o.len - o.beat
     /* the furthest whole beats it can go either way, with a hair of slack so 3.0 / 0.5 counts as 6 */
     const back = -Math.floor(from / o.beat + 1e-6)
-    const on = Math.floor((last - from) / o.beat + 1e-6)
+    /* ⚠️ never below 0: a take already inside the last beat (placed there with Snap off, or punched
+       in that late) has no whole beat left to move on, and a negative bound here forced every move
+       to the right one beat to the LEFT */
+    const on = Math.max(0, Math.floor((last - from) / o.beat + 1e-6))
     const k = Math.max(back, Math.min(on, Math.round(by / o.beat)))
     return ms(Math.max(0, from + k * o.beat))
   }

@@ -90,6 +90,14 @@ describe('dragging a recording', () => {
     expect(heardFor(free, 2, song.len)).toBeCloseTo(MIN_HEARD, 9)
   })
 
+  it('already in the last beat, moving it on leaves it where it is rather than pulling it back', () => {
+    /* put at 7.95 with Snap off, then Snap turned on: there is no whole beat left to the right */
+    expect(moveBy(7.95, 0.5, { ...song, snap: true })).toBe(7.95)
+    expect(dragTo(7.6, 5, { ...song, snap: true, scale })).toBe(7.6)
+    /* and it still moves back a beat when asked to */
+    expect(moveBy(7.6, -0.5, { ...song, snap: true })).toBe(7.1)
+  })
+
   it('a sound at the top moves onto the beats themselves', () => {
     const at = dragTo(0, 270, { ...song, snap: true, scale })
     /* 270px is 5.4s: the nearest beat */
