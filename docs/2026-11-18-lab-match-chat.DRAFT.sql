@@ -10,8 +10,9 @@
 --                                     control characters; twenty a minute, five hundred a match
 --   lab_match_lines(p_match, p_after) the lines after id p_after, oldest first, the last 100 at most
 --
--- A LIVE GAME IN A CALL keeps nothing: its chat travels on the call's own channel like every other
--- live message, and is shown only to the two seated players (src/lab/social). This is only for the
+-- A LIVE GAME IN A CALL has no chat of its own and none of this: it uses the call's chat
+-- (src/voice/CallChat.tsx in the call dock; the table's "Call chat" opens it), which everybody in
+-- the call reads and which a DM or circuit call keeps in that conversation. This is only for the
 -- matches by turns, where the two players are rarely on the page at once, so a line has to wait.
 --
 -- ⚠️ THE TABLE'S GRANTS ARE REVOKED, NOT LEFT OFF: the schema's default ACL hands anon and

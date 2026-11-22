@@ -3,15 +3,15 @@ import { createPortal } from 'react-dom'
 import { LINE_MAX } from './chat'
 
 /** one line as the HUD shows it: who said it, whether it was you, and what */
-export type HudLine = { key: string | number; who: string; mine: boolean; text: string }
+type HudLine = { key: string | number; who: string; mine: boolean; text: string }
 
 /* ⚠️ WIDE, IT FLOATS; NARROW, IT SITS IN THE PAGE. The snake games' chat is a fixed panel in the
    corner, which on a phone covers the bottom of a board game's board — the one part of a Lab toy
    you cannot afford to lose. So below the grid's own breakpoint (700px, CLAUDE.md §6) it is in the
-   flow under the match bar or the table, and from there up it floats like the snake games' — in
-   the right-hand corner, since a wide page's board sits on the left — over the call dock when
-   there is one. Portalled when floating: a transformed ancestor (every room's
-   .reveal) would otherwise make `fixed` mean "fixed to the room". */
+   flow under the match bar, and from there up it floats like the snake games' — in the right-hand
+   corner, since a wide page's board sits on the left — over the call dock when there is one (a
+   match by turns can be open during a call). Portalled when floating: a transformed ancestor
+   (every room's .reveal) would otherwise make `fixed` mean "fixed to the room". */
 const WIDE = '(min-width: 700px)'
 const wideNow = () => window.matchMedia(WIDE).matches
 const onWide = (fn: () => void) => {
@@ -21,25 +21,27 @@ const onWide = (fn: () => void) => {
 }
 
 /**
- * The chat for a match, the same on every multiplayer toy, by turns or live in a call: the lines
- * so far and a box to write in. It is faded until something happens — a line arriving, you typing,
- * the pointer on it — and never fully invisible, as the snake games' is. What travels, who may
- * read it and what is kept is the caller's business (useMatchChat by turns, CallChat live).
+ * The chat for a match by turns, the same on every toy that has them: the lines so far and a box
+ * to write in. It is faded until something happens — a line arriving, you typing, the pointer on
+ * it — and never fully invisible, as the snake games' is. What travels, who may read it and what
+ * is kept is the caller's business (MatchBar, with useMatchChat). A live game in a call has no
+ * chat of its own and uses the call's (src/lab/social/CallChatButton.tsx).
  */
 export function ChatHud({
   lines,
   onSend,
   label,
   error,
-  busy = false,
+  busy,
   empty,
 }: {
   lines: HudLine[]
   /** send a line: true once it has gone, so the box is cleared only then */
-  onSend: (text: string) => Promise<boolean> | boolean
+  onSend: (text: string) => Promise<boolean>
   label: string
   error?: string | null
-  busy?: boolean
+  /** a line is on its way: Send waits for it */
+  busy: boolean
   /** what the log says before anybody has said anything */
   empty: string
 }) {

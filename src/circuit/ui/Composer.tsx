@@ -13,9 +13,12 @@ import { useState } from 'react'
 export function Composer({
   placeholder,
   onSend,
+  autoFocus = false,
 }: {
   placeholder: string
   onSend: (text: string) => Promise<string | null>
+  /** take the focus on mounting: the call's panel, when it was opened from somewhere far from it */
+  autoFocus?: boolean
 }) {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -42,6 +45,7 @@ export function Composer({
       )}
       <form className="cz-chat-form" onSubmit={(e) => void submit(e)}>
         <input
+          autoFocus={autoFocus}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={placeholder}

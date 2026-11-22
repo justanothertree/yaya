@@ -1,15 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  LINE_MAX,
-  LIVE_BURST,
-  LIVE_WINDOW_MS,
-  cleanLine,
-  mayTalk,
-  mergeLines,
-  readLine,
-  readLiveLine,
-  type ChatLine,
-} from './chat'
+import { LINE_MAX, cleanLine, mergeLines, readLine, type ChatLine } from './chat'
 
 const line = (id: number, over: Partial<ChatLine> = {}): ChatLine => ({
   id,
@@ -64,34 +54,5 @@ describe('a chat line', () => {
     expect(kept).toHaveLength(100)
     expect(kept[0].id).toBe(51)
     expect(kept.at(-1)!.id).toBe(150)
-  })
-})
-
-describe('a live line, on the call’s channel', () => {
-  it('is for one toy, carries the text and nothing else', () => {
-    expect(readLiveLine({ sub: 'chess', text: 'nice' }, 'chess')).toBe('nice')
-    for (const bad of [
-      { sub: 'reversi', text: 'nice' },
-      { sub: 'chess' },
-      { sub: 'chess', text: 'nice', name: 'Ann' },
-      { sub: 'chess', text: ' padded ' },
-      { sub: 'chess', text: 'x'.repeat(301) },
-      null,
-    ])
-      expect(readLiveLine(bad, 'chess'), JSON.stringify(bad)).toBeNull()
-  })
-
-  it('goes at most five in four seconds, as the snake games’ relay allows', () => {
-    expect([LIVE_BURST, LIVE_WINDOW_MS]).toEqual([5, 4000])
-    let times: number[] = []
-    const sent: boolean[] = []
-    for (let i = 0; i < 8; i++) {
-      const r = mayTalk(times, i * 100)
-      times = r.times
-      sent.push(r.ok)
-    }
-    expect(sent).toEqual([true, true, true, true, true, false, false, false])
-    // once the first has aged out of the window, one more may go
-    expect(mayTalk(times, 4000).ok).toBe(true)
   })
 })

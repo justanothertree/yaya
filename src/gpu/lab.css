@@ -7026,9 +7026,9 @@ html:has(.lab) {
   font-weight: 600;
 }
 
-/* ── a match's chat (src/lab/matches/ChatHud.tsx), by turns and live in a call alike ───────────
-   In the page on a phone, under the match bar or the table; floating in the corner from 700px up,
-   like the snake games' chat, and faded there until something happens. */
+/* ── a match's chat by turns (src/lab/matches/ChatHud.tsx); a live game uses the call's ─────────
+   In the page on a phone, under the match bar; floating in the corner from 700px up, like the
+   snake games' chat, and faded there until something happens. */
 .lab-chat {
   display: flex;
   flex-direction: column;
@@ -7107,4 +7107,19 @@ html:has(.lab) {
 .lab-chat-error {
   margin: 0;
   font-size: 0.8rem;
+}
+
+/* ⚠️ A LIVE GAME'S CHAT IS THE CALL'S (src/voice/CallChat.tsx, opened from the table by
+   CallChatButton.tsx), AND ON A PHONE IT HID THE BOARD. The dock's panel is sized to all the room
+   above the dock — at 375×667 about 352px wide from just under the nav down to the dock, with the
+   board entirely under it until its ✕ — which suits a page you are only reading and not a game,
+   where the board is the one part you cannot afford to lose (why ChatHud sits in the flow below
+   700px). So on a page showing the Lab it takes the bottom part of that room only, and the board
+   can be scrolled into the part left above it. Floored in px (the root size is fluid) so a short
+   landscape phone still has a log to read; index.css's `height` keeps it under the room above the
+   dock either way, so this can only ever make it shorter. Below the width ChatHud floats at. */
+@media (max-width: 699.98px) {
+  html:has(.lab) .call-chat {
+    max-height: max(40dvh, 240px);
+  }
 }
