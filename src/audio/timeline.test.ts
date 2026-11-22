@@ -98,6 +98,14 @@ describe('dragging a recording', () => {
     expect(moveBy(7.6, -0.5, { ...song, snap: true })).toBe(7.1)
   })
 
+  it('past the end of a song made shorter since, any move brings it back in, on its own beat', () => {
+    /* placed at 7.12 in eight seconds, then the song cut to four: it plays nothing where it is */
+    const short = { ...song, len: 4 }
+    expect(moveBy(7.12, 0.5, { ...short, snap: true })).toBe(3.12)
+    expect(moveBy(7.12, -0.5, { ...short, snap: true })).toBe(3.12)
+    expect(heardFor(3.12, 2, short.len)).toBeGreaterThan(0)
+  })
+
   it('a sound at the top moves onto the beats themselves', () => {
     const at = dragTo(0, 270, { ...song, snap: true, scale })
     /* 270px is 5.4s: the nearest beat */

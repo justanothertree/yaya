@@ -27,7 +27,6 @@ import {
   type Layer,
   type loopState,
 } from '../audio/looper'
-import { setTakePlace } from '../audio/takes'
 import { peaks } from '../audio/takeEdit'
 import {
   dragTo,
@@ -78,24 +77,6 @@ const BEATS_PER_BAR = 4
  */
 const SNAP_KEY = 'inst.snap.v1'
 
-/**
- * Where a take was moved to, written onto its recording once the moving stops (setTakePlace).
- *
- * ⚠️ NOT ON EVERY MOVE. Writing it rewrites the whole stored row, recording included, and an arrow
- * key held down repeats about thirty times a second. The loop itself has the place at once — this
- * is only the memory that brings it back after it is taken off the song and put on again.
- */
-const placing = new Map<string, number>()
-function keepPlace(id: string, at: number) {
-  window.clearTimeout(placing.get(id))
-  placing.set(
-    id,
-    window.setTimeout(() => {
-      placing.delete(id)
-      void setTakePlace(id, at)
-    }, 400),
-  )
-}
 const snapAtFirst = () => {
   try {
     return localStorage.getItem(SNAP_KEY) !== '0'
@@ -205,38 +186,58 @@ export function LayerList({
    * causes is let go.
    */
   const list = useRef<HTMLDivElement | null>(null)
+  /** the scrolls this list set itself, so the events they cause are let go — see the note above */
+  const echoes = useRef(new WeakMap<HTMLElement, number>())
   useEffect(() => {
     const el = list.current
     if (!el) return
-    const echoes = new WeakMap<HTMLElement, number>()
     const follow = (e: Event) => {
       const from = e.target
       if (!(from instanceof HTMLElement) || !from.matches(BAR_STRIPS)) return
-      const echo = echoes.get(from)
-      echoes.delete(from)
+      const echo = echoes.current.get(from)
+      echoes.current.delete(from)
       if (echo === from.scrollLeft) return
       for (const s of el.querySelectorAll<HTMLElement>(BAR_STRIPS)) {
         if (s === from || s.scrollLeft === from.scrollLeft) continue
         s.scrollLeft = from.scrollLeft
         /* what it actually landed on, which a shorter strip clamps */
-        echoes.set(s, s.scrollLeft)
+        echoes.current.set(s, s.scrollLeft)
       }
     }
     /* scroll does not bubble, so it is caught on the way down */
     el.addEventListener('scroll', follow, true)
     return () => el.removeEventListener('scroll', follow, true)
   }, [])
-  /* a part, a take or the words that arrive, or a ruler that appears, start where the others
-     already are — a take's row arriving at 0 beside rows scrolled to bar 9 would draw its clip under
-     the wrong bars */
-  useEffect(() => {
+  /**
+   * Every strip to where the furthest one is — for a strip that arrives, or comes back from being
+   * hidden, which starts at 0 beside rows scrolled to bar 9 and draws its bars and clips under the
+   * wrong columns.
+   *
+   * ⚠️ ITS OWN SCROLLS ARE ECHOES TOO. A strip that arrives and clamps short of the others fires a
+   * scroll event; passed back by `follow`, it pulled a rearranged row's "all" out of reach.
+   */
+  const align = () => {
     const strips = list.current?.querySelectorAll<HTMLElement>(BAR_STRIPS)
     if (!strips?.length) return
     const x = Math.max(...Array.from(strips, (s) => s.scrollLeft))
-    for (const s of strips) if (s.scrollLeft !== x) s.scrollLeft = x
-    /* ⚠️ levelsOn too: the phone's volume view hides the bars, which drops their scroll, while the
-       ruler only goes invisible and keeps its own — so coming back they would disagree */
-  }, [loop.layers.length, loop.bars, loop.takes.length, anyWords, levelsOn])
+    for (const s of strips) {
+      const was = s.scrollLeft
+      if (was === x) continue
+      s.scrollLeft = x
+      if (s.scrollLeft !== was) echoes.current.set(s, s.scrollLeft)
+    }
+  }
+  /**
+   * ⚠️ KEYED ON WHICH ROWS THERE ARE, NOT HOW MANY. Words moved to another part, an undo that swaps
+   * the parts, or a song opened over one the same size all remount rows without changing a count —
+   * and a remounted strip starts at 0. The words ride on the part's key because their row moves
+   * with them. (And the bars coming back from the phone's volume view: see the fit below.)
+   */
+  const rows =
+    loop.layers.map((l) => l.id + (hasLyrics(l) ? '+words' : '')).join() +
+    '|' +
+    loop.takes.map((t) => t.id).join()
+  useEffect(align, [rows, loop.bars, levelsOn])
 
   /**
    * ⚠️ THE BARS FILL THE STRIP, SO THE LIST IS A TIMELINE — Evan, 21 Nov 2026. A bar was a 12px
@@ -269,12 +270,16 @@ export function LayerList({
       const cell = el.querySelector<HTMLElement>('.inst-bar-cell, .inst-ruler-cell')
       const next = (cell ? cell.getBoundingClientRect().width : w) + GAP
       setPitch((was) => (Math.abs(was - next) < 0.01 ? was : next))
+      /* ⚠️ and lined up, because a change of size is one of the ways the bars come back: turning a
+         phone on its side with 🎚 Volume on crosses 700px, the bars reappear, and nothing pressed
+         the button that would otherwise line them up */
+      align()
     }
     fit()
     const watch = new ResizeObserver(fit)
     watch.observe(el)
     return () => watch.disconnect()
-  }, [loop.bars, loop.layers.length, loop.takes.length, arranged, levelsOn])
+  }, [loop.bars, rows, arranged, levelsOn])
 
   /**
    * ⚠️ ONE PLAYHEAD, DOWN THROUGH EVERY ROW — the "one shared playhead" of the request. Each row's
@@ -842,7 +847,7 @@ function TakeRow({
  * ⚠️ THE MOVE IS SHOWN WHILE IT HAPPENS AND MADE WHEN IT ENDS. Moving the take on the loop at every
  * pixel would stop and restart its sound under the pointer the whole way across; it is moved once,
  * on release, and where it goes is kept on the recording too, so taking it off the loop and putting
- * it back returns it there (setTakePlace).
+ * it back returns it there (moveTake, and `owe` in looper.ts).
  *
  * ⚠️ AND THE CAPTURE IS ALLOWED TO FAIL. `setPointerCapture` throws for a pointer the browser does
  * not consider live — CLAUDE.md has it measured — and it is only there so a drag that leaves the
@@ -874,15 +879,20 @@ function TakeClip({
   const shown = moving ?? at
   const secs = heardFor(shown, sound?.duration ?? 0, song.len)
   const width = Math.max(6, xAt(secs, scale))
+  /* the take keeps its place on the recording itself — moveTake owes it that */
   const put = (to: number) => {
-    if (to === at) return
-    moveTake(id, to)
-    keepPlace(id, to)
+    if (to !== at) moveTake(id, to)
   }
   /* Alt places it freely for one move, the way most music programs do */
   const snapping = (e: { altKey: boolean }) => snap && !e.altKey
-  const goes = (e: PointerEvent<HTMLButtonElement>) =>
-    dragTo(at, e.clientX - (startX.current ?? e.clientX), { ...song, snap: snapping(e), scale })
+  /**
+   * Whether the move last drawn was snapped. ⚠️ THE RELEASE USES IT RATHER THAN ITS OWN Alt: letting
+   * go of Alt without moving fires no move, so the picture still shows the free place — and a
+   * release that asked Alt again landed it on a beat it was never drawn at.
+   */
+  const snapped = useRef(snap)
+  const goes = (x: number) =>
+    dragTo(at, x - (startX.current ?? x), { ...song, snap: snapped.current, scale })
   const down = (e: PointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0) return
     try {
@@ -891,14 +901,17 @@ function TakeClip({
       /* a pointer the browser does not count as live — the move still works inside the clip */
     }
     startX.current = e.clientX
+    snapped.current = snapping(e)
     setMoving(at)
   }
   const move = (e: PointerEvent<HTMLButtonElement>) => {
-    if (startX.current !== null) setMoving(goes(e))
+    if (startX.current === null) return
+    snapped.current = snapping(e)
+    setMoving(goes(e.clientX))
   }
   const up = (e: PointerEvent<HTMLButtonElement>) => {
     if (startX.current === null) return
-    const to = goes(e)
+    const to = goes(e.clientX)
     startX.current = null
     setMoving(null)
     put(to)

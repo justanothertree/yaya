@@ -6,6 +6,7 @@ import {
   muteTake,
   placeTake,
   setTakeGain,
+  settleTakes,
   subscribeLoop,
   takeChop,
   takeFx,
@@ -388,7 +389,13 @@ async function putTakesBack(takes: PlacedTake[]) {
       carried = carried.filter((c) => c.id !== t.id)
       if (t.fx) takeFx(t.id, t.fx)
       if (t.chop) takeChop(t.id, t.chop)
-      if (t.gain !== undefined) setTakeGain(t.id, t.gain)
+      /* ⚠️ THE BENCH DECIDES, including at 100%, which it writes as no gain at all. A new placement
+         starts at the level its recording last kept, which can be older than the bench: a fader
+         moved back to 100% just before the page went away. Only a level that differs is set, so a
+         reload does not rewrite every recording it puts back. */
+      const want = t.gain ?? 1
+      if ((loopState().takes.find((p) => p.id === t.id)?.gain ?? 1) !== want)
+        setTakeGain(t.id, want)
       if (t.muted) muteTake(t.id)
       continue
     }
@@ -472,7 +479,11 @@ export function openWorkbench(onTrouble?: (t: BenchTrouble) => void): () => void
     /* ⚠️ pagehide rather than beforeunload, for the reason useVisits gives: it fires when a
        phone puts the browser away, which is the commonest way a session ends there — and a
        settling write that never landed is a part somebody loses. */
-    window.addEventListener('pagehide', flush)
+    window.addEventListener('pagehide', () => {
+      flush()
+      /* and what the placed takes' recordings are owed — their place and volume (looper, `owe`) */
+      settleTakes()
+    })
   }
   if (!restored) {
     restored = true

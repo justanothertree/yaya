@@ -5,7 +5,7 @@ import { chopEnvelope, stutterAt, NO_CHOP, type Chop } from './chop'
 import { fxSnapshot, noteOff, noteOn, SAFE_START, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
-import { getTake, setTakeLevel } from './takes'
+import { getTake, keepOnTake } from './takes'
 import { decodeTake } from './recordTake'
 import { followLastBar, growPlan, partAt, partsIn } from './arrange'
 import { tidyLyrics } from './lyricLines'
@@ -2230,26 +2230,46 @@ export function setTakeGain(id: string, gain: number) {
      stamped there begins in the past and lands half its distance in one sample */
   if (level) level.gain.setTargetAtTime(v, sharedCtx().currentTime + SAFE_START, 0.015)
   set({ takes: state.takes.map((t) => (t.id === id ? { ...t, gain: v } : t)) })
-  keepLevel(id, v)
+  owe(id, { gain: v })
 }
 
 /**
- * A take's volume, kept on its recording once the fader stops, so taking it off the song and
- * putting it back brings it back as loud as it was — as its place and its sound already come back.
+ * What a placed take's recording is owed: where it was moved and how loud it was set, written onto
+ * the recording once the moving stops (keepOnTake), so taking it off the song and putting it back
+ * brings it back as it was left — as its sound already comes back.
  *
- * ⚠️ NOT ON EVERY MOVE OF THE FADER: it rewrites the whole stored row, recording included, and a
- * slider dragged across its travel is dozens of changes. The loop has the value at once.
+ * ⚠️ NOT ON EVERY MOVE: a write rewrites the whole stored row, recording included, and a slider
+ * dragged across its travel or an arrow key held down is dozens of changes. The loop has every
+ * value at once; this is only the memory for after it.
+ *
+ * ⚠️ AND SETTLED BEFORE ANYTHING READS IT BACK, the rule keepSound in useTakes already keeps.
+ * Putting a take back reads its recording, so `settleTake` is awaited there first; and the page
+ * going away settles them all (`settleTakes`, from the bench's pagehide). Otherwise a take put
+ * back within the wait came back where it was before, and the late write then made the recording
+ * disagree with the loop.
  */
-const keeping = new Map<string, ReturnType<typeof setTimeout>>()
-function keepLevel(id: string, v: number) {
-  clearTimeout(keeping.get(id))
-  keeping.set(
-    id,
-    setTimeout(() => {
-      keeping.delete(id)
-      void setTakeLevel(id, v)
-    }, 400),
-  )
+const owed = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; songAt?: number; gain?: number }
+>()
+function owe(id: string, patch: { songAt?: number; gain?: number }) {
+  const was = owed.get(id)
+  if (was) clearTimeout(was.timer)
+  owed.set(id, { ...was, ...patch, timer: setTimeout(() => void settleTake(id), 400) })
+}
+
+/** Write what a take's recording is owed now, rather than when the moving stops. */
+export async function settleTake(id: string): Promise<void> {
+  const o = owed.get(id)
+  if (!o) return
+  owed.delete(id)
+  clearTimeout(o.timer)
+  await keepOnTake(id, { songAt: o.songAt, gain: o.gain })
+}
+
+/** Every take's owed write, now — the page is going away. */
+export function settleTakes() {
+  for (const id of [...owed.keys()]) void settleTake(id)
 }
 
 export function muteTake(id: string) {
@@ -2271,6 +2291,8 @@ export function moveTake(id: string, at: number) {
   if (!was || was.at === at) return
   hushTake(id)
   set({ takes: state.takes.map((t) => (t.id === id ? { ...t, at } : t)) })
+  /* and where it went is kept on the recording, so off the song and back on returns it here */
+  owe(id, { songAt: at })
 }
 
 /** The sound a placed take plays, as the loop holds it — for drawing it on the timeline. */

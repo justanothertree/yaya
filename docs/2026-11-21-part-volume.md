@@ -39,7 +39,12 @@ track, and each instrument part), shown on that timeline. It should be saved wit
   audio lives in this browser), so they don't carry a recording's volume either. That's unchanged.
 - **Taking a recording off the song and putting it back** brings it back as loud as it was. The
   volume is also kept on the recording itself, like its place and its sound. It's written once the
-  fader stops, not as it moves, because each write rewrites the stored recording.
+  fader stops, not as it moves, because each write rewrites the stored recording; settled before
+  the take is put back or the page goes away; and in one write with its place.
+- **On a reload the bench decides**, 100% included, because that is the level the take was last
+  left at. A new placement starts at whatever its recording last kept, which can be older: a fader
+  moved back to 100% just before the page went away. Only a level that differs is set, so a reload
+  does not rewrite every recording it puts back.
 
 ## Checked
 
@@ -80,3 +85,14 @@ An independent review before release found four things here, all fixed and check
 - **A words level changed by an undo or the jam was only heard from the next lap.** Changed at 30%
   into a lap without the fader, the rest of that lap peaked at 0.26 of the lap before, against
   0.94 before the change.
+
+### And after the verification pass
+
+A skeptic per fix found the reload half of the kept volume wrong: the bench writes 100% as no gain
+at all, the restore only set a gain it was given, and a new placement now starts at the
+recording's kept level. So a take turned down once, then put back to 100% just before the page
+went away, came back at the old level and wrote it into the bench. The bench now decides,
+including 100%. A test turns a take down on its recording, leaves it at 100% on the bench, and
+reloads; skipping the 100% case turns it red. The owed writes (place and volume) became one queue
+in looper.ts, settled before a take is put back and on pagehide, with four perturbations each
+turning the tests red.

@@ -45,7 +45,7 @@ const fake = vi.hoisted(() => {
 vi.mock('./context', () => ({ sharedCtx: () => fake.ctx, resumeAudio: () => {} }))
 vi.mock('./takeBus', () => ({ takeBus: () => ({}) }))
 /* the recordings store, remembering what is written to it the way IndexedDB would */
-const kept = vi.hoisted(() => new Map<string, { gain?: number }>())
+const kept = vi.hoisted(() => new Map<string, { gain?: number; songAt?: number }>())
 vi.mock('./takes', () => ({
   getTake: async (id: string) => ({
     id,
@@ -54,8 +54,11 @@ vi.mock('./takes', () => ({
     at: 0,
     ...kept.get(id),
   }),
-  setTakeLevel: async (id: string, gain: number) => {
-    kept.set(id, { ...kept.get(id), gain })
+  keepOnTake: async (id: string, patch: { gain?: number; songAt?: number }) => {
+    const next = { ...kept.get(id) }
+    if (patch.gain !== undefined) next.gain = patch.gain
+    if (patch.songAt !== undefined) next.songAt = patch.songAt
+    kept.set(id, next)
     return true
   },
   hasTake: async () => true,
@@ -68,8 +71,17 @@ vi.mock('./takeFx', async (actual) => ({
   makeVoiceChain: () => ({ in: {}, set: () => {}, dispose: () => {} }),
 }))
 
-const { liftTake, loadSong, loopState, moveLyrics, placeTake, setLayerWordsGain, setTakeGain } =
-  await import('./looper')
+const {
+  liftTake,
+  loadSong,
+  loopState,
+  moveLyrics,
+  moveTake,
+  placeTake,
+  setLayerWordsGain,
+  setTakeGain,
+  settleTake,
+} = await import('./looper')
 
 /* a take on the song, by name: loading a song keeps the takes, which sit beside its parts */
 const take = (id: string) => loopState().takes.find((t) => t.id === id)
@@ -130,11 +142,35 @@ describe("a recording's volume", () => {
     expect(fake.made[before].gain.value, 'and heard that way from its first note').toBe(0.3)
   })
 
+  it('put back straight after the fader moved, it comes back at the new level', async () => {
+    loadSong(120, 2, [])
+    await placeTake('take-d', 1)
+    setTakeGain('take-d', 0.7)
+    /* putting a take back settles what its recording is owed before reading it (useTakes, toLoop) */
+    await settleTake('take-d')
+    expect(kept.get('take-d')?.gain).toBe(0.7)
+    liftTake('take-d')
+    await placeTake('take-d', 1)
+    expect(take('take-d')?.gain).toBe(0.7)
+  })
+
   it('is nothing to set on a take that is not on the song', () => {
     const was = loopState().takes
     setTakeGain('nowhere', 0.5)
     expect(take('nowhere')).toBeUndefined()
     expect(loopState().takes).toBe(was)
+  })
+})
+
+describe('where a take was moved', () => {
+  it('is kept on its recording once the moving stops, so off the song and back on returns it there', async () => {
+    loadSong(120, 2, [])
+    await placeTake('take-m', 1)
+    moveTake('take-m', 2.5)
+    moveTake('take-m', 3)
+    expect(kept.get('take-m')?.songAt, 'not on every move').toBeUndefined()
+    await settleTake('take-m')
+    expect(kept.get('take-m')?.songAt).toBe(3)
   })
 })
 
@@ -176,12 +212,27 @@ describe('a reload', () => {
       removeItem: (k: string) => void disk.delete(k),
     })
     const { openWorkbench, packWork } = await import('./workbench')
-    const left = { bpm: 120, bars: 2, layers: [], takes: [{ id: 'take-r', at: 0.5, gain: 0.55 }] }
+    /* take-s was turned down once and kept that on its recording, then put back to 100% just
+       before the page went away: the bench says 100% (which it writes as no gain at all) */
+    kept.set('take-s', { gain: 0.3 })
+    const left = {
+      bpm: 120,
+      bars: 2,
+      layers: [],
+      takes: [
+        { id: 'take-r', at: 0.5, gain: 0.55 },
+        { id: 'take-s', at: 1, gain: 1 },
+      ],
+    }
     disk.set('inst_work_v1', JSON.stringify(packWork(left)))
     openWorkbench()
-    await new Promise((r) => setTimeout(r, 20))
+    await new Promise((r) => setTimeout(r, 30))
     expect(take('take-r')?.at).toBe(0.5)
     expect(take('take-r')?.gain, 'a reload used to put every take back at 1').toBe(0.55)
+    expect(
+      take('take-s')?.gain ?? 1,
+      'the bench decides, not an older level on the recording',
+    ).toBe(1)
     vi.unstubAllGlobals()
   })
 })

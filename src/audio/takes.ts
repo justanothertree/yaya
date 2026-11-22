@@ -107,7 +107,7 @@ export type TakeRow = {
   /**
    * Seconds into the song where this recording belongs: where the playhead was when it was sung
    * (punchIn.ts), written when the take is kept, and again wherever it is dragged on the timeline
-   * (`setTakePlace`). Absent for a recording made with the song stopped and for a file opened from
+   * (`keepOnTake`). Absent for a recording made with the song stopped and for a file opened from
    * disk until somebody moves it, which go to the top as they always did.
    *
    * ⚠️ NOT `at`, WHICH THIS ROW ALREADY HAS AND WHICH MEANS SOMETHING ELSE: `at` is when it was
@@ -121,7 +121,7 @@ export type TakeRow = {
   songAt?: number
   /**
    * How loud it was last set on the song, 0 to 2 — kept here for the same reason as `songAt`: so
-   * taking it off the song and putting it back does not reset its fader (setTakeLevel).
+   * taking it off the song and putting it back does not reset its fader (keepOnTake).
    */
   gain?: number
 }
@@ -316,28 +316,25 @@ export async function setTakeVoice(id: string, voice: VoiceFx | null): Promise<b
 }
 
 /**
- * Keep where this recording goes on the song, once it has been moved there by hand.
+ * Keep where this recording goes on the song and how loud, once they have been set by hand — so
+ * taking it off the song and putting it back brings it back as it was left (looper.ts, `owe`).
  *
- * ⚠️ THE SAME READ-MODIFY-WRITE AS `setTakeLog`: the stored row is spread and one field changed.
- * Called once when a drag ends, never while it moves — this rewrites the whole row, blob included.
+ * ⚠️ THE SAME READ-MODIFY-WRITE AS `setTakeLog`: the stored row is spread and only these fields
+ * change. One write for both, and none at all when neither moved, because each write rewrites the
+ * whole row, recording included.
  */
-export async function setTakePlace(id: string, songAt: number): Promise<boolean> {
-  if (!Number.isFinite(songAt) || songAt < 0) return false
+export async function keepOnTake(
+  id: string,
+  patch: { songAt?: number; gain?: number },
+): Promise<boolean> {
   const had = await getTake(id)
   if (!had) return false
-  const done = await run('readwrite', (s) => s.put({ ...had, songAt }) as IDBRequest<IDBValidKey>)
-  return done !== null
-}
-
-/**
- * Keep how loud this recording was last set on the song. The same read-modify-write as
- * `setTakeLog`; the looper calls it once the fader has stopped, never as it moves.
- */
-export async function setTakeLevel(id: string, gain: number): Promise<boolean> {
-  if (!Number.isFinite(gain) || gain < 0) return false
-  const had = await getTake(id)
-  if (!had) return false
-  const done = await run('readwrite', (s) => s.put({ ...had, gain }) as IDBRequest<IDBValidKey>)
+  const row: TakeRow = { ...had }
+  const ok = (v: number | undefined): v is number => v !== undefined && Number.isFinite(v) && v >= 0
+  if (ok(patch.songAt)) row.songAt = patch.songAt
+  if (ok(patch.gain)) row.gain = patch.gain
+  if (row.songAt === had.songAt && row.gain === had.gain) return true
+  const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
   return done !== null
 }
 

@@ -34,7 +34,9 @@ time:
 - **Snap takes** is on until you turn it off, and the choice is remembered on the device. With it
   on, a recording moves a whole beat at a time. Hold Alt while dragging to place one freely.
 - **Where it goes is kept** on the loop (so a reload puts it back) and on the recording itself, so
-  taking it off the loop in 🎤 Voice and putting it back returns it to the same place.
+  taking it off the loop in 🎤 Voice and putting it back returns it to the same place. The
+  recording is written once the moving stops, since each write rewrites it, and that write is
+  settled before anything reads the recording back, or when the page goes away.
 - **Only the moved recording stops** if it was sounding; the rest of the song plays on.
 
 ⚠️ **Snap moves a recording in whole beats; it does not put its start on a beat.** A recording's
@@ -78,3 +80,40 @@ grid already, so for those it is the same thing as snapping to the grid.
   outside the visible bars.
 - **Volume for each recording and for the words** came in the next change, item 7, and every row
   has a fader now: see `docs/2026-11-21-part-volume.md`.
+
+## After review
+
+Two independent passes before release (one reviewer, then a verification workflow with a skeptic
+per fix) found these. Each was fixed and checked, with the measurement beside it:
+
+- **Snap on, a take inside the last beat moved left when moved right.** Its room was a negative
+  number of beats. Clamped at zero for a take inside the song. A take past the end of a song made
+  shorter or faster since keeps the negative room, so any move brings it back in on its own beat
+  (the second pass caught that the first clamp had stranded those). Tests for both; removing either
+  turns them red.
+- **A take cut where the pass ends had its whole recording squeezed** into the width of what plays.
+  It's drawn over the heard part now. A burst 1.018s into a 1.8s take placed 1.2s before the end is
+  drawn at 0.844 of the clip, against 0.848 expected (0.565 squeezed).
+- **Rows arriving or remounting started at scroll 0** beside scrolled ones. Alignment is keyed on
+  which rows there are, not how many, because words moved to another part or an undo remount rows
+  without changing a count. It also runs whenever the list changes size, which is how the bars come
+  back from the phone's volume view when a phone is turned past 700px. Its own scrolls are echoes
+  like a follower's, so a strip arriving short does not pull a rearranged row's "all" out of reach.
+  Measured at 375 with events driven by hand (the pane was hidden, so it fired none of its own):
+  - words moved while the bars were scrolled 22px: every strip at 22;
+  - a take arriving beside a rearranged row scrolled to its end: that row kept 49 while the others
+    sat at their limit of 23, and without the echo it was pulled back to 23.
+
+  The turn-past-700px path is reasoned, not measured: the hidden pane delivered no resize
+  callbacks, and the bars only overflow at that width on a touch tablet.
+
+- **Every arrow-key press rewrote the stored recording.** It's written once the moving stops. Three
+  quick presses moved the take on the loop at once and wrote the row once, 400ms later.
+- **A quick flick could land where the last drawn move was** rather than where the pointer let go,
+  and letting go of Alt between the last move and the release landed it somewhere it was never
+  drawn. The release now works from where the pointer let go, with the snap the last move was drawn
+  with: moved free with Alt and released after letting go of it, it landed at 4.35s where it was
+  drawn, not on the beat at 4.619.
+- **Put back within the wait, a moved take came back where it was before.** Putting a take back now
+  settles what its recording is owed first. Moved with → and taken off and back on 307ms later in
+  🎤 Voice, it came back at 5.6s, its new place.
