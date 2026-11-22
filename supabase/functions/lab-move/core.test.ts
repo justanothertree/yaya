@@ -72,6 +72,8 @@ import {
 } from '../../../src/gpu/fox'
 import { replay as foxReplay } from '../../../src/gpu/foxRoom'
 import { cubeRules } from '../../../src/gpu/cubeRoom'
+import { gunner, LIFE } from '../../../src/gpu/artillery'
+import { replay as artReplay } from '../../../src/gpu/artilleryRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -1817,5 +1819,99 @@ describe('noughts and crosses in a cube by turns: four in a line, any way throug
     expect(status(decide(row, B, move(row.seq, -1)))).toBe(400)
     expect(status(decide(row, B, move(row.seq, 1.5)))).toBe(400)
     expect(status(decide({ ...row, state: { moves: [5, 5] } }, B, move(row.seq, 6)))).toBe(500)
+  })
+})
+
+describe('artillery by turns: the server fires the shot, the seed and the shots are the game', () => {
+  const ar = (over: Partial<Row> = {}) => invite({ demo_id: 'artillery', settings: {}, ...over })
+  const game = (state: unknown) => {
+    const o = state as { seed: number; shots: unknown[] }
+    return artReplay(o.seed, o.shots)!
+  }
+
+  it('deals a field of its own on accept, from a seed the server chose', () => {
+    const p = decide(ar(), B, { op: 'accept' })
+    if (p.kind !== 'begin') throw new Error('refused')
+    const st = p.state as { seed: number; shots: unknown[] }
+    expect(Number.isInteger(st.seed) && st.seed >= 0 && st.seed < 2 ** 31).toBe(true)
+    expect(st.shots).toEqual([])
+  })
+
+  it('plays versus to the end, the winner the gun still standing, the score what each has left', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 10; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(ar(), (r) => {
+        const g = game(r.state)
+        // steady hands both sides, with a wild shot now and then
+        const s = gunner(g.f, 'fair', rnd)
+        return rnd() < 0.15 ? [5 + rnd() * 80, 0.1 + rnd() * 0.9] : [s.angle, s.charge]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      const life = g.f.guns.map((x) => x.life)
+      expect(last.result!.score).toBe(`${life[0]}–${life[1]}`)
+      if (last.result!.winner === 'draw') {
+        seen.add('draw')
+        continue
+      }
+      const w = last.result!.winner as 0 | 1
+      // asked of the guns: the loser's is out of action and the winner's is not
+      expect(life[1 - w]).toBeLessThanOrEqual(0)
+      expect(life[w]).toBeGreaterThan(0)
+      expect(life[w]).toBeLessThanOrEqual(LIFE)
+      seen.add(String(w))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('stores each shot exactly as sent, and the field it leaves is what the seed and the shots make', () => {
+    let row = after(ar(), decide(ar(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, { angle: 47.25, charge: 0.73 })))
+    row = after(row, decide(row, B, move(row.seq, [33, 0.5])))
+    const st = row.state as { seed: number; shots: unknown[] }
+    expect(st.shots).toEqual([
+      [47.25, 0.73],
+      [33, 0.5],
+    ])
+    // the same shots on another field land somewhere else: the seed is part of the game
+    const here = game(st).f.ground.join()
+    const there = artReplay((st.seed + 1) % 2 ** 31, st.shots)!.f.ground.join()
+    expect(here).not.toBe(there)
+  })
+
+  it('together: the computer’s gun answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = ar({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, [45, 0.5]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  })
+
+  it('refuses a barrel or a charge past the toy’s own limits, a shot that is not numbers, and a stored game no seed could make', () => {
+    const row = after(ar(), decide(ar(), B, { op: 'accept' }))
+    for (const bad of [[4, 0.5], [86, 0.5], [45, 0], [45, 1.01], ['45', 0.5], { angle: 45 }])
+      expect(status(decide(row, A, move(row.seq, bad)))).toBe(400)
+    const st = row.state as { seed: number }
+    expect(
+      status(decide({ ...row, state: { seed: -1, shots: [] } }, A, move(row.seq, [45, 0.5]))),
+    ).toBe(500)
+    expect(
+      status(
+        decide(
+          { ...row, state: { seed: st.seed, shots: [[90, 0.5]] } },
+          A,
+          move(row.seq, [45, 0.5]),
+        ),
+      ),
+    ).toBe(500)
   })
 })

@@ -32,6 +32,8 @@ import { LEVELS as FOX_LEVELS } from '../../gpu/fox'
 import { foxMatchRules, foxSideOf, readFoxSide } from '../../gpu/foxRoom'
 import { LEVELS as CUBE_LEVELS } from '../../gpu/cube'
 import { cubeRules } from '../../gpu/cubeRoom'
+import { LEVELS as ARTILLERY_LEVELS } from '../../gpu/artillery'
+import { artilleryRules } from '../../gpu/artilleryRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -162,6 +164,11 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     },
   },
   cube: { name: MATCH_NAMES.cube, rulesFor: () => cubeRules, levels: CUBE_LEVELS },
+  artillery: {
+    name: MATCH_NAMES.artillery,
+    rulesFor: () => artilleryRules,
+    levels: ARTILLERY_LEVELS,
+  },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
