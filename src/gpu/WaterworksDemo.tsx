@@ -20,6 +20,7 @@ import {
   type V2,
 } from './waterworks'
 import { createWaterworks, type WaterworksView } from './waterworksEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -99,7 +100,7 @@ export function WaterworksDemo({ running, setRunning, onAdapter }: Props) {
       if (s.includes(id)) return s
       const next = [...s, id]
       try {
-        localStorage.setItem(SOLVED_KEY, JSON.stringify(next))
+        writeKept(SOLVED_KEY, JSON.stringify(next))
       } catch {
         /* private mode: solved for this visit */
       }

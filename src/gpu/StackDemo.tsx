@@ -27,9 +27,10 @@ import {
   turn,
   type Bot,
   type Kind,
-  type Saved,
   type Well,
 } from './stack'
+import { clock } from './daily'
+import { useKept } from './kept'
 
 type Mode = 'solo' | 'bot' | 'two'
 const MODES: { id: Mode; label: string }[] = [
@@ -37,14 +38,6 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'bot', label: 'Vs computer' },
   { id: 'two', label: 'Two players' },
 ]
-
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(STACK_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 /** the Lab's own colours for the seven shapes, and junk grey */
 const COLOURS = [
@@ -132,10 +125,8 @@ function newGame(mode: Mode, bot: Bot, seed = newSeed()): Game {
   }
 }
 
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
-
 export function StackDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(STACK_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('solo')
   /** a friend's run to beat, from the address; it is played alone, on its seed */
   const [challenge, leaveChallenge] = useChallenge('stack')
@@ -150,14 +141,6 @@ export function StackDemo() {
   const [paused, setPaused] = useState(false)
   const game = useRef<Game | null>(null)
   const roomRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STACK_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   /** the game ended: say who won and keep the records */
   const finish = (g: Game) => {

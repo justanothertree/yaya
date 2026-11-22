@@ -165,6 +165,34 @@ describe('the puzzles', () => {
   })
 })
 
+describe('par with the floor lit', () => {
+  it('is the fewest, on boxes nobody designed — where pairing columns and rows greedily is not', () => {
+    // ⚠️ found by an independent count in the match by turns: with the floor lit only lit cells may
+    // hold a stack, and the first column-and-row pair a greedy pass takes can leave two others with
+    // no cell between them. 4043000020000004000000004 was par 21 and is 18.
+    let s = 7
+    const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32
+    const ALL3 = { front: true, side: true, top: true }
+    const named = ['4043000020000004000000004', '0000102004240000001000000'].map((n) =>
+      n.split('').map(Number),
+    )
+    let tried = 0
+    for (let k = 0; k < 1500; k++) {
+      const b = k < named.length ? named[k] : emptyBuild()
+      if (k >= named.length)
+        for (let j = 3 + Math.floor(rnd() * 5); j > 0; j--)
+          b[Math.floor(rnd() * CELLS)] = 1 + Math.floor(rnd() * TALL)
+      const c = shadowsOf(b)
+      if (c.top.filter(Boolean).length > 8) continue
+      tried++
+      const par = fewest(c, ALL3)
+      expect(matches(par, c, ALL3), b.join('')).toBe(true)
+      expect(blocks(par), b.join('')).toBe(brute(c, ALL3))
+    }
+    expect(tried).toBeGreaterThan(500)
+  })
+})
+
 describe('a box as a file', () => {
   it('comes back field for field', () => {
     const b = build([

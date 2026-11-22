@@ -244,11 +244,31 @@ export function healthOn(): boolean {
   }
 }
 
-/** Start measuring. Safe to call twice; does nothing unless the flag is on. */
-export async function startHealth(): Promise<boolean> {
-  if (node || !healthOn()) return !!node
-  const ctx = sharedCtx()
+/** the start in flight, so a second caller waits on it rather than starting another */
+let starting: Promise<boolean> | null = null
+
+/**
+ * Start measuring. Safe to call twice, at once as well as one after the other; does nothing
+ * unless the flag is on.
+ *
+ * ⚠️ "SAFE TO CALL TWICE" WAS ONLY TRUE IN TURN (15 Nov 2026). `node` is set after the worklet
+ * module has loaded, so a second call made while the first was still loading it got past the
+ * guard and loaded it again, and the worklet's second `registerProcessor('audio-health')` threw.
+ * Firefox reports that as a page error on every visit to the room; a mount that runs its effect
+ * twice is enough to cause it. A second caller now waits on the first.
+ */
+export function startHealth(): Promise<boolean> {
+  if (node || !healthOn()) return Promise.resolve(!!node)
+  starting ??= begin().finally(() => {
+    starting = null
+  })
+  return starting
+}
+
+async function begin(): Promise<boolean> {
   try {
+    /* inside the try: where there is no Web Audio, building the context is what throws */
+    const ctx = sharedCtx()
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }))
     await ctx.audioWorklet.addModule(url)
     URL.revokeObjectURL(url)
@@ -337,9 +357,19 @@ export function stopHealth() {
 /**
  * Take a reading. Ask about once a second — each call resets the worklet's counters, so a faster
  * poll measures a shorter window and a slower one a longer.
+ *
+ * ⚠️ NULL WHERE THERE IS NO WEB AUDIO TO READ, and that is the whole answer there: nothing plays,
+ * so there is no health to report. Some browsers have none at all (WebKit builds without it,
+ * locked-down webviews), and the strip is on by default and asks once a second, so building the
+ * context here used to throw `new Ctor()` into the page every second the room was open.
  */
-export function readHealth(): AudioHealth {
-  const ctx = sharedCtx()
+export function readHealth(): AudioHealth | null {
+  let ctx: AudioContext
+  try {
+    ctx = sharedCtx()
+  } catch {
+    return null
+  }
   /* ⚠️ NO SCAN HERE ANY MORE. It used to read the tap once per call, which is where the 4.3%
      came from; the 20Hz sampler in startHealth does it now and this only reports what it
      latched. One consequence worth knowing: with the strip stopped, `peak` and `clipped` stay

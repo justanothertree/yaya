@@ -53,7 +53,6 @@ const SINGLE = [
   'king',
   'ace',
 ]
-export const cardName = (c: Card) => `${RANK_NAMES[rankOf(c)]}${SUITS[suitOf(c)]}`
 /** "As" style, for tests */
 export const card = (s: string): Card => RANKS.indexOf(s[0]) * 4 + 'shdc'.indexOf(s[1])
 
@@ -560,12 +559,4 @@ export function readSaved(text: string | null): Saved {
   return out
 }
 
-export function seeded(seed: number) {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
-}
+export { rng as seeded } from './bricks'

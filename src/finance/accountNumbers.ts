@@ -56,6 +56,33 @@ export type AccountNumbers = {
   pricesStale: boolean
   /** How many holdings the price sweep has never seen. */
   unpriced: number
+  /**
+   * Holdings carrying a price of their own that is older than the staleness rule, oldest first.
+   *
+   * ⚠️ A DIFFERENT QUESTION FROM `pricesStale`, WHICH IS WHY BOTH EXIST. `pricedAsOf` is the
+   * NEWEST price on the account and `pricesStale` asks “has the feed stopped” — deliberately, and
+   * pinned by a test (“takes the newest price as the account’s age, not the oldest”). So a single
+   * holding the feed has quietly given up on is invisible there: it is one symbol among eighty
+   * priced this morning, and the maximum does not move.
+   *
+   * It happens. `finance.store_prices` only writes a quote above zero, so a delisted symbol keeps
+   * its last price and its last date for ever while every sweep passes over it. Measured on the
+   * live fund, 14 Nov 2026: FATAQ, 30 units held by all 33 accounts, priced $0.0001 on 17 Sep —
+   * 58 days, and `pricesStale` false the whole time because everything else was hours old.
+   *
+   * The admin side catches it (integrity check 6, “Price older than three days”). The card a
+   * member reads had nothing to say about it at all.
+   */
+  stalePriced: Holding[]
+  /**
+   * What those stale-priced holdings are being counted as inside `total`.
+   *
+   * ⚠️ THE DOLLARS ARE WHAT DECIDES WHETHER TO SPEAK, not the count — same rule as `isDust`.
+   * FATAQ above is three tenths of a cent, and a warning on a child’s card about that is the
+   * checker crying wolf at its own dust. The module always answers; the card asks whether the
+   * answer is worth a line.
+   */
+  stalePricedWorth: number
   /** Every holding, biggest first. */
   holdings: Holding[]
   /** The ones worth a row of their own. */
@@ -189,6 +216,13 @@ export function accountNumbers(
   )
   const ageDays = pricedAsOf ? (now - new Date(pricedAsOf).getTime()) / 86_400_000 : null
 
+  /* A holding with no price is not stale, it is unknown — `unpriced` above is its answer. */
+  const staleBefore = now - STALE_AFTER_DAYS * 86_400_000
+  const stalePriced = holdings
+    .filter((h) => h.price != null && h.priceAt != null && Date.parse(h.priceAt) < staleBefore)
+    .sort((x, y) => Date.parse(x.priceAt as string) - Date.parse(y.priceAt as string))
+  const stalePricedWorth = stalePriced.reduce((n, h) => n + holdingWorth(h), 0)
+
   return {
     total,
     cash: account.cash ?? 0,
@@ -199,6 +233,8 @@ export function accountNumbers(
     pricedAsOf,
     pricesStale: ageDays != null && ageDays >= STALE_AFTER_DAYS,
     unpriced: account.holdings.filter((h) => h.price == null).length,
+    stalePriced,
+    stalePricedWorth,
     holdings,
     big,
     small,

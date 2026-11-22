@@ -12,7 +12,7 @@ import {
 import type { MyExercise, NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
 import type { DayNote } from '../chronicle/journal'
 import type { Plan } from '../chronicle/plan'
-import type { ChronSet } from '../chronicle/sets'
+import { asNumeric, type ChronSet } from '../chronicle/sets'
 import { fit, fitText, unitOf } from '../chronicle/units'
 import { pvPictures } from './picturePreview'
 
@@ -832,6 +832,8 @@ const mint = (p: string): string => `${p}-new-${next++}`
  * is written in characters.
  */
 const chars = (t: string): number => [...t].length
+/** Postgres's one-argument `btrim`: spaces only, where String#trim also takes tabs and newlines */
+const btrim = (t: string): string => t.replace(/^ +| +$/g, '')
 const leftChars = (t: string, n: number): string => [...t].slice(0, n).join('')
 /* chronicle_activity_save's session length: 1 to 1440 minutes, or none */
 const sessionMins = (m: number | null | undefined): number | null =>
@@ -1015,7 +1017,7 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
     row.mins += ms / 60_000
     const began = Date.parse(e.start)
     if (row.metric && e.amount != null && began >= from && began < to)
-      row.amount = (row.amount ?? 0) + e.amount
+      row.amount = asNumeric((row.amount ?? 0) + e.amount)
   }
   /* chronicle_totals' own order: the most time first, and a tie — every activity at nothing, to
      begin with — by name */
@@ -1261,6 +1263,18 @@ export const pvSaveActivity = (
    * reached it — but a double that invents a row where the server refuses one is the direction
    * that hides a bug.
    */
+  /**
+   * ⚠️ SAID IN WORDS BEFORE THE TABLE SAYS IT IN ITS OWN, as chronicle_activity_save does since
+   * `chronicle_activity_refusals` went live on 22 Nov 2026 (OPEN-DECISIONS, #144): checked straight
+   * after the suspension check, so ahead of the ownership and clash checks below. Before it, the
+   * live site showed the constraint's sentence — `violates check constraint
+   * "chronicle_activities_name_check"` — and this double let the name through.
+   */
+  if (btrim(name ?? '') === '') return { why: 'an activity needs a name' }
+  if (chars(btrim(name)) > 60) return { why: 'that is longer than a name — 60 characters' }
+  if (metric != null && chars(btrim(metric)) > 16) {
+    return { why: 'that is longer than a unit — 16 characters' }
+  }
   if (id && !found) return { why: 'no such activity' }
   /**
    * ⚠️ THE NAME CLASH, in chronicle_activity_save's own words. `chronicle_activities` is
@@ -1553,7 +1567,7 @@ const uncountIfUnitChanged = (entry: string, wasUnit: string | null) => {
   const now = unitOf(db().acts.find((a) => a.id === e?.activity)?.metric)
   if (!e || now === wasUnit) return
   const back = countedOf(entry)
-  e.amount = Math.max(0, (e.amount ?? 0) - back) || null
+  e.amount = asNumeric(Math.max(0, (e.amount ?? 0) - back)) || null
   for (const x of db().sets) if (x.entry === entry && x.counted) x.counted = false
 }
 
@@ -1607,19 +1621,8 @@ export const pvSetAdd = (
     updated: now,
     counted,
   })
-  if (counted && sit) sit.amount = Math.min((sit.amount ?? 0) + value, 1e9)
+  if (counted && sit) sit.amount = asNumeric(Math.min((sit.amount ?? 0) + value, 1e9))
   return { id }
-}
-
-/** `chronicle_set_change`: one number, and what it added to its sitting moves with it */
-export const pvSetChange = (id: string, value: number): { why: string } | null => {
-  if (!(value > 0) || value > 1e9) return { why: 'that is not a number of anything' }
-  const x = db().sets.find((y) => y.id === id)
-  if (!x) return { why: 'no such set' }
-  const sit = x.counted ? db().ents.find((e) => e.id === x.entry) : undefined
-  if (sit) sit.amount = Math.max(0, Math.min((sit.amount ?? 0) + (value - x.value), 1e9)) || null
-  Object.assign(x, { value, updated: Date.now() })
-  return null
 }
 
 /** `chronicle_set_drop`: gone, and exactly what it added to its sitting with it */
@@ -1627,7 +1630,7 @@ export const pvSetDrop = (id: string): { why: string } | null => {
   const x = db().sets.find((y) => y.id === id)
   if (!x) return { why: 'no such set' }
   const sit = x.counted ? db().ents.find((e) => e.id === x.entry) : undefined
-  if (sit) sit.amount = Math.max(0, (sit.amount ?? 0) - x.value) || null
+  if (sit) sit.amount = asNumeric(Math.max(0, (sit.amount ?? 0) - x.value)) || null
   db().sets = db().sets.filter((y) => y.id !== id)
   return null
 }
@@ -1763,12 +1766,14 @@ export const pvFixRunningDay = (
 }
 
 export const pvAmount = (id: string, amount: number | null): boolean => {
-  /* ⚠️ NOT BELOW ITS COUNTED SETS — chronicle_entry_amount's refusal, which a boolean cannot word */
-  if ((amount ?? 0) < countedOf(id)) return false
+  /* ⚠️ NOT BELOW ITS COUNTED SETS — chronicle_entry_amount's refusal, which a boolean cannot word.
+     A negative meets that floor as 0, `greatest(coalesce(p_amount, 0), 0)`, since OPEN-DECISIONS
+     21b went live on 22 Nov 2026: with nothing counted it passes, and with sets counted it is
+     refused like a blank is. Before it, -4 was refused even with nothing counted. */
+  if (Math.max(amount ?? 0, 0) < countedOf(id)) return false
   const e = db().ents.find((x) => x.id === id)
-  /* stored under the server's ceiling. A negative never gets here: it is below the counted sets'
-     floor of 0, so the check above refuses it, as chronicle_entry_amount's does */
-  if (e) e.amount = amount == null ? null : Math.min(amount, 1e9)
+  /* `case when p_amount is null or p_amount < 0 then null else least(p_amount, 1e9) end` */
+  if (e) e.amount = amount == null || amount < 0 ? null : Math.min(amount, 1e9)
   return !!e
 }
 
@@ -2645,9 +2650,19 @@ export const pvMemberChronicle = (
   const days = Math.min(Math.max(Math.round(askedDays) || 7, 1), 90)
   const to = Date.now()
   const from = to - days * 86_400_000
-  const catOf = new Map(db().acts.map((a) => [a.id, a]))
+  /* ⚠️ BROWSING IS LEFT OUT, as `(v_target = v_viewer or not a.auto)` leaves it out of each of the
+     server's three queries (docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql). The viewer here is a
+     friend — see `reachesAFriend` — so the owner's half of that rule never applies. A sitting
+     whose activity is not in this map is skipped here and in "now" below, before any figure is
+     made from it, as the server's join drops it. */
+  const catOf = new Map(
+    db()
+      .acts.filter((a) => !a.auto)
+      .map((a) => [a.id, a]),
+  )
   const mins = new Map<string, number>()
   for (const e of db().ents) {
+    if (!catOf.has(e.activity)) continue
     const s0 = Date.parse(e.start)
     const e0 = e.end == null ? to : Date.parse(e.end)
     /* the same overlap the SQL takes: clamped to the window, never negative */
@@ -2683,7 +2698,7 @@ export const pvMemberChronicle = (
     .slice(0, 5)
   /* ⚠️ the running sitting, and only when asked for — the double must refuse it the same way the
      SQL does, or the opt-in is untested where it is easiest to look at */
-  const open = live ? db().ents.find((e) => e.end == null) : undefined
+  const open = live ? db().ents.find((e) => e.end == null && catOf.has(e.activity)) : undefined
   const openAct = open ? catOf.get(open.activity) : undefined
   return {
     days,
@@ -2960,14 +2975,26 @@ const MOMENTS: ReadonlyArray<{
 ]
 
 /**
- * `to_char(v, 'FM999999990.##')`, the way chronicle_moments prints a workout's number.
+ * `trim_scale(round(v, 2))::text`, the way chronicle_moments prints a workout's number since
+ * OPEN-DECISIONS 21a went live on 22 Nov 2026 (`chronicle_moments_decimals`): up to two decimals,
+ * none that are zero, so 3.5 is "3.5", 0.25 "0.25", 12.345 "12.35" and 12 "12". Before it, the
+ * format was `FM999999990.##`, which prints no decimals at all, and a 3.5-mile walk read "4 mi".
  *
- * ⚠️ MEASURED IN CI, NOT REMEMBERED: `.##` is not a digit pattern, so Postgres prints NO decimals
- * and rounds half away from zero — 12 is "12", 12.5 is "13", 0.25 is "0". A 3.5-mile walk reads
- * "4 mi" on the live site. The double prints it the same way so the preview shows what the site
- * shows; the fix is a server change, queued in OPEN-DECISIONS §21.
+ * ⚠️ ROUNDED ON THE DECIMAL TEXT, NOT ON A DOUBLE. The server casts `(en->>'val')`, the number's
+ * own text, to `numeric`, which is exact and rounds half away from zero: 1.005 becomes 1.01.
+ * `Math.round(v * 100) / 100` gives 1, because the double nearest 1.005 is a little below it.
+ * Values here are all at least 0 (pvMoments keeps only those over zero) and at most 1e9, so the
+ * hundredths fit a plain number exactly.
  */
-const momentNumber = (v: number): string => String(Math.round(v))
+const momentNumber = (v: number): string => {
+  const text = /e/i.test(String(v)) ? v.toFixed(20) : String(v)
+  const [whole, frac = ''] = text.replace(/^-/, '').split('.')
+  const hundredths = Number(whole + (frac + '00').slice(0, 2)) + ((frac[2] ?? '0') >= '5' ? 1 : 0)
+  const decimals = String(hundredths % 100)
+    .padStart(2, '0')
+    .replace(/0+$/, '')
+  return String(Math.floor(hundredths / 100)) + (decimals ? '.' + decimals : '')
+}
 
 /**
  * `chronicle_moments`: the day's workouts from YOUR people's typed days, and the ratings.

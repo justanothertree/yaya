@@ -2,9 +2,9 @@
 -- seeded members.
 --
 -- ⛔ NEEDS THREE DRAFTS APPLIED FIRST, in order, and refuses to run otherwise:
---      docs/2026-11-08-chronicle-sets.DRAFT.sql
---      docs/2026-11-09-chronicle-sets-links.DRAFT.sql
---      docs/2026-11-09-circuit-grid-sessions.DRAFT.sql
+--      docs/applied/2026-11-08-chronicle-sets.DRAFT.sql
+--      docs/applied/2026-11-09-chronicle-sets-links.DRAFT.sql
+--      docs/applied/2026-11-09-circuit-grid-sessions.DRAFT.sql
 -- None is applied to production. This runs only in a throwaway database — the `db guards` CI job —
 -- and rolls back. NEVER against production.
 --

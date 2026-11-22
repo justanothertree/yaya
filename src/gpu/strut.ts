@@ -348,6 +348,25 @@ export function readStrut(text: string | null): { body: Body; pattern: Pattern }
   }
 }
 
+/**
+ * The fewest bars any creature has taken to reach the flag, kept apart from the creature itself:
+ * the creation is rewritten on every edit, and a best kept inside it would be one forgotten field
+ * away from being erased. A best is a positive number of bars under a thousand, or nothing.
+ */
+export const STRUT_BEST_KEY = 'lab_strut_best_v1'
+export function readBest(text: string | null): number | null {
+  let v: unknown
+  try {
+    v = JSON.parse(text ?? 'null')
+  } catch {
+    return null
+  }
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1000 ? v : null
+}
+/** the kept best after reaching the flag in `bars`: never slower */
+export const fewestBars = (best: number | null, bars: number) =>
+  best === null || bars < best ? bars : best
+
 /** a fresh grid for a body: nothing lit */
 export const emptyRows = (body: Body) =>
   Array.from({ length: muscles(body) }, () => Array<boolean>(STEPS).fill(false))

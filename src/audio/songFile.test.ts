@@ -101,6 +101,9 @@ describe('a song survives being written down', () => {
           gain: 0.35,
           play: [true, false, true],
           plan: [1, null, 0, 2],
+          /* ⚠️ a gap in the middle, so a reader that dropped empty lines would move the words */
+          lyrics: ['glit-ter in the', '', 'dark _ to-night'],
+          wordsGain: 0.45,
           fx: { echo: 0.5, echoTime: 0.3, space: 0.2, vibrato: 0.1, glide: 0.4, tone: 0.8 },
           events: [
             { t: 0, midi: 41, on: true },
@@ -111,7 +114,15 @@ describe('a song survives being written down', () => {
     })!
     const a = loud.layers[0]
     expect(
-      { inst: a.instrument, muted: a.muted, gain: a.gain, play: a.play, plan: a.plan },
+      {
+        inst: a.instrument,
+        muted: a.muted,
+        gain: a.gain,
+        play: a.play,
+        plan: a.plan,
+        lyrics: a.lyrics,
+        wordsGain: a.wordsGain,
+      },
       'the fixture itself has to be off its defaults or this test proves nothing',
     ).toEqual({
       inst: 'bass',
@@ -119,6 +130,8 @@ describe('a song survives being written down', () => {
       gain: 0.35,
       play: [true, false, true],
       plan: [1, null, 0, 2],
+      lyrics: ['glit-ter in the', '', 'dark _ to-night'],
+      wordsGain: 0.45,
     })
 
     const b = readSong(packSong(loud))!.layers[0]
@@ -128,12 +141,28 @@ describe('a song survives being written down', () => {
     expect(b.play, 'play — and its LENGTH, which is what `pb` is for').toEqual(a.play)
     expect(b.plan, 'plan').toEqual(a.plan)
     expect(b.fx.tone, 'tone').toBeCloseTo(0.8, 2)
+    expect(b.lyrics, 'lyrics — a bar with no words keeps its place').toEqual(a.lyrics)
+    expect(b.wordsGain, 'how loud the words are sung').toBeCloseTo(0.45, 2)
 
     const l = songToLayers(readSong(packSong(loud))!)[0]
     expect(
-      { muted: l.muted, gain: l.gain, play: l.play, plan: l.plan },
+      {
+        muted: l.muted,
+        gain: l.gain,
+        play: l.play,
+        plan: l.plan,
+        lyrics: l.lyrics,
+        wordsGain: l.wordsGain,
+      },
       'the last step before the looper used to drop gain and plan',
-    ).toEqual({ muted: a.muted, gain: a.gain, play: a.play, plan: a.plan })
+    ).toEqual({
+      muted: a.muted,
+      gain: a.gain,
+      play: a.play,
+      plan: a.plan,
+      lyrics: a.lyrics,
+      wordsGain: a.wordsGain,
+    })
   })
 
   it('and the notes land where they were', () => {
@@ -670,5 +699,57 @@ describe('a ceiling the room offers is a ceiling the file keeps', () => {
     const old = { ...packSong(at({ bars: 16 })) }
     old.l = old.l.map((l) => ({ ...l, p: 0b1, pb: undefined }))
     expect(readSong(old)!.layers[0].play).toHaveLength(16)
+  })
+})
+
+/**
+ * A part's words — one line per bar of the song (songLyrics.ts) — arrive from strangers too: a
+ * jam partner's part and a profile's song are read through here like any file.
+ */
+describe('the words a part sings', () => {
+  const sung = (lyrics: unknown) =>
+    readSong({ v: 1, name: 'W', bpm: 120, bars: 4, layers: [layerOf(EVENTS, { lyrics })] })!
+      .layers[0].lyrics
+  const EVENTS = [
+    { t: 0, midi: 60, on: true },
+    { t: 0.5, midi: 60, on: false },
+  ]
+
+  it('are absent from a part nobody wrote on, in both forms', () => {
+    const plain = readSong({ v: 1, name: 'W', bpm: 120, bars: 2, layers: [layerOf(EVENTS)] })!
+    expect(plain.layers[0].lyrics).toBeUndefined()
+    expect(packSong(plain).l[0].w).toBeUndefined()
+    expect(sung(['', '  ', ''])).toBeUndefined()
+  })
+
+  it('keep a line per bar, empty ones in the middle included, and drop the empty end', () => {
+    expect(sung(['one', '', 'three', '', ''])).toEqual(['one', '', 'three'])
+  })
+
+  it('are text and nothing else, however they arrive', () => {
+    expect(sung(['ok', 7, null, { x: 1 }, 'end'])).toEqual(['ok', '', '', '', 'end'])
+    expect(sung('a whole string')).toBeUndefined()
+    expect(
+      sung(['line' + String.fromCharCode(10) + 'break' + String.fromCharCode(0) + 'here']),
+    ).toEqual(['line break here'])
+  })
+
+  it('are bounded: no line longer than a bar can sing, no more lines than a song has bars', () => {
+    const long = sung(['x'.repeat(5000)])!
+    expect(long[0].length).toBe(120)
+    const many = sung(Array.from({ length: 500 }, (_, i) => `bar ${i}`))!
+    expect(many).toHaveLength(32)
+    const packed = readSong(
+      packSong(
+        readSong({
+          v: 1,
+          name: 'W',
+          bpm: 120,
+          bars: 4,
+          layers: [layerOf(EVENTS, { lyrics: many })],
+        })!,
+      ),
+    )!
+    expect(packed.layers[0].lyrics).toHaveLength(32)
   })
 })

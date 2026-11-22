@@ -10,6 +10,8 @@
  * a link that carries the seed and the list of cuts and bends rebuilds the very tree you made.
  */
 
+import { rng as seededRng } from './bricks'
+
 export type Branch = {
   /** a path from the trunk: '' is the trunk, '0' its first child, '0.1' that branch's second */
   id: string
@@ -33,13 +35,7 @@ const STEP = 0.32
 function rng(seed: number, id: string, season: number) {
   let h = (seed ^ Math.imul(season + 1, 0x9e3779b1)) >>> 0
   for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0
-  let s = h || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
+  return seededRng(h)
 }
 
 export function sprout(seed: number): Tree {

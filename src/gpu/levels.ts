@@ -330,7 +330,14 @@ export function decode(text: string): Level | null {
   const grid: Tile[] = []
   for (let i = 0; i < (COLS * ROWS) / 2; i++) grid.push(TILES[b[o + i] >> 4], TILES[b[o + i] & 15])
   if (grid.filter((t) => t === 'start').length !== 1) return null
-  return { name: [...name].filter((c) => c.charCodeAt(0) >= 32).join('').slice(0, 24), grid, theme: THEMES[b[1]] }
+  return {
+    name: [...name]
+      .filter((c) => c.charCodeAt(0) >= 32)
+      .join('')
+      .slice(0, 24),
+    grid,
+    theme: THEMES[b[1]],
+  }
 }
 
 /* ---------------------------------------------------------------------------- rooms to start from */

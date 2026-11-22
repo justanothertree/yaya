@@ -15,9 +15,9 @@ import {
   unlocked,
   type Direction,
   type Question,
-  type Saved,
 } from './intervals'
 import { createIntervals, type IntervalsView } from './intervalsEngine'
+import { loadKept, useKept } from './kept'
 
 type Props = {
   running: boolean
@@ -32,19 +32,11 @@ const KEYS = '123456789qwe'
 /** "an Octave", "a Tritone" */
 const article = (name: string) => `${/^[AEIOU]/.test(name) ? 'an' : 'a'} ${name}`
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(INTERVALS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
-
 export function IntervalsDemo({ running, setRunning, onAdapter }: Props) {
   const [live, setLive] = useState(false)
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(INTERVALS_KEY, readSaved)
   const open = unlocked(saved.passed)
-  const [stage, setStage] = useState(() => unlocked(load().passed))
+  const [stage, setStage] = useState(() => unlocked(loadKept(INTERVALS_KEY, readSaved).passed))
   const [direction, setDirection] = useState<Direction | 'mixed'>('up')
   const [q, setQ] = useState<Question | null>(null)
   const [n, setN] = useState(0)
@@ -61,13 +53,6 @@ export function IntervalsDemo({ running, setRunning, onAdapter }: Props) {
   const now = useRef({ q, picked })
   now.current = { q, picked }
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(INTERVALS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   const quiet = () => {
     for (const t of timers.current) window.clearTimeout(t)
     timers.current = []

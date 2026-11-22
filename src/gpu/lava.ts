@@ -38,15 +38,7 @@ export function packBlobs(blobs: readonly Blob[], into = new Float32Array(MAX_BL
 }
 
 /** A tiny deterministic random, so a lamp — and a test — can be started the same way twice. */
-export function seeded(seed: number) {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 4294967296
-  }
-}
+export { rng as seeded } from './bricks'
 
 /** A fresh lamp: wax mostly pooled at the bottom, cool, at rest. */
 export function fill(count: number, rand = Math.random): Blob[] {

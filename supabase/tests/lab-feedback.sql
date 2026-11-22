@@ -3,7 +3,9 @@
 -- age band, a suspended member, and a member trying to be the admin. Each case is a real call
 -- under a real role with real claims, against the functions as the draft defines them.
 --
--- HOW TO RUN: against a database that has supabase/migrations/20261109030613_lab_catalog_and_feedback.sql applied —
+-- HOW TO RUN: against a database that has supabase/migrations/20261109030613_lab_catalog_and_feedback.sql
+-- applied, and since 15 Nov 2026 20261115002456_lab_matches_and_results.sql after it (case 1 pins
+-- the callable lab_* functions, which that migration adds to) —
 --   PGHOST=… PGPORT=… supabase/tests/plain-postgres/build.sh \
 --     --draft supabase/migrations/20261109030613_lab_catalog_and_feedback.sql --test supabase/tests/lab-feedback.sql
 -- Everything is in one transaction that rolls back; it leaves nothing behind. It raises, listing
@@ -76,14 +78,17 @@ begin
   end if;
 
   asked := asked + 1;
-  -- exactly these are callable: a new lab function that hands out voters would show up here
+  -- exactly these are callable: a new lab function that hands out voters would show up here.
+  -- ⚠️ the seven lab_match_* / lab_my_turns names are the matches by turns, applied 15 Nov 2026
+  -- (20261115002456_lab_matches_and_results); every one is a member's own, none is anon's, and
+  -- their service-only three (load, begin, commit) are NOT here because no member can call them
   select string_agg(p.proname || ':' || (case when has_function_privilege('anon', p.oid, 'execute') then 'anon' else '' end)
                     || (case when has_function_privilege('authenticated', p.oid, 'execute') then '+auth' else '' end),
                     ' ' order by p.proname) into t
   from pg_proc p join pg_namespace s2 on s2.oid = p.pronamespace
   where s2.nspname = 'public' and (p.proname like 'lab\_%' or p.proname like 'admin\_lab\_%')
     and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'));
-  if t is distinct from 'admin_lab_moderate:+auth admin_lab_register:+auth admin_lab_reports:+auth admin_lab_set_demo:+auth lab_catalog:anon+auth lab_comment_add:+auth lab_comment_delete:+auth lab_comment_edit:+auth lab_comment_report:+auth lab_comments_page:+auth lab_vote:+auth' then
+  if t is distinct from 'admin_lab_moderate:+auth admin_lab_register:+auth admin_lab_reports:+auth admin_lab_set_demo:+auth lab_catalog:anon+auth lab_comment_add:+auth lab_comment_delete:+auth lab_comment_edit:+auth lab_comment_report:+auth lab_comments_page:+auth lab_match_challenge:+auth lab_match_claim:+auth lab_match_decline:+auth lab_match_get:+auth lab_match_list:+auth lab_match_resign:+auth lab_my_turns:+auth lab_vote:+auth' then
     fails := array_append(fails, (('1: callable lab functions are ' || coalesce(t, 'none')))::text);
   end if;
 

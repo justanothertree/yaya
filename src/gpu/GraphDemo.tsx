@@ -14,9 +14,9 @@ import {
   sample,
   stars,
   uses,
-  type Saved,
 } from './graph'
 import { createGraph, type GraphView } from './graphEngine'
+import { loadKept, useKept } from './kept'
 
 type Props = {
   running: boolean
@@ -27,35 +27,19 @@ type Props = {
 /** what a thumb cannot easily type: inserted where the cursor is */
 const KEYS = ['x', '²', '^', '(', ')', '/', 'sin(', 'cos(', 'abs(', 'sqrt(', 'a', 'b', 'c']
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(GRAPH_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
-
 export function GraphDemo({ running, setRunning, onAdapter }: Props) {
   const [live, setLive] = useState(false)
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(GRAPH_KEY, readSaved)
   const [mode, setMode] = useState<'levels' | 'free'>('levels')
-  const [level, setLevel] = useState(() => Math.max(0, LEVELS.findIndex((l) => load().solved[l.name] === undefined))) // prettier-ignore
+  const [level, setLevel] = useState(() => Math.max(0, LEVELS.findIndex((l) => loadKept(GRAPH_KEY, readSaved).solved[l.name] === undefined))) // prettier-ignore
   const [text, setText] = useState('')
   const [hints, setHints] = useState(0)
   const [sliders, setSliders] = useState(() => {
-    const f = load().free
+    const f = loadKept(GRAPH_KEY, readSaved).free
     return { a: f.a, b: f.b, c: f.c }
   })
   const box = useRef<HTMLInputElement | null>(null)
   const l = LEVELS[level]
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(GRAPH_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   // what the box says, read: a curve, or where it goes wrong
   const read = useMemo(() => {
@@ -92,7 +76,7 @@ export function GraphDemo({ running, setRunning, onAdapter }: Props) {
       })
     }
     was.current = matched
-  }, [matched, hints, l.name])
+  }, [matched, hints, l.name, setSaved])
   useEffect(
     () => () => {
       for (const t of chime.current) window.clearTimeout(t)
@@ -104,7 +88,7 @@ export function GraphDemo({ running, setRunning, onAdapter }: Props) {
   useEffect(() => {
     if (mode !== 'free') return
     setSaved((s) => ({ ...s, free: { text: text.slice(0, MAX_TEXT), ...sliders } }))
-  }, [mode, text, sliders])
+  }, [mode, text, sliders, setSaved])
 
   const go = (k: number) => {
     setLevel(Math.max(0, Math.min(LEVELS.length - 1, k)))

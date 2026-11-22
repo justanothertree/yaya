@@ -40,7 +40,6 @@ import {
   pvGiveCircuit,
   pvSetAdd,
   pvSetsBetween,
-  pvSetChange,
   pvSetDrop,
   pvMyExercises,
   pvLinkExercise,
@@ -580,6 +579,33 @@ describe('saying what the session you are in is about', () => {
     pvStart(draw)
     pvNoteAdd(openEntryId(), 'still going')
     expect(openOne()).toBeDefined()
+  })
+})
+
+describe('an activity name and unit, refused in words (chronicle_activity_refusals, #144)', () => {
+  const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+
+  it('refuses a blank name in words, before anything else is asked', () => {
+    expect(why(pvSaveActivity('', 'free', null))).toBe('an activity needs a name')
+    expect(why(pvSaveActivity('   ', 'free', null))).toBe('an activity needs a name')
+    /* the server checks the name before it looks for the row, so an unknown id still hears this */
+    expect(why(pvSaveActivity('', 'free', null, 'no-such-id'))).toBe('an activity needs a name')
+  })
+
+  it('takes a name of 60 characters and refuses 61, counting characters as char_length does', () => {
+    expect(why(pvSaveActivity('a'.repeat(60), 'free', null))).toBe('accepted')
+    expect(why(pvSaveActivity('b'.repeat(61), 'free', null))).toBe(
+      'that is longer than a name — 60 characters',
+    )
+    expect(why(pvSaveActivity('🏃'.repeat(60), 'free', null))).toBe('accepted') // 120 UTF-16 units
+    expect(why(pvSaveActivity('  ' + 'c'.repeat(60) + '  ', 'free', null))).toBe('accepted') // trimmed
+  })
+
+  it('takes a unit of 16 characters and refuses 17', () => {
+    expect(why(pvSaveActivity('Reading', 'free', null, undefined, 'p'.repeat(16)))).toBe('accepted')
+    expect(why(pvSaveActivity('Running', 'free', null, undefined, 'q'.repeat(17)))).toBe(
+      'that is longer than a unit — 16 characters',
+    )
   })
 })
 
@@ -2206,21 +2232,36 @@ describe('an exercise linked to an activity', () => {
     ])
   })
 
-  it('adds a counted set to its sitting, and takes back exactly that on a change or a drop', () => {
+  it('adds a counted set to its sitting, and takes back exactly that on a drop', () => {
     pvLinkExercise('p-1', 'ex-quad', gym)
     const s = sitting(gym)
     const a = pvSetAdd('p-1', 'ex-quad', 12, DAY, s)
     const b = pvSetAdd('p-1', 'ex-plank', 30, DAY, s)
     if ('why' in a || 'why' in b) throw new Error('fixture')
     expect(amount(s)).toBe(12)
-    expect(pvSetChange(a.id, 15)).toBeNull()
-    expect(pvSetChange(a.id, 15)).toBeNull() // the same save again
-    expect(amount(s)).toBe(15)
     expect(pvAmount(s, 10)).toBe(false) // below its counted sets
+    expect(pvAmount(s, -4)).toBe(false) // a negative meets the floor as 0, still below 12
+    expect(pvAmount(s, null)).toBe(false) // and so does a blank
     expect(pvAmount(s, 40)).toBe(true)
     expect(pvSetDrop(b.id)).toBeNull() // uncounted: nothing moves
     expect(pvSetDrop(a.id)).toBeNull()
-    expect(amount(s)).toBe(25)
+    expect(amount(s)).toBe(28)
+  })
+
+  /**
+   * ⚠️ IN DECIMALS, THE WAY `numeric` ADDS. The server's write-through sums sets exactly, so 1.1 and
+   * 2.2 make 3.3; JavaScript makes 3.3000000000000003, and a copy holding that would agree with the
+   * room's own floor when both are wrong, which is how a double hides a bug.
+   */
+  it('adds and takes back decimal sets the way the server does, so 1.1 and 2.2 make 3.3', () => {
+    pvLinkExercise('p-1', 'ex-quad', gym)
+    const s = sitting(gym)
+    const a = pvSetAdd('p-1', 'ex-quad', 1.1, DAY, s)
+    const b = pvSetAdd('p-1', 'ex-quad', 2.2, DAY, s)
+    if ('why' in a || 'why' in b) throw new Error('fixture')
+    expect(amount(s)).toBe(3.3)
+    expect(pvSetDrop(a.id)).toBeNull()
+    expect(amount(s)).toBe(2.2)
   })
 
   it('brings a counted set back only with its sitting, because only then does the file hold it', () => {
@@ -2472,14 +2513,18 @@ describe('the stand-ins keep the server rules the audit found missing', () => {
     expect(pvActivities().find((x) => x.id === id)!.session).toBeNull()
   })
 
-  it('refuses a negative amount, as the floor check does there, and caps at 1e9', () => {
+  it('stores a negative amount as none when nothing is counted, as 21b does, and caps at 1e9', () => {
     pvAddEntry(gym, h(9), h(10), null)
     const e = pvEntries(dayStart(), dayEnd()).find((x) => x.start === h(9))!
-    /* ⚠️ chronicle_entry_amount compares coalesce(p_amount, 0) with the counted sets' sum, 0 here,
-       so -4 is refused rather than stored as none — see OPEN-DECISIONS §21 */
-    expect(pvAmount(e.id, -4)).toBe(false)
+    const amountOf = () => pvEntries(dayStart(), dayEnd()).find((x) => x.id === e.id)!.amount
+    expect(pvAmount(e.id, 12)).toBe(true)
+    expect(amountOf()).toBe(12)
+    /* chronicle_entry_amount since 22 Nov: greatest(coalesce(p_amount, 0), 0) meets a floor of 0,
+       and the update stores a negative as null. Before 21b, -4 was refused with "<NULL>". */
+    expect(pvAmount(e.id, -4)).toBe(true)
+    expect(amountOf()).toBeNull()
     expect(pvAmount(e.id, 2e9)).toBe(true)
-    expect(pvEntries(dayStart(), dayEnd()).find((x) => x.id === e.id)!.amount).toBe(1e9)
+    expect(amountOf()).toBe(1e9)
   })
 
   it('counts a note in characters, as Postgres does, not in UTF-16 units', () => {
@@ -2654,27 +2699,47 @@ describe("the day's workout line, as chronicle_moments builds it", () => {
     new Date(localMidnight(day).getTime() + 86_400_000).toISOString(),
   ]
 
-  it('says the first four over zero, rounded the way to_char rounds, and counts them all', () => {
+  it('says the first four over zero, to two decimals as the server does since 21a, and counts them all', () => {
     pvGiveCircuitLog('p-1', DAY, [
       { eid: 'ex-none', val: 0 },
-      { eid: 'ex-quad', val: 12.5 },
-      { eid: 'ex-plank', val: 90 },
-      { eid: 'ex-what', val: 3 },
+      { eid: 'ex-quad', val: 12.345 },
+      { eid: 'ex-plank', val: 0.25 },
+      { eid: 'ex-what', val: 3.5 },
       { eid: 'ex-laps', val: 2 },
       { eid: 'ex-row', val: 10 },
     ])
     const [from, to] = around(DAY)
+    /* production's trim_scale(round(v, 2))::text on 22 Nov: 12.345 → 12.35, 0.25 → 0.25,
+       3.5 → 3.5, 2 → 2 (and a stored 3.5-mile walk reads "3.5 mi" there) */
     expect(pvMoments(from, to).filter((m) => m.kind === 'workout')).toEqual([
       {
         kind: 'workout',
         at: null,
         on: DAY,
-        title: 'Quad Curl 13 reps · Plank 90 sec · Mystery 3 · Laps 2 laps',
+        title: 'Quad Curl 12.35 reps · Plank 0.25 sec · Mystery 3.5 · Laps 2 laps',
         score: null,
         about: null,
         detail: '5',
       },
     ])
+  })
+
+  it('rounds the decimal it was given, as numeric does, not the double nearest it', () => {
+    /* round(1.005::numeric, 2) is 1.01 and round(0.001, 2) is 0; a 1e9 ceiling prints whole */
+    for (const val of [1.005, 0.001, 1e9, 12])
+      pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-quad', val }])
+    const [from, to] = around(DAY)
+    const said = pvMoments(from, to)
+      .filter((m) => m.kind === 'workout')
+      .map((m) => m.title)
+    expect([...said].sort()).toEqual(
+      [
+        'Quad Curl 1.01 reps',
+        'Quad Curl 0 reps',
+        'Quad Curl 1000000000 reps',
+        'Quad Curl 12 reps',
+      ].sort(),
+    )
   })
 
   it('reads a day a little either side of the window, and nothing further', () => {
@@ -2710,5 +2775,36 @@ describe('a minute is counted on the raw time, then rounded', () => {
     ).toEqual({ k: {} })
     const card = pvMemberChronicle(7, false, false)
     expect([card.time, card.top]).toEqual([{}, []])
+  })
+})
+
+/**
+ * ⚠️ BROWSING STAYS ON ITS OWNER'S SIDE OF THE CARD — docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql,
+ * not applied yet. The workbench draws a friend's view, so the double leaves the site's own
+ * activities out of all three figures, as the server will for anybody but the owner.
+ */
+describe("a friend's view of the card leaves browsing out", () => {
+  const ago = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString()
+
+  it('from the totals and the top five, while the time somebody chose to record stays', () => {
+    pvAddEntry(gym, ago(120), ago(60), null)
+    pvVisit('Paint', 600)
+    expect(pvActivities().find((a) => a.name === 'Paint')?.auto).toBe(true)
+    const card = pvMemberChronicle(7, false, false)
+    /* Paint is Free Time like Gym, so a total that still counted it would read 70 */
+    expect(card.time).toEqual({ free: 60 })
+    expect(card.top.map((t) => t.name)).toEqual(['Gym'])
+  })
+
+  it('and from "now", which falls back to nothing rather than naming the room', () => {
+    const paint = (() => {
+      pvVisit('Paint', 120)
+      return pvActivities().find((a) => a.name === 'Paint')!.id
+    })()
+    expect(pvStart(gym)).toBe(null)
+    expect(pvMemberChronicle(7, true, false).now?.name).toBe('Gym')
+    /* starting the room's activity by hand closes Gym, as chronicle_start does */
+    expect(pvStart(paint)).toBe(null)
+    expect(pvMemberChronicle(7, true, false).now).toBe(null)
   })
 })

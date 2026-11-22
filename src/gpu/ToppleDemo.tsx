@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import { noteOff, noteOn } from '../audio/synth'
 import { LabStage } from './LabStage'
 import {
+  readSaved,
+  type Best,
   COLOURS,
   FILE_LIMIT,
   MAX_DOMINOES,
@@ -21,6 +23,7 @@ import {
   type V2,
 } from './topple'
 import { createTopple, type ToppleView } from './toppleEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -47,32 +50,13 @@ const SWATCHES = [
   '#f5f5f0',
 ]
 const SWATCH_NAMES = ['red', 'orange', 'yellow', 'green', 'blue', 'violet', 'black', 'white']
-type Best = Record<string, number>
 
-const load = (): { puzzle: number; best: Best; free: Layout } => {
-  const empty: Layout = { dominoes: [], bells: [], walls: [] }
+/* what the toy keeps, read by the toy's module (so the share card reads it the same way) */
+const load = () => {
   try {
-    const v = JSON.parse(localStorage.getItem(TOPPLE_KEY) ?? 'null') as {
-      puzzle?: unknown
-      best?: Record<string, unknown>
-      free?: unknown
-    } | null
-    const puzzle =
-      typeof v?.puzzle === 'number' &&
-      Number.isInteger(v.puzzle) &&
-      v.puzzle >= 0 &&
-      v.puzzle < PUZZLES.length
-        ? v.puzzle
-        : 0
-    const best: Best = {}
-    for (const p of PUZZLES) {
-      const n = v?.best?.[p.name]
-      if (typeof n === 'number' && Number.isInteger(n) && n > 0) best[p.name] = n
-    }
-    const free = readLayout(JSON.stringify(v?.free ?? empty))
-    return { puzzle, best, free: typeof free === 'string' ? empty : free }
+    return readSaved(localStorage.getItem(TOPPLE_KEY))
   } catch {
-    return { puzzle: 0, best: {}, free: empty }
+    return readSaved(null)
   }
 }
 const download = (blob: Blob, name: string) => {
@@ -131,7 +115,7 @@ export function ToppleDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(
+      writeKept(
         TOPPLE_KEY,
         JSON.stringify({ puzzle, best, free: { dominoes: free.dominoes, bells: free.bells } }),
       )

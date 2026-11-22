@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { localISO } from '../circuit/dates'
 import { showToast } from '../circuit/toast'
 import { exportMine, importMine } from './cloud'
 import { putBackSays } from './putBackCopy'
@@ -53,9 +54,7 @@ export function YourCopy({ onPutBack }: { onPutBack?: () => void } = {}) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      const d = new Date()
-      const pad = (n: number) => String(n).padStart(2, '0')
-      a.download = `chronicle-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`
+      a.download = `chronicle-${localISO(new Date())}.json`
       a.click()
       /* the object URL holds the whole file in memory until it is let go of */
       setTimeout(() => URL.revokeObjectURL(url), 1000)

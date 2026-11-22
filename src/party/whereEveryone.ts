@@ -21,16 +21,37 @@
 import { useSyncExternalStore } from 'react'
 import { hueFor, party, type PartyHere } from './party'
 
-/** Everyone in the call, grouped by the room they are in. Empty unless you are sharing too. */
-export function usePartyHere(): Record<string, PartyHere[]> {
-  const state = useSyncExternalStore(party.subscribe, party.getState, party.getState)
+/**
+ * Everyone in the call, grouped by the room they are in. Empty unless you are sharing too.
+ *
+ * ⚠️ A SNAPSHOT THAT CHANGES ONLY WHEN WHO-IS-WHERE DOES. The party's state is replaced on every
+ * pointer sample — fifteen a second per person moving, which is what a cursor needs — and this
+ * hook used to hand that state straight to React, so everything showing a ring (the whole App,
+ * and the Lab's 133-button picker) re-rendered on every sample of everybody's mouse. Measured on
+ * Swarm at phone size with three cursors moving: 60fps alone, 54–57 with them. The rooms people
+ * are in change a few times a minute, so the grouping is rebuilt only when one of the fields it
+ * shows does.
+ */
+let lastKey = ''
+let lastBy: Record<string, PartyHere[]> = {}
+function grouped(): Record<string, PartyHere[]> {
+  const state = party.getState()
+  const people = state.sharing
+    ? // stable order, so two people in one room do not swap rings on every heartbeat
+      Object.values(state.here).sort((a, b) => a.id.localeCompare(b.id))
+    : []
+  const key = people
+    .map((p) => `${p.id}|${p.route}|${p.sub ?? ''}|${p.skin ?? ''}|${p.name}`)
+    .join('\n')
+  if (key === lastKey) return lastBy
   const by: Record<string, PartyHere[]> = {}
-  if (!state.sharing) return by
-  // stable order, so two people in one room do not swap rings on every heartbeat
-  for (const p of Object.values(state.here).sort((a, b) => a.id.localeCompare(b.id))) {
-    ;(by[p.route] ||= []).push(p)
-  }
+  for (const p of people) (by[p.route] ||= []).push(p)
+  lastKey = key
+  lastBy = by
   return by
+}
+export function usePartyHere(): Record<string, PartyHere[]> {
+  return useSyncExternalStore(party.subscribe, grouped, grouped)
 }
 
 /**

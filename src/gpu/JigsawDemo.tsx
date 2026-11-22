@@ -36,6 +36,7 @@ import {
   type V2,
 } from './jigsaw'
 import { createJigsaw, type JigsawView } from './jigsawEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -64,7 +65,7 @@ const store = {
   },
   write: (key: string, value: string) => {
     try {
-      localStorage.setItem(key, value)
+      writeKept(key, value)
     } catch {
       /* private mode, or a full store: the puzzle stays for this visit */
     }

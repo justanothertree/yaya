@@ -28,21 +28,14 @@ import {
   type Dir,
   type Hat,
   type Level,
-  type Saved,
   type Solution,
   type Square,
   type State,
   type Theme,
   type Tile,
 } from './levels'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(LEVELS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const BLANK = fromText('My room', [
   '############',
   '#S.........#',
@@ -86,7 +79,7 @@ type Source =
   | { kind: 'link' }
 
 export function LevelsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(LEVELS_KEY, readSaved)
   const [linked] = useState<Level | null>(() => {
     const t = hashParam('room')
     return t ? decode(t) : null
@@ -102,16 +95,9 @@ export function LevelsDemo() {
   const roomRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LEVELS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
-  useEffect(() => {
     setSaved((s) => ({ ...s, draft: encode(draft) }))
     setCheck(null)
-  }, [draft])
+  }, [draft, setSaved])
 
   const level: Level = useMemo(() => {
     if (source.kind === 'room') return ROOMS[source.i]
