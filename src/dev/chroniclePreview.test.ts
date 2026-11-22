@@ -609,6 +609,50 @@ describe('an activity name and unit, refused in words (chronicle_activity_refusa
   })
 })
 
+describe('a goal title, target, unit and note, refused in words (chronicle_goal_refusals, #145)', () => {
+  const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+  const save = (over: Partial<Parameters<typeof pvSaveGoal>[0]>) =>
+    why(
+      pvSaveGoal({
+        title: 'Read',
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+        ...over,
+      }),
+    )
+
+  it('refuses a blank title in words, before it looks for the goal', () => {
+    expect(save({ title: '' })).toBe('a goal needs a title')
+    expect(save({ title: '   ' })).toBe('a goal needs a title')
+    expect(save({ title: '', id: 'no-such-goal' })).toBe('a goal needs a title')
+  })
+
+  it('takes a 120-character title and refuses 121, in characters', () => {
+    expect(save({ title: 't'.repeat(120) })).toBe('accepted')
+    expect(save({ title: '📚'.repeat(120) })).toBe('accepted') // 240 UTF-16 units
+    expect(save({ title: 'u'.repeat(121) })).toBe('that is longer than a title — 120 characters')
+  })
+
+  it('takes a target above 0 up to a billion, and no target at all', () => {
+    expect(save({ target: 1e9 })).toBe('accepted')
+    expect(save({ target: 0.5 })).toBe('accepted')
+    expect(save({ target: null })).toBe('accepted')
+    for (const target of [0, -3, 1e9 + 1]) {
+      expect(save({ target })).toBe('a target is more than 0 and at most a billion')
+    }
+  })
+
+  it('takes a 16-character unit and a 2000-character note, and refuses one more of each', () => {
+    expect(save({ unit: 'p'.repeat(16) })).toBe('accepted')
+    expect(save({ unit: 'p'.repeat(17) })).toBe('that is longer than a unit — 16 characters')
+    expect(save({ note: 'n'.repeat(2000) })).toBe('accepted')
+    expect(save({ note: 'n'.repeat(2001) })).toBe('that is longer than a note — 2000 characters')
+  })
+})
+
 describe('the ceilings an account has', () => {
   it('refuses a two hundred and first activity, in the words the server uses', () => {
     for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)

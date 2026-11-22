@@ -1,4 +1,8 @@
--- ⛔ DRAFT, NOT APPLIED. Readable refusals for a goal's title, target, unit and note; the plan is
+-- ✅ APPLIED to production 22 Nov 2026 as migration `chronicle_goal_refusals`, version 20261122134938:
+-- md5(statements[1]) = ce8acebb030dcbdf2b888dfcc618795d, this file's body. The record is
+-- supabase/migrations/20261122134938_chronicle_goal_refusals.sql.
+--
+-- (as drafted) Readable refusals for a goal's title, target, unit and note; the plan is
 -- docs/2026-11-10-chronicle-goal-refusals-plan.md, and nothing here runs until Evan approves it.
 --
 -- chronicle_goal_save let the table refuse a title, a target, a unit or a note, so the room

@@ -1,7 +1,7 @@
 -- Readable refusals for a goal's title, target, unit and note, asked of the real function as a
 -- seeded member.
 --
--- ⛔ NEEDS docs/2026-11-10-chronicle-goal-refusals.DRAFT.sql APPLIED FIRST, and refuses to run
+-- ⛔ NEEDS docs/applied/2026-11-10-chronicle-goal-refusals.DRAFT.sql APPLIED FIRST, and refuses to run
 -- otherwise. It runs only where a throwaway database has been built from the migrations and seed
 -- (the `db guards` CI job), and it rolls back. NEVER against production: it writes rows.
 --
@@ -32,7 +32,7 @@ do $$
 begin
   if position($q$raise exception 'a goal needs a title'$q$
               in pg_get_functiondef('public.chronicle_goal_save(uuid, text, text, date, integer, numeric, text, text, integer, uuid, text, text, integer, integer)'::regprocedure)) = 0 then
-    raise exception 'apply docs/2026-11-10-chronicle-goal-refusals.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-10-chronicle-goal-refusals.DRAFT.sql before this file';
   end if;
 end $$;
 insert into fails select 'FIXTURE: no member to act as', 'seed the database first'

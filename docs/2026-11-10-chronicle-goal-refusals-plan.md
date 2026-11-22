@@ -1,6 +1,6 @@
 # A goal's title, target, unit and note, refused in words: the production fix plan
 
-⛔ **DRAFT. Nothing in it has run against production.** Found by the Chronicle server audit of
+✅ **APPLIED 22 Nov 2026 at 8:49:38 AM EST** as `chronicle_goal_refusals` (version 20261122134938), with Evan's yes that morning. Check A matched before it and Check B after it, production's record md5s to the draft's body, and live, as a member in a transaction that rolled back, every refusal below now reads in its new words. _(As written on 10 Nov:)_ Found by the Chronicle server audit of
 10 Nov 2026, which asked every Chronicle writer, as a member, for its refusals to a value that breaks
 a rule (db guards run 42825583418). Evan approves this plan, or not, as one step, and each step
 below is run by Claude after that approval and not before.
@@ -18,7 +18,7 @@ constraint's own sentence. The goal form checks only that a title is not empty a
 | A note of 2,001 characters or more | the same sentence, about `chronicle_goals_note_check`                                            | "that is longer than a note — 2000 characters"  |
 
 One function changes. No table, column, row or grant changes, and nothing needs deploying: the room
-already shows whatever the server says. The SQL is `docs/2026-11-10-chronicle-goal-refusals.DRAFT.sql`,
+already shows whatever the server says. The SQL is `docs/applied/2026-11-10-chronicle-goal-refusals.DRAFT.sql`,
 which refuses to run unless the live function is the exact text it was written against.
 
 ## Steps
