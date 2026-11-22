@@ -78,6 +78,25 @@ describe('the mind-reader', () => {
     }
     expect(match(wsls, 300).won).toBeGreaterThan(0.6)
   })
+  it('keeps up with a sloppy win-stay/lose-shift player, the habit noise hides best', () => {
+    // three moves in ten random. Measured through this match over these 24 seeds: 0.783 points a
+    // round as tuned, 0.743 at the old fade of 0.9 and memory of 40 — so 0.765, halfway, goes red
+    // if the tuning is undone
+    const wsls = (h: Round[], rand: () => number): Move => {
+      if (rand() < 0.3) return Math.floor(rand() * 3) as Move
+      if (!h.length) return 1
+      const last = h[h.length - 1]
+      return result(last.me, last.it) >= 0 ? last.me : beats(last.me)
+    }
+    let pts = 0
+    const seeds = [21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44]
+    seeds.push(45, 46, 47, 48)
+    for (const seed of seeds) {
+      const r = match(wsls, 150, seed)
+      pts += r.won + r.drawn / 2
+    }
+    expect(pts / seeds.length).toBeGreaterThan(0.765)
+  })
   it('notices when a habit changes, and stops expecting the old one', () => {
     // 60 rounds of rock, then 60 of paper: over the second half it should still win most
     const r = match((h) => (h.length < 60 ? 0 : 1), 120)

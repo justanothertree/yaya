@@ -13,12 +13,14 @@ import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
 import { WhatsHere } from './components/WhatsHere'
+import { CHRONICLE_KEYS } from './chronicle/keys'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
 import { FX_STYLES } from './ui/fxStyles'
 import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
 import { SECTION_ALIASES, SECTION_TITLES, navFor, sectionOf, type Section } from './nav/places'
+import { isTypingTarget } from './nav/typing'
 import { occupancy, usePartyHere } from './party/whereEveryone'
 import { AppearanceDialog } from './components/AppearanceDialog'
 import { BugReport } from './components/BugReport'
@@ -205,10 +207,6 @@ const FeedRoom = lazyRetry(
 const Pictures = lazyRetry(
   () => import('./pictures/Pictures'),
   (m) => m.Pictures,
-)
-const People = lazyRetry(
-  () => import('./sections/People'),
-  (m) => m.People,
 )
 const InstrumentRoom = lazyRetry(
   () => import('./sections/InstrumentRoom'),
@@ -1265,11 +1263,10 @@ export default function App() {
    */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null
-      const tag = target?.tagName?.toLowerCase()
-      const isTyping =
-        tag === 'input' || tag === 'textarea' || (target as HTMLElement)?.isContentEditable
-      if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return
+      /* a field keeps its own keys — a <select> included, which moves its option as the arrow
+         key's DEFAULT action, so `defaultPrevented` below cannot catch it (see nav/typing.ts) */
+      if (isTypingTarget(e.target as HTMLElement | null) || e.altKey || e.ctrlKey || e.metaKey)
+        return
       /**
        * ⚠️ AND NOT IF SOMETHING HAS ALREADY ANSWERED IT. This listener is on WINDOW, so a
        * component that handles an arrow key has to remember `stopPropagation` or the key does
@@ -1496,12 +1493,8 @@ export default function App() {
    */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Ignore while typing in inputs/textareas/contenteditable to avoid annoyance
-      const target = e.target as HTMLElement | null
-      const tag = target?.tagName?.toLowerCase()
-      const isTyping =
-        tag === 'input' || tag === 'textarea' || target?.isContentEditable || tag === 'select'
-      if (isTyping) return
+      // Ignore while typing in a field, a dropdown or anything contenteditable
+      if (isTypingTarget(e.target as HTMLElement | null)) return
       if (e.key === 'Escape' && helpOpen) {
         setHelpOpen(false)
         return
@@ -1531,7 +1524,7 @@ export default function App() {
    * Pages that have nothing to show a signed-out visitor but a sign-in prompt. Kept next to
    * singleCanvasTabs because the two have to be read together — see the launcher filter below.
    */
-  const MEMBER_ONLY_TABS: Section[] = ['account-settings', 'chat', 'ratings', 'people', 'profile']
+  const MEMBER_ONLY_TABS: Section[] = ['account-settings', 'chat', 'ratings', 'profile']
   const singleCanvasTabs: Section[] = [
     'investments',
     'account-settings',
@@ -1545,7 +1538,6 @@ export default function App() {
     'signin',
     'chat',
     'ratings',
-    'people',
     'profile',
   ]
   const canvasCapable =
@@ -1576,7 +1568,6 @@ export default function App() {
     signin: '🔑 Sign in',
     chat: '💬 Chat',
     ratings: '📝 Ratings',
-    people: '🧑‍🤝‍🧑 People',
     profile: '🪪 Profile',
   }
   /**
@@ -1629,8 +1620,6 @@ export default function App() {
         return <ChatPage authed={isFinanceAuthed || previewMember} voiceIn={voiceIn} />
       case 'ratings':
         return <Ratings authed={isFinanceAuthed || previewMember} />
-      case 'people':
-        return <People authed={isFinanceAuthed || previewMember} />
       case 'pictures':
         return <Pictures authed={isFinanceAuthed || previewMember} />
       case 'feed':
@@ -1943,7 +1932,7 @@ export default function App() {
       {/* Being here is a property of the person, not of the page — see PresenceBeacon, and the
           call dock directly below for the same argument about a call. Renders nothing. */}
       <PresenceBeacon />
-      <CallDock />
+      <CallDock isAdmin={isAdmin} />
       {/* Over everything, drawing nothing until you turn pointer sharing on — see party.ts for
           why that toggle is off by default and why it does not persist. */}
       <PartyCursors />
@@ -2310,19 +2299,6 @@ export default function App() {
               />
             </Suspense>
           )}
-          {!sharedCanvasShowing && active === 'people' && (
-            <section id="people" className="card reveal">
-              <Suspense
-                fallback={
-                  <div className="card" aria-busy>
-                    Loading People…
-                  </div>
-                }
-              >
-                <People authed={isFinanceAuthed || previewMember} />
-              </Suspense>
-            </section>
-          )}
           {!sharedCanvasShowing && active === 'pictures' && (
             <section id="pictures" className="card reveal">
               <Suspense fallback={<div aria-busy>Loading…</div>}>
@@ -2340,7 +2316,7 @@ export default function App() {
           {!sharedCanvasShowing && active === 'chronicle' && (
             <section id="chronicle" className="reveal">
               <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <Chronicle authed={isFinanceAuthed || previewMember} />
+                <Chronicle authed={isFinanceAuthed || previewMember} keysOff={gameHasControl} />
               </Suspense>
             </section>
           )}
@@ -2749,6 +2725,9 @@ export default function App() {
           canvasOpen={canvasOpen}
           canvasCapable={canvasCapable}
           desktop={desktop}
+          roomKeys={
+            active === 'chronicle' ? { room: 'Chronicle', keys: CHRONICLE_KEYS } : undefined
+          }
         />
       )}
     </div>

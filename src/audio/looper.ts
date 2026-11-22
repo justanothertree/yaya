@@ -8,6 +8,7 @@ import { toEvents, toNotes } from './noteEdit'
 import { getTake } from './takes'
 import { decodeTake } from './recordTake'
 import { followLastBar, growPlan, partAt, partsIn } from './arrange'
+import { tidyLyrics } from './lyricLines'
 import { logNow, readLog } from './takeEdit'
 import { editedBuffer } from './takeAudio'
 
@@ -135,6 +136,16 @@ export type Layer = {
    * the count-in ran is stored as you finally left it rather than as you first tried it.
    */
   fx: Fx
+  /**
+   * The words this part sings: one line per bar of the SONG, `''` for a bar with none — see
+   * songLyrics.ts. Absent on every part nobody has written on, which is nearly all of them.
+   *
+   * ⚠️ ON THE PART RATHER THAN BESIDE THE LAYERS, so the room's undo, the bench a reload puts
+   * back, a kept song and the jam all carry it without learning anything new: each of them
+   * already copies a part's fields. A field one of them forgot would be a delete — see the
+   * round trip in songFile.test.ts, which fills this in.
+   */
+  lyrics?: string[]
 }
 
 type State = {
@@ -328,6 +339,8 @@ let timer = 0
 let loopStart = 0
 /** How far ahead we have already scheduled, as an absolute audio time. */
 let scheduledTo = 0
+/** nothing is scheduled from here on, when a recording asked for one pass — see endPassAt */
+let lastAt: number | null = null
 /**
  * The exact audio time a waiting take will begin at.
  *
@@ -863,7 +876,7 @@ function tick() {
     }
   }
 
-  const target = now + lookahead
+  const target = Math.min(now + lookahead, lastAt ?? Infinity)
   if (scheduledTo < now) scheduledTo = now
   if (target > scheduledTo) {
     scheduleWindow(scheduledTo, target)
@@ -883,6 +896,7 @@ function tick() {
  */
 export function startLoop(leadIn = 0) {
   if (state.playing) return
+  lastAt = null
   resumeAudio()
   const c = sharedCtx()
   loopStart = c.currentTime + 0.08 + Math.max(0, leadIn)
@@ -913,6 +927,20 @@ export function startLoop(leadIn = 0) {
  * last-change-wins rule — which is what you want, because a loop with two different origins is
  * not one loop.
  */
+/**
+ * Make the pass that is playing the last: nothing is scheduled from `t` on, for a recording of the
+ * song (⬇ Stems, ⬇ Export song). Cleared by stopLoop and startLoop.
+ *
+ * ⚠️ STOPPING AT THE END IS TOO LATE (found 16 Nov 2026, measured). The scheduler works 140ms
+ * ahead, so by the song's last beat the next pass's first is already on the audio clock, and a
+ * drum hit once scheduled plays whatever is released: an export's ring-out opened on a full-level
+ * kick, and every stem ended on the first 40ms of the next pass. Not scheduling it is the only
+ * cut that leaves the song's own ending alone.
+ */
+export function endPassAt(t: number | null) {
+  lastAt = t
+}
+
 export function seekTo(t: number) {
   if (!state.playing) return
   const c = sharedCtx()
@@ -929,6 +957,7 @@ export function seekTo(t: number) {
 export function stopLoop() {
   if (timer) clearInterval(timer)
   timer = 0
+  lastAt = null
   // ⚠️ before commitTake, not after: a take being committed can add a layer, and releasing
   // afterwards would then chase notes that were never started
   releaseAllLayers()
@@ -1490,7 +1519,33 @@ export function addEmptyLayer(instrument: InstrumentId): string {
   return id
 }
 
-/** Put a layer back in every bar. */
+/**
+ * An empty part shaped like another — its sound, its length, its volume and its arrangement — for
+ * "copy all its notes to a new part" (PartPanel). The notes arrive through the new part's own
+ * editor, so its ↶ takes them back.
+ *
+ * ⚠️ NO PICKER'S MARK ON THE ID, so a copy of the chords is not a second "chords" for the beats
+ * panel to swap — see patternMark.ts.
+ */
+export function addPartLike(id: string): string {
+  const l = state.layers.find((x) => x.id === id)
+  if (!l || layersFull()) return ''
+  const nid = `${Date.now()}-copy`
+  const copy: Layer = {
+    id: nid,
+    instrument: l.instrument,
+    events: [],
+    muted: false,
+    fx: { ...l.fx },
+    len: l.len,
+    ...(l.gain !== undefined ? { gain: l.gain } : {}),
+    ...(l.plan ? { plan: [...l.plan] } : {}),
+    ...(l.play ? { play: [...l.play] } : {}),
+  }
+  set({ layers: [...state.layers, copy] })
+  return nid
+}
+
 /**
  * How many bars of its own a take holds — the blocks there are to arrange.
  */
@@ -1598,6 +1653,54 @@ export function setLayerGain(id: string, gain: number) {
 
 export function setLayerFx(id: string) {
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, fx: fxSnapshot() } : l)) })
+}
+
+/**
+ * One of a part's own effects, from its menu — the echo of the bassline without touching the
+ * knobs your hands are playing through (Evan, 15 Nov 2026: a part's "extra sound settings" in
+ * the menu its notes open in). Heard from the part's next note, as a re-stamp is.
+ */
+export function setLayerFxValue(id: string, k: keyof Fx, v: number) {
+  const x = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0
+  set({
+    layers: state.layers.map((l) => (l.id === id ? { ...l, fx: { ...l.fx, [k]: x } } : l)),
+  })
+}
+
+/**
+ * A part's lyrics, or none. Nothing is released: the notes are the same notes.
+ *
+ * ⚠️ TIDIED ON THE WAY IN (tidyLyrics), so what the room holds is what a file would hold, and a
+ * part whose last word was deleted carries no field at all rather than a list of empty lines.
+ */
+export function setLayerLyrics(id: string, lines: readonly string[] | undefined) {
+  const lyrics = tidyLyrics(lines, MAX_BARS)
+  set({
+    layers: state.layers.map((l) => {
+      if (l.id !== id) return l
+      const next = { ...l, lyrics }
+      if (!lyrics) delete next.lyrics
+      return next
+    }),
+  })
+}
+
+/**
+ * The words onto a different part's notes — one change, so one undo takes the move back whole.
+ * Whatever the other part had is replaced: a song is sung on one part at a time from the box.
+ */
+export function moveLyrics(from: string, to: string) {
+  const words = state.layers.find((l) => l.id === from)?.lyrics
+  if (from === to || !words || !state.layers.some((l) => l.id === to)) return
+  set({
+    layers: state.layers.map((l) => {
+      if (l.id === to) return { ...l, lyrics: words }
+      if (l.id !== from) return l
+      const next = { ...l }
+      delete next.lyrics
+      return next
+    }),
+  })
 }
 
 /**
@@ -1948,6 +2051,8 @@ export function soleDrumPiece(l: Layer): number | null {
  * to another machine, which is the cost takes.ts documents.
  */
 export async function placeTake(id: string, at = 0): Promise<boolean> {
+  /* a place that is not a number of seconds into the song is the top, never a scheduler that throws */
+  if (!Number.isFinite(at) || at < 0) at = 0
   const row = await getTake(id)
   if (!heard.has(id)) {
     if (!row) return false
@@ -2053,6 +2158,15 @@ export function muteTake(id: string) {
 
 /** Which takes are on the loop, for a song file and for the panel. */
 export const placedTakes = (): SongTake[] => state.takes
+
+/** Each placed take's place and the length of what it plays, for working out what a new take is sung over. */
+export const placedSpans = () =>
+  state.takes.map((t) => ({
+    id: t.id,
+    at: t.at,
+    muted: t.muted,
+    dur: heard.get(t.id)?.duration ?? 0,
+  }))
 
 /** Change how a take is cut up — see chop.ts. */
 export function takeChop(id: string, chop: Partial<Chop>) {

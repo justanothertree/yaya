@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { fetchFeed } from './cloud'
 import {
+  commentParts,
   dayKeyOf,
   groupByDay,
+  madeNoun,
+  matchParts,
   mergeEvents,
+  oneMadePerDay,
   FEED_SCOPES,
   type FeedEvent,
   type FeedKind,
@@ -34,7 +38,13 @@ const GLYPH: Record<FeedKind, string> = {
   rating: '⭐',
   snake_score: '🐍',
   snake_trophy: '🏆',
+  comment: '💬',
+  made: '🎨',
+  match: '🎲',
 }
+
+/** a page on the site, by username — the same door the name at the start of each row is */
+const pageOf = (who: string) => '#profile?u=' + encodeURIComponent(who)
 
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -93,6 +103,57 @@ function What({ e }: { e: FeedEvent }) {
         {e.score != null ? <span className="feed-score">{e.score}</span> : null}
       </span>
     )
+  if (e.kind === 'comment') {
+    const { verb, noun } = commentParts(e)
+    return (
+      <span className="feed-what">
+        <span className="muted feed-verb">{verb}</span>
+        {/* a guestbook is somebody's page, so it is a door to it -- unless it is yours */}
+        {e.on === 'guestbook' && e.aboutWho && !e.aboutMine ? (
+          <a className="feed-noun" href={pageOf(e.aboutWho)}>
+            {noun}
+          </a>
+        ) : (
+          <span className="feed-noun">{noun}</span>
+        )}
+        {/* the server sent at most 80 characters on one line; this is all of what travels */}
+        {e.detail ? <q className="muted feed-quote">{e.detail}</q> : null}
+      </span>
+    )
+  }
+  if (e.kind === 'made')
+    return (
+      <span className="feed-what">
+        <span className="muted feed-verb">Put</span>
+        <span className="feed-noun">{madeNoun(e.detail, e.count)}</span>
+        {/* the thing is on their page, so "their page" is the way to it */}
+        <a className="muted feed-sub" href={pageOf(e.who)}>
+          on {e.mine ? 'your' : 'their'} page
+        </a>
+      </span>
+    )
+  if (e.kind === 'match') {
+    const { verb, whom, toy, tail } = matchParts(e)
+    return (
+      <span className="feed-what">
+        <span className="muted feed-verb">{verb}</span>
+        {/* named only when the server said this reader may know them; a page is a door */}
+        {e.otherWho && !e.otherMine ? (
+          <a className="feed-noun" href={pageOf(e.otherWho)}>
+            {whom}
+          </a>
+        ) : (
+          <span className="feed-noun">{whom}</span>
+        )}
+        <span className="muted feed-verb">at</span>
+        {/* the toy, never the match: only its two players can open the match itself */}
+        <a className="feed-noun" href={`#lab?${new URLSearchParams({ demo: e.detail ?? '' })}`}>
+          {toy}
+        </a>
+        {tail ? <span className="muted feed-sub">{tail}</span> : null}
+      </span>
+    )
+  }
   if (e.kind === 'snake_trophy')
     return (
       <span className="feed-what">
@@ -142,8 +203,9 @@ export function FeedRoom({ authed }: { authed: boolean }) {
       const rows = await fetchFeed(from.toISOString(), to.toISOString(), 40, scope)
       if (run !== live.current) return
       /* merged even though the server already ordered them: the client is what holds the
-         previous window, and a refresh that overlaps is the normal case rather than a fault */
-      setEvents(mergeEvents(rows))
+         previous window, and a refresh that overlaps is the normal case rather than a fault.
+         Then one "made" row per person, kind and day, on the reader's own days. */
+      setEvents(oneMadePerDay(mergeEvents(rows)))
       setFailed(false)
     } catch {
       if (run !== live.current) return
@@ -247,11 +309,7 @@ export function FeedRoom({ authed }: { authed: boolean }) {
                         {GLYPH[e.kind]}
                       </span>
                       <span className="feed-who">
-                        {e.mine ? (
-                          'You'
-                        ) : (
-                          <a href={'#profile?u=' + encodeURIComponent(e.who)}>{e.name}</a>
-                        )}
+                        {e.mine ? 'You' : <a href={pageOf(e.who)}>{e.name}</a>}
                       </span>
                       <What e={e} />
                       <span className="muted feed-when">{clock(e.at)}</span>

@@ -1,7 +1,7 @@
 /**
  * Which unit a word names — the one table both halves of recorded-once agree on.
  *
- * ⚠️ THE SAME TABLE AS `chronicle_unit()` IN docs/2026-11-09-chronicle-sets-links.DRAFT.sql, and
+ * ⚠️ THE SAME TABLE AS `chronicle_unit()` IN docs/applied/2026-11-09-chronicle-sets-links.DRAFT.sql, and
  * units.test.ts reads that file to prove it. Evan's rule (§19g): "Link exercises to activities only
  * when their actual normalized units match. Don't infer compatibility from names or mix seconds
  * with reps." A Circuit exercise's unit and a Chronicle activity's metric each map to one of these,

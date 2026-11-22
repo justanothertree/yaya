@@ -40,7 +40,6 @@ import {
   pvGiveCircuit,
   pvSetAdd,
   pvSetsBetween,
-  pvSetChange,
   pvSetDrop,
   pvMyExercises,
   pvLinkExercise,
@@ -2206,21 +2205,34 @@ describe('an exercise linked to an activity', () => {
     ])
   })
 
-  it('adds a counted set to its sitting, and takes back exactly that on a change or a drop', () => {
+  it('adds a counted set to its sitting, and takes back exactly that on a drop', () => {
     pvLinkExercise('p-1', 'ex-quad', gym)
     const s = sitting(gym)
     const a = pvSetAdd('p-1', 'ex-quad', 12, DAY, s)
     const b = pvSetAdd('p-1', 'ex-plank', 30, DAY, s)
     if ('why' in a || 'why' in b) throw new Error('fixture')
     expect(amount(s)).toBe(12)
-    expect(pvSetChange(a.id, 15)).toBeNull()
-    expect(pvSetChange(a.id, 15)).toBeNull() // the same save again
-    expect(amount(s)).toBe(15)
     expect(pvAmount(s, 10)).toBe(false) // below its counted sets
     expect(pvAmount(s, 40)).toBe(true)
     expect(pvSetDrop(b.id)).toBeNull() // uncounted: nothing moves
     expect(pvSetDrop(a.id)).toBeNull()
-    expect(amount(s)).toBe(25)
+    expect(amount(s)).toBe(28)
+  })
+
+  /**
+   * ⚠️ IN DECIMALS, THE WAY `numeric` ADDS. The server's write-through sums sets exactly, so 1.1 and
+   * 2.2 make 3.3; JavaScript makes 3.3000000000000003, and a copy holding that would agree with the
+   * room's own floor when both are wrong, which is how a double hides a bug.
+   */
+  it('adds and takes back decimal sets the way the server does, so 1.1 and 2.2 make 3.3', () => {
+    pvLinkExercise('p-1', 'ex-quad', gym)
+    const s = sitting(gym)
+    const a = pvSetAdd('p-1', 'ex-quad', 1.1, DAY, s)
+    const b = pvSetAdd('p-1', 'ex-quad', 2.2, DAY, s)
+    if ('why' in a || 'why' in b) throw new Error('fixture')
+    expect(amount(s)).toBe(3.3)
+    expect(pvSetDrop(a.id)).toBeNull()
+    expect(amount(s)).toBe(2.2)
   })
 
   it('brings a counted set back only with its sitting, because only then does the file hold it', () => {
@@ -2710,5 +2722,36 @@ describe('a minute is counted on the raw time, then rounded', () => {
     ).toEqual({ k: {} })
     const card = pvMemberChronicle(7, false, false)
     expect([card.time, card.top]).toEqual([{}, []])
+  })
+})
+
+/**
+ * ⚠️ BROWSING STAYS ON ITS OWNER'S SIDE OF THE CARD — docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql,
+ * not applied yet. The workbench draws a friend's view, so the double leaves the site's own
+ * activities out of all three figures, as the server will for anybody but the owner.
+ */
+describe("a friend's view of the card leaves browsing out", () => {
+  const ago = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString()
+
+  it('from the totals and the top five, while the time somebody chose to record stays', () => {
+    pvAddEntry(gym, ago(120), ago(60), null)
+    pvVisit('Paint', 600)
+    expect(pvActivities().find((a) => a.name === 'Paint')?.auto).toBe(true)
+    const card = pvMemberChronicle(7, false, false)
+    /* Paint is Free Time like Gym, so a total that still counted it would read 70 */
+    expect(card.time).toEqual({ free: 60 })
+    expect(card.top.map((t) => t.name)).toEqual(['Gym'])
+  })
+
+  it('and from "now", which falls back to nothing rather than naming the room', () => {
+    const paint = (() => {
+      pvVisit('Paint', 120)
+      return pvActivities().find((a) => a.name === 'Paint')!.id
+    })()
+    expect(pvStart(gym)).toBe(null)
+    expect(pvMemberChronicle(7, true, false).now?.name).toBe('Gym')
+    /* starting the room's activity by hand closes Gym, as chronicle_start does */
+    expect(pvStart(paint)).toBe(null)
+    expect(pvMemberChronicle(7, true, false).now).toBe(null)
   })
 })

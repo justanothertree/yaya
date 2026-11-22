@@ -18,6 +18,7 @@ import type {
 import { ratingId, voteId } from './types'
 import { getSupabaseClient, subscribeLogged } from '../finance/client'
 import { CellRefused } from './cellRefused'
+import { localISO } from './dates'
 import { cellChanges, sessionsIn, withConverted, withSessions, type SessionSum } from './sessions'
 
 const TABLES = [
@@ -290,13 +291,17 @@ export function createSupabaseAdapter(
      * sessions and leaves the board exactly as it was.
      */
     const today = new Date()
-    const day = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12)
     const since = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 399, 12)
-    const sessionsCall = sb.rpc('circuit_session_sums', { p_from: day(since), p_to: day(tomorrow) })
+    const sessionsCall = sb.rpc('circuit_session_sums', {
+      p_from: localISO(since),
+      p_to: localISO(tomorrow),
+    })
     /* a converted person's typed cells — none, on a server without the conversion draft */
-    const manualCall = sb.rpc('circuit_manual_sums', { p_from: day(since), p_to: day(tomorrow) })
+    const manualCall = sb.rpc('circuit_manual_sums', {
+      p_from: localISO(since),
+      p_to: localISO(tomorrow),
+    })
     const [ppl, logs, movies, wl, pgroups, groups, pools, votes, ratings] = await Promise.all([
       sb.from('circuit_people').select('*'),
       sb.from('circuit_logs').select('*'),

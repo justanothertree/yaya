@@ -92,3 +92,38 @@
   min-height: 32px;
   padding: 0.3rem 0.7rem;
 }
+
+/* a result riding with a comment (src/lab/recorded.ts): the game's, not typed, and said so */
+.lab-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--accent, #7c6af7) 45%, transparent);
+  border-left-width: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent, #7c6af7) 9%, transparent);
+  min-width: 0;
+}
+.lab-card-line {
+  flex: 1 1 12rem;
+  min-width: 120px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.lab-card-tag {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+.lab-card-x {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0.2rem 0.5rem;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .lab-card-x {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}

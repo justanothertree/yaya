@@ -20,11 +20,21 @@ import { useState } from 'react'
 export function AlsoTogether({
   id,
   children,
+  whenGone = null,
 }: {
   /** where the dismissal is remembered — one per room */
   id: string
   /** the sentence, in this room's own words */
   children: React.ReactNode
+  /**
+   * What stands in its place once it is put away, for a room whose only way to a call is this.
+   *
+   * ⚠️ THE INSTRUMENT'S 🎶 Jam LINK MOVED IN HERE (the #311 layout, 14 Nov 2026), and that link
+   * existed because this line is dismissible: Evan's note of 12 Nov was that once the tip was put
+   * away nothing in the room said a jam existed. So a room that leans on the tip for its door
+   * keeps a quieter one when the tip goes — the signpost leaves, the doorway does not.
+   */
+  whenGone?: React.ReactNode
 }) {
   const key = `also_together_${id}_v1`
   const [gone, setGone] = useState(() => {
@@ -34,7 +44,7 @@ export function AlsoTogether({
       return false
     }
   })
-  if (gone) return null
+  if (gone) return whenGone
   return (
     <p className="also-together muted">
       <span>👋 {children}</span>

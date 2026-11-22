@@ -98,6 +98,18 @@ export function ImportPanel() {
    * that looks precise and is a ceiling.
    */
   const [undecidedTotal, setUndecidedTotal] = useState<number | null>(null)
+  /**
+   * What the price pass after an import did — or why it could not.
+   *
+   * ⚠️ IT IS SEPARATE FROM `summary` FOR THE SAME REASON `splitError` IS. The trades are in by
+   * the time this runs; a feed that refuses must not make the import look like it failed, or the
+   * honest response to being told nothing happened is to import the file twice.
+   */
+  const [pricePass, setPricePass] = useState<
+    | { ok: true; stocks: number; crypto: number; written: number }
+    | { ok: false; why: string }
+    | null
+  >(null)
 
   /**
    * ⚠️ Not gated on having just imported, and deliberately NOT narrowed to one import.
@@ -280,15 +292,60 @@ export function ImportPanel() {
     }
   }
 
+  /**
+   * Price what the import just introduced.
+   *
+   * ⚠️ A SYMBOL IMPORTED AFTER THE DAY'S LAST SWEEP IS WORTH NOTHING UNTIL TOMORROW, and every
+   * figure on the site that sums value leaves it out and says so. Measured 14 Nov 2026: the
+   * evening's import brought in seven Robinhood positions the sweep had never seen — six of them
+   * split across all 33 family accounts — and the whole fund read $977 light against the broker,
+   * $813.84 of it the family's. Nothing was wrong with the arithmetic; the prices did not exist.
+   * The four cron runs are at 21:10–21:16 UTC and the import was at 02:12.
+   *
+   * ⚠️ `finance.refresh_prices` ALREADY ASKS FOR THESE FIRST — its symbol list is `order by
+   * staleness asc nulls first`, and a symbol with no cached price has a null one. So one run is
+   * enough; the 55-a-run cap cannot starve the new arrivals. Measured over twelve cron runs,
+   * 12–14 Nov: 3.8–7.0 seconds each.
+   *
+   * ⚠️ AND IT IS CALLED FROM THE BROWSER, NOT THE RELAY, which looks like the wrong end until
+   * you check the grants: `admin_refresh_prices` gates on `public.is_admin()` alone, where
+   * `admin_import_trades` and `admin_even_split_trades` both also accept `service_role`. The
+   * relay holds a service key and has no `auth.uid()`, so from there this is a guaranteed
+   * 'admin only'. The panel is signed in as the admin, which is the credential it needs.
+   */
+  const priceNewSymbols = useCallback(async () => {
+    setPricePass(null)
+    const { data, error } = await getSupabaseClient().rpc('admin_refresh_prices')
+    if (error) {
+      setPricePass({ ok: false, why: error.message })
+      return
+    }
+    const r = (data ?? {}) as Record<string, unknown>
+    setPricePass({
+      ok: true,
+      stocks: Number(r.stocks ?? 0),
+      crypto: Number(r.crypto ?? 0),
+      written: Number(r.written ?? 0),
+    })
+  }, [])
+
   async function doImport() {
     if (!csv) return
     setErr(null)
+    setPricePass(null)
     setBusy('importing')
     // stamped BEFORE the request, so "what this import added" cannot miss a row that landed
     // while it was running
     try {
       setSummary(await post(csv.text, csv.name, true))
       await loadUndecided()
+      /* after the trades and the split, never in front of them: a price is a nicety and those
+         two are the import. Its own try, so a refused feed reports itself and nothing else. */
+      try {
+        await priceNewSymbols()
+      } catch (e) {
+        setPricePass({ ok: false, why: String((e as Error)?.message || e) })
+      }
     } catch (e) {
       setErr(String((e as Error)?.message || e))
     } finally {
@@ -470,6 +527,30 @@ export function ImportPanel() {
                 <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.84rem' }}>
                   The trades are in. The even split did not run: {summary.splitError} — it is
                   housekeeping and safe to run again; importing this file a second time is not.
+                </p>
+              )}
+              {/* The price pass. Reported, because a symbol with no price is counted as nothing
+                  by every total on the site — and because the only thing worse than that is it
+                  being silent about it. */}
+              {pricePass?.ok === true && (
+                <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.84rem' }}>
+                  Prices refreshed: {pricePass.stocks} stocks and {pricePass.crypto} coins quoted,{' '}
+                  {pricePass.written} written. Anything the file introduced is worth something now
+                  rather than at the next sweep.
+                </p>
+              )}
+              {pricePass?.ok === false && (
+                <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.84rem' }}>
+                  The trades are in. The price refresh did not run: {pricePass.why} — anything new
+                  in this file will read as unpriced until the next sweep (21:10 UTC), which the
+                  totals disclose rather than count as zero.{' '}
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => void priceNewSymbols()}
+                    style={{ fontSize: '0.76rem', padding: '0.1rem 0.45rem' }}
+                  >
+                    Try again
+                  </button>
                 </p>
               )}
             </div>

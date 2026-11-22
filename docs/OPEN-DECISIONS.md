@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
+Last reviewed: 2026-11-21 for Chronicle: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
 
 ---
 
@@ -1387,3 +1387,59 @@ the sweep could not reach them:
 ✅ **ANSWERED BY EVAN, 10 Nov 2026:** _"22a yes, raise them to 24px on a new draft. 22b no. 22c no,
 I test live."_ 22a is built on its own draft. 22b and 22c are closed: `.sr-only` stays as it is, and
 no stand-in is built for the feed's comments and reactions or the Circuits panel's list.
+
+**Where §22 stands, 21 Nov 2026.** ⚠️ The answer above was recorded only on #137's branch, which is
+waiting on 21a–b, so main still read §22 as three open questions. On 21 Nov that made 22c look
+unanswered: it was built and released, and 22b was listed as parked. Corrected here when the two
+records met.
+
+- ✅ **22a DONE 10 Nov**, built the same morning as `15637e21` ("the sheet's edit controls are 24px
+  with a mouse").
+- **22b CLOSED 10 Nov**: `.sr-only` stays as it is.
+- ⚠️ **22c was answered no, and built anyway on 21 Nov** (#444), for comments and reactions:
+  `src/dev/feedSocialPreview.ts`, a double under the real `useFeedSocial`. Its first run found three
+  bugs in the live feed, fixed in the same change, and those fixes do not depend on the stand-in:
+  - a comment over 1000 characters **vanished**: the box had no cap and clears itself before the
+    answer comes back. It is capped at the server's number now, held there by
+    `scripts/comment-cap.test.mjs`.
+  - one pasted link with no hyphen in it took the page **sideways**: 31px past the card at 375,
+    and a 1000-character word 5,024px at 1440. Comments wrap anywhere now.
+  - with a mouse at 820 the kudos chips were **23px**, under the floor. The 10 Nov sweep measured
+    820 with the touch rules on, so it could not see this. They are 24 with a mouse, and 38 on
+    touch as before.
+
+  Whether the stand-in stays is Evan's call; see §23. The Circuits panel's list has none.
+
+- ⏸ **22d, new**, below.
+
+### 22d. On a phone, nobody can see who gave a kudos
+
+A kudos chip reads "🔥 2", and the names behind it ("Jordan, Samantha") live only in its `title`,
+which a phone never shows (CLAUDE.md §6). Tapping the chip gives or takes back your own kudos, so
+no gesture is left that shows the names. `mobileAudit` flags both chips as `wordless`; it is the
+only finding left on the feed at any width.
+
+**Recommendation:** when the comments are open, put one line above them naming who gave what:
+"🔥 Jordan, Samantha · 💪 you". The 💬 button is already what a phone taps to see more, it changes
+nothing a tap does today, and it costs no space while the comments are closed. **Blocks:** nothing.
+It is a design call, so it is asked rather than built.
+
+---
+
+## 23. Chronicle — everything still open, 21 Nov 2026
+
+Swept against the code and `git log` rather than this file, because this file had fallen behind
+(§22a above) — and, as §22 now says, against main only, which is how an answer on an unmerged
+branch was missed. Everything in §14–§20 not listed here is answered and built, or answered and
+released. Nothing below can move without you.
+
+| §   | What it needs from you                                                                                                                                                                                                                                                                                                                                                                       | State                                              |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 21a | A yes to apply the migration in draft #137. Until then a 3.5-mile walk reads "4 mi" in the day's workout line                                                                                                                                                                                                                                                                                | Written and proven in CI on 10 Nov. Production SQL |
+| 21b | The same yes: it is in #137 with 21a. A negative amount's refusal says "count <NULL>"                                                                                                                                                                                                                                                                                                        | As 21a. Nothing in the room sends a negative       |
+| 21c | Run, or approve running, `supabase db dump --linked`, the first of the four steps in `supabase/baseline/README.md`, so CI tests the schema production has. Until then nothing applied since 4 Nov is in the database `db guards` runs against                                                                                                                                                | It reads production, so it is yours                |
+| 19e | Who "the person" is in "the person confirms from their own account". `claim_person` is already a member claiming a row as themself, so a claim made that way cannot confirm itself; the likeliest meaning is that the member who added the row confirms, but that is a guess. Building either half is production SQL, and the only thing waiting on it is the conversion, which waits on 20d | Answered 9 Nov, not built                          |
+| 20d | A cutover date for the conversion. 20e (what a restore does to a converted cell) waits on it too                                                                                                                                                                                                                                                                                             | Nothing converts until then                        |
+| 22c | Keep the feed's stand-in that #444 added against your 10 Nov "no", or take it out. The three fixes stay either way                                                                                                                                                                                                                                                                           | Live since 21 Nov; dev-only, not in the bundle     |
+| 22d | Where a phone shows who gave a kudos                                                                                                                                                                                                                                                                                                                                                         | New, 21 Nov                                        |
+| 19f | The signed-in device checks, which grow with each build. The PRs since carry their own phone checklists (#434, #437, #440, #441, #444)                                                                                                                                                                                                                                                       | Only a signed-in phone can make them               |

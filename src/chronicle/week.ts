@@ -1,3 +1,4 @@
+import { localISO } from '../circuit/dates'
 import { coveredPct, dayBounds, lane, nowAt, type Block, type Span } from './record'
 import { windowOf } from './goal'
 
@@ -48,9 +49,7 @@ export function weekOf(on: string): string[] {
   const out: string[] = []
   const start = new Date(win.from + 'T12:00:00')
   for (let i = 0; i < 7; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i, 12)
-    const p = (n: number) => String(n).padStart(2, '0')
-    out.push(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`)
+    out.push(localISO(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i, 12)))
   }
   return out
 }
@@ -80,6 +79,70 @@ export function columns(
     }
   })
 }
+
+/**
+ * How much of the week's days so far is written down — the line under the grid, and now the line
+ * on its fold as well.
+ *
+ * ⚠️ ONE SUM FOR TWO PLACES. The grid has always printed this under itself; folding the grid on a
+ * phone put the same figure on the row that opens it, and two copies of an average are two
+ * chances to round or count the days differently. Both read this.
+ *
+ * ⚠️ ONLY THE DAYS THAT HAVE BEGUN, which is what the grid's own note has always said: a Tuesday
+ * afternoon measured against seven days is 29% at best and reads as failure. Null before any has.
+ */
+export function coveredSoFar(
+  cols: ReadonlyArray<Pick<Column, 'fromMs' | 'covered'>>,
+  nowMs: number,
+): { pct: number; days: number } | null {
+  const started = cols.filter((c) => c.fromMs <= nowMs)
+  if (!started.length) return null
+  return {
+    pct: Math.round(started.reduce((n, c) => n + c.covered, 0) / started.length),
+    days: started.length,
+  }
+}
+
+/** a drag on the grid snaps to this many minutes, which is also the shortest span it makes */
+export const DRAG_SNAP_MIN = 15
+
+/**
+ * The span a drag down one day's lane describes, or null when it describes none.
+ *
+ * `a` and `b` are where the drag began and where it is now, as fractions down the lane (0 at the
+ * top of the day, 1 at the bottom); either order, since dragging up is the same gesture.
+ *
+ * ⚠️ FRACTIONS OF THE DAY'S REAL LENGTH, then snapped from the day's start, so the clock-change
+ * days come out right: a 23-hour day is 23 hours of lane, and fifteen-minute steps from its
+ * midnight are still on the quarter hours, because a clock change moves by whole hours.
+ *
+ * ⚠️ NEVER IN THE FUTURE, because nothing can have happened then and Log a past session refuses
+ * it — so the end stops at `nowMs` rather than opening a form that will only say no.
+ *
+ * ⚠️ NULL UNDER ONE STEP, which is how a drag that barely moved stays a tap: the lane's tap opens
+ * the hour, and a drag has to describe at least a quarter of an hour to mean something else.
+ */
+export function dragSpan(
+  fromMs: number,
+  toMs: number,
+  a: number,
+  b: number,
+  nowMs: number,
+  snapMin: number = DRAG_SNAP_MIN,
+): { fromMs: number; toMs: number } | null {
+  const step = snapMin * 60_000
+  const at = (f: number) => {
+    const t = fromMs + Math.min(1, Math.max(0, f)) * (toMs - fromMs)
+    return Math.min(toMs, fromMs + Math.round((t - fromMs) / step) * step)
+  }
+  const lo = at(Math.min(a, b))
+  const hi = Math.min(at(Math.max(a, b)), nowMs)
+  return hi - lo >= step ? { fromMs: lo, toMs: hi } : null
+}
+
+/** that figure as the sentence both places print */
+export const coveredLine = (c: { pct: number; days: number }): string =>
+  `${c.pct}% of ${c.days === 1 ? 'today' : `these ${c.days} days`} is written down`
 
 /**
  * The hour lines a column is drawn against.

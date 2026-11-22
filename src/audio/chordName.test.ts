@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { keySpeller, nameChord, noteLabel, pitchName } from './chordName'
+import { keyName, keySpeller, nameChord, noteLabel, pitchName } from './chordName'
 import { CHORDS, chordNotes } from './chords'
 import { SCALES, degreesOf } from './scales'
 
@@ -361,5 +361,49 @@ describe('a key is labelled in the room’s key', () => {
 
   it('and without a key, every key keeps the sharps it always had', () => {
     expect([60, 61, 69, 48, 79].map((m) => noteLabel(m))).toEqual(['C4', 'C♯4', 'A4', 'C3', 'G5'])
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026: the Key picker lists flat names where they are the right ones. Written as the
+ * key signatures every theory book prints — five flat major keys, and the minors by their relative
+ * majors.
+ */
+describe('the Key picker names each key as it is written', () => {
+  const all = (degrees: readonly number[]) =>
+    Array.from({ length: 12 }, (_, r) => keyName(degrees, r))
+
+  it('major: D♭, E♭, A♭ and B♭ are flat keys, F♯ is sharp', () => {
+    expect(all(degreesOf('major'))).toEqual([
+      'C',
+      'D♭',
+      'D',
+      'E♭',
+      'E',
+      'F',
+      'F♯',
+      'G',
+      'A♭',
+      'A',
+      'B♭',
+      'B',
+    ])
+  })
+
+  it('minor: C♯, D♯, F♯ and G♯ minor are sharp keys, B♭ minor is flat', () => {
+    expect(all(degreesOf('minor'))).toEqual([
+      'C',
+      'C♯',
+      'D',
+      'D♯',
+      'E',
+      'F',
+      'F♯',
+      'G',
+      'G♯',
+      'A',
+      'B♭',
+      'B',
+    ])
   })
 })

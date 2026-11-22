@@ -1,5 +1,6 @@
 // Shared scoring helpers for The Circuit (used by Board, Log, Charts…).
 import type { DayLog, Person } from './types'
+import { dayOfMonth, localISO } from './dates'
 
 /** Points for a single entry. Imported "__total__" days store points directly. */
 function entryPoints(p: Person, eid: string, val: number): number {
@@ -50,19 +51,17 @@ export function currentStreak(p: Person, logs: DayLog[]): number {
   const goal = p.goal ?? 100
   const dates = new Set([...byDate].filter(([, pts]) => pts >= goal).map(([date]) => date))
   if (!dates.size) return 0
-  // local date (not UTC) so it matches the local calendar dates logs are stored under
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // local dates (not UTC) so they match the local calendar dates logs are stored under
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
   // anchor the streak to today if logged today, else yesterday; otherwise it's broken
   let d: Date
-  if (dates.has(iso(today))) d = today
-  else if (dates.has(iso(yesterday))) d = yesterday
+  if (dates.has(localISO(today))) d = today
+  else if (dates.has(localISO(yesterday))) d = yesterday
   else return 0
   let streak = 0
-  while (dates.has(iso(d))) {
+  while (dates.has(localISO(d))) {
     streak++
     d.setDate(d.getDate() - 1)
   }
@@ -73,7 +72,7 @@ export function currentStreak(p: Person, logs: DayLog[]): number {
 export function monthDaily(p: Person, logs: DayLog[], ym: string, days: number): number[] {
   const out: number[] = []
   for (let d = 1; d <= days; d++) {
-    out.push(dayTotal(p, logs, `${ym}-${String(d).padStart(2, '0')}`))
+    out.push(dayTotal(p, logs, dayOfMonth(ym, d)))
   }
   return out
 }
