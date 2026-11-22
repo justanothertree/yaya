@@ -25,6 +25,9 @@ import { SIZES as DOTS_SIZES } from '../../../src/gpu/dots'
 import { dotsRules, type DotsGame } from '../../../src/gpu/dotsRoom'
 import { fourRowMatchRules, readFourSettings } from '../../../src/gpu/fourrowRoom'
 import { poolRules } from '../../../src/gpu/poolRoom'
+import { score as mancalaScore } from '../../../src/gpu/mancala'
+import { mancalaRules, readMancalaSettings, type MancalaGame } from '../../../src/gpu/mancalaRoom'
+import { morrisRules } from '../../../src/gpu/morrisRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -68,6 +71,15 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     const read = readFourSettings(s)
     return read ? { rules: fourRowMatchRules(...read) } : null
   },
+  mancala: (s) => {
+    const read = readMancalaSettings(s)
+    if (!read) return null
+    return {
+      rules: mancalaRules(read),
+      score: (g: MancalaGame) => mancalaScore(g.b).join('–'),
+    }
+  },
+  morris: () => ({ rules: morrisRules }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */

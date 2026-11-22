@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-16-feed-finished-matches.DRAFT.sql: takes the match branch back out of
+-- ROLLBACK for docs/applied/2026-11-16-feed-finished-matches.DRAFT.sql: takes the match branch back out of
 -- feed_recent, by the same surgery the other way round. Nothing is stored by the draft, so nothing
 -- is lost: finished matches simply stop appearing in the Feed.
 do $mig$
