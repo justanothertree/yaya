@@ -19,6 +19,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   fourrow: [{}, { size: 'small' }, { size: 'wide', need: 5 }, { size: 'classic', level: 'hard' }],
   mancala: [{}, { pits: 4 }, { seeds: 6, captures: false }, { pits: 5, seeds: 3, level: 'hard' }],
   morris: [{}, { level: 'hard' }],
+  hex: [{}, { size: 7 }, { size: 11, swap: true }, { swap: false, level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -30,6 +31,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   fourrow: [{ size: 'small', need: 5 }, { size: 'huge' }, { need: 3 }, { size: 7 }],
   mancala: [{ pits: 7 }, { pits: '6' }, { seeds: 2 }, { captures: 'yes' }],
   morris: [],
+  hex: [{ size: 8 }, { size: '9' }, { swap: 'yes' }, { size: 13 }],
 }
 
 describe('the match toys', () => {

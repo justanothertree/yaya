@@ -16,6 +16,8 @@ import { LEVELS as MANCALA_LEVELS } from '../../gpu/mancala'
 import { mancalaRules, readMancalaSettings } from '../../gpu/mancalaRoom'
 import { LEVELS as MORRIS_LEVELS } from '../../gpu/morris'
 import { morrisRules } from '../../gpu/morrisRoom'
+import { LEVELS as HEX_LEVELS, SIZES as HEX_SIZES } from '../../gpu/hex'
+import { hexRules, readHexSettings } from '../../gpu/hexRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -93,6 +95,15 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     levels: MANCALA_LEVELS,
   },
   morris: { name: MATCH_NAMES.morris, rulesFor: () => morrisRules, levels: MORRIS_LEVELS },
+  hex: {
+    name: MATCH_NAMES.hex,
+    rulesFor: (s) => {
+      const read = readHexSettings(s)
+      return read ? hexRules(...read) : null
+    },
+    levels: HEX_LEVELS,
+    sizes: HEX_SIZES,
+  },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>

@@ -28,6 +28,7 @@ import { poolRules } from '../../../src/gpu/poolRoom'
 import { score as mancalaScore } from '../../../src/gpu/mancala'
 import { mancalaRules, readMancalaSettings, type MancalaGame } from '../../../src/gpu/mancalaRoom'
 import { morrisRules } from '../../../src/gpu/morrisRoom'
+import { hexRules, readHexSettings } from '../../../src/gpu/hexRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -80,6 +81,10 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     }
   },
   morris: () => ({ rules: morrisRules }),
+  hex: (s) => {
+    const read = readHexSettings(s)
+    return read ? { rules: hexRules(...read) } : null
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
