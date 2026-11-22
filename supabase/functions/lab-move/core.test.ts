@@ -50,6 +50,8 @@ import {
 import { replay as morrisReplay } from '../../../src/gpu/morrisRoom'
 import { chain as hexChain } from '../../../src/gpu/hex'
 import { SWAP, replay as hexReplay } from '../../../src/gpu/hexRoom'
+import { LINES as ULT_LINES, moves as ultMoves } from '../../../src/gpu/ultimate'
+import { replay as ultReplay } from '../../../src/gpu/ultimateRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -1122,5 +1124,65 @@ describe('hex by turns: a stone a turn, and the swap rule when asked for', () =>
         decide({ ...row, state: { n: 7, swap: false, moves: [10, 10] } }, B, move(row.seq, 12)),
       ),
     ).toBe(500)
+  })
+})
+
+describe('ultimate noughts by turns: your square sends them to its board', () => {
+  const ult = (over: Partial<Row> = {}) => invite({ demo_id: 'ultimate', settings: {}, ...over })
+  const game = (state: unknown) => ultReplay((state as { moves: unknown[] }).moves)!.g
+
+  it('plays versus to the end, the winner whoever holds three small boards in a line', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 16; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(ult(), (r) => {
+        const list = ultMoves(game(r.state))
+        return list[Math.floor(rnd() * list.length)]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      // asked of the small boards: a line of them held by one mark, or none and a draw
+      const held = (w: number) => ULT_LINES.some((l) => l.every((b) => g.boards[b] === w))
+      if (last.result!.winner === 'draw') {
+        expect(held(1) || held(2)).toBe(false)
+        seen.add('draw')
+        continue
+      }
+      expect(held(last.result!.winner === 0 ? 1 : 2)).toBe(true)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('sends the next player to the board that matches the square', () => {
+    let row = after(ult(), decide(ult(), B, { op: 'accept' }))
+    // the middle square of the top-left board sends the second mark to the middle board (4)
+    row = after(row, decide(row, A, move(row.seq, 4)))
+    expect(status(decide(row, B, move(row.seq, 0)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 36)))).toBe('commit')
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = ult({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, ultMoves(game(row.state))[0]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  }, 30000)
+
+  it('refuses a taken square, one off the board, and a stored game no squares could have made', () => {
+    let row = after(ult(), decide(ult(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, 40)))
+    expect(status(decide(row, B, move(row.seq, 40)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 81)))).toBe(400)
+    expect(status(decide({ ...row, state: { moves: [40, 40] } }, B, move(row.seq, 36)))).toBe(500)
   })
 })

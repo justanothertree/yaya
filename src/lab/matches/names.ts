@@ -17,6 +17,7 @@ export const MATCH_NAMES: Record<string, string> = {
   mancala: 'Mancala',
   morris: 'Nine men’s morris',
   hex: 'Hex',
+  ultimate: 'Ultimate noughts',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */
