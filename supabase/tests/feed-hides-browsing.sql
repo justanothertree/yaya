@@ -2,7 +2,7 @@
 -- its owner's own Chronicle and reaches neither the Feed nor a friend's Chronicle Friends tab.
 --
 -- ⛔ NEEDS THE DRAFT APPLIED FIRST, and refuses to run otherwise:
---      docs/2026-11-13-feed-hides-browsing.DRAFT.sql
+--      docs/applied/2026-11-13-feed-hides-browsing.DRAFT.sql
 -- It is not applied to production. This file runs only where a throwaway database has been built
 -- from the schema baseline and seed -- the `db guards` CI job, by way of a scratch-probe branch --
 -- and it rolls back. NEVER against production: it writes sittings and changes sharing levels.

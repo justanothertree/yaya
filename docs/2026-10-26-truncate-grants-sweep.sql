@@ -1,6 +1,28 @@
--- NOT APPLIED -- NEEDS EVAN'S GO-AHEAD. It touches every table in `public`, so the desktop
--- app's auto-mode classifier declined it as a shared-resource change, which is the right
--- instinct for a sweep this wide. The evidence is below; the migration at the bottom is ready.
+-- ✅ APPLIED to production 27 Oct 2026 as
+-- supabase/migrations/20261027104647_revoke_truncate_trigger_references_api_roles.sql.
+-- That file is the record of what ran; the lines below are this sweep's reasoning, true when
+-- they were written.
+--
+-- ⚠️ THIS HEADER SAID "NOT APPLIED" FOR TWENTY-FIVE DAYS AFTER IT WAS APPLIED, which is the
+-- failure §2 keeps describing: a sentence true when written, falsified by something that landed
+-- in a different file, with nothing downstream to contradict it. A reader deciding whether
+-- `anon` can still empty a table would have been told the wrong thing by the one document
+-- written to answer that question -- and the only cost of checking was one query.
+--
+-- RE-MEASURED 21 Nov 2026, against the database rather than against this file:
+--
+--   select count(*) filter (where has_table_privilege('anon', c.oid, 'TRUNCATE'))          as anon,
+--          count(*) filter (where has_table_privilege('authenticated', c.oid, 'TRUNCATE')) as authed,
+--          count(*)                                                                        as tables
+--     from pg_class c join pg_namespace n on n.oid = c.relnamespace
+--    where n.nspname = 'public' and c.relkind = 'r';
+--
+--   anon 0, authenticated 0, out of 64 tables -- against the 17 and 27 recorded below.
+--
+-- The sweep did what it set out to do, and the standing way to ask again is that query, not this
+-- paragraph, which is a claim with a date on it like every other.
+--
+-- WHAT WAS TRUE WHEN THIS WAS WRITTEN, 26 Oct 2026:
 --
 -- FOUND WHILE WIRING circuit_ratings INTO THE ACTIVITY FEED.
 --

@@ -5,6 +5,7 @@ import {
   dayKeyOf,
   groupByDay,
   madeNoun,
+  matchParts,
   mergeEvents,
   oneMadePerDay,
   FEED_SCOPES,
@@ -39,6 +40,7 @@ const GLYPH: Record<FeedKind, string> = {
   snake_trophy: '🏆',
   comment: '💬',
   made: '🎨',
+  match: '🎲',
 }
 
 /** a page on the site, by username — the same door the name at the start of each row is */
@@ -130,6 +132,28 @@ function What({ e }: { e: FeedEvent }) {
         </a>
       </span>
     )
+  if (e.kind === 'match') {
+    const { verb, whom, toy, tail } = matchParts(e)
+    return (
+      <span className="feed-what">
+        <span className="muted feed-verb">{verb}</span>
+        {/* named only when the server said this reader may know them; a page is a door */}
+        {e.otherWho && !e.otherMine ? (
+          <a className="feed-noun" href={pageOf(e.otherWho)}>
+            {whom}
+          </a>
+        ) : (
+          <span className="feed-noun">{whom}</span>
+        )}
+        <span className="muted feed-verb">at</span>
+        {/* the toy, never the match: only its two players can open the match itself */}
+        <a className="feed-noun" href={`#lab?${new URLSearchParams({ demo: e.detail ?? '' })}`}>
+          {toy}
+        </a>
+        {tail ? <span className="muted feed-sub">{tail}</span> : null}
+      </span>
+    )
+  }
   if (e.kind === 'snake_trophy')
     return (
       <span className="feed-what">

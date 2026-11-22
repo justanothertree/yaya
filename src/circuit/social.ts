@@ -2,7 +2,9 @@
 // so it loads/subscribes through the authed Supabase client (RLS scopes everything to
 // logs you can see). Signed out, the Feed simply doesn't use this.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseClient } from '../finance/client'
+import { previewMember } from '../dev/previewMember'
 
 export type Reaction = {
   log_id: string
@@ -21,6 +23,16 @@ export type Comment = {
 
 export const KUDOS = ['👍', '🔥', '💪', '👏', '🐐'] as const
 
+/**
+ * The longest comment the box takes: `circuit_log_comments_body_check` allows 1000 characters.
+ * ⚠️ THE BOX HAD NO CAP, and `post` clears it without waiting for the answer, so a comment over the
+ * limit vanished — the box emptied, nothing was posted and nothing said why (found in the pane
+ * once the feed had a stand-in, OPEN-DECISIONS §22c). An input's `maxLength` counts UTF-16 units,
+ * never fewer than the characters `char_length` counts, so capping at the same number can only
+ * ever be stricter than the server. scripts/comment-cap.test.mjs holds this against the schema.
+ */
+export const COMMENT_MAX = 1000
+
 function groupByLog<T extends { log_id: string }>(rows: T[]): Record<string, T[]> {
   const m: Record<string, T[]> = {}
   for (const r of rows) (m[r.log_id] ||= []).push(r)
@@ -38,12 +50,33 @@ export interface FeedSocial {
 
 /** Reactions + comments for the feed. `enabled` is false when signed out (no-op). */
 export function useFeedSocial(enabled: boolean): FeedSocial {
-  const sb = useMemo(() => getSupabaseClient(), [])
+  /**
+   * DEV only: the member preview has no session, so every read here answered nothing and the pane
+   * could only ever show a feed with no kudos and no comments (OPEN-DECISIONS §22c). It gets a
+   * double instead — dev/feedSocialPreview.ts — and this hook runs unchanged over it.
+   * ⚠️ `import.meta.env.DEV` SPELLED OUT, as in circuit/connect.ts: Vite folds the literal to
+   * `false` in a build, so the dynamic import is gone before rollup decides what to keep, and a
+   * production page has the real client from its first render.
+   */
+  const [sb, setSb] = useState<SupabaseClient | null>(() =>
+    import.meta.env.DEV && previewMember ? null : getSupabaseClient(),
+  )
+  useEffect(() => {
+    if (!(import.meta.env.DEV && previewMember)) return
+    let live = true
+    void import('../dev/feedSocialPreview').then((m) => {
+      if (live) setSb(m.previewSocialClient() as unknown as SupabaseClient)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
   const [uid, setUid] = useState<string | null>(null)
   const [reactions, setReactions] = useState<Reaction[]>([])
   const [comments, setComments] = useState<Comment[]>([])
 
   const load = useCallback(async () => {
+    if (!sb) return
     const [r, c] = await Promise.all([
       sb.from('circuit_log_reactions').select('*'),
       sb.from('circuit_log_comments').select('*').order('created_at', { ascending: true }),
@@ -53,7 +86,7 @@ export function useFeedSocial(enabled: boolean): FeedSocial {
   }, [sb])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !sb) return
     void sb.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null))
     void load()
     const ch = sb
@@ -82,7 +115,7 @@ export function useFeedSocial(enabled: boolean): FeedSocial {
 
   const toggleReaction = useCallback(
     async (logId: string, emoji: string, authorName: string) => {
-      if (!uid) return
+      if (!sb || !uid) return
       const mine = reactions.some(
         (r) => r.log_id === logId && r.user_id === uid && r.emoji === emoji,
       )
@@ -106,7 +139,7 @@ export function useFeedSocial(enabled: boolean): FeedSocial {
   const addComment = useCallback(
     async (logId: string, body: string, authorName: string) => {
       const text = body.trim()
-      if (!uid || !text) return
+      if (!sb || !uid || !text) return
       await sb
         .from('circuit_log_comments')
         .insert({ log_id: logId, user_id: uid, body: text, author_name: authorName })
@@ -117,6 +150,7 @@ export function useFeedSocial(enabled: boolean): FeedSocial {
 
   const deleteComment = useCallback(
     async (id: string) => {
+      if (!sb) return
       await sb.from('circuit_log_comments').delete().eq('id', id)
       await load()
     },
