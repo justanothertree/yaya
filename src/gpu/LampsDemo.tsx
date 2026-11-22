@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MutableRefObject,
+} from 'react'
 import {
   LAMPS_KEY,
   LOOKS,
@@ -23,6 +30,13 @@ import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { boardOf, parOf, pressesBoth, type DuelGame } from './lampsDuel'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 const LOOK_NAMES: Record<Saved['look'], string> = {
   bulbs: 'Bulbs',
@@ -34,6 +48,16 @@ const PATTERN_NAMES: Record<Pattern, string> = { plus: '✚ Beside', cross: '✖
 const seedFor = (size: number, pattern: Pattern) => daySeedFor(dayNumber(), size, pattern)
 
 export function LampsDemo() {
+  /* a duel by turns, when the address names one (src/lab/matches/useLabMatch.ts): the same board
+     for both, the friend's solve sealed by the server until the challenger's is in (lampsDuel.ts) */
+  const lm = useLabMatch('lamps', { preview: false })
+  // keyed by the match: another duel starts with nothing of this one's presses
+  if (lm.id) return <LampsDuel key={lm.id} lm={lm} />
+  return <LampsAlone />
+}
+
+function LampsAlone() {
+  const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(LAMPS_KEY, readSaved)
   const [seed, setSeed] = useState(() => seedFor(saved.size, saved.pattern))
   const n = saved.size
@@ -163,27 +187,6 @@ export function LampsDemo() {
     setLine('The same board again, from the start.')
   }
 
-  const at = cursor < N * N ? cursor : 0
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const r = Math.floor(at / N)
-    const c = at % N
-    let next = -1
-    if (e.key === 'ArrowLeft') next = r * N + Math.max(0, c - 1)
-    else if (e.key === 'ArrowRight') next = r * N + Math.min(N - 1, c + 1)
-    else if (e.key === 'ArrowUp') next = Math.max(0, r - 1) * N + c
-    else if (e.key === 'ArrowDown') next = Math.min(N - 1, r + 1) * N + c
-    else if (!room && (e.key === 'h' || e.key === 'H')) askHint()
-    else if (!room && (e.key === 'u' || e.key === 'U')) undo()
-    else return
-    e.preventDefault()
-    e.stopPropagation()
-    if (next >= 0) {
-      setCursor(next)
-      refs.current[next]?.focus()
-    }
-  }
-  const switched = new Set(reach(N, at, P))
-  const pressed = (k: number) => `${k} ${k === 1 ? 'press' : 'presses'}`
   /** a seat's progress in a race: how many of its lamps are still lit */
   const litOf = (k: number) => g?.lit[k]?.filter(Boolean).length ?? 0
   /** a seated player left alone carries on alone, from the board on screen */
@@ -288,6 +291,9 @@ export function LampsDemo() {
               ⟳ New board
             </button>
           </div>
+          {signedIn && (
+            <MatchChallenge demo="lamps" settings={{ size: n, pattern }} levelNames={{}} />
+          )}
         </div>
       )}
       {g ? (
@@ -335,40 +341,25 @@ export function LampsDemo() {
         </p>
       )}
 
-      <div
-        className={`lp-board${(g ? g.winner !== null : done) ? ' is-done' : ''}`}
-        style={{ ['--lp-n' as string]: N }}
-        role="group"
-        aria-label={`The lamps, ${N} by ${N}. Arrow keys move, Enter or Space presses${g ? '' : ', H is a hint, U undoes'}.`}
-        onKeyDown={onKey}
-      >
-        {shownLit.map((v, i) => (
-          <button
-            key={i}
-            ref={(el) => {
-              refs.current[i] = el
-            }}
-            className={[
-              'lp-lamp',
-              v ? 'is-on' : '',
-              !g && hint === i ? 'is-hint' : '',
-              i !== at && switched.has(i) ? 'is-near' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            tabIndex={i === at ? 0 : -1}
-            aria-label={`Row ${Math.floor(i / N) + 1}, column ${(i % N) + 1}: ${v ? 'lit' : 'dark'}${!g && hint === i ? ', the hint' : ''}`}
-            aria-pressed={v}
-            onFocus={() => setCursor(i)}
-            onClick={() => {
-              setCursor(i)
-              tap(i)
-            }}
-          >
-            <span aria-hidden />
-          </button>
-        ))}
-      </div>
+      <LampGrid
+        n={N}
+        pattern={P}
+        lit={shownLit}
+        done={g ? g.winner !== null : done}
+        hint={g ? null : hint}
+        cursor={cursor}
+        setCursor={setCursor}
+        refs={refs}
+        keysWord={g ? '' : ', H is a hint, U undoes'}
+        onPress={tap}
+        onKey={(k) => {
+          if (room) return false
+          if (k === 'h' || k === 'H') askHint()
+          else if (k === 'u' || k === 'U') undo()
+          else return false
+          return true
+        }}
+      />
       {!withCall && (
         <div className="lab-controls">
           <button className="btn btn-ghost" onClick={undo} disabled={!history.length || done}>
@@ -409,6 +400,240 @@ export function LampsDemo() {
         fewest presses that can do it, worked out exactly; pressing a lamp twice undoes it, so no
         lamp ever needs pressing more than once. Today’s board is the same for everyone. Keys:
         arrows move, Enter or Space presses, H is a hint, U undoes.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * The lamps, as buttons in a grid: arrow keys move, Enter or Space presses, and `onKey` may take
+ * other keys (the toy's H and U). The cursor and the buttons are the caller's, so a hint can move
+ * the focus to the lamp it names.
+ */
+function LampGrid({
+  n,
+  pattern,
+  lit,
+  done,
+  hint,
+  cursor,
+  setCursor,
+  refs,
+  keysWord,
+  onPress,
+  onKey,
+}: {
+  n: number
+  pattern: Pattern
+  lit: boolean[]
+  done: boolean
+  hint: number | null
+  cursor: number
+  setCursor: (i: number) => void
+  refs: MutableRefObject<(HTMLButtonElement | null)[]>
+  /** the keys beyond moving and pressing, for the board's name */
+  keysWord: string
+  onPress: (i: number) => void
+  onKey?: (key: string) => boolean
+}) {
+  const at = cursor < n * n ? cursor : 0
+  const keyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const r = Math.floor(at / n)
+    const c = at % n
+    let next = -1
+    if (e.key === 'ArrowLeft') next = r * n + Math.max(0, c - 1)
+    else if (e.key === 'ArrowRight') next = r * n + Math.min(n - 1, c + 1)
+    else if (e.key === 'ArrowUp') next = Math.max(0, r - 1) * n + c
+    else if (e.key === 'ArrowDown') next = Math.min(n - 1, r + 1) * n + c
+    else if (!onKey?.(e.key)) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (next >= 0) {
+      setCursor(next)
+      refs.current[next]?.focus()
+    }
+  }
+  const switched = new Set(reach(n, at, pattern))
+  return (
+    <div
+      className={`lp-board${done ? ' is-done' : ''}`}
+      style={{ ['--lp-n' as string]: n }}
+      role="group"
+      aria-label={`The lamps, ${n} by ${n}. Arrow keys move, Enter or Space presses${keysWord}.`}
+      onKeyDown={keyDown}
+    >
+      {lit.map((v, i) => (
+        <button
+          key={i}
+          ref={(el) => {
+            refs.current[i] = el
+          }}
+          className={[
+            'lp-lamp',
+            v ? 'is-on' : '',
+            hint === i ? 'is-hint' : '',
+            i !== at && switched.has(i) ? 'is-near' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          tabIndex={i === at ? 0 : -1}
+          aria-label={`Row ${Math.floor(i / n) + 1}, column ${(i % n) + 1}: ${v ? 'lit' : 'dark'}${hint === i ? ', the hint' : ''}`}
+          aria-pressed={v}
+          onFocus={() => setCursor(i)}
+          onClick={() => {
+            setCursor(i)
+            onPress(i)
+          }}
+        >
+          <span aria-hidden />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** a number of presses, said as one says it */
+const pressed = (k: number) => `${k} ${k === 1 ? 'press' : 'presses'}`
+
+/**
+ * A duel by turns: both switch off one board, each on their own, and the fewer presses wins. The
+ * friend's solve is sealed until the challenger's is in, so neither knows the number to beat.
+ */
+function LampsDuel({ lm }: { lm: LabMatch }) {
+  const [saved] = useKept(LAMPS_KEY, readSaved)
+  const x = lm.shown as DuelGame | null
+  const side: 0 | 1 = lm.view?.you === 1 ? 1 : 0
+  const theirs: 0 | 1 = side === 0 ? 1 : 0
+  const them = lm.view ? otherName(lm.view) : 'They'
+  const board = x ? boardOf(x) : null
+  const n = x?.size ?? 5
+  const pattern = x?.pattern ?? 'plus'
+  const [lit, setLit] = useState<boolean[] | null>(null)
+  const [history, setHistory] = useState<boolean[][]>([])
+  const [actions, setActions] = useState<number[]>([])
+  const [cursor, setCursor] = useState(0)
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const [sealedMine, setSealedMine] = useState<number[] | null>(null)
+  const seq = lm.view?.seq
+  const sealed = !!x?.sealed
+  useEffect(() => {
+    // the friend's own sealed solve, from lab-move: the state says only that one is in
+    if (!lm.id || !sealed || side !== 1) return
+    let live = true
+    myHidden(lm.id)
+      .then((d) => {
+        if (live) setSealedMine(Array.isArray(d) ? (d as number[]) : null)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [lm.id, seq, sealed, side])
+  if (!x || !board)
+    return (
+      <div className={`lab-keys lp-room is-${saved.look}`}>
+        <MatchBar lm={lm} sides={['solves second', 'solves first']} />
+      </div>
+    )
+
+  const par = parOf(x)!
+  const both = pressesBoth(x)
+  const myGo = lm.canPlay
+  const now = lit ?? board
+  const isDark = !now.some(Boolean)
+  const tap = (i: number) => {
+    if (!myGo || isDark) return
+    setHistory((h) => [...h, now])
+    setActions((a) => [...a, i])
+    setLit(press(now, n, i, pattern))
+  }
+  const undo = () => {
+    const last = history[history.length - 1]
+    if (!last || isDark) return
+    setLit(last)
+    setHistory((h) => h.slice(0, -1))
+    setActions((a) => [...a, -1])
+  }
+  const restart = () => {
+    setLit(null)
+    setHistory([])
+    setActions([])
+  }
+  const line = (() => {
+    if (both) {
+      const [me, other] = [both[side], both[theirs]]
+      const how = `You ${pressed(me)}, ${them} ${pressed(other)}; par is ${par}.`
+      return me < other ? `🏆 ${how}` : me > other ? `${them} wins. ${how}` : `A draw. ${how}`
+    }
+    if (!myGo)
+      return side === 1
+        ? `Your solve is in${sealedMine ? ` — ${pressed(sealedMine.length)}` : ''}, sealed until ${them}’s is in.`
+        : `${them} is solving it. Yours comes after, and theirs stays sealed until you send it.`
+    if (isDark) return `All dark in ${pressed(actions.length)}. Send it, or start again for fewer.`
+    return side === 0
+      ? `${them}’s solve is in, sealed. Switch every lamp off in as few presses as you can: par is ${par}.`
+      : `Switch every lamp off in as few presses as you can: par is ${par}. ${them} solves the same board after you, without seeing yours.`
+  })()
+  return (
+    <div className={`lab-keys lp-room is-${saved.look}`}>
+      <MatchBar lm={lm} sides={['solves second', 'solves first']} />
+      <div className="dice-scores">
+        <div className="dice-score is-up">
+          <span>{both ? 'You' : 'Presses'}</span>
+          <strong>{both ? both[side] : myGo ? actions.length : '—'}</strong>
+          <span className="muted">par {par}</span>
+        </div>
+        <div className="dice-score">
+          <span>{them}</span>
+          <strong>{both ? both[theirs] : '?'}</strong>
+          <span className="muted">
+            {both ? 'presses' : sealed || side === 1 ? 'sealed' : 'solving'}
+          </span>
+        </div>
+      </div>
+      <p className="mc-line" aria-live="polite">
+        {line}
+      </p>
+      {!myGo && <p className="muted">The board as it began:</p>}
+      <LampGrid
+        n={n}
+        pattern={pattern}
+        lit={myGo ? now : board}
+        done={!myGo || isDark}
+        hint={null}
+        cursor={cursor}
+        setCursor={setCursor}
+        refs={refs}
+        keysWord={myGo ? ', U undoes' : ''}
+        onPress={tap}
+        onKey={(k) => {
+          if (!myGo || (k !== 'u' && k !== 'U')) return false
+          undo()
+          return true
+        }}
+      />
+      {myGo && (
+        <div className="lab-controls">
+          <button className="btn btn-ghost" onClick={undo} disabled={!history.length || isDark}>
+            ↶ Undo
+          </button>
+          <button className="btn btn-ghost" onClick={restart} disabled={!actions.length}>
+            ↺ Start again
+          </button>
+          <button
+            className="btn"
+            disabled={!isDark || lm.busy}
+            onClick={() => lm.commit({ solve: actions })}
+          >
+            {isDark ? `Send my solve — ${pressed(actions.length)}` : 'Switch them all off to send'}
+          </button>
+        </div>
+      )}
+      <p className="muted lab-hint">
+        A duel by turns: the same {n}×{n} board for you both, made by the server when the challenge
+        was accepted. Each of you switches it off alone, and the fewer presses wins — an undo
+        counts, as it does in the toy. The first solve is sealed until the second is in. No hints
+        here.
       </p>
     </div>
   )

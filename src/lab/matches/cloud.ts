@@ -170,7 +170,20 @@ async function move(body: Record<string, unknown>): Promise<MatchView> {
   }
   return one(data)
 }
-export const acceptMatch = (id: string) => move({ op: 'accept', match: id })
+/** accept; a toy that keeps something hidden brings the friend's side of it (their fleet) with the yes */
+export const acceptMatch = (id: string, brought?: unknown) =>
+  move(brought === undefined ? { op: 'accept', match: id } : { op: 'accept', match: id, brought })
+/**
+ * Your own side of what a toy keeps hidden (your fleet), from lab-move: the state never carries
+ * it and no RPC returns the secret, so this is the one way to see it, and it is only ever yours.
+ */
+export async function myHidden(id: string): Promise<unknown> {
+  const { data, error } = await getSupabaseClient().functions.invoke('lab-move', {
+    body: { op: 'mine', match: id },
+  })
+  if (error) throw new MatchError('Your side of this match could not be fetched.')
+  return (data as { mine?: unknown } | null)?.mine ?? null
+}
 export const sendMove = (id: string, at: number, m: unknown) =>
   move({ op: 'move', match: id, at, move: m })
 

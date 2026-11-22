@@ -12,7 +12,59 @@ import { LEVELS as DOTS_LEVELS, SIZES as DOTS_SIZES } from '../../gpu/dots'
 import { dotsRules } from '../../gpu/dotsRoom'
 import { LEVELS as FOUR_LEVELS } from '../../gpu/fourrow'
 import { fourRowMatchRules, readFourSettings } from '../../gpu/fourrowRoom'
-import type { Rules } from '../social/room'
+import { LEVELS as MANCALA_LEVELS } from '../../gpu/mancala'
+import { mancalaRules, readMancalaSettings } from '../../gpu/mancalaRoom'
+import { LEVELS as MORRIS_LEVELS } from '../../gpu/morris'
+import { morrisRules } from '../../gpu/morrisRoom'
+import { LEVELS as HEX_LEVELS, SIZES as HEX_SIZES } from '../../gpu/hex'
+import { hexRules, readHexSettings } from '../../gpu/hexRoom'
+import { LEVELS as ULTIMATE_LEVELS } from '../../gpu/ultimate'
+import { ultimateRules } from '../../gpu/ultimateRoom'
+import { LEVELS as BREAKTHROUGH_LEVELS, SIZES as BREAKTHROUGH_SIZES } from '../../gpu/breakthrough'
+import { breakthroughRules, readBreakthroughSize } from '../../gpu/breakthroughRoom'
+import { LEVELS as FENCES_LEVELS, SIZES as FENCES_SIZES } from '../../gpu/fences'
+import { fencesRules, readFencesSize } from '../../gpu/fencesRoom'
+import { LEVELS as HALMA_LEVELS } from '../../gpu/halma'
+import { halmaRules } from '../../gpu/halmaRoom'
+import { LEVELS as GO_LEVELS } from '../../gpu/goboard'
+import { goRules } from '../../gpu/goRoom'
+import { LEVELS as FOX_LEVELS } from '../../gpu/fox'
+import { foxMatchRules, foxSideOf, readFoxSide } from '../../gpu/foxRoom'
+import { LEVELS as CUBE_LEVELS } from '../../gpu/cube'
+import { cubeRules } from '../../gpu/cubeRoom'
+import { LEVELS as ARTILLERY_LEVELS } from '../../gpu/artillery'
+import { artilleryRules } from '../../gpu/artilleryRoom'
+import { LEVELS as BOWLING_LEVELS } from '../../gpu/bowling'
+import { bowlingRules } from '../../gpu/bowlingRoom'
+import { LEVELS as CURLING_LEVELS } from '../../gpu/curling'
+import { curlingMatchRules } from '../../gpu/curlingRoom'
+import { LEVELS as PUTT_LEVELS } from '../../gpu/putt'
+import { puttRules } from '../../gpu/puttRoom'
+import { LEVELS as DARTS_LEVELS } from '../../gpu/darts'
+import { dartsMatchRules } from '../../gpu/dartsRoom'
+import { LEVELS as BACKGAMMON_LEVELS } from '../../gpu/backgammon'
+import { backgammonRules } from '../../gpu/backgammonRoom'
+import { LEVELS as SEA_LEVELS, SIZES as SEA_SIZES } from '../../gpu/seabattle'
+import { readSeaSettings, seaRules } from '../../gpu/seabattleRoom'
+import { LEVELS as DICE_LEVELS, diceRules } from '../../gpu/diceRoom'
+import { LEVELS as YACHT_LEVELS } from '../../gpu/yacht'
+import { yachtRules } from '../../gpu/yachtRoom'
+import { LEVELS as SHUT_LEVELS } from '../../gpu/shut'
+import { shutRules } from '../../gpu/shutRoom'
+import { codeRules, readCodeSettings } from '../../gpu/codebreakerRoom'
+import { boxRules, readBoxSettings } from '../../gpu/shadowboxRoom'
+import { readRpsSettings, rpsRules } from '../../gpu/rpsRoom'
+import { ginRules, readGinSettings } from '../../gpu/ginRoom'
+import { cribRules } from '../../gpu/cribbageRoom'
+import { dominoRules, readDominoSettings } from '../../gpu/dominoesRoom'
+import { heartsRules, readHeartsSettings } from '../../gpu/heartsRoom'
+import { readSpadesSettings, spadesRules } from '../../gpu/spadesRoom'
+import { eightsRules, readEightsSettings } from '../../gpu/eightsRoom'
+import { liarsRules, readLiarsSettings } from '../../gpu/liarsRoom'
+import { holdemRules } from '../../gpu/holdemRoom'
+import { duelRules, readDuelSettings } from '../../gpu/lampsDuel'
+import { readTwentyOneSettings, twentyOneRules } from '../../gpu/twentyoneDuel'
+import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
 /**
@@ -37,6 +89,15 @@ export type MatchToy = {
   levels: readonly string[]
   /** board sizes, where the toy has them */
   sizes?: readonly number[]
+  /**
+   * The settings a rematch is challenged on, by whoever asks for it (they become the challenger,
+   * seat 0), where they are not simply the same again: Fox and geese swaps the sides.
+   */
+  rematch?: (m: {
+    you: Seat
+    mode: Mode
+    settings: Record<string, unknown>
+  }) => Record<string, unknown>
 }
 
 export const MATCH_TOYS: Record<string, MatchToy> = {
@@ -79,6 +140,185 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
       return read ? fourRowMatchRules(...read) : null
     },
     levels: FOUR_LEVELS,
+  },
+  mancala: {
+    name: MATCH_NAMES.mancala,
+    rulesFor: (s) => {
+      const read = readMancalaSettings(s)
+      return read ? mancalaRules(read) : null
+    },
+    levels: MANCALA_LEVELS,
+  },
+  morris: { name: MATCH_NAMES.morris, rulesFor: () => morrisRules, levels: MORRIS_LEVELS },
+  hex: {
+    name: MATCH_NAMES.hex,
+    rulesFor: (s) => {
+      const read = readHexSettings(s)
+      return read ? hexRules(...read) : null
+    },
+    levels: HEX_LEVELS,
+    sizes: HEX_SIZES,
+  },
+  ultimate: { name: MATCH_NAMES.ultimate, rulesFor: () => ultimateRules, levels: ULTIMATE_LEVELS },
+  breakthrough: {
+    name: MATCH_NAMES.breakthrough,
+    rulesFor: (s) => {
+      const size = readBreakthroughSize(s)
+      return size === null ? null : breakthroughRules(size)
+    },
+    levels: BREAKTHROUGH_LEVELS,
+    sizes: BREAKTHROUGH_SIZES,
+  },
+  fences: {
+    name: MATCH_NAMES.fences,
+    rulesFor: (s) => {
+      const size = readFencesSize(s)
+      return size === null ? null : fencesRules(size)
+    },
+    levels: FENCES_LEVELS,
+    sizes: FENCES_SIZES,
+  },
+  halma: { name: MATCH_NAMES.halma, rulesFor: () => halmaRules, levels: HALMA_LEVELS },
+  go: { name: MATCH_NAMES.go, rulesFor: () => goRules, levels: GO_LEVELS },
+  fox: {
+    name: MATCH_NAMES.fox,
+    rulesFor: (s) => {
+      const side = readFoxSide(s)
+      return side ? foxMatchRules(side) : null
+    },
+    levels: FOX_LEVELS,
+    // whoever asks for the rematch plays the side they did not play this time
+    rematch: ({ you, mode, settings }) => {
+      const mine = mode === 'versus' ? foxSideOf(settings, you) : null
+      return mine ? { ...settings, side: mine === 'geese' ? 'fox' : 'geese' } : settings
+    },
+  },
+  cube: { name: MATCH_NAMES.cube, rulesFor: () => cubeRules, levels: CUBE_LEVELS },
+  artillery: {
+    name: MATCH_NAMES.artillery,
+    rulesFor: () => artilleryRules,
+    levels: ARTILLERY_LEVELS,
+  },
+  bowling: { name: MATCH_NAMES.bowling, rulesFor: () => bowlingRules, levels: BOWLING_LEVELS },
+  curling: { name: MATCH_NAMES.curling, rulesFor: () => curlingMatchRules, levels: CURLING_LEVELS },
+  putt: { name: MATCH_NAMES.putt, rulesFor: () => puttRules, levels: PUTT_LEVELS },
+  darts: { name: MATCH_NAMES.darts, rulesFor: () => dartsMatchRules, levels: DARTS_LEVELS },
+  backgammon: {
+    name: MATCH_NAMES.backgammon,
+    rulesFor: () => backgammonRules,
+    levels: BACKGAMMON_LEVELS,
+  },
+  seabattle: {
+    name: MATCH_NAMES.seabattle,
+    rulesFor: (s) => {
+      const set = readSeaSettings(s)
+      return set === null ? null : seaRules(set)
+    },
+    levels: SEA_LEVELS,
+    sizes: SEA_SIZES,
+  },
+  dice: { name: MATCH_NAMES.dice, rulesFor: () => diceRules, levels: DICE_LEVELS },
+  yacht: { name: MATCH_NAMES.yacht, rulesFor: () => yachtRules, levels: YACHT_LEVELS },
+  shut: { name: MATCH_NAMES.shut, rulesFor: () => shutRules, levels: SHUT_LEVELS },
+  codebreaker: {
+    name: MATCH_NAMES.codebreaker,
+    rulesFor: (s) => {
+      const rules = readCodeSettings(s)
+      return rules === null ? null : codeRules(rules)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  shadowbox: {
+    name: MATCH_NAMES.shadowbox,
+    rulesFor: (s) => {
+      const set = readBoxSettings(s)
+      return set === null ? null : boxRules(set.rounds)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  rps: {
+    name: MATCH_NAMES.rps,
+    rulesFor: (s) => {
+      const set = readRpsSettings(s)
+      return set === null ? null : rpsRules(set.firstTo)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  gin: {
+    name: MATCH_NAMES.gin,
+    rulesFor: (s) => {
+      const set = readGinSettings(s)
+      return set === null ? null : ginRules(set.target)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  cribbage: {
+    name: MATCH_NAMES.cribbage,
+    rulesFor: () => cribRules,
+    levels: ['easy', 'fair', 'hard'],
+  },
+  dominoes: {
+    name: MATCH_NAMES.dominoes,
+    rulesFor: (s) => {
+      const set = readDominoSettings(s)
+      return set === null ? null : dominoRules(set.target)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  hearts: {
+    name: MATCH_NAMES.hearts,
+    rulesFor: (s) => {
+      const set = readHeartsSettings(s)
+      return set === null ? null : heartsRules(set.end, set.level)
+    },
+    // versus alone: the computers fill the table at the level the toy is set to, not a side to beat
+    levels: [],
+  },
+  spades: {
+    name: MATCH_NAMES.spades,
+    rulesFor: (s) => {
+      const set = readSpadesSettings(s)
+      return set === null ? null : spadesRules(set.target, set.level)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  eights: {
+    name: MATCH_NAMES.eights,
+    rulesFor: (s) => {
+      const set = readEightsSettings(s)
+      return set === null ? null : eightsRules(set.target)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  liars: {
+    name: MATCH_NAMES.liars,
+    rulesFor: (s) => {
+      const set = readLiarsSettings(s)
+      return set === null ? null : liarsRules(set.wild)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  poker: {
+    name: MATCH_NAMES.poker,
+    rulesFor: () => holdemRules,
+    levels: ['easy', 'fair', 'hard'],
+  },
+  lamps: {
+    name: MATCH_NAMES.lamps,
+    rulesFor: (s) => {
+      const set = readDuelSettings(s)
+      return set === null ? null : duelRules(set.size, set.pattern)
+    },
+    // a duel: no computer, so no Together
+    levels: [],
+  },
+  twentyone: {
+    name: MATCH_NAMES.twentyone,
+    rulesFor: (s) => {
+      const set = readTwentyOneSettings(s)
+      return set === null ? null : twentyOneRules(set.rounds)
+    },
+    levels: ['easy', 'fair', 'hard'],
   },
 }
 

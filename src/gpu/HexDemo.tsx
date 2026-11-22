@@ -21,11 +21,15 @@ import {
   type Saved,
 } from './hex'
 import { useKept } from './kept'
-import { SWAP, hexRules } from './hexRoom'
+import { SWAP, hexRules, type HexGame } from './hexRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -193,13 +197,45 @@ export function HexDemo() {
   savedRef.current = saved
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A stone
+     shows at once and waits for Send; the server plays it and the board comes back. */
+  const lm = useLabMatch('hex')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as HexGame | null) : null
+
   /* ── the call's room: the host's size and swap rule start each game, which travels as its moves */
   const roomRules = useMemo(() => hexRules(saved.size, saved.swap), [saved.size, saved.swap])
   const lab = useLabRoom('hex', roomRules)
   const words = tableSeats(lab, roomRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** the toy's own controls: alone or two on one screen, neither in a call nor in a match */
+  const local = mode !== 'call' && !inMatch
   /** the colour I place for: blue only in seat 1 of a versus game; together, the team is red */
-  const mySide: Player = room?.mode === 'versus' && words.mySeat === 1 ? 2 : 1
+  const mySide: Player = inMatch
+    ? lm.view?.mode === 'versus' && lm.view.you === 1
+      ? 2
+      : 1
+    : room?.mode === 'versus' && words.mySeat === 1
+      ? 2
+      : 1
+  // the board on screen is the match's, whenever it changes — the move waiting to be sent included
+  useEffect(() => {
+    if (!matchGame) return
+    window.clearTimeout(timer.current)
+    game.current = {
+      ...game.current,
+      b: matchGame.b,
+      turn: matchGame.turn ?? game.current.turn,
+      you: mySide,
+      swapRule: matchGame.swapRule,
+      moves: matchGame.moves.length,
+      last: matchGame.last,
+      over: matchGame.turn === null,
+    }
+    bump()
+  }, [matchGame, mySide])
   // the board on screen is the room's, whenever it changes
   useEffect(() => {
     if (mode !== 'call' || !room) return
@@ -219,8 +255,8 @@ export function HexDemo() {
   }, [mode, room, mySide])
 
   const g = game.current
-  const computerTurn = mode === 'bot' && !g.over && g.turn !== g.you
-  const myMove = room ? lab.live && myTurn(roomRules, room) : true
+  const computerTurn = mode === 'bot' && !inMatch && !g.over && g.turn !== g.you
+  const myMove = inMatch ? lm.canPlay : room ? lab.live && myTurn(roomRules, room) : true
   const canSwap =
     g.swapRule && g.moves === 1 && !g.over && myMove && (mode === 'two' || g.turn === g.you)
   const after = (p: Player) => {
@@ -253,6 +289,7 @@ export function HexDemo() {
   const playAt = (i: number) => {
     const gm = game.current
     if (gm.over || gm.b.cells[i]) return
+    if (inMatch) return void lm.play(i)
     // in the call the host decides: this asks it, and the board comes back with everybody's
     if (room) return lab.act({ t: 'move', move: i })
     const p = gm.turn
@@ -262,6 +299,7 @@ export function HexDemo() {
     after(p)
   }
   const doSwap = () => {
+    if (inMatch) return void lm.play(SWAP)
     if (room) return lab.act({ t: 'move', move: SWAP })
     const gm = game.current
     gm.b = swap(gm.b)
@@ -311,12 +349,19 @@ export function HexDemo() {
     )
     bump()
   }
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
   const change = (p: Partial<Saved>) => {
     const s = { ...saved, ...p }
     setSaved(s)
     if (g.moves === 0 || g.over) fresh(mode, s)
   }
   const yours = () => {
+    if (inMatch) return lm.canPlay
     if (mode === 'call') return lab.live && !!room && myTurn(roomRules, room)
     const gm = game.current
     return !gm.over && (mode === 'two' || gm.turn === gm.you)
@@ -398,33 +443,36 @@ export function HexDemo() {
 
   return (
     <div className="lab-keys hx-room">
+      {inMatch && <MatchBar lm={lm} sides={['red', 'blue']} />}
       <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+        {!inMatch && (
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => setMode('call')}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
             </button>
-          )}
-        </div>
-        {mode === 'bot' && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => setMode('call')}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+        )}
+        {mode === 'bot' && !inMatch && (
           <>
             <div className="lab-group" role="group" aria-label="How well the computer plays">
               {LEVELS.map((l) => (
@@ -456,10 +504,17 @@ export function HexDemo() {
             </div>
           </>
         )}
-        {mode !== 'call' && (
+        {local && (
           <button className="btn btn-ghost" onClick={() => fresh()}>
             ↻ New game
           </button>
+        )}
+        {signedIn && local && (
+          <MatchChallenge
+            demo="hex"
+            settings={{ size: saved.size, swap: saved.swap }}
+            levelNames={LEVEL_NAMES}
+          />
         )}
         {canSwap && (
           <button className="btn" onClick={doSwap}>
@@ -468,7 +523,7 @@ export function HexDemo() {
         )}
       </div>
 
-      {mode === 'call' && (
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={roomRules}
@@ -538,13 +593,14 @@ export function HexDemo() {
           }}
         />
       </div>
-      {mode !== 'call' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {local && (
         <p className="mc-line" aria-live="polite">
           {line}
           {path && <span className="muted"> · the winning chain is {path.length} stones</span>}
         </p>
       )}
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             Against {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -553,7 +609,7 @@ export function HexDemo() {
         </p>
       )}
       {g.moves > 0 &&
-        mode !== 'call' &&
+        local &&
         !g.over &&
         (g.b.n !== saved.size ||
           g.swapRule !== saved.swap ||
@@ -565,7 +621,7 @@ export function HexDemo() {
         <section aria-label="The board">
           <h3 className="fw-h">The board</h3>
           {/* in a call the host's size and swap rule start each game, and travel with it */}
-          {mode !== 'call' && (
+          {local && (
             <div className="lab-controls" role="group" aria-label="Board size">
               {SIZES.map((n) => (
                 <button
@@ -596,7 +652,7 @@ export function HexDemo() {
               </button>
             ))}
           </div>
-          {mode !== 'call' && (
+          {local && (
             <div className="lab-controls">
               <button
                 className="btn btn-ghost"

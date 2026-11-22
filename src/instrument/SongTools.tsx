@@ -14,10 +14,12 @@ import {
   loadSong,
   muteTake,
   setLayerGain,
+  setTakeGain,
   toggleMute,
   type loopState,
 } from '../audio/looper'
 import { setSongName } from './songName'
+import { ProfileSong } from './ProfileSong'
 import { library, removeFromLibrary, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { songNotes, songToLayers } from '../audio/songFile'
 import { hasLyrics } from '../audio/lyricLines'
@@ -28,7 +30,14 @@ import { motionReduced } from '../ui/motion'
 import { KeysVolume } from './KeysVolume'
 import { partLines } from './partName'
 import { ExportSong } from './ExportSong'
-import { singOneLap, singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
+import {
+  setWordsLevel,
+  singOneLap,
+  singingNow,
+  startSinging,
+  stopSinging,
+  subscribeSinging,
+} from './singAlong'
 
 export type Tool = 'beats' | 'mix' | 'voice' | 'songs'
 
@@ -66,6 +75,9 @@ export function SongTools({
   loop,
   setEditing,
   keep,
+  username,
+  askName,
+  confirmIt,
   beats,
   showLyrics,
 }: {
@@ -74,6 +86,12 @@ export function SongTools({
   loop: Loop
   setEditing: Dispatch<SetStateAction<string | null>>
   keep: (kind: 'song' | 'loop', layerId?: string) => void
+  /** the member's username, for 🎵 Put it on my profile; null hides it */
+  username: string | null
+  /** the room's name prompt, which lets go of every sounding note first */
+  askName: (question: string, offered?: string) => string
+  /** the room's yes-or-no, which does the same */
+  confirmIt: (question: string) => boolean
   /** the beats panel, built by the room, which owns the backing's picks */
   beats: ReactNode
   /** open the song's lyrics box */
@@ -164,7 +182,15 @@ export function SongTools({
       {pane(
         'songs',
         'Songs',
-        <Songs loop={loop} takes={takes} keep={keep} setEditing={setEditing} />,
+        <Songs
+          loop={loop}
+          takes={takes}
+          keep={keep}
+          setEditing={setEditing}
+          username={username}
+          askName={askName}
+          confirmIt={confirmIt}
+        />,
       )}
     </>
   )
@@ -222,9 +248,10 @@ function SingDoor({
  * on a desktop), and the floating player keeps its own, because that one follows you off the page.
  * Every slider here writes the same value the others do, so none of them can disagree.
  *
- * ⚠️ A TAKE HAS A MUTE AND NO VOLUME, here as in 🎤 Voice, because it has never had one: the loop
- * plays it at its stored gain and nothing sets it. Listing it anyway is what makes this the one
- * place to silence anything in the song.
+ * ⚠️ AND EVERY PART OF THE SONG HAS ONE NOW, the takes and the words included (Evan, 21 Nov 2026:
+ * "easy volume for every part of a song"). A take had a mute here and "as recorded", because the
+ * loop played it at a gain nothing set; the words had no row at all. Both are the same 0–2 fader
+ * the parts have, and write the same values as the timeline's rows.
  */
 function Mix({ loop }: { loop: Loop }) {
   return (
@@ -257,10 +284,35 @@ function Mix({ loop }: { loop: Loop }) {
           </div>
         )
       })}
+      {loop.layers.filter(hasLyrics).map((l) => (
+        <div key={`${l.id}-words`} className="inst-mix-row">
+          <span className="inst-mix-name">🎤 Lyrics</span>
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={0.05}
+            value={l.wordsGain ?? 1}
+            aria-label="Volume of the lyrics"
+            onChange={(e) => setWordsLevel(l.id, Number(e.target.value))}
+          />
+          <span className="muted inst-mix-pct">{Math.round((l.wordsGain ?? 1) * 100)}%</span>
+          <span className="inst-icon-slot" aria-hidden />
+        </div>
+      ))}
       {loop.takes.map((t, i) => (
         <div key={t.id} className={'inst-mix-row' + (t.muted ? ' is-muted' : '')}>
           <span className="inst-mix-name">🎤 Take {i + 1}</span>
-          <span className="muted inst-mix-as">as recorded</span>
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={0.05}
+            value={t.gain ?? 1}
+            aria-label={`Volume of take ${i + 1}`}
+            onChange={(e) => setTakeGain(t.id, Number(e.target.value))}
+          />
+          <span className="muted inst-mix-pct">{Math.round((t.gain ?? 1) * 100)}%</span>
           <button
             className="btn inst-icon"
             onClick={() => muteTake(t.id)}
@@ -291,11 +343,17 @@ function Songs({
   takes,
   keep,
   setEditing,
+  username,
+  askName,
+  confirmIt,
 }: {
   loop: Loop
   takes: ReturnType<typeof useTakes>
   keep: (kind: 'song' | 'loop', layerId?: string) => void
   setEditing: Dispatch<SetStateAction<string | null>>
+  username: string | null
+  askName: (question: string, offered?: string) => string
+  confirmIt: (question: string) => boolean
 }) {
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
   const { parts, bouncing, doBounce, stems } = takes
@@ -331,6 +389,7 @@ function Songs({
         )}
       </div>
       <ExportSong loop={loop} busy={!!bouncing} setBusy={setExporting} />
+      <ProfileSong loop={loop} username={username} askName={askName} confirmIt={confirmIt} />
       {stems.length > 0 && (
         <div className="inst-row inst-takes-stems">
           {stems.map((st, k) => (

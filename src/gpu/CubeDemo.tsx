@@ -20,6 +20,11 @@ import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -48,31 +53,51 @@ export function CubeDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the cube over whatever else was showing; leaving it puts the toy back as it was. A mark
+     shows at once and waits for Send; the server places it and the cube comes back. */
+  const lm = useLabMatch('cube')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as Game | null) : null
+
   /* ── the call's room: the game travels as its cells, replayed by cube.ts itself */
   const lab = useLabRoom('cube', cubeRules)
   const words = tableSeats(lab, cubeRules)
-  const room = mode === 'call' ? lab.room : null
-  /** the cube on screen: the call's in a call, else this one */
-  const view = room ? room.game : game
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** the toy's own controls: alone or two on one screen, neither in a call nor in a match */
+  const local = mode !== 'call' && !inMatch
+  /** the cube on screen: the match's, the call's in a call, else this one */
+  const view = matchGame ?? (room ? room.game : game)
   /** the mark I place in a call: noughts only in seat 1 of a versus game */
   const mySide: Side = room?.mode === 'versus' && words.mySeat === 1 ? 2 : 1
 
-  const computerTurn = mode === 'bot' && !game.over && game.turn !== you
-  const yours = room
-    ? lab.live && myTurn(cubeRules, room)
-    : mode !== 'call' && !game.over && (mode === 'two' || game.turn === you)
+  const computerTurn = mode === 'bot' && !inMatch && !game.over && game.turn !== you
+  const yours = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(cubeRules, room)
+      : mode !== 'call' && !game.over && (mode === 'two' || game.turn === you)
   const nameOf = (s: Side) =>
-    room
-      ? room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? s === 1
-          ? 'Together'
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[s - 1])
-      : mode === 'bot'
-        ? s === you
+        : s - 1 === lm.view.you
           ? 'You'
-          : 'The computer'
-        : SIDE[s]
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? s === 1
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[s - 1])
+        : mode === 'bot'
+          ? s === you
+            ? 'You'
+            : 'The computer'
+          : SIDE[s]
   const lastMove = view.moves[view.moves.length - 1]
   const winning = new Set(view.line)
   /** the cells that would complete four, side by side: one cell can be both */
@@ -136,6 +161,7 @@ export function CubeDemo() {
   }
   const tap = (i: number) => {
     if (!yours || view.cells[i]) return
+    if (inMatch) return lm.play(i)
     // in the call the host decides: this asks it, and the cube comes back with everybody's
     if (room) return lab.act({ t: 'move', move: i })
     settle(place(game, i))
@@ -164,6 +190,15 @@ export function CubeDemo() {
     setGame(g)
     setLine('Taken back.')
   }
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's cube */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const l = Math.floor(cursor / 16)
     const r = Math.floor(cursor / 4) % 4
@@ -175,7 +210,7 @@ export function CubeDemo() {
     else if (e.key === 'ArrowDown') next = l * 16 + Math.min(3, r + 1) * 4 + c
     else if (e.key === 'PageUp' || e.key === '[') next = Math.max(0, l - 1) * 16 + r * 4 + c
     else if (e.key === 'PageDown' || e.key === ']') next = Math.min(3, l + 1) * 16 + r * 4 + c
-    else if ((e.key === 'u' || e.key === 'U') && mode !== 'call') takeBack()
+    else if ((e.key === 'u' || e.key === 'U') && local) takeBack()
     else return
     e.preventDefault()
     e.stopPropagation()
@@ -188,56 +223,62 @@ export function CubeDemo() {
   const record = saved.record[saved.level]
   return (
     <div className={`lab-keys cq-room is-${saved.look}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['crosses', 'noughts']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => setMode('call')}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => setMode('call')}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (!game.moves.length || game.over) fresh(mode, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
             </button>
           )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge demo="cube" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
         </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
-              <button
-                key={l}
-                className="btn btn-ghost"
-                aria-pressed={saved.level === l}
-                onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (!game.moves.length || game.over) fresh(mode, l)
-                }}
-              >
-                {LEVEL_NAMES[l]}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={cubeRules}
@@ -250,13 +291,15 @@ export function CubeDemo() {
       <div className="dice-scores">
         {([1, 2] as Side[]).map((s) => (
           <div key={s} className={`dice-score${view.turn === s && !view.over ? ' is-up' : ''}`}>
-            <span>{mode === 'two' ? SIDE[s] : `${nameOf(s)} · ${SIDE[s].toLowerCase()}`}</span>
+            <span>
+              {mode === 'two' && !inMatch ? SIDE[s] : `${nameOf(s)} · ${SIDE[s].toLowerCase()}`}
+            </span>
             <strong>{view.cells.filter((x) => x === s).length}</strong>
             <span className="muted">placed</span>
           </div>
         ))}
       </div>
-      {mode !== 'call' && (
+      {local && (
         <p className="mc-line" aria-live="polite">
           {line}
         </p>
@@ -265,7 +308,7 @@ export function CubeDemo() {
       <div
         className="cq-cube"
         role="group"
-        aria-label={`The cube, four layers of four by four. Arrow keys move in a layer, Page Up and Page Down (or [ and ]) change layer, Enter places a mark${mode === 'call' ? '' : ', U takes back'}.`}
+        aria-label={`The cube, four layers of four by four. Arrow keys move in a layer, Page Up and Page Down (or [ and ]) change layer, Enter places a mark${local ? ', U takes back' : ''}.`}
         onKeyDown={onKey}
       >
         {LAYER.map((name, l) => (
@@ -309,8 +352,9 @@ export function CubeDemo() {
           </div>
         ))}
       </div>
+      {inMatch && <MatchSend lm={lm} />}
       <div className="lab-controls">
-        {mode !== 'call' && (
+        {local && (
           <button
             className="btn btn-ghost"
             onClick={takeBack}
@@ -327,7 +371,7 @@ export function CubeDemo() {
           Show threes
         </button>
       </div>
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}

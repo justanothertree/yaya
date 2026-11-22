@@ -25,6 +25,13 @@ import {
 } from './spades'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { dealerOf, teams as spadesTeams, type SpadesGame } from './spadesRoom'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FELT_NAMES: Record<Saved['felt'], string> = { green: 'Green', blue: 'Blue', red: 'Red' }
@@ -69,6 +76,16 @@ function Face({ c }: { c: Card }) {
 }
 
 export function SpadesDemo() {
+  /* a match by turns, when the address names one (src/lab/matches/useLabMatch.ts): partnerships
+     with the computer filling the table, the hands kept back by the server (spadesRoom.ts) */
+  const lm = useLabMatch('spades', { preview: false })
+  // keyed by the match: another match starts with nothing of this one (a half-chosen bid)
+  if (lm.id) return <SpadesMatch key={lm.id} lm={lm} />
+  return <SpadesAlone />
+}
+
+function SpadesAlone() {
+  const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(SPADES_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [dealer, setDealer] = useState(3)
@@ -293,6 +310,13 @@ export function SpadesDemo() {
         <button className="btn btn-ghost" onClick={() => nextHand(true)}>
           ↻ New game
         </button>
+        {signedIn && (
+          <MatchChallenge
+            demo="spades"
+            settings={{ target: saved.target, level: saved.level }}
+            levelNames={LEVEL_NAMES}
+          />
+        )}
       </div>
 
       <div className="dice-scores sd-scores">
@@ -468,4 +492,215 @@ export function SpadesDemo() {
       </p>
     </div>
   )
+}
+
+/**
+ * A match by turns: the table as all four seats see it, and my own hand as lab-move shows it me,
+ * from where I sit. Versus, each friend has a computer partner across the table; together, the
+ * friends are partners. The computers keep one name each, so both friends mean the same seat.
+ */
+function SpadesMatch({ lm }: { lm: LabMatch }) {
+  const [saved] = useKept(SPADES_KEY, readSaved)
+  const g = lm.shown as SpadesGame | null
+  const together = lm.view?.mode === 'together'
+  const you = lm.view?.you === 1 ? 1 : 0
+  const at = together ? you * 2 : you
+  const friend = !lm.view ? 'Your friend' : otherName(lm.view)
+  const humans = together ? [0, 2] : [0, 1]
+  const bots = [0, 1, 2, 3].filter((s) => !humans.includes(s))
+  const nameOf = (seat: number) =>
+    seat === at ? 'You' : humans.includes(seat) ? friend : seat === bots[0] ? 'Robin' : 'Kit'
+  const [hand, setHand] = useState<Card[] | null>(null)
+  const [myBid, setMyBid] = useState(3)
+  const seq = lm.view?.seq
+  const active = lm.view?.status === 'active' || lm.view?.status === 'finished'
+  useEffect(() => {
+    if (!lm.id || !active) return
+    let live = true
+    myHidden(lm.id)
+      .then((m) => {
+        if (live)
+          setHand(m && typeof m === 'object' ? ((m as { hand: Card[] }).hand ?? null) : null)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [lm.id, seq, active])
+  if (!g)
+    return (
+      <div className="lab-keys sd-room">
+        <MatchBar lm={lm} sides={['the first to bid', 'the second']} />
+      </div>
+    )
+
+  const h = g.h
+  const tm = spadesTeams(g)
+  const isBidding = !g.over && bidding(h)
+  const myTurn = lm.canPlay
+  const table: Hand = { ...h, hands: h.hands.map((x, i) => (i === at ? (hand ?? []) : x)) }
+  const playable = new Set(!isBidding && myTurn ? legal(table, at) : [])
+  const order = (a: Card, b: Card) => {
+    const o = [2, 3, 1, 0]
+    return o.indexOf(suitOf(a)) - o.indexOf(suitOf(b)) || rankOf(a) - rankOf(b)
+  }
+  const mine = [...(hand ?? [])].sort(order)
+  const teamName = (t: number) =>
+    [t, t + 2]
+      .map(nameOf)
+      .sort((a, b) => (a === 'You' ? -1 : b === 'You' ? 1 : 0))
+      .join(' and ')
+  const held = (seat: number) => 13 - h.played.filter((_, i) => seatOfPlay(h, i) === seat).length
+  const seatLine = (seat: number) => {
+    const b = h.bids[seat]
+    return b === null ? (isBidding ? 'to bid' : '') : `bid ${bidWord(b)} · took ${h.won[seat]}`
+  }
+  const onTable = h.trick
+  const last = g.past[g.past.length - 1]
+  const newHand = !!last && h.played.length === 0
+  const lastLine = last
+    ? `Hand ${g.past.length}: ${teamName(0)} ${tm[0].score}, ${teamName(1)} ${tm[1].score}. `
+    : ''
+  const words = (() => {
+    if (lm.view?.status === 'finished' || g.over) return lastLine
+    if (isBidding)
+      return myTurn
+        ? `${newHand ? lastLine : ''}Your bid: the tricks you will take, or nil for none.`
+        : `${newHand ? lastLine : ''}${nameOf(h.turn)} is bidding.`
+    if (myTurn) return `Your card${h.trick.length ? '' : ' — your lead'}.`
+    return `${nameOf(h.turn)} is to play.`
+  })()
+  return (
+    <div className={`lab-keys sd-room is-${saved.felt}`}>
+      <MatchBar lm={lm} sides={['the first to bid', 'the second']} />
+      <div className="dice-scores sd-scores">
+        {[at % 2, (at + 1) % 2].map((t) => (
+          <div
+            key={t}
+            className={`dice-score${!g.over && h.turn % 2 === t && !isBidding ? ' is-up' : ''}`}
+          >
+            <span>{teamName(t)}</span>
+            <strong>{tm[t].score}</strong>
+            <span className="muted">
+              {tm[t].bags} bag{tm[t].bags === 1 ? '' : 's'} · to {g.target}
+            </span>
+          </div>
+        ))}
+      </div>
+      {words && (
+        <p className="mc-line" aria-live="polite">
+          {words}
+        </p>
+      )}
+      {!g.over && lm.view?.status !== 'finished' && (
+        <div className="sd-table">
+          {[2, 1, 3].map((rel) => {
+            const seat = (at + rel) % 4
+            return (
+              <div
+                key={rel}
+                className={`sd-seat is-s${rel}${h.turn === seat ? ' is-up' : ''}`}
+                aria-label={`${nameOf(seat)}${rel === 2 ? ', your partner' : ''}: ${held(seat)} cards, ${seatLine(seat)}`}
+                role="img"
+              >
+                <span className={`pk-card is-back tw-back is-${saved.back}`}>
+                  <span className="sd-count">{held(seat)}</span>
+                </span>
+                <span className="sd-name">
+                  {nameOf(seat)}
+                  {rel === 2 ? ' (partner)' : ''}
+                </span>
+                <span className="sd-bid">{seatLine(seat)}</span>
+              </div>
+            )
+          })}
+          <div
+            className="sd-trick"
+            aria-label={
+              onTable.length
+                ? `On the table: ${onTable.map((x) => `${nameOf(x.seat)} ${longName(x.card)}`).join(', ')}`
+                : 'Nothing on the table'
+            }
+            role="img"
+          >
+            {onTable.map((x) => (
+              <span key={x.seat} className={`sd-played is-s${(x.seat - at + 4) % 4}`}>
+                <Face c={x.card} />
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {!g.over && (
+        <p className="sun-reading sd-me">
+          <span className="muted">You: {seatLine(at)}</span>
+        </p>
+      )}
+      {isBidding && myTurn && (
+        <div className="lab-controls sd-bidding" role="group" aria-label="Your bid">
+          <button
+            className="btn btn-ghost"
+            aria-label="One trick fewer"
+            disabled={myBid <= 0}
+            onClick={() => setMyBid((b) => Math.max(0, b - 1))}
+          >
+            −
+          </button>
+          <strong className="sd-bidnum" aria-live="polite">
+            {myBid === 0 ? 'Nil' : myBid}
+          </strong>
+          <button
+            className="btn btn-ghost"
+            aria-label="One trick more"
+            disabled={myBid >= 13}
+            onClick={() => setMyBid((b) => Math.min(13, b + 1))}
+          >
+            +
+          </button>
+          <button className="btn" disabled={lm.busy} onClick={() => lm.commit({ bid: myBid })}>
+            Bid {myBid === 0 ? 'nil' : myBid}
+          </button>
+        </div>
+      )}
+      {hand && !g.over && lm.view?.status !== 'finished' && (
+        <div className="sd-hand" role="group" aria-label="Your hand">
+          {mine.map((c) => {
+            const ok = playable.has(c)
+            return (
+              <button
+                key={c}
+                className={`sd-mine${ok || isBidding ? '' : ' is-dim'}`}
+                disabled={lm.busy || !ok}
+                aria-label={`${longName(c)}${!isBidding && myTurn && !ok ? ', cannot be played now' : ''}`}
+                onClick={() => ok && lm.commit({ play: c })}
+              >
+                <Face c={c} />
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <p className="muted lab-hint">
+        Spades by turns, to {g.target}:{' '}
+        {together
+          ? `you and ${friend} are partners across the table, against Robin and Kit, the computers.`
+          : `you and ${friend} each have a computer partner across the table.`}{' '}
+        The hands are dealt by the server and yours is shown to you alone. Bid the tricks you will
+        take, or nil; follow suit when you can; spades are trumps. The computers bid and play the
+        moment it is their turn. The dealer of this hand is {nameOf(dealerOf(g.past.length))}.
+      </p>
+    </div>
+  )
+}
+
+/** which seat played the i-th card of a hand: round the table from each trick's leader */
+function seatOfPlay(h: Hand, i: number): number {
+  const first = (h.dealer + 1) % 4
+  let lead = first
+  for (let t = 0; t * 4 <= i; t++) {
+    const trick = h.played.slice(t * 4, t * 4 + 4)
+    if (i < t * 4 + 4) return (lead + (i - t * 4)) % 4
+    lead = winnerOf(trick.map((card, k) => ({ seat: (lead + k) % 4, card })))
+  }
+  return first
 }

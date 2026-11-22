@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-13-feed-hides-browsing.DRAFT.sql — only after that draft is applied.
+-- ROLLBACK for docs/applied/2026-11-13-feed-hides-browsing.DRAFT.sql — only after that draft is applied.
 --
 -- It removes `and not a.auto` from the same two readers, by the same two substitutions in reverse,
 -- so each function's text returns to exactly what it was. Nothing else was changed by the draft,
