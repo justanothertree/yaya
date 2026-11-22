@@ -26,6 +26,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   halma: [{}, { level: 'hard' }],
   go: [{}, { level: 'hard' }],
   fox: [{}, { level: 'hard' }, { side: 'geese' }, { side: 'fox' }],
+  cube: [{}, { level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -44,6 +45,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   halma: [],
   go: [],
   fox: [{ side: 'goose' }, { side: 'Fox' }, { side: 1 }],
+  cube: [],
 }
 
 describe('the match toys', () => {
