@@ -14,10 +14,12 @@
 begin;
 
 create temp table fails(check_name text, detail text);
-create temp table cast_(part text primary key, uid uuid);
+create temp table cast_(part text primary key, uid uuid, uname text);
 insert into cast_ values
   ('owner', '00000000-0000-4000-a000-000000000001'),
   ('friend', '00000000-0000-4000-a000-000000000002');
+/* the names, read here as postgres: a member cannot read profiles directly */
+update cast_ c set uname = p.username::text from public.profiles p where p.user_id = c.uid;
 /* what each step saw, for the steps after it */
 create temp table seen(k text primary key, v text);
 grant select on cast_ to authenticated, anon;
@@ -29,8 +31,13 @@ begin
   if (select count(*) from public.profiles where user_id in (select uid from cast_)) <> 2 then
     raise exception 'fixture: the seed members seedowner and seedfriend are missing';
   end if;
-  if not coalesce(public.are_friends((select uid from cast_ where part = 'owner'),
-                                     (select uid from cast_ where part = 'friend')), false) then
+  /* `friendships` read directly: `are_friends` is self-or-admin gated and answers nothing to a
+     connection with no session, which is what this block runs as (certain-lists.sql learned it) */
+  if not exists (
+    select 1 from public.friendships f, cast_ o, cast_ fr
+     where o.part = 'owner' and fr.part = 'friend' and f.status = 'accepted'
+       and ((f.user_a = o.uid and f.user_b = fr.uid) or (f.user_a = fr.uid and f.user_b = o.uid))
+  ) then
     raise exception 'fixture: seedowner and seedfriend are not friends, so no Certain list can hold a name';
   end if;
 end $$;
@@ -62,6 +69,9 @@ cross join lateral (select has_function_privilege(r, f, 'execute') as has) h
 where h.has is distinct from want.ok;
 
 -- ── B. as the owner ─────────────────────────────────────────────────────────────────────────
+-- ⚠️ A MEMBER HAS NO GRANT ON profile_blocks OR visibility_certain (deny-all, the house pattern), so
+-- everything this block knows about the page it reads the way the member's own browser does:
+-- through get_profile_blocks, which gives the owner every block and every Certain list.
 select set_config('request.jwt.claims',
   json_build_object('sub', (select uid::text from cast_ where part = 'owner'), 'role', 'authenticated')::text, true);
 set local role authenticated;
@@ -74,6 +84,7 @@ declare
   other jsonb := '[{"block_type":"bio","size":"large","config":{"text":"elsewhere"},"visibility":"members"}]';
   ours jsonb := '[{"block_type":"bio","size":"medium","config":{"text":"ours"},"visibility":"members"}]';
   n int; st text; msg text;
+  me text := (select uname from cast_ where part = 'owner');
 begin
   v0 := public.my_profile_page_version();
   if v0 !~ '^[0-9a-f]{32}$' then
@@ -86,7 +97,7 @@ begin
   if v1 = v0 then
     insert into fails values ('a save that changed the page left its version', v1);
   end if;
-  if (select count(*) from public.profile_blocks where user_id = auth.uid()) <> 2 then
+  if jsonb_array_length(public.get_profile_blocks(me)) <> 2 then
     insert into fails values ('an old-style save did not store the page it was sent', '');
   end if;
 
@@ -99,7 +110,7 @@ begin
   /* a save over the page it read */
   perform public.save_my_profile_blocks(p_blocks => ours, p_expected_page => v1);
   v2 := public.my_profile_page_version();
-  if (select config->>'text' from public.profile_blocks where user_id = auth.uid()) is distinct from 'ours' then
+  if public.get_profile_blocks(me)->0->'config'->>'text' is distinct from 'ours' then
     insert into fails values ('a save with the right version did not land', '');
   end if;
 
@@ -114,7 +125,8 @@ begin
     end if;
   end;
   if public.my_profile_page_version() is distinct from v2
-     or (select config->>'text' from public.profile_blocks where user_id = auth.uid()) is distinct from 'ours' then
+     or public.get_profile_blocks(me)->0->'config'->>'text' is distinct from 'ours'
+     or jsonb_array_length(public.get_profile_blocks(me)) <> 1 then
     insert into fails values ('a refused save changed the page', '');
   end if;
 
@@ -131,7 +143,8 @@ begin
     get stacked diagnostics st = returned_sqlstate;
     if st <> 'PT409' then insert into fails values ('the switch case refused with', st); end if;
   end;
-  if not exists (select 1 from public.profile_blocks where user_id = auth.uid() and block_type = 'chronicle') then
+  if not exists (select 1 from jsonb_array_elements(public.get_profile_blocks(me)) e
+                  where e->>'block_type' = 'chronicle') then
     insert into fails values ('the chronicle card is gone after a refused save', '');
   end if;
 
@@ -139,7 +152,7 @@ begin
   perform public.save_my_profile_blocks(p_blocks =>
     '[{"block_type":"bio","size":"medium","config":{},"visibility":"certain","certain":["seedfriend"]}]');
   vA := public.my_profile_page_version();
-  n := (select count(*) from public.visibility_certain where owner = auth.uid() and item_kind = 'profile_block');
+  n := jsonb_array_length(coalesce(public.get_profile_blocks(me)->0->'certain', '[]'::jsonb));
   if n <> 1 then
     insert into fails values ('fixture: the Certain list did not hold the friend', n::text);
   end if;
