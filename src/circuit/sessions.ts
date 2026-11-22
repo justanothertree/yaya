@@ -13,7 +13,7 @@ import type { DayLog } from './types'
  * can refuse a save made against figures that have since moved. Evan's rule: "Saving 20 again must
  * still total 20—not 28", and "later sessions add normally".
  *
- * ⚠️ DRAFT-DEPENDENT: until docs/2026-11-09-circuit-grid-sessions.DRAFT.sql is applied the session
+ * ⚠️ DRAFT-DEPENDENT: until docs/applied/2026-11-09-circuit-grid-sessions.DRAFT.sql is applied the session
  * reader does not exist, every sum is empty, and the board is exactly what it was.
  */
 export type SessionSum = { person: string; exercise: string; on: string; value: number }

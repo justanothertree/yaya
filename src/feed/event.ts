@@ -25,9 +25,21 @@ import { TOY_NAMES } from '../lab/names'
  * ⚠️ `comment` AND `made` ARE THE FEED'S OWN, and never `activityLine`'s, on purpose. That module
  * draws the Activity block on a profile page, which a public page shows to signed-out visitors;
  * these two come only from `feed_recent`, which refuses them. See
- * docs/2026-11-14-feed-made-and-comments.DRAFT.sql.
+ * docs/applied/2026-11-14-feed-made-and-comments.DRAFT.sql.
  */
-export type FeedKind = ActivityItem['kind'] | 'sitting' | 'comment' | 'made'
+export type FeedKind = ActivityItem['kind'] | 'sitting' | 'comment' | 'made' | 'match'
+
+/**
+ * How a finished Lab match ended, from the side of the person whose row it is: they won, the two
+ * of them drew, or the two of them beat the computer together. A loss is never posted, so there
+ * is no word for one — see docs/applied/2026-11-16-feed-finished-matches.DRAFT.sql.
+ */
+export type MatchOutcome = 'won' | 'drew' | 'together'
+export const MATCH_OUTCOMES: ReadonlySet<string> = new Set<MatchOutcome>([
+  'won',
+  'drew',
+  'together',
+])
 
 /** Where a comment was left. Each is a different table read by its own room's rule. */
 export type CommentPlace = 'workout' | 'lab' | 'guestbook'
@@ -113,6 +125,21 @@ export type FeedEvent = {
    * of them — see `oneMadePerDay`, which is the only thing that sets it.
    */
   count?: number
+  /** Matches only: how it ended, and the toy's own words for the score ("24–12"), if it has any */
+  outcome?: MatchOutcome | null
+  how?: string | null
+  result?: string | null
+  /**
+   * Matches only: the other player.
+   *
+   * ⚠️ NULL MEANS "NOT YOURS TO KNOW", NOT "NOBODY". The server names the other player only to one
+   * of the two of them or to a friend of both, so a friend of one reads "a friend". Never fill it
+   * in from anything else the client holds.
+   */
+  other?: string | null
+  otherWho?: string | null
+  /** the other player is you, so the line can say "you" */
+  otherMine?: boolean
   /**
    * Yours.
    *
@@ -271,6 +298,27 @@ export function commentParts(e: FeedEvent): { verb: string; noun: string } {
   return { verb: 'Wrote', noun: 'something' }
 }
 
+/**
+ * The three parts of a finished match's line: what happened, to whom, and at what.
+ *
+ * ⚠️ SHARED BY THE SENTENCE AND THE ROOM, as `commentParts` is. `whom` is null when the other
+ * player is not this reader's to know, and the line reads "a friend" rather than leaving a gap.
+ */
+export function matchParts(e: FeedEvent): {
+  verb: string
+  whom: string
+  toy: string
+  tail: string | null
+} {
+  const whom = e.otherMine ? 'you' : (e.other ?? 'a friend')
+  const toy = TOY_NAMES[e.detail ?? ''] ?? e.detail ?? 'a Lab game'
+  const how = e.how === 'resigned' ? 'by resignation' : e.how === 'timeout' ? 'on time' : null
+  const tail = [e.result, how].filter(Boolean).join(', ') || null
+  if (e.outcome === 'drew') return { verb: 'Drew with', whom, toy, tail }
+  if (e.outcome === 'together') return { verb: 'Beat the computer with', whom, toy, tail }
+  return { verb: 'Beat', whom, toy, tail }
+}
+
 /** "a song", "3 drawings" — what a made thing is called in a sentence */
 export function madeNoun(detail: string | null, count = 1): string {
   const names = MADE[detail ?? '']
@@ -294,6 +342,10 @@ export function feedSentence(e: FeedEvent): string {
   }
   if (e.kind === 'made')
     return `Put ${madeNoun(e.detail, e.count)} on ${e.mine ? 'your' : 'their'} page`
+  if (e.kind === 'match') {
+    const { verb, whom, toy, tail } = matchParts(e)
+    return `${verb} ${whom} at ${toy}${tail ? ` · ${tail}` : ''}`
+  }
   return activityLine({
     kind: e.kind,
     at: e.at,

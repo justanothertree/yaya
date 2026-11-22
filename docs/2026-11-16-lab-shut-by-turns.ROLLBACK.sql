@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-16-lab-shut-by-turns.DRAFT.sql: back to the list before Shut the box.
+-- ROLLBACK for docs/applied/2026-11-16-lab-shut-by-turns.DRAFT.sql: back to the list before Shut the box.
 -- Shut the box matches already open stay readable and finishable; only new challenges are refused.
 create or replace function public.lab_match_playable(p_demo text)
 returns boolean
