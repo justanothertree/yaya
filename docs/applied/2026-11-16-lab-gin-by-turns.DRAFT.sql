@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Gin rummy by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_gin_by_turns`, version 20261122025506:
+-- md5(statements[1]) = b25c7942c69d8a85aef4481ee1a9c902, this file's body. The record is
+-- supabase/migrations/20261122025506_lab_gin_by_turns.sql.
+--
+-- (as drafted) Gin rummy by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
