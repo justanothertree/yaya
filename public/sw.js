@@ -36,7 +36,7 @@ const TITLE = 'evancook.dev'
 const RING_BUZZ = [300, 150, 300, 150, 300]
 
 /**
- * push_outbox's own limits, from its CHECK constraints (docs/2026-11-22-phone-alerts.DRAFT.sql),
+ * push_outbox's own limits, from its CHECK constraints (supabase/migrations/20261122223957_phone_alerts.sql),
  * in its own unit: `char_length` counts characters, which in JavaScript is `Array.from`, not
  * `.length` — an emoji is one of the first and two of the second, so cutting by `.length` would
  * shorten a title the outbox had accepted whole. scripts/service-worker.test.mjs reads these

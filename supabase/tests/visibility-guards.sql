@@ -423,7 +423,7 @@ from (
 --     R2 object (supabase/migrations/20261122221602_chat_songs.sql); for the member it is taking
 --     a song down.
 --   * `push_device_remove` -- it only stops alerts reaching a phone of your own, a narrowing like a
---     delete (docs/2026-11-22-phone-alerts.DRAFT.sql).
+--     delete (supabase/migrations/20261122223957_phone_alerts.sql).
 --
 --   `link_snake_names_to_accounts` used to be listed here and is no longer member-callable at
 --   all: anybody can pre-post a leaderboard score under a username nobody has claimed, and that

@@ -1,4 +1,5 @@
--- ROLLBACK for docs/2026-11-22-phone-alerts.DRAFT.sql: every object it created, gone.
+-- ROLLBACK for supabase/migrations/20261122223957_phone_alerts.sql (drafted as docs/applied/2026-11-22-phone-alerts.DRAFT.sql): every
+-- object it created, gone.
 --
 -- ⚠️ THIS DROPS TABLES, SO IT DELETES THEIR ROWS — every member's devices and choices, and any
 -- alert not yet sent — and is run only with Evan's yes. While nothing has used it (before the

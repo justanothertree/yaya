@@ -1,4 +1,8 @@
--- ⏳ DRAFT, NOT APPLIED. Nothing in this file has run against production.
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `phone_alerts`, version 20261122223957:
+-- md5(statements[1]) = 32a3cf8f0db51649f59ac03e6025d209, this file's body. The record is
+-- supabase/migrations/20261122223957_phone_alerts.sql.
+--
+-- (as drafted) Nothing in this file had run against production.
 --
 -- Step 2 of docs/2026-11-22-phone-alerts.md, "the plumbing": where a member's phones are kept,
 -- what they want to hear about, and the queue an alert waits in until the `push` edge function

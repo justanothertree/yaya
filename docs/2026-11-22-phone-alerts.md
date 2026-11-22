@@ -166,9 +166,10 @@ phone, with "Send a test".
 
 ## Step 2, as built: the server (22 Nov 2026)
 
-Not applied and not deployed. The client half (`sw.js`, "📱 Phone alerts") is built separately.
+Applied on 22 Nov 2026 as `20261122223957`, and `push` deployed the same evening. The client half
+(`sw.js`, "📱 Phone alerts") ships dark until the public key is filled in.
 
-- **`docs/2026-11-22-phone-alerts.DRAFT.sql`**: the three tables, plus `push_deliveries` and
+- **`supabase/migrations/20261122223957_phone_alerts.sql`**: the three tables, plus `push_deliveries` and
   `push_config`, all deny-all. Member RPCs: `push_device_add`, `push_device_remove`,
   `push_devices_mine`, `push_prefs_get`, `push_prefs_set` and `push_test`. Service-role RPCs:
   `push_claim`, `push_delivery`, `push_device_gone`, `push_done` and `push_expire`. Admin RPC:

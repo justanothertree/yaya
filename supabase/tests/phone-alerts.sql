@@ -1,4 +1,4 @@
--- Phone alerts, step 2 (docs/2026-11-22-phone-alerts.DRAFT.sql): who may reach the five tables
+-- Phone alerts, step 2 (supabase/migrations/20261122223957_phone_alerts.sql): who may reach the five tables
 -- and the functions, and whether each function does what the plan says, asked as every kind of
 -- caller — a member, a suspended member, a stranger to the row, anon, the push function's service
 -- role, and an admin.

@@ -424,7 +424,7 @@ describe('what a push service’s answer means', () => {
 })
 
 describe('how long an alert is worth sending', () => {
-  /* the outbox's lease in docs/2026-11-22-phone-alerts.DRAFT.sql: the soonest a failed try comes
+  /* the outbox's lease in supabase/migrations/20261122223957_phone_alerts.sql: the soonest a failed try comes
      round again */
   const LEASE = 2 * 60
 
