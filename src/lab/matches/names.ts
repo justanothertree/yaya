@@ -31,6 +31,7 @@ export const MATCH_NAMES: Record<string, string> = {
   darts: 'Darts',
   backgammon: 'Backgammon',
   seabattle: 'Sea battle',
+  dice: 'Ten thousand',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */
