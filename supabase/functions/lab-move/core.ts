@@ -59,6 +59,12 @@ import {
 } from '../../../src/gpu/codebreakerRoom'
 import { boxRules, readBoxSettings, totals, type BoxGame } from '../../../src/gpu/shadowboxRoom'
 import { readRpsSettings, rpsRules, wins, type RpsGame } from '../../../src/gpu/rpsRoom'
+import {
+  ginRules,
+  readGinSettings,
+  totals as ginTotals,
+  type GinGame,
+} from '../../../src/gpu/ginRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -211,6 +217,12 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     if (set === null) return null
     // rounds won, the challenger's first
     return { rules: rpsRules(set.firstTo), score: (g: RpsGame) => wins(g).join('–') }
+  },
+  gin: (s) => {
+    const set = readGinSettings(s)
+    if (set === null) return null
+    // each side's points over the hands, the challenger's first
+    return { rules: ginRules(set.target), score: (g: GinGame) => ginTotals(g).join('–') }
   },
 }
 
