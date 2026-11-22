@@ -11,6 +11,7 @@ import { SiteBackdrop } from '../profile/SiteBackdrop'
 import { InCanvasWindow } from '../circuit/ui/canvasContext'
 import { setPaneLook } from '../circuit/ui/paneLook'
 import { ProfileCall } from '../voice/ProfileCall'
+import { doorFor, seedFrom, type BlocksRead } from '../profile/seedGate'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
@@ -118,6 +119,21 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
   // just means "no blocks yet", which is the common case and shouldn't hold up the rest of
   // the page rendering
   const [blocks, setBlocks] = useState<ProfileBlock[]>([])
+  /**
+   * Whose page `blocks` is a good read of, so the editor may start from it — null while the read
+   * is on its way. And whose read could not be one, and why.
+   *
+   * ⚠️ THE EDITOR WAITS FOR THIS (22 Nov 2026), AND ON main IT DID NOT. Your own page opens
+   * straight into the editor when the profile answers, the blocks are a separate request that
+   * starts as `[]`, and the editor copies `initial` once, when it mounts. So whenever the profile
+   * answered first, or the blocks read failed, the editor opened on an empty page with the starters
+   * showing, and the first thing added saved a page of only that: `save_my_profile_blocks`
+   * replaces the whole page. See profile/seedGate.ts.
+   */
+  const [seededFor, setSeededFor] = useState<string | null>(null)
+  const [refused, setRefused] = useState<{ for: string; why: 'failed' | 'not-yours' } | null>(null)
+  /** bumped by "Try again", to read the blocks once more */
+  const [blocksTry, setBlocksTry] = useState(0)
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [trophies, setTrophies] = useState<ProfileTrophy[]>([])
   /* every module's achievements, earned and locked, derived server-side — see
@@ -316,18 +332,6 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     setTrophies([])
     setAchievements([])
     const sb = getSupabaseClient()
-    /* ⚠️ A STAND-IN FOR YOUR OWN PAGE, because without one the "Seen by" row filters an
-       empty list and reports success at every level. `previewMember` has no session, so this RPC
-       answers nothing here -- which is CLAUDE.md's "a room with nothing in it passes every
-       check" in the one place whose whole job is showing what somebody else was sent. Only your
-       own page: a visitor's blocks come from the server and are not the thing being previewed. */
-    if (previewMember && PREVIEW_PROFILES[u]?.is_me) {
-      setBlocks(previewMyBlocks() as unknown as ProfileBlock[])
-    } else {
-      void sb.rpc('get_profile_blocks', { p_username: u }).then(({ data }) => {
-        if (live) setBlocks(Array.isArray(data) ? (data as ProfileBlock[]) : [])
-      })
-    }
     void sb.rpc('get_member_activity', { p_username: u, p_limit: 20 }).then(({ data }) => {
       if (live) setActivity(Array.isArray(data) ? (data as ActivityItem[]) : [])
     })
@@ -345,6 +349,55 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       live = false
     }
   }, [u, authed])
+
+  /**
+   * The page's blocks — for showing, and, when they are a good read of your own page, for the
+   * editor to start from (`seededFor`). Its own effect so "Try again" can ask once more without
+   * clearing everything else on the page.
+   */
+  useEffect(() => {
+    if (!authed || !u) return
+    let live = true
+    setSeededFor(null)
+    setRefused(null)
+    const take = (read: BlocksRead) => {
+      if (!live) return
+      setBlocks(Array.isArray(read.data) ? (read.data as ProfileBlock[]) : [])
+      const seed = seedFrom<ProfileBlock>(read)
+      if (seed.ok) setSeededFor(u)
+      else setRefused({ for: u, why: seed.why })
+    }
+    /* ⚠️ A STAND-IN FOR YOUR OWN PAGE, because without one the "Seen by" row filters an
+       empty list and reports success at every level. `previewMember` has no session, so this RPC
+       answers nothing here -- which is CLAUDE.md's "a room with nothing in it passes every
+       check" in the one place whose whole job is showing what somebody else was sent. Only your
+       own page: a visitor's blocks come from the server and are not the thing being previewed.
+       ⚠️ Answered LATER, like the real read, and slow or failing on request
+       (localStorage `dev_profile_blocks` = 'slow' | 'fail'): answered at once, it could never
+       show the editor opening before its page had arrived, which is the bug the gate is for. */
+    if (previewMember && PREVIEW_PROFILES[u]?.is_me) {
+      const how = localStorage.getItem('dev_profile_blocks')
+      const t = window.setTimeout(
+        () =>
+          take(
+            how === 'fail'
+              ? { data: null, error: new Error('the preview read was asked to fail') }
+              : { data: previewMyBlocks(), error: null },
+          ),
+        how === 'slow' ? 1500 : 0,
+      )
+      return () => {
+        live = false
+        window.clearTimeout(t)
+      }
+    }
+    void getSupabaseClient()
+      .rpc('get_profile_blocks', { p_username: u })
+      .then(({ data, error }) => take({ data, error }))
+    return () => {
+      live = false
+    }
+  }, [u, authed, blocksTry])
 
   useEffect(() => {
     if (!authed || !u) return
@@ -1086,7 +1139,23 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       {/* Optional customization -- only exists on the page at all once there's something to
           show. The editor and the read view are never both mounted: editing shows the working
           copy being arranged, done-editing shows what was actually saved. */}
-      {p.is_me && editing ? (
+      {p.is_me && editing && doorFor(u, seededFor, refused) !== 'editor' ? (
+        /* ⚠️ NOT THE EDITOR UNTIL ITS PAGE HAS ARRIVED — see `seededFor` */
+        <p className="muted profile-door" role="status">
+          {doorFor(u, seededFor, refused) === 'opening' ? (
+            'Opening your page…'
+          ) : doorFor(u, seededFor, refused) === 'not-yours' ? (
+            'Your page isn’t under this name any more. Reload the site to open it.'
+          ) : (
+            <>
+              Your page didn’t open.{' '}
+              <button className="btn btn-ghost" onClick={() => setBlocksTry((n) => n + 1)}>
+                Try again
+              </button>
+            </>
+          )}
+        </p>
+      ) : p.is_me && editing ? (
         <ProfileBlocksEditor
           page={pageStyle}
           onPage={(next) => {
