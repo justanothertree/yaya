@@ -17,20 +17,26 @@
 import { useSyncExternalStore } from 'react'
 import { onParty, sendParty, voiceSession } from './voiceSession'
 import type { Msg } from '../circuit/chatRooms'
-
-/** the room_id every message here carries — there is no room, but MessageLog keys a thread on one */
-const ROOM = 'call'
-const MAX_TEXT = 2000
-/** how many lines are kept; a long call's chat should not grow without end in a tab's memory */
-const KEEP = 300
+import {
+  MAX_TEXT,
+  ROOM,
+  appendCapped,
+  readChatName,
+  readChatText,
+  roomChange,
+  senderGate,
+} from './callChatLog'
 
 let msgs: Msg[] = []
 let callRoom: string | null = null
 const listeners = new Set<() => void>()
 let wired = false
 
+/* one bucket per sender — see `senderGate`, and why this drops rather than delays */
+const gate = senderGate()
+
 function push(m: Msg) {
-  msgs = [...msgs, m].slice(-KEEP)
+  msgs = appendCapped(msgs, m)
   for (const fn of listeners) fn()
 }
 
@@ -45,20 +51,20 @@ function wire() {
   if (wired) return
   wired = true
   onParty((m) => {
-    if (m.kind !== 'chat') return
-    /* ⚠️ everything here was put on the wire by another member's browser, and the client that
-       put it there is one anybody can rewrite: take a string, bound it, and render it as text */
-    const text = (m.body as { text?: unknown } | null)?.text
-    if (typeof text !== 'string' || !text.trim()) return
+    const text = readChatText(m)
+    if (text === null) return
+    /* ⚠️ over their rate is DROPPED, not queued — two chat lines are two different sentences, so
+       delaying them would reorder a conversation against the voices saying the same words aloud */
+    if (!gate.allow(String(m.from ?? ''))) return
     push({
       id: `${m.from}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
       room_id: ROOM,
       author_user_id: m.from,
-      author_name: String(m.name ?? '').slice(0, 40) || 'Someone',
+      author_name: readChatName(m.name),
       // never a profile link: the name came from the sender's own client, not from the server
       author_username: null,
       mine: false,
-      body: text.slice(0, MAX_TEXT),
+      body: text,
       created_at: new Date().toISOString(),
     })
   })
@@ -66,9 +72,12 @@ function wire() {
   voiceSession.subscribe(() => {
     const s = voiceSession.getState()
     const now = s.inCall ? s.roomId : null
-    if (now === callRoom) return
+    const { changed, clear } = roomChange(callRoom, now, msgs.length)
+    if (!changed) return
     callRoom = now
-    if (msgs.length) {
+    /* a new call starts everybody at full tokens; the old call's rates mean nothing here */
+    gate.forget()
+    if (clear) {
       msgs = []
       for (const fn of listeners) fn()
     }

@@ -239,7 +239,7 @@ describe('feed scopes', () => {
 })
 
 /**
- * Comments and things made — docs/2026-11-14-feed-made-and-comments.DRAFT.sql, not applied yet.
+ * Comments and things made — docs/applied/2026-11-14-feed-made-and-comments.DRAFT.sql, not applied yet.
  * The server sends where a comment was left and on whose; the words are written here, once.
  */
 describe('a comment and a thing made, in words', () => {
@@ -379,7 +379,7 @@ describe('one thing made per person, kind and day', () => {
 
 /**
  * A finished match, as the server's row arrives and as the line reads (step 3 of the matches
- * plan). The row is the one `feed_recent` builds in docs/2026-11-16-feed-finished-matches.DRAFT.sql,
+ * plan). The row is the one `feed_recent` builds in docs/applied/2026-11-16-feed-finished-matches.DRAFT.sql,
  * every field something other than its default, so a field the reader drops shows up as a failure.
  */
 describe('a finished match', () => {

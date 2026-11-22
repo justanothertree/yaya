@@ -13,6 +13,7 @@ import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
 import { WhatsHere } from './components/WhatsHere'
+import { CHRONICLE_KEYS } from './chronicle/keys'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
@@ -2315,7 +2316,7 @@ export default function App() {
           {!sharedCanvasShowing && active === 'chronicle' && (
             <section id="chronicle" className="reveal">
               <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <Chronicle authed={isFinanceAuthed || previewMember} />
+                <Chronicle authed={isFinanceAuthed || previewMember} keysOff={gameHasControl} />
               </Suspense>
             </section>
           )}
@@ -2724,6 +2725,9 @@ export default function App() {
           canvasOpen={canvasOpen}
           canvasCapable={canvasCapable}
           desktop={desktop}
+          roomKeys={
+            active === 'chronicle' ? { room: 'Chronicle', keys: CHRONICLE_KEYS } : undefined
+          }
         />
       )}
     </div>

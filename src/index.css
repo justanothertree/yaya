@@ -3082,6 +3082,9 @@ section[id] {
   gap: 0.2rem;
 }
 .nav-menu-steps .btn {
+  /* a floor in pixels: see the touch rule below .nav-menu-pct */
+  min-height: 24px;
+  min-width: 24px;
   padding: 0.2rem 0.45rem;
   font-size: 0.8rem;
   line-height: 1.2;
@@ -3102,6 +3105,24 @@ section[id] {
   min-width: 3rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+/**
+ * ⚠️ THE STEP BUTTONS HAVE A FLOOR, IN PIXELS. They were 23px tall — 0.2rem of padding on an
+ * 0.8rem label, with nothing saying how small that could get — which is under WCAG 2.5.8's 24px,
+ * and on a phone they are pressed with a thumb in a sheet that is only ever opened that way. Found
+ * by mobileAudit on 21 Nov 2026 with the phone settings sheet open: the three text-size buttons and
+ * the seven status and theme buttons. The rows around them were already 44px on a phone; the
+ * buttons inside the rows were not.
+ *
+ * Pixels because the root size is fluid (CLAUDE.md §6). 24 everywhere, so the mouse menu meets the
+ * floor too, and 36 on a touch screen — gated on the pointer as well as the width, because a width
+ * query is not a pointer: a tablet held in the hand gets the desktop dropdown and its small buttons.
+ */
+@media (max-width: 780px), (pointer: coarse) {
+  .nav-menu-steps .btn {
+    min-height: 36px;
+    min-width: 36px;
+  }
 }
 .nav-menu-switch {
   width: 1.9rem;
@@ -6080,6 +6101,19 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   border-radius: 4px;
   padding: 0 4px;
   font-size: 0.72rem;
+}
+/* the room's own keys, under the site's: a short list, one key and what it does per line */
+.wh-room-keys {
+  margin-top: 0;
+}
+.wh-room-keys p {
+  margin: 0 0 0.25rem;
+}
+.wh-room-keys ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.15rem;
 }
 /* a link, not a button: it sits in the footer beside the copyright and must not shout */
 .wh-open {
@@ -16633,6 +16667,20 @@ a.cz-msg-author:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+  /**
+   * ⚠️ A CEILING, BECAUSE `flex: 1 1 auto` BELOW FILLS WHATEVER THE CARD GIVES IT. These two
+   * tiles are meant to be read against each other — money put in, and what it is worth now —
+   * and on a wide screen the card is the full column, so each tile grew to about 580px at 1440
+   * and the pair sat 600px apart with a lake of empty tile between every label and its own
+   * number. Two figures you have to move your eyes across a room to compare are not a glance.
+   *
+   * It is a ceiling and not a width: below 520px this changes nothing at all, so the phone
+   * layout the rest of this block was tuned for is untouched. Measured back to back at each
+   * width, with the ceiling switched off and on again rather than against an older reading:
+   * at 1440 the wrapper goes 1052px -> 520px and the tiles 490/551 -> 224/285; at 390 the
+   * tiles are 125/179 on both sides, byte for byte the same layout.
+   */
+  max-width: 520px;
 }
 .inv-tile {
   display: grid;
@@ -16850,6 +16898,19 @@ a.cz-msg-author:focus-visible {
   .inv-row {
     min-height: 60px;
   }
+}
+
+/**
+ * ⚠️ A CLASS SO A PHONE CAN MAKE IT BIGGER — the same move as `.inv-info` below, and for the
+ * same reason: the padding on these rows is inline and inline beats a stylesheet, but
+ * `min-height` is a different property, so the target grows without touching the look it was
+ * given. Measured at 390 with `scripts/mobile-audit.js`: 314×34, reported under `snug`. 34
+ * clears WCAG 2.5.8's 24 and is well short of the 44 this room gives every other control a
+ * thumb lands on — and this one is how a member opens their own account, so it is among the
+ * most-tapped things on the page. The note on `.inv-row` explains why 44 rather than 24 here.
+ */
+.inv-acct {
+  min-height: 44px;
 }
 
 .inv-info {
@@ -18762,6 +18823,30 @@ a.cz-msg-author:focus-visible {
   box-shadow: 0 0 6px var(--accent);
 }
 
+/* a lane you can drag on draws no text selection and no long-press menu under the finger */
+.chron-week-lane.is-draggable {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+/* the span a drag is drawing — see `dragSpan`; its times sit inside it, small, at the top */
+.chron-week-ghost {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 1;
+  overflow: hidden;
+  border: 1px dashed var(--accent);
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  color: var(--text);
+  font-size: 9px;
+  line-height: 1.15;
+  padding: 1px 2px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── chronicle, why a goal is there — see src/sections/Chronicle.tsx ────────── */
 .chron-whyfor {
   /* the only prose in a row of numbers and chips: it takes the rest of the line and wraps */
@@ -18890,6 +18975,73 @@ a.cz-msg-author:focus-visible {
  * pixels so a long one ellipses instead of collapsing to nothing (the root size is fluid, so
  * `rem` is not a length here — see CLAUDE.md §6).
  */
+/**
+ * Feedback you can see — see `useFresh`, and haptics.ts for the half you can feel.
+ *
+ * ⚠️ SMALL AND QUICK, AND EACH ONE IS ABOUT SOMETHING YOU JUST DID: the bar easing in when a timer
+ * starts, the stopped sitting settling into the log once its dialog closes, the count of notes
+ * nudging up, a goal filling. Nothing loops and nothing plays on arrival.
+ *
+ * ⚠️ AND REDUCE MOTION NEEDS NOTHING HERE. `:root[data-motion='reduce']` flattens every animation
+ * on the site to 1ms, and `motion.ts` sets it from the system's prefers-reduced-motion as well as
+ * from the site's own switch — so these are plain keyframes, and the blanket rule is the guard.
+ */
+@keyframes chron-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes chron-settle {
+  from {
+    background: color-mix(in oklab, var(--accent), transparent 72%);
+    transform: translateY(-4px);
+  }
+  to {
+    background: transparent;
+    transform: none;
+  }
+}
+@keyframes chron-nudge {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.14);
+  }
+}
+@keyframes chron-fill {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent), transparent 45%);
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.015);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+    transform: scale(1);
+  }
+}
+.chron-running.is-new {
+  animation: chron-enter 0.26s ease-out both;
+}
+.chron-ent.is-settled > .chron-row-open {
+  border-radius: 8px;
+  animation: chron-settle 0.7s ease-out both;
+}
+.chron-runnote-n.is-up {
+  animation: chron-nudge 0.35s ease-out;
+}
+.chron-goal.is-filled {
+  border-radius: 10px;
+  animation: chron-fill 0.65s ease-out;
+}
 .chron-running {
   display: grid;
   grid-template-columns: auto minmax(64px, 1fr) auto auto;
