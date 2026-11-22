@@ -200,6 +200,15 @@ jobs:
           if [ -z "$DB_URL" ]; then
             DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           fi
+          # ⚠️ A DRAFT GOES INTO THE WORLD IT WILL MEET. This stack's baseline revokes the schema's
+          # default grants, while production's default ACL hands anon EXECUTE on every new function
+          # and arwdDxtm on every new table — so here a draft that forgot `revoke … from anon` would
+          # pass its own privilege checks. Production's defaults go back first, as
+          # supabase/tests/plain-postgres/build.sh does; they touch only what is created after them.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q \
+            -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role" \
+            -c "alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role" \
+            -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.DRAFT.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-version.sql
           bash supabase/tests/profile-page-race.sh "$DB_URL"
