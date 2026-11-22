@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Backgammon by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_backgammon_by_turns`, version 20261122025307:
+-- md5(statements[1]) = 6f6fbe47008c3ff2e8b4c8a1b85fa13f, this file's body. The record is
+-- supabase/migrations/20261122025307_lab_backgammon_by_turns.sql.
+--
+-- (as drafted) Backgammon by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
