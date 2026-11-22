@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Spades by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_spades_by_turns`, version 20261122124656:
+-- md5(statements[1]) = 3271e8254fea88ae681f1bd9fba3783d, this file's body. The record is
+-- supabase/migrations/20261122124656_lab_spades_by_turns.sql.
+--
+-- (as drafted) Spades by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
