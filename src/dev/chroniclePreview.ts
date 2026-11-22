@@ -832,6 +832,8 @@ const mint = (p: string): string => `${p}-new-${next++}`
  * is written in characters.
  */
 const chars = (t: string): number => [...t].length
+/** Postgres's one-argument `btrim`: spaces only, where String#trim also takes tabs and newlines */
+const btrim = (t: string): string => t.replace(/^ +| +$/g, '')
 const leftChars = (t: string, n: number): string => [...t].slice(0, n).join('')
 /* chronicle_activity_save's session length: 1 to 1440 minutes, or none */
 const sessionMins = (m: number | null | undefined): number | null =>
@@ -1026,6 +1028,23 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
 
 export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   const id = g.id ?? mint('pv-g')
+  /**
+   * ⚠️ SAID IN WORDS BEFORE THE TABLE SAYS IT IN ITS OWN, as chronicle_goal_save does since
+   * `chronicle_goal_refusals` went live on 22 Nov 2026 (#145): straight after the suspension
+   * check, so ahead of the two below. A null target, unit or note is not measured — the server's
+   * `char_length(btrim(null))` is null, and a null note is "leave it alone".
+   */
+  if (btrim(g.title ?? '') === '') return { why: 'a goal needs a title' }
+  if (chars(btrim(g.title)) > 120) return { why: 'that is longer than a title — 120 characters' }
+  if (g.target != null && (g.target <= 0 || g.target > 1e9)) {
+    return { why: 'a target is more than 0 and at most a billion' }
+  }
+  if (g.unit != null && chars(btrim(g.unit)) > 16) {
+    return { why: 'that is longer than a unit — 16 characters' }
+  }
+  if (g.note != null && chars(btrim(g.note)) > 2000) {
+    return { why: 'that is longer than a note — 2000 characters' }
+  }
   /* ⚠️ the same two the server keeps, in its own words — see the note on pvSaveActivity */
   const was = db().goals.find((x) => x.id === id)
   const already = !!was
@@ -1261,6 +1280,18 @@ export const pvSaveActivity = (
    * reached it — but a double that invents a row where the server refuses one is the direction
    * that hides a bug.
    */
+  /**
+   * ⚠️ SAID IN WORDS BEFORE THE TABLE SAYS IT IN ITS OWN, as chronicle_activity_save does since
+   * `chronicle_activity_refusals` went live on 22 Nov 2026 (OPEN-DECISIONS, #144): checked straight
+   * after the suspension check, so ahead of the ownership and clash checks below. Before it, the
+   * live site showed the constraint's sentence — `violates check constraint
+   * "chronicle_activities_name_check"` — and this double let the name through.
+   */
+  if (btrim(name ?? '') === '') return { why: 'an activity needs a name' }
+  if (chars(btrim(name)) > 60) return { why: 'that is longer than a name — 60 characters' }
+  if (metric != null && chars(btrim(metric)) > 16) {
+    return { why: 'that is longer than a unit — 16 characters' }
+  }
   if (id && !found) return { why: 'no such activity' }
   /**
    * ⚠️ THE NAME CLASH, in chronicle_activity_save's own words. `chronicle_activities` is
@@ -1752,12 +1783,14 @@ export const pvFixRunningDay = (
 }
 
 export const pvAmount = (id: string, amount: number | null): boolean => {
-  /* ⚠️ NOT BELOW ITS COUNTED SETS — chronicle_entry_amount's refusal, which a boolean cannot word */
-  if ((amount ?? 0) < countedOf(id)) return false
+  /* ⚠️ NOT BELOW ITS COUNTED SETS — chronicle_entry_amount's refusal, which a boolean cannot word.
+     A negative meets that floor as 0, `greatest(coalesce(p_amount, 0), 0)`, since OPEN-DECISIONS
+     21b went live on 22 Nov 2026: with nothing counted it passes, and with sets counted it is
+     refused like a blank is. Before it, -4 was refused even with nothing counted. */
+  if (Math.max(amount ?? 0, 0) < countedOf(id)) return false
   const e = db().ents.find((x) => x.id === id)
-  /* stored under the server's ceiling. A negative never gets here: it is below the counted sets'
-     floor of 0, so the check above refuses it, as chronicle_entry_amount's does */
-  if (e) e.amount = amount == null ? null : Math.min(amount, 1e9)
+  /* `case when p_amount is null or p_amount < 0 then null else least(p_amount, 1e9) end` */
+  if (e) e.amount = amount == null || amount < 0 ? null : Math.min(amount, 1e9)
   return !!e
 }
 
@@ -2490,6 +2523,11 @@ export const pvSaveRoutine = (
    * about it is the only thing that caught it; the order of two checks is not something a
    * sensible guess gets right.
    */
+  /* ⚠️ THE NAME, IN WORDS, FIRST — chronicle_routine_save since `chronicle_routine_refusals` went
+     live on 22 Nov 2026 (#146), straight after its suspension check. Before it the live site
+     showed `violates check constraint "chronicle_routines_name_check"` and this let it through. */
+  if (btrim(name ?? '') === '') return { why: 'a routine needs a name' }
+  if (chars(btrim(name)) > 60) return { why: 'that is longer than a name — 60 characters' }
   if (steps.length > 40) return { why: 'that is more than forty steps' }
   /* ⚠️ a step naming an activity that is not yours is dropped, as chronicle_routine_save does */
   const mine = steps
@@ -2959,14 +2997,26 @@ const MOMENTS: ReadonlyArray<{
 ]
 
 /**
- * `to_char(v, 'FM999999990.##')`, the way chronicle_moments prints a workout's number.
+ * `trim_scale(round(v, 2))::text`, the way chronicle_moments prints a workout's number since
+ * OPEN-DECISIONS 21a went live on 22 Nov 2026 (`chronicle_moments_decimals`): up to two decimals,
+ * none that are zero, so 3.5 is "3.5", 0.25 "0.25", 12.345 "12.35" and 12 "12". Before it, the
+ * format was `FM999999990.##`, which prints no decimals at all, and a 3.5-mile walk read "4 mi".
  *
- * ⚠️ MEASURED IN CI, NOT REMEMBERED: `.##` is not a digit pattern, so Postgres prints NO decimals
- * and rounds half away from zero — 12 is "12", 12.5 is "13", 0.25 is "0". A 3.5-mile walk reads
- * "4 mi" on the live site. The double prints it the same way so the preview shows what the site
- * shows; the fix is a server change, queued in OPEN-DECISIONS §21.
+ * ⚠️ ROUNDED ON THE DECIMAL TEXT, NOT ON A DOUBLE. The server casts `(en->>'val')`, the number's
+ * own text, to `numeric`, which is exact and rounds half away from zero: 1.005 becomes 1.01.
+ * `Math.round(v * 100) / 100` gives 1, because the double nearest 1.005 is a little below it.
+ * Values here are all at least 0 (pvMoments keeps only those over zero) and at most 1e9, so the
+ * hundredths fit a plain number exactly.
  */
-const momentNumber = (v: number): string => String(Math.round(v))
+const momentNumber = (v: number): string => {
+  const text = /e/i.test(String(v)) ? v.toFixed(20) : String(v)
+  const [whole, frac = ''] = text.replace(/^-/, '').split('.')
+  const hundredths = Number(whole + (frac + '00').slice(0, 2)) + ((frac[2] ?? '0') >= '5' ? 1 : 0)
+  const decimals = String(hundredths % 100)
+    .padStart(2, '0')
+    .replace(/0+$/, '')
+  return String(Math.floor(hundredths / 100)) + (decimals ? '.' + decimals : '')
+}
 
 /**
  * `chronicle_moments`: the day's workouts from YOUR people's typed days, and the ratings.

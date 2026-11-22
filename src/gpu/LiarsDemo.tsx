@@ -20,6 +20,13 @@ import {
 import { motionReduced as reduced } from '../ui/motion'
 import { PIPS } from './pips'
 import { useKept } from './kept'
+import { type LiarsGame } from './liarsRoom'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const CUP_NAMES: Record<Saved['cup'], string> = { leather: 'Leather', tin: 'Tin', velvet: 'Velvet' }
@@ -41,6 +48,16 @@ function Die({ f, lit, small }: { f: number; lit?: boolean; small?: boolean }) {
 }
 
 export function LiarsDemo() {
+  /* a match by turns, when the address names one (src/lab/matches/useLabMatch.ts): heads up, both
+     cups and the seed they are rolled from kept back by the server (liarsRoom.ts) */
+  const lm = useLabMatch('liars', { preview: false })
+  // keyed by the match: another match starts with nothing of this one (a half-made bid)
+  if (lm.id) return <LiarsMatch key={lm.id} lm={lm} />
+  return <LiarsAlone />
+}
+
+function LiarsAlone() {
+  const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(LIARS_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [g, setG] = useState<Game>(() => newGame(1 + saved.rivals, seed(), saved.wild, 0))
@@ -237,6 +254,9 @@ export function LiarsDemo() {
         <button className="btn btn-ghost" onClick={() => fresh()}>
           ↻ New game
         </button>
+        {signedIn && (
+          <MatchChallenge demo="liars" settings={{ wild: saved.wild }} levelNames={LEVEL_NAMES} />
+        )}
       </div>
 
       <div className="lr-seats">
@@ -444,3 +464,204 @@ export function LiarsDemo() {
     </div>
   )
 }
+
+/** a match by turns, heads up: the table both players see, and my own cup as lab-move shows it */
+function LiarsMatch({ lm }: { lm: LabMatch }) {
+  const [saved] = useKept(LIARS_KEY, readSaved)
+  const x = lm.shown as LiarsGame | null
+  const together = lm.view?.mode === 'together'
+  const side: 0 | 1 = together ? 0 : lm.view?.you === 1 ? 1 : 0
+  const theirs: 0 | 1 = side === 0 ? 1 : 0
+  const them = !lm.view ? 'They' : together ? 'The computer' : otherName(lm.view)
+  const myName = together ? 'You two' : 'You'
+  const [cup, setCup] = useState<number[] | null>(null)
+  const [pick, setPick] = useState<Bid>({ q: 1, f: 2 })
+  const seq = lm.view?.seq
+  const active = lm.view?.status === 'active' || lm.view?.status === 'finished'
+  useEffect(() => {
+    if (!lm.id || !active) return
+    let live = true
+    myHidden(lm.id)
+      .then((d) => {
+        if (live) setCup(Array.isArray(d) ? (d as number[]) : null)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [lm.id, seq, active])
+  /* each time the bid moves, the picker starts at the cheapest raise on the same face */
+  const onTable = x?.g.bid ?? null
+  const tableKey = onTable ? `${onTable.q}x${onTable.f}` : `none-${x?.past.length ?? 0}`
+  useEffect(() => {
+    if (!x) return
+    const opts = cheapest(onTable, x.wild, total(x.g))
+    const same = onTable ? opts[onTable.f - 1] : null
+    setPick(same ?? opts.find((b) => b && b.f !== 1) ?? opts.find((b) => b) ?? { q: 1, f: 2 })
+    // only a new bid on the table moves the picker
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableKey])
+  if (!x)
+    return (
+      <div className="lab-keys lr-room">
+        <MatchBar lm={lm} sides={['the first to bid', 'the second']} />
+      </div>
+    )
+
+  const g = x.g
+  const dice = total(g)
+  const myTurn = lm.canPlay
+  const ok = legal(pick, g.bid, g.wild, dice)
+  const shown = g.shown
+  const counts = shown
+    ? (f: number) => f === shown.bid.f || (g.wild && shown.bid.f !== 1 && f === 1)
+    : null
+  const nameOf = (s: number) => (s === side ? myName : them)
+  const last = x.past[x.past.length - 1]
+  const words = (() => {
+    const told = last
+      ? `${nameOf(last.caller)} called ${nameOf(last.bidder) === myName ? 'your' : `${nameOf(last.bidder)}’s`} ${say(last.bid)} — there ${last.actual === 1 ? 'was' : 'were'} ${last.actual}: ${nameOf(last.loser) === myName ? (together ? 'you two lose' : 'you lose') : `${nameOf(last.loser)} loses`} a die. `
+      : ''
+    if (lm.view?.status === 'finished') return told
+    if (!myTurn)
+      return `${shown ? told : ''}${together && lm.view?.turn !== lm.view?.you ? 'Your partner' : them} is ${g.bid ? 'deciding' : 'opening'}.`
+    return `${shown ? told : ''}${g.bid ? `${nameOf(g.bidder!)} bid ${say(g.bid)}: raise it, or call a lie.` : 'Your bid opens the round.'}`
+  })()
+  return (
+    <div className={`lab-keys lr-room is-${saved.cup}`}>
+      <MatchBar lm={lm} sides={['the first to bid', 'the second']} />
+      <div className="lr-seats">
+        <div
+          className={`lr-seat${g.turn === theirs && g.winner === null ? ' is-up' : ''}${g.left[theirs] === 0 ? ' is-out' : ''}`}
+        >
+          <span className="lr-name">{them}</span>
+          {shown ? (
+            <span
+              className="lr-dice"
+              role="img"
+              aria-label={`${them} had ${shown.dice[theirs].join(', ') || 'no dice'}`}
+            >
+              {shown.dice[theirs].map((f, k) => (
+                <Die key={k} f={f} small lit={counts!(f)} />
+              ))}
+            </span>
+          ) : (
+            <span className="lr-cup" role="img" aria-label={`${g.left[theirs]} dice under the cup`}>
+              {Array.from({ length: DICE }, (_, k) => (
+                <span key={k} className={k < g.left[theirs] ? 'is-in' : ''} />
+              ))}
+            </span>
+          )}
+          <span className="muted lr-said">{dieCount(g.left[theirs])} left</span>
+        </div>
+      </div>
+      {g.winner === null && (
+        <div className="lr-bid" aria-live="polite">
+          {g.bid ? (
+            <>
+              <span className="muted">{nameOf(g.bidder!)} bid</span>
+              <strong>{g.bid.q} ×</strong>
+              <Die f={g.bid.f} />
+              <span className="muted">
+                of {dieCount(dice)}
+                {g.wild && g.bid.f !== 1 ? ', ones wild' : ''}
+              </span>
+            </>
+          ) : (
+            <span className="muted">
+              No bid yet · {dieCount(dice)} on the table{g.wild ? ', ones wild' : ''}
+            </span>
+          )}
+        </div>
+      )}
+      {words && (
+        <p className="mc-line" aria-live="polite">
+          {words}
+        </p>
+      )}
+      <div
+        className="lr-yours"
+        role="img"
+        aria-label={
+          shown
+            ? `You had ${shown.dice[side].join(', ')}; now ${cup?.join(', ') ?? '…'}`
+            : `Your dice: ${cup?.join(', ') ?? '…'}`
+        }
+      >
+        <span className="lr-name">{myName}</span>
+        {(cup ?? []).map((f, k) => (
+          <Die key={k} f={f} />
+        ))}
+        <span className="muted">{dieCount(g.left[side])} left</span>
+      </div>
+      {g.winner === null && (
+        <div className="lr-picker" role="group" aria-label="Your bid">
+          <div className="lab-controls">
+            <button
+              className="btn btn-ghost"
+              aria-label="One fewer"
+              disabled={!myTurn || pick.q <= 1}
+              onClick={() => setPick((p) => ({ ...p, q: p.q - 1 }))}
+            >
+              −
+            </button>
+            <strong className="lr-q" aria-live="polite">
+              {pick.q}
+            </strong>
+            <button
+              className="btn btn-ghost"
+              aria-label="One more"
+              disabled={!myTurn || pick.q >= dice}
+              onClick={() => setPick((p) => ({ ...p, q: p.q + 1 }))}
+            >
+              +
+            </button>
+            <div className="lab-group" role="group" aria-label="Face">
+              {[1, 2, 3, 4, 5, 6].map((f) => (
+                <button
+                  key={f}
+                  className="btn btn-ghost lr-face"
+                  aria-pressed={pick.f === f}
+                  aria-label={FACE_WORDS[f]}
+                  disabled={!myTurn}
+                  onClick={() => setPick((p) => ({ ...p, f }))}
+                >
+                  <Die f={f} small />
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="lab-controls">
+            <button
+              className="btn"
+              disabled={!myTurn || !ok || lm.busy}
+              onClick={() => lm.commit({ bid: pick })}
+            >
+              {ok ? `Bid ${say(pick)}` : g.bid ? `Too low to follow ${say(g.bid)}` : 'Bid'}
+            </button>
+            {g.bid && (
+              <button
+                className="btn"
+                disabled={!myTurn || lm.busy}
+                onClick={() => lm.commit({ call: true })}
+              >
+                Liar!
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <p className="muted lab-hint">
+        Liar’s dice by turns, heads up: five dice each, rolled by the server and shown only to their
+        owner. Raise the bid — more dice, or as many of a higher face
+        {g.wild ? '; ones are wild, and a bid on ones needs half as many' : ''} — or call it a lie,
+        and both cups are lifted: whoever was wrong loses a die. Lose all five and the match is
+        lost.
+        {together ? ' Together, the two of you share a cup and take its moves in turn.' : ''}
+      </p>
+    </div>
+  )
+}
+
+/** a number of dice, said as one says it */
+const dieCount = (n: number) => `${n} ${n === 1 ? 'die' : 'dice'}`

@@ -8,7 +8,7 @@ import type { RoomKind } from './voiceSession'
 /**
  * Whether a call happens in a chat room — a DM, a circuit or the Lounge — whose own conversation
  * is the natural place for what you type during it. A profile call (and anything that did not
- * say what it is) has none, and gets a chat that lasts as long as the call. See callChat.ts.
+ * say what it is) has none, and gets a chat that lasts as long as the call. See callChatStore.ts.
  */
 const hasRoom = (kind: RoomKind | null) => kind === 'dm' || kind === 'circuit' || kind === 'lounge'
 

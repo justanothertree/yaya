@@ -106,6 +106,13 @@ import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
 import { packMove as packFence, replay as fencesReplay } from '../../../src/gpu/fencesRoom'
+import { holdemRules } from '../../../src/gpu/holdemRoom'
+import {
+  chipsOf as twentyOneChips,
+  computerRound as twentyOneComputer,
+} from '../../../src/gpu/twentyoneDuel'
+import { boardOf } from '../../../src/gpu/lampsDuel'
+import { solve as lampsSolve } from '../../../src/gpu/lamps'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -3655,5 +3662,471 @@ describe('dominoes by turns: the hands and boneyard kept back', () => {
       expect(row.turn).toBe(1)
       expect((row.state as { line: unknown[] }).line.length).toBeGreaterThanOrEqual(1)
     }
+  })
+})
+
+describe('hearts by turns: four at the table, two of them friends', () => {
+  const hr = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'hearts', settings: { end: 50 }, ...over })
+  type Mine = { hand: number[]; passed: number[] | null; got: number[] | null }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as Mine
+  }
+  type Sec = { dealt: number[][]; passes: (number[] | null)[] }
+
+  it('deals with the yes, seals each friend’s pass, and the computers play in the same call', () => {
+    let row = after(hr(), decide(hr(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(mine(row, A).hand).toEqual(sec.dealt[0])
+    expect(mine(row, B).hand).toEqual(sec.dealt[2])
+    const a = mine(row, A).hand
+    const p = decide(row, A, move(row.seq, { pass: a.slice(0, 3) }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.move).toEqual({ m: { pass: 'face down' } })
+    row = after(row, p)
+    expect(row.turn).toBe(1)
+    expect(JSON.stringify(row.state)).not.toMatch(/dealt|passes|hands/)
+    const b = mine(row, B).hand
+    row = after(row, decide(row, B, move(row.seq, { pass: b.slice(0, 3) })))
+    // the computers have played up to a friend's turn: whoever's it is, it is a friend's
+    const st = row.state as { phase: string; played: number[] }
+    expect(st.phase).toBe('play')
+    expect(row.turn === 0 || row.turn === 1).toBe(true)
+    expect(st.played.length).toBeLessThanOrEqual(3)
+  })
+
+  it('has no Together, as Evan called it: the friends are never partners, so a together match is refused', () => {
+    const start = hr({ mode: 'together', settings: { end: 50, level: 'fair' } })
+    expect(decide(start, B, { op: 'accept' })).toEqual({
+      kind: 'refuse',
+      status: 422,
+      error: 'this toy has no together game',
+    })
+  })
+
+  it('refuses a stored hand that is not one deck', () => {
+    const row = after(hr(), decide(hr(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    const twice = {
+      ...sec,
+      dealt: sec.dealt.map((h, i) => (i === 0 ? [sec.dealt[1][0], ...h.slice(1)] : h)),
+    }
+    expect(
+      status(
+        decide({ ...row, secret: twice }, A, move(row.seq, { pass: sec.dealt[0].slice(0, 3) })),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('spades by turns: partnerships at a table of four', () => {
+  const sp = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'spades', settings: { target: 200 }, ...over })
+  type Mine = { hand: number[]; seat: number }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as Mine
+  }
+  type Sec = { dealt: number[][] }
+
+  it('versus: each friend beside a computer partner; the computers bid in the same call', () => {
+    let row = after(sp(), decide(sp(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(mine(row, A)).toEqual({ hand: sec.dealt[0], seat: 0 })
+    expect(mine(row, B)).toEqual({ hand: sec.dealt[1], seat: 1 })
+    row = after(row, decide(row, A, move(row.seq, { bid: 3 })))
+    expect(row.turn).toBe(1)
+    const p = decide(row, B, move(row.seq, { bid: 4 }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    row = after(row, p)
+    // seats 2 and 3 bid with Bo's call, and Ann, left of the dealer, leads
+    const bids = (row.state as { bids: (number | null)[] }).bids
+    expect(bids.slice(0, 2)).toEqual([3, 4])
+    expect(bids.every((b) => b !== null)).toBe(true)
+    expect(row.turn).toBe(0)
+    expect(JSON.stringify(row.state)).not.toMatch(/dealt|hands/)
+  })
+
+  it('together: the friends are partners across the table, each seeing their own hand', () => {
+    const start = sp({ mode: 'together', settings: { target: 200, level: 'fair' } })
+    let row = after(start, decide(start, B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(mine(row, B)).toEqual({ hand: sec.dealt[2], seat: 2 })
+    row = after(row, decide(row, A, move(row.seq, { bid: 2 })))
+    // the computer at seat 1 has bid in the same call: Bo, at seat 2, is next
+    expect((row.state as { bids: (number | null)[] }).bids[1]).not.toBeNull()
+    expect(row.turn).toBe(1)
+  })
+
+  it('refuses a stored deal that is not one deck', () => {
+    const row = after(sp(), decide(sp(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    const twice = {
+      dealt: sec.dealt.map((h, i) => (i === 0 ? [sec.dealt[1][0], ...h.slice(1)] : h)),
+    }
+    expect(status(decide({ ...row, secret: twice }, A, move(row.seq, { bid: 3 })))).toBe(500)
+  })
+})
+
+describe('crazy eights by turns: the hands, the stock and a drawn card kept back', () => {
+  const ce = (over: Partial<Row> = {}) => invite({ demo_id: 'eights', settings: {}, ...over })
+  type Mine = { hand: number[]; drew: number | null }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as Mine
+  }
+  type Sec = { hands: number[][]; stock: number[]; drew: number | null }
+
+  it('deals with the yes, and shows each player their own hand only', () => {
+    const p0 = decide(ce(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    const sec = p0.secret as Sec
+    expect(JSON.stringify(p0.state)).not.toMatch(/hands|"stock"|"drew"/)
+    const row = after(ce(), p0)
+    expect(mine(row, A).hand).toEqual(sec.hands[0])
+    expect(mine(row, B).hand).toEqual(sec.hands[1])
+  })
+
+  it('takes a card Ann holds that fits, and refuses one she does not', () => {
+    for (let k = 0; k < 40; k++) {
+      let row = after(ce(), decide(ce(), B, { op: 'accept' }))
+      const sec = row.secret as Sec
+      const st = row.state as { suit: number; pile: number[] }
+      const top = st.pile[st.pile.length - 1]
+      const fit = sec.hands[0].find(
+        (c) => c >> 2 !== 6 && ((c & 3) === st.suit || c >> 2 === top >> 2),
+      )
+      if (fit === undefined) continue
+      expect(status(decide(row, A, move(row.seq, { play: sec.hands[1][0] })))).toBe(400)
+      const p = decide(row, A, move(row.seq, { play: fit }))
+      if (p.kind !== 'commit') throw new Error('refused')
+      row = after(row, p)
+      expect(row.turn).toBe(1)
+      expect((row.state as { pile: number[] }).pile.at(-1)).toBe(fit)
+      return
+    }
+    throw new Error('no deal gave Ann a plain card that fits')
+  })
+
+  it('refuses a stored hand that is not one deck', () => {
+    const row = after(ce(), decide(ce(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    const twice = { ...sec, stock: [...sec.stock.slice(1), sec.hands[1][0]] }
+    expect(status(decide({ ...row, secret: twice }, A, move(row.seq, { draw: true })))).toBe(500)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      for (let k = 0; k < 40; k++) {
+        const start = ce({ mode: 'together', settings: { level } })
+        const row = after(start, decide(start, B, { op: 'accept' }))
+        const hand = mine(row, A).hand
+        const st = row.state as { suit: number; pile: number[] }
+        const top = st.pile[st.pile.length - 1]
+        const fit = hand.find((c) => c >> 2 !== 6 && ((c & 3) === st.suit || c >> 2 === top >> 2))
+        if (fit === undefined) continue
+        const p = decide(row, A, move(row.seq, { play: fit }))
+        if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+        expect(((p.move as { then?: unknown[] }).then ?? []).length).toBeGreaterThanOrEqual(1)
+        expect(after(row, p).turn).toBe(1)
+        break
+      }
+    }
+  })
+})
+
+describe('liar’s dice by turns: the cups and their seed kept back', () => {
+  const ld = (over: Partial<Row> = {}) => invite({ demo_id: 'liars', settings: {}, ...over })
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as number[]
+  }
+  type Sec = { dice: number[][]; seed: number }
+
+  it('rolls with the yes, and shows each player their own cup only', () => {
+    const p0 = decide(ld(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    const sec = p0.secret as Sec
+    expect(JSON.stringify(p0.state)).not.toMatch(/dice|seed/)
+    const row = after(ld(), p0)
+    expect(mine(row, A)).toEqual(sec.dice[0])
+    expect(mine(row, B)).toEqual(sec.dice[1])
+  })
+
+  it('a call lifts both cups: the showdown is counted, a die lost, and both roll again from the secret', () => {
+    let row = after(ld(), decide(ld(), B, { op: 'accept' }))
+    const before = row.secret as Sec
+    row = after(row, decide(row, A, move(row.seq, { bid: { q: 4, f: 6 } })))
+    const p = decide(row, B, move(row.seq, { call: true }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    row = after(row, p)
+    const st = row.state as { past: { dice: number[][]; actual: number; loser: number }[] }
+    expect(st.past[0].dice).toEqual(before.dice)
+    const sixes = before.dice.flat().filter((d) => d === 6 || d === 1).length
+    expect(st.past[0].actual).toBe(sixes)
+    expect(st.past[0].loser).toBe(sixes >= 4 ? 1 : 0)
+    const after2 = row.secret as Sec
+    expect(after2.dice[st.past[0].loser]).toHaveLength(4)
+    expect(after2.seed).not.toBe(before.seed)
+    expect(JSON.stringify(row.state)).not.toMatch(/seed/)
+  })
+
+  it('refuses a stored cup that is not the size the table says', () => {
+    const row = after(ld(), decide(ld(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(
+      status(
+        decide(
+          { ...row, secret: { ...sec, dice: [sec.dice[0].slice(1), sec.dice[1]] } },
+          A,
+          move(row.seq, { bid: { q: 2, f: 3 } }),
+        ),
+      ),
+    ).toBe(500)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = ld({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const p = decide(row, A, move(row.seq, { bid: { q: 2, f: 3 } }))
+      if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+      expect(((p.move as { then?: unknown[] }).then ?? []).length).toBe(1)
+      row = after(row, p)
+      expect(row.turn).toBe(1)
+    }
+  })
+})
+
+describe('hold’em by turns: the deck and both pairs of hole cards kept back', () => {
+  const pk = (over: Partial<Row> = {}) => invite({ demo_id: 'poker', settings: {}, ...over })
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as number[]
+  }
+  type Sec = { holes: number[][]; deck: number[] }
+  type St = {
+    past: { actions: unknown[]; board: number[]; shown: (number[] | null)[] }[]
+    cur: { actions: unknown[]; board: number[] }
+  }
+
+  it('deals with the yes, and shows each player their own two cards only', () => {
+    const p0 = decide(pk(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    const sec = p0.secret as Sec
+    expect(sec.deck).toHaveLength(48)
+    expect(JSON.stringify(p0.state)).not.toMatch(/hole|deck/)
+    const row = after(pk(), p0)
+    expect(mine(row, A)).toEqual(sec.holes[0])
+    expect(mine(row, B)).toEqual(sec.holes[1])
+    // Ann has the button, so the small blind, and speaks first before the flop
+    expect(row.turn).toBe(0)
+  })
+
+  it('a fold ends the hand with nothing shown, and the server deals the next with the button moved', () => {
+    let row = after(pk(), decide(pk(), B, { op: 'accept' }))
+    const before = row.secret as Sec
+    const p = decide(row, A, move(row.seq, { kind: 'fold' }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    row = after(row, p)
+    const st = row.state as St
+    expect(st.past).toHaveLength(1)
+    expect(st.past[0].shown).toEqual([null, null])
+    expect(JSON.stringify(row.state)).not.toContain(JSON.stringify(before.holes[0]))
+    // Bo has the button now, and with it the first word
+    expect(row.turn).toBe(1)
+    expect((row.secret as Sec).holes).not.toEqual(before.holes)
+    // Ann's small blind went to Bo: the stacks a browser plays back from what travelled
+    const t = holdemRules.decode(row.state)!.t
+    expect(t.seats.map((x) => x.chips + x.put)).toEqual([990, 1010])
+  })
+
+  it('turns the flop off the top of the deck it kept back', () => {
+    let row = after(pk(), decide(pk(), B, { op: 'accept' }))
+    const deck = (row.secret as Sec).deck
+    row = after(row, decide(row, A, move(row.seq, { kind: 'call' })))
+    expect(status(decide(row, B, move(row.seq, { kind: 'fold' })))).toBe(400)
+    row = after(row, decide(row, B, move(row.seq, { kind: 'check' })))
+    expect((row.state as St).cur.board).toEqual([deck[47], deck[46], deck[45]])
+    // heads up, the big blind speaks first after the flop
+    expect(row.turn).toBe(1)
+  })
+
+  it('refuses a raise of an odd amount, and a stored deck that holds a card twice', () => {
+    const row = after(pk(), decide(pk(), B, { op: 'accept' }))
+    expect(status(decide(row, A, move(row.seq, { kind: 'raise', to: 39.5 })))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, { kind: 'raise', to: 5000 })))).toBe(400)
+    const sec = row.secret as Sec
+    const bad = { ...sec, deck: [...sec.deck.slice(1), sec.holes[1][0]] }
+    expect(status(decide({ ...row, secret: bad }, A, move(row.seq, { kind: 'call' })))).toBe(500)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = pk({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const p = decide(row, A, move(row.seq, { kind: 'call' }))
+      if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+      expect(((p.move as { then?: unknown[] }).then ?? []).length).toBeGreaterThan(0)
+      row = after(row, p)
+      // the friends take the seat's decisions in turn: Ann said call, so it is Bo's word next
+      expect(row.turn).toBe(1)
+      expect(row.status).toBe('active')
+    }
+  })
+})
+
+describe('lamps as a duel by turns: the same board, the first solve sealed', () => {
+  const ld = (over: Partial<Row> = {}) => invite({ demo_id: 'lamps', settings: {}, ...over })
+  const parFor = (row: Row) => {
+    const st = row.state as { seed: number }
+    return lampsSolve(boardOf({ seed: st.seed, size: 5, pattern: 'plus' })!, 5, 'plus')!
+  }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data
+  }
+
+  it('makes the board with the yes, and the friend solves first', () => {
+    const p0 = decide(ld(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    expect(p0.turn).toBe(1)
+    expect(p0.state).toMatchObject({ solves: [null, null], sealed: false })
+    expect(Number.isInteger((p0.state as { seed: number }).seed)).toBe(true)
+  })
+
+  it('seals the friend’s solve, then shows both: the fewer presses win', () => {
+    let row = after(ld(), decide(ld(), B, { op: 'accept' }))
+    const par = parFor(row)
+    const slow = [par[0], -1, ...par]
+    expect(status(decide(row, A, move(row.seq, { solve: par })))).toBe(409)
+    const p1 = decide(row, B, move(row.seq, { solve: slow }))
+    if (p1.kind !== 'commit') throw new Error('refused')
+    row = after(row, p1)
+    expect(JSON.stringify(row.state)).not.toContain(JSON.stringify(slow))
+    expect(JSON.stringify(p1.move)).not.toContain('solve')
+    expect(row.secret).toEqual({ pending: slow })
+    expect(mine(row, B)).toEqual(slow)
+    expect(mine(row, A)).toBeNull()
+    const p2 = decide(row, A, move(row.seq, { solve: par }))
+    if (p2.kind !== 'commit') throw new Error('refused')
+    row = after(row, p2)
+    expect(row.state).toMatchObject({ solves: [par, slow], sealed: false })
+    expect(p2.result).toMatchObject({ winner: 0, score: `${par.length}–${par.length + 2}` })
+  })
+
+  it('refuses a solve that leaves a lamp lit, a sealed solve that is not one, and Together', () => {
+    const row = after(ld(), decide(ld(), B, { op: 'accept' }))
+    const par = parFor(row)
+    expect(status(decide(row, B, move(row.seq, { solve: par.slice(1) })))).toBe(400)
+    const sealed = after(row, decide(row, B, move(row.seq, { solve: par })))
+    expect(
+      status(
+        decide(
+          { ...sealed, secret: { pending: par.slice(1) } },
+          A,
+          move(sealed.seq, { solve: par }),
+        ),
+      ),
+    ).toBe(500)
+    expect(
+      status(decide(ld({ mode: 'together', settings: { level: 'easy' } }), B, { op: 'accept' })),
+    ).toBe(422)
+  })
+})
+
+describe('twenty-one as a duel by turns: duplicate rounds from shoes kept back', () => {
+  const tw = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'twentyone', settings: { rounds: 5 }, ...over })
+  type Sec = { seeds: number[]; acts: string[][][] }
+  type St = { done: number[]; shown: Sec | null; together: boolean }
+  /** a whole round as the book plays it, for whichever side is to play */
+  const round = (row: Row, side: 0 | 1) => {
+    const sec = row.secret as Sec
+    const st = row.state as St
+    return { acts: twentyOneComputer(sec.seeds[st.done[side]], 'hard') }
+  }
+
+  it('the friend plays first, and the challenger sees nothing of it but a count', () => {
+    const p0 = decide(tw(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    expect(p0.turn).toBe(1)
+    expect((p0.secret as Sec).seeds).toHaveLength(5)
+    let row = after(tw(), p0)
+    expect(status(decide(row, A, move(row.seq, { act: 'stand' })))).toBe(409)
+    const p1 = decide(row, B, move(row.seq, round(row, 1)))
+    if (p1.kind !== 'commit') throw new Error('refused')
+    expect(p1.move).toEqual({ m: {} })
+    row = after(row, p1)
+    expect(Object.keys(row.state as object).sort()).toEqual(['done', 'shown', 'together'])
+    expect((row.state as St).shown).toBeNull()
+    const mineOf = (who: string) => {
+      const p = decide(row, who, { op: 'mine' })
+      if (p.kind !== 'mine') throw new Error('refused')
+      return p.data as unknown[]
+    }
+    expect(mineOf(A)).toEqual([])
+    expect(mineOf(B).length).toBeGreaterThan(1)
+  })
+
+  it('plays a whole match: shown at the end, scored in chips from what is shown', () => {
+    let row = after(tw(), decide(tw(), B, { op: 'accept' }))
+    let last: Plan | null = null
+    for (let k = 0; k < 20 && row.status === 'active'; k++) {
+      const who = row.turn === 1 ? B : A
+      const p = decide(row, who, move(row.seq, round(row, row.turn as 0 | 1)))
+      if (p.kind !== 'commit') throw new Error(`refused at ${k}`)
+      row = after(row, p)
+      last = p
+    }
+    expect(row.status).toBe('finished')
+    const st = row.state as St
+    const chips = twentyOneChips(st.shown!.seeds, st.shown!.acts as never)!
+    if (last?.kind !== 'commit') throw new Error('no last move')
+    expect(last.result).toMatchObject({ score: chips.join('–') })
+    // both played the book on the same shoes: level
+    expect(chips[0]).toBe(chips[1])
+    expect(last.result).toMatchObject({ winner: 'draw' })
+  })
+
+  it('together: the friends take alternate rounds, and the computer plays all of its own in one call', () => {
+    const start = tw({ mode: 'together', settings: { rounds: 5, level: 'fair' } })
+    let row = after(start, decide(start, B, { op: 'accept' }))
+    const seen: number[] = []
+    let then = 0
+    for (let k = 0; k < 20 && row.status === 'active'; k++) {
+      // the team's round in play says which friend plays it: the even ones Ann, the odd ones Bo
+      expect(row.turn).toBe((row.state as St).done[0] % 2)
+      seen.push(row.turn as number)
+      const p = decide(row, row.turn === 1 ? B : A, move(row.seq, round(row, 0)))
+      if (p.kind !== 'commit') throw new Error(`refused at ${k}`)
+      then = ((p.move as { then?: unknown[] }).then ?? []).length
+      row = after(row, p)
+    }
+    expect(row.status).toBe('finished')
+    // whose round it was: the even rounds Ann's, the odd Bo's, as far as the deal left any
+    expect(seen[0]).toBe(0)
+    expect(new Set(seen)).toEqual(new Set([0, 1]))
+    expect(then).toBeGreaterThan(0)
+    expect(then).toBeLessThanOrEqual(5)
+    expect((row.state as St).done).toEqual([5, 5])
+  })
+
+  it('refuses a stored secret whose play disagrees with the count', () => {
+    let row = after(tw(), decide(tw(), B, { op: 'accept' }))
+    for (let k = 0; k < 2; k++) row = after(row, decide(row, B, move(row.seq, round(row, 1))))
+    const sec = row.secret as Sec
+    expect(sec.acts[1].some((r) => r.length > 0)).toBe(true)
+    const bad = { ...sec, seeds: sec.seeds.map((x) => (x + 1) % 2 ** 32) }
+    expect(status(decide({ ...row, secret: bad }, B, move(row.seq, round(row, 1))))).toBe(500)
+    const short = { ...sec, acts: [sec.acts[0], sec.acts[1].slice(0, 1)] }
+    expect(status(decide({ ...row, secret: short }, B, move(row.seq, round(row, 1))))).toBe(500)
   })
 })
