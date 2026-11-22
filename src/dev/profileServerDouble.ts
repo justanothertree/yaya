@@ -7,6 +7,11 @@
  * with SELECT-only queries on 21 Nov 2026, and quoted beside the code that copies it. When one of
  * those functions changes, this file is wrong until it is changed to match.
  *
+ * ⚠️ BY DEFAULT IT IS THE SERVER AFTER supabase/migrations/20261122215917_profile_page_version.sql: page
+ * versions, and a save that locks the page and refuses an expected version that no longer matches.
+ * `legacy()` is the server before it — no version function, no lock, no `p_expected_page` — which
+ * is production until that draft is applied, and again after its rollback.
+ *
  * It is a function that BUILDS a server, never a module-level store, so nothing here survives into
  * a production bundle by being reachable from it (CLAUDE.md, "a DEV-only harness is a claim about
  * the bundle").
@@ -24,7 +29,11 @@ type Row = {
 }
 type Member = { uid: string; username: string; suspended?: boolean; ceiling?: Tier }
 
-export type Answer = { data: unknown; error: { message: string } | null; status: number }
+export type Answer = {
+  data: unknown
+  error: { message: string; code?: string } | null
+  status: number
+}
 
 const LADDER: Tier[] = ['private', 'certain', 'friends', 'members', 'public']
 const TYPES = new Set([
@@ -60,8 +69,11 @@ export function profileServerDouble() {
   const held = new Set<string>()
   /** 'request': the call never reaches the server; 'response': it runs, and its answer is lost */
   const drops = new Map<string, 'request' | 'response'>()
-  /** without the lock two overlapping saves both survive — the real function takes none */
+  /** "perform 1 from profiles where user_id = v_me for no key update": one save of a page at a time.
+      Without it (`legacy()`) two overlapping saves both survive, as they did before 22 Nov 2026. */
   let locked = true
+  /** whether the server has page versions (my_profile_page_version, p_expected_page) */
+  let versioned = true
   let saving: Promise<void> = Promise.resolve()
 
   const byName = (name: string) =>
@@ -102,6 +114,35 @@ export function profileServerDouble() {
   }
 
   const ok = (data: unknown): Answer => ({ data, error: null, status: 200 })
+  /* PostgREST, asked for a function it does not have */
+  const missing = (what: string): Answer => ({
+    data: null,
+    error: {
+      message: `Could not find the function public.${what} in the schema cache`,
+      code: 'PGRST202',
+    },
+    status: 404,
+  })
+
+  /**
+   * profile_page_version(owner): the page as STORED — position, type, size, visibility, config and
+   * the Certain list of every block, in order. Ids are not in it, so saving the same page again
+   * leaves it. Opaque to the client, which only ever sends it back.
+   */
+  const versionOf = (uid: string) =>
+    JSON.stringify(
+      rows
+        .filter((r) => r.user_id === uid)
+        .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+        .map((r) => [
+          r.position,
+          r.block_type,
+          r.size,
+          r.visibility,
+          r.config,
+          [...(lists.get(r.id) ?? [])].sort(),
+        ]),
+    )
   const refuse = (message: string, status = 400): Answer => ({
     data: null,
     error: { message },
@@ -143,8 +184,12 @@ export function profileServerDouble() {
     return ok({ username: target.username, is_me: target.uid === uid })
   }
 
-  /* save_my_profile_blocks(p_blocks) */
-  async function saveMyProfileBlocks(uid: string, blocks: unknown): Promise<Answer> {
+  /* save_my_profile_blocks(p_blocks, p_expected_page default null) */
+  async function saveMyProfileBlocks(
+    uid: string,
+    blocks: unknown,
+    expected: string | null,
+  ): Promise<Answer> {
     const me = members.find((m) => m.uid === uid)
     if (me?.suspended) return refuse('your account is suspended')
     if (!Array.isArray(blocks)) return refuse('invalid blocks')
@@ -164,7 +209,11 @@ export function profileServerDouble() {
     )
     if (total > 160000) return refuse('profile too large')
 
-    const write = async () => {
+    const write = async (): Promise<Answer> => {
+      /* after the lock: "if p_expected_page is not null and p_expected_page is distinct from
+         profile_page_version(v_me) then raise exception 'page changed' using errcode = 'PT409'" */
+      if (expected !== null && expected !== versionOf(uid))
+        return { data: null, error: { message: 'page changed', code: 'PT409' }, status: 409 }
       /* "DELETE FROM profile_blocks WHERE user_id = v_me" — the rows its snapshot can see */
       const gone = new Set(rows.filter((r) => r.user_id === uid).map((r) => r.id))
       await gate('save_my_profile_blocks:write')
@@ -283,8 +332,10 @@ export function profileServerDouble() {
       if (how) drops.set(fn, how)
       else drops.delete(fn)
     },
-    unlock() {
-      locked = false
+    /** the server before the page-version migration (production until it is applied) */
+    legacy(on = true) {
+      locked = !on
+      versioned = !on
     },
     /** the server, as a client calls it: a function name, its arguments and a bearer token */
     async rpc(fn: string, args: Record<string, unknown>, token: string | null): Promise<Answer> {
@@ -303,7 +354,19 @@ export function profileServerDouble() {
           answer = getMemberProfile(uid, String(args.p_username))
           break
         case 'save_my_profile_blocks':
-          answer = await saveMyProfileBlocks(uid, args.p_blocks)
+          /* the old server has one signature: a call naming p_expected_page finds no function */
+          if (!versioned && 'p_expected_page' in args) {
+            answer = missing('save_my_profile_blocks(p_blocks, p_expected_page)')
+            break
+          }
+          answer = await saveMyProfileBlocks(
+            uid,
+            args.p_blocks,
+            typeof args.p_expected_page === 'string' ? args.p_expected_page : null,
+          )
+          break
+        case 'my_profile_page_version':
+          answer = versioned ? ok(versionOf(uid)) : missing('my_profile_page_version')
           break
         case 'chronicle_share_timeline':
           answer = chronicleShareTimeline(uid, args.p_on === true)

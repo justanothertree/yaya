@@ -8,6 +8,8 @@ import {
   preflight,
   sameStored,
   storedNames,
+  missingFunction,
+  pageChanged,
 } from './pageStore'
 
 /**
@@ -205,5 +207,54 @@ describe('what is refused before it is sent', () => {
         { ...page[1], position: 2 } as Block,
       ]),
     ).toBe(false)
+  })
+})
+
+describe('the answers that are not about the page', () => {
+  it("knows PostgREST's no-such-function, and nothing else, as missing", () => {
+    expect(
+      missingFunction({
+        status: 404,
+        error: {
+          code: 'PGRST202',
+          message:
+            'Could not find the function public.my_profile_page_version without parameters in the schema cache',
+        },
+      }),
+    ).toBe(true)
+    /* a rollback, in the moment PostgREST's cache still lists the function */
+    expect(
+      missingFunction({
+        status: 404,
+        error: {
+          code: '42883',
+          message:
+            'function public.save_my_profile_blocks(p_blocks => jsonb, p_expected_page => text) does not exist',
+        },
+      }),
+    ).toBe(true)
+    expect(missingFunction({ status: 200, error: null })).toBe(false)
+    expect(missingFunction({ status: 404, error: { code: 'PGRST116', message: 'no rows' } })).toBe(
+      false,
+    )
+    expect(
+      missingFunction({ status: 409, error: { code: 'PT409', message: 'page changed' } }),
+    ).toBe(false)
+  })
+
+  it("knows the save's own refusal as page changed, and no other refusal", () => {
+    expect(
+      pageChanged({
+        status: 409,
+        error: { code: 'PT409', message: 'page changed', hint: 'read the page again' },
+      }),
+    ).toBe(true)
+    expect(pageChanged({ status: 400, error: { code: 'P0001', message: 'invalid block' } })).toBe(
+      false,
+    )
+    expect(
+      pageChanged({ status: 400, error: { code: 'P0001', message: 'profile too large' } }),
+    ).toBe(false)
+    expect(pageChanged({ status: 200, error: null })).toBe(false)
   })
 })
