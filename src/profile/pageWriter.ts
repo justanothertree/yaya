@@ -154,7 +154,9 @@ export function createPageWriter(deps: Deps) {
   let orphan: { blocks: Block[]; why: string } | null = null
   /**
    * The server has no page versions: before the migration that adds them, or after its rollback.
-   * Learned from PostgREST's "no such function" and kept, so a save there costs no extra request.
+   * Learned from PostgREST's "no such function" and kept, so a save there costs no extra request —
+   * until an editor next opens (`load`), which asks again, so a tab that saw the server before the
+   * migration does not go on saving unprotected for as long as it stays open.
    */
   let versionless = false
 
@@ -462,6 +464,7 @@ export function createPageWriter(deps: Deps) {
      */
     load(name: string) {
       flushAll()
+      versionless = false
       return run(async () => {
         try {
           const p = await pin()

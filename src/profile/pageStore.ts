@@ -184,13 +184,15 @@ export function classify(r: {
 }
 
 /**
- * PostgREST's "no such function": a server from before the function existed, or after a rollback.
- * Nothing ran, so it is never an answer about the page.
+ * "No such function": a server from before the function existed, or after a rollback. Nothing ran,
+ * so it is never an answer about the page. PostgREST says PGRST202 when its schema cache has no such
+ * function; in the moment after a rollback, while the cache still lists it, Postgres itself answers
+ * 42883 (undefined function) through the same 404.
  */
 export function missingFunction(r: { status?: number; error: unknown }): boolean {
   const e = r.error as { code?: unknown; message?: unknown } | null
   if (!e) return false
-  return e.code === 'PGRST202'
+  return e.code === 'PGRST202' || e.code === '42883'
 }
 
 /**

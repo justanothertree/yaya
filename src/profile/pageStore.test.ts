@@ -222,6 +222,17 @@ describe('the answers that are not about the page', () => {
         },
       }),
     ).toBe(true)
+    /* a rollback, in the moment PostgREST's cache still lists the function */
+    expect(
+      missingFunction({
+        status: 404,
+        error: {
+          code: '42883',
+          message:
+            'function public.save_my_profile_blocks(p_blocks => jsonb, p_expected_page => text) does not exist',
+        },
+      }),
+    ).toBe(true)
     expect(missingFunction({ status: 200, error: null })).toBe(false)
     expect(missingFunction({ status: 404, error: { code: 'PGRST116', message: 'no rows' } })).toBe(
       false,

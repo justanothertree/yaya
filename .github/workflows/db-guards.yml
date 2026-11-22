@@ -212,6 +212,8 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.DRAFT.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-version.sql
           bash supabase/tests/profile-page-race.sh "$DB_URL"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.ROLLBACK.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-rollback.sql
 
       - name: Stop the database
         if: always()

@@ -333,9 +333,9 @@ export function profileServerDouble() {
       else drops.delete(fn)
     },
     /** the server before the page-version migration (production until it is applied) */
-    legacy() {
-      locked = false
-      versioned = false
+    legacy(on = true) {
+      locked = !on
+      versioned = !on
     },
     /** the server, as a client calls it: a function name, its arguments and a bearer token */
     async rpc(fn: string, args: Record<string, unknown>, token: string | null): Promise<Answer> {

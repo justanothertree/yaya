@@ -153,11 +153,16 @@ begin
   /* ⚠️ ONE SAVE OF A PAGE AT A TIME, AND ONLY OVER THE PAGE THE CALLER READ (22 Nov 2026).
      Two overlapping saves used to both delete the page as their own snapshot saw it and both
      insert, so the page came back doubled; and a save sent a moment after somebody else's
-     change deleted that change with no message. The member's own profile row is the lock:
-     NO KEY UPDATE, so it waits only for another writer of this page and never for anything
-     that merely references the member. The rows themselves are locked too, so an in-place
-     writer (the chronicle switch) either finishes first and shows in the version below, or
-     waits for this save to finish.
+     change deleted that change with no message. Two locks, each for a case the other misses:
+       - the member's own profile row, NO KEY UPDATE, so it waits only for another save of this
+         page and never for anything that merely references the member. It is the only lock an
+         EMPTY page has: with no rows, the second lock below locks nothing.
+       - the page's rows, so an in-place writer that got there first (the chronicle switch's
+         UPDATE) is waited for and then shows in the version below, which refuses. Without it the
+         version is read past that uncommitted update, matches, and the delete then takes the row.
+     ⚠️ The other order is not covered and is the switch's own: a switch that arrives while this
+     save holds the rows waits, then finds its row deleted and re-inserted under a new id, updates
+     nothing, and still answers as if it had. That was true before this change too. */
 
      `p_expected_page` is what `my_profile_page_version()` said when the caller read the page.
      NULL is a caller that does not know about versions -- every bundle before this one --

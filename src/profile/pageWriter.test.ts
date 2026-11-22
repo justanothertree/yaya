@@ -543,18 +543,24 @@ describe("the server's own check: a page version read before the page, sent with
     expect(t.page()).toEqual(['one', 'chronicle'])
   })
 
-  it('a save that changed nothing leaves the version, so the next save from the same read is not refused', async () => {
+  it('a tab that saw the server before the migration asks again when an editor next opens', async () => {
     const t = world()
     await t.seed([bio('one')])
+    t.srv.legacy()
     const w = t.writer()
-    const { L, page } = await open(w)
-    /* the same page again: every id changes server-side, the version must not */
-    await t.seed(page)
-    w.stage(L, [bio('two')])
+    const first = await open(w)
+    w.stage(first.L, [bio('two')])
     t.tick()
     await w.idle()
-    expect(t.page()).toEqual(['two'])
-    expect(w.statusOf(L).kind).toBe('saved')
+    w.release(first.L)
+    /* the migration is applied while the tab stays open */
+    t.srv.legacy(false)
+    const again = await open(w)
+    w.stage(again.L, [bio('three')])
+    t.tick()
+    await w.idle()
+    expect(t.page()).toEqual(['three'])
+    expect(t.srv.calls('save_my_profile_blocks').at(-1)?.args).toHaveProperty('p_expected_page')
   })
 })
 
