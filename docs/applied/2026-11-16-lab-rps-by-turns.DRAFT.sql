@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Rock, paper, scissors by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_rps_by_turns`, version 20261122025453:
+-- md5(statements[1]) = a9f0d5058a631cad2b7479b6279fd937, this file's body. The record is
+-- supabase/migrations/20261122025453_lab_rps_by_turns.sql.
+--
+-- (as drafted) Rock, paper, scissors by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
