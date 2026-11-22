@@ -135,7 +135,12 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * showing, and the first thing added saved a page of only that: `save_my_profile_blocks`
    * replaces the whole page. See profile/seedGate.ts.
    */
-  const [seed, setSeed] = useState<{ for: string; blocks: ProfileBlock[] } | null>(null)
+  const [seed, setSeed] = useState<{
+    for: string
+    blocks: ProfileBlock[]
+    /** an empty read is only a seed once it has been proved yours — see the proof below */
+    proven: boolean
+  } | null>(null)
   /* the page shown now, for an answer that arrives after it changed */
   const shownU = useRef(u)
   useEffect(() => {
@@ -328,8 +333,9 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * showed you THEIR blocks on YOUR profile. Reported exactly that way.
    *
    * It was not only cosmetic, which is why this is a reset and not a loading flag. The editor
-   * below is seeded `initial={blocks}` and autosaves — so opening edit mode while somebody
-   * else's blocks were still on screen would have written their blocks onto your profile.
+   * below was seeded `initial={blocks}` and autosaves — so opening edit mode while somebody
+   * else's blocks were still on screen would have written their blocks onto your profile. (It is
+   * seeded from `seed` now, which a read of THIS page sets; see there.)
    *
    * ⚠️ And every setter now CLEARS on a null or non-array reply instead of leaving the old
    * value. `if (data)` was the other half of the same bug: a profile with nothing to show, or a
@@ -376,18 +382,14 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     setSeed(null)
     setRefused(null)
     const preview = previewMember && !!PREVIEW_PROFILES[u]?.is_me
-    const take = async (read: BlocksRead) => {
+    const take = (read: BlocksRead) => {
       if (!live) return
       setBlocks(Array.isArray(read.data) ? (read.data as ProfileBlock[]) : [])
       const got = seedFrom<ProfileBlock>(read)
       if (!got.ok) return setRefused({ for: u, why: got.why })
-      if (got.blocks.length) return setSeed({ for: u, blocks: got.blocks })
-      const whose = preview
-        ? 'yours'
-        : proveEmpty(await getSupabaseClient().rpc('get_member_profile', { p_username: u }))
-      if (!live) return
-      if (whose === 'yours') setSeed({ for: u, blocks: [] })
-      else setRefused({ for: u, why: whose })
+      /* an owner-shaped page proves itself; an empty one waits for the proof below (the preview's
+         stand-in is its own answer to it) */
+      setSeed({ for: u, blocks: got.blocks, proven: got.blocks.length > 0 || preview })
     }
     /* ⚠️ A STAND-IN FOR YOUR OWN PAGE, because without one the "Seen by" row filters an
        empty list and reports success at every level. `previewMember` has no session, so this RPC
@@ -401,7 +403,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       const how = localStorage.getItem('dev_profile_blocks')
       const t = window.setTimeout(
         () =>
-          void take(
+          take(
             how === 'fail'
               ? { data: null, error: new Error('the preview read was asked to fail') }
               : how === 'empty'
@@ -417,11 +419,35 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     }
     void getSupabaseClient()
       .rpc('get_profile_blocks', { p_username: u })
-      .then(({ data, error }) => void take({ data, error }))
+      .then(({ data, error }) => take({ data, error }))
     return () => {
       live = false
     }
   }, [u, authed, blocksTry])
+
+  /**
+   * ⚠️ AN EMPTY PAGE IS PROVED YOURS BY ASKING AFTER IT WAS READ (proveEmpty), never taken on the
+   * profile on screen, which a review found two ways of going stale (see seedGate.ts). And only
+   * when the editor is about to open on it, on a page that claims to be yours: asked after every
+   * empty read, it doubled a heavy request on every member whose page shows you nothing.
+   */
+  const claimsMine = state.kind === 'ok' && state.p.is_me
+  useEffect(() => {
+    if (!seed || seed.proven || seed.for !== u || !claimsMine || !editing) return
+    let live = true
+    void getSupabaseClient()
+      .rpc('get_member_profile', { p_username: u })
+      .then((answer) => {
+        if (!live) return
+        const whose = proveEmpty(answer)
+        if (whose === 'yours')
+          setSeed((was) => (was && was.for === u ? { ...was, proven: true } : was))
+        else setRefused({ for: u, why: whose })
+      })
+    return () => {
+      live = false
+    }
+  }, [seed, u, claimsMine, editing])
 
   useEffect(() => {
     if (!authed || !u) return
@@ -1170,12 +1196,12 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       {/* Optional customization -- only exists on the page at all once there's something to
           show. The editor and the read view are never both mounted: editing shows the working
           copy being arranged, done-editing shows what was actually saved. */}
-      {p.is_me && editing && doorFor(u, seed?.for ?? null, refused) !== 'editor' ? (
+      {p.is_me && editing && doorFor(u, seed?.proven ? seed.for : null, refused) !== 'editor' ? (
         /* ⚠️ NOT THE EDITOR UNTIL ITS PAGE HAS ARRIVED — see `seed` */
         <p className="muted profile-door" role="status">
-          {doorFor(u, seed?.for ?? null, refused) === 'opening' ? (
+          {doorFor(u, seed?.proven ? seed.for : null, refused) === 'opening' ? (
             'Opening your page…'
-          ) : doorFor(u, seed?.for ?? null, refused) === 'not-yours' ? (
+          ) : doorFor(u, seed?.proven ? seed.for : null, refused) === 'not-yours' ? (
             'Your page isn’t under this name any more. Reload the site to open it.'
           ) : (
             <>
@@ -1213,7 +1239,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                and it is the editor's next starting point only on the page it was saved from */
             if (shownU.current !== u) return
             setBlocks(saved)
-            setSeed((was) => (was && was.for === u ? { for: u, blocks: saved } : was))
+            setSeed((was) => (was && was.for === u ? { for: u, blocks: saved, proven: true } : was))
           }}
           /* ⚠️ THE SAME ACTION THE HEAD BUTTON TAKES, through one function, because two copies
              of "stop editing" is two places to forget rememberEditPref — see stopEditing. */

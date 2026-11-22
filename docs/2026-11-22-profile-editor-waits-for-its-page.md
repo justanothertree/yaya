@@ -19,7 +19,7 @@ blocks read that failed did the same, permanently, since `blocks` stayed `[]`.
 
 ## What happens now
 
-- The editor mounts only from a good read of the page being shown (`seededFor === u`).
+- The editor mounts only from a good read of the page being shown (`seed`).
 - Until then it shows "Opening your page…".
 - If the read fails it shows "Your page didn't open." with Try again, which reads the blocks once
   more without clearing the rest of the page.
@@ -28,7 +28,9 @@ blocks read that failed did the same, permanently, since `blocks` stayed `[]`.
   (a name that changed hands between the two requests). Saving from it would have put somebody
   else's blocks on your page. That case shows "Your page isn't under this name any more. Reload
   the site to open it."
-- An empty page is proved yours by asking `get_member_profile` right after the empty read.
+- An empty page is proved yours by asking `get_member_profile` after the empty read, when the
+  editor is about to open on a page that claims to be yours (only then, so other members' empty
+  pages cost no extra request).
   `[]` carries no `certain` to say whose it is, and the server answers `[]` for a name nobody
   has. `is_me` is worked out from the session making the call, so this also says no after the
   account was switched in another tab.
