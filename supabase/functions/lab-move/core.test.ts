@@ -59,6 +59,19 @@ import {
   won as halmaWon,
 } from '../../../src/gpu/halma'
 import { replay as halmaReplay } from '../../../src/gpu/halmaRoom'
+import { KOMI, legal as goLegal, N as GO_N, PASS } from '../../../src/gpu/goboard'
+import { MAX_MOVES as GO_MAX, replay as goReplay } from '../../../src/gpu/goRoom'
+import {
+  choose as foxChoose,
+  foxMoves,
+  gooseMoves,
+  IDLE_LIMIT,
+  movesFor as foxMovesFor,
+  START_GEESE,
+  TAKE_TO_WIN,
+} from '../../../src/gpu/fox'
+import { replay as foxReplay } from '../../../src/gpu/foxRoom'
+import { cubeRules } from '../../../src/gpu/cubeRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -1439,5 +1452,370 @@ describe('chinese checkers by turns: a peg and where it lands', () => {
     expect(
       status(decide({ ...row, state: { moves: [[111, 93]] } }, A, move(row.seq, [111, 102]))),
     ).toBe(500)
+  })
+})
+
+describe('go by turns: a point or a pass, two passes end it', () => {
+  const go = (over: Partial<Row> = {}) => invite({ demo_id: 'go', settings: {}, ...over })
+  const game = (state: unknown) => goReplay((state as { moves: unknown[] }).moves)!.g
+  /**
+   * Area by colour, counted here rather than by goboard.ts's own score: a stone is its colour's,
+   * and an empty point is whoever's stones are all that an empty walk from it ever meets.
+   */
+  const area = (board: readonly number[]) => {
+    const got = [0, 0, 0]
+    for (let i = 0; i < board.length; i++) {
+      if (board[i]) {
+        got[board[i]]++
+        continue
+      }
+      const meets = new Set<number>()
+      const seen = new Set([i])
+      const todo = [i]
+      while (todo.length) {
+        const p = todo.pop()!
+        const [r, c] = [Math.floor(p / GO_N), p % GO_N]
+        for (const [dr, dc] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          const [rr, cc] = [r + dr, c + dc]
+          if (rr < 0 || cc < 0 || rr >= GO_N || cc >= GO_N) continue
+          const q = rr * GO_N + cc
+          if (board[q]) meets.add(board[q])
+          else if (!seen.has(q)) {
+            seen.add(q)
+            todo.push(q)
+          }
+        }
+      }
+      if (meets.size === 1) got[[...meets][0]]++
+    }
+    return { black: got[1], white: got[2] + KOMI }
+  }
+
+  it('plays versus to the end, the winner whoever holds more of the board after komi', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 10; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(
+        go(),
+        (r) => {
+          const g = game(r.state)
+          const list = goLegal(g)
+          return !list.length || rnd() < 0.08 ? PASS : list[Math.floor(rnd() * list.length)]
+        },
+        GO_MAX + 1,
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      const a = area(g.board)
+      expect(last.result!.winner).toBe(a.black > a.white ? 0 : 1)
+      expect(last.result!.score).toBe(`${a.black}–${a.white}`)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('ends at two passes in a row, and an empty board is white’s by its komi', () => {
+    let row = after(go(), decide(go(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, PASS)))
+    expect(row.status).toBe('active')
+    const p = decide(row, B, move(row.seq, PASS))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(after(row, p).status).toBe('finished')
+    expect(p.result).toEqual({ winner: 1, score: `0–${KOMI}` })
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = go({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (const at of [40, 20, 60]) {
+        if (row.status !== 'active') break
+        const g = game(row.state)
+        const p = decide(
+          row,
+          row.turn === 0 ? A : B,
+          move(row.seq, g.board[at] ? goLegal(g)[0] : at),
+        )
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  }, 30000)
+
+  it('refuses a taken point, one off the board, a move that is not a point, and a stored game no moves could make', () => {
+    let row = after(go(), decide(go(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, 40)))
+    expect(status(decide(row, B, move(row.seq, 40)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 81)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, -2)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 4.5)))).toBe(400)
+    expect(status(decide({ ...row, state: { moves: [40, 40] } }, B, move(row.seq, 41)))).toBe(500)
+  })
+})
+
+describe('fox and geese by turns: the challenger picks a side, the geese unless they say', () => {
+  const fx = (over: Partial<Row> = {}) => invite({ demo_id: 'fox', settings: {}, ...over })
+  const game = (state: unknown) => foxReplay((state as { moves: unknown[] }).moves)!.g
+
+  it('plays versus to the end, the fox winning on six geese gone or the geese stuck, the geese on a trapped fox', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 12; seed++) {
+      const rnd = seeded(seed)
+      // geese that mostly think and a fox that mostly wanders, so both sides win some
+      const { row, plans } = playOut(fx(), (r) => {
+        const g = game(r.state)
+        const list = foxMovesFor(g)
+        const think = g.turn === 'geese' ? rnd() < 0.9 : rnd() < 0.2
+        return (think ? foxChoose(g, 'fair', rnd) : list[Math.floor(rnd() * list.length)]).path
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      if (last.result!.winner === 'draw') {
+        seen.add('draw')
+        continue
+      }
+      // asked of the board: geese counted on it, and who can still move
+      const gone = START_GEESE.length - g.geese.size
+      if (last.result!.winner === 1)
+        expect(gone >= TAKE_TO_WIN || g.idle >= IDLE_LIMIT || gooseMoves(g).length === 0).toBe(true)
+      else {
+        expect(gone).toBeLessThan(TAKE_TO_WIN)
+        expect(foxMoves(g)).toHaveLength(0)
+      }
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('takes a fox’s run of jumps as one move, every goose it passes over gone', () => {
+    let row = after(fx(), decide(fx(), B, { op: 'accept' }))
+    // two geese step into line with the fox, which runs 32 over 24 to 16, then over 23 to 30
+    for (const [who, path] of [
+      [A, [16, 23]],
+      [B, [24, 32]],
+      [A, [17, 24]],
+    ] as const)
+      row = after(row, decide(row, who, move(row.seq, path)))
+    const before = game(row.state).geese.size
+    const p = decide(row, B, move(row.seq, [32, 16, 30]))
+    expect(p.kind).toBe('commit')
+    row = after(row, p)
+    const g = game(row.state)
+    expect(g.geese.size).toBe(before - 2)
+    expect(g.geese.has(24) || g.geese.has(23)).toBe(false)
+    expect(g.fox).toBe(30)
+    // stopping halfway is a move of its own, and a different one: the path names the run
+    expect(
+      game({
+        moves: [
+          [16, 23],
+          [24, 32],
+          [17, 24],
+          [32, 16],
+        ],
+      }).geese.has(23),
+    ).toBe(true)
+  })
+
+  it('together: the computer is the fox, answering in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = fx({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const g = game(row.state)
+        expect(g.turn).toBe('geese')
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, foxMovesFor(g)[0].path))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  }, 30000)
+
+  it('a challenger who picks the fox: the friend herds the geese and moves first, and wins and losses go to the seat that played them', () => {
+    const start = fx({ settings: { side: 'fox' } })
+    const begun = decide(start, B, { op: 'accept' })
+    // the board is the same fresh game; only who moves on it first changes
+    expect(begun).toEqual({ kind: 'begin', state: { moves: [] }, turn: 1 })
+    let row = after(start, begun)
+    expect(status(decide(row, A, move(row.seq, [24, 23])))).toBe(409)
+    // the friend moves a goose; the challenger cannot move one, only the fox
+    row = after(row, decide(row, B, move(row.seq, [22, 29])))
+    expect(row.turn).toBe(0)
+    expect(status(decide(row, A, move(row.seq, [16, 23])))).toBe(400)
+    expect(decide(row, A, move(row.seq, [24, 23])).kind).toBe('commit')
+
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 12; seed++) {
+      const rnd = seeded(seed)
+      const { row: end, plans } = playOut(fx({ settings: { side: 'fox' } }), (r, who) => {
+        const g = game(r.state)
+        // asked of the board, never of the seat: whoever moves must be playing the side to move
+        expect(who === A ? 'fox' : 'geese').toBe(g.turn)
+        const list = foxMovesFor(g)
+        const think = g.turn === 'geese' ? rnd() < 0.9 : rnd() < 0.2
+        return (think ? foxChoose(g, 'fair', rnd) : list[Math.floor(rnd() * list.length)]).path
+      })
+      expect(end.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const winner = last.result!.winner
+      seen.add(String(winner))
+      if (winner === 'draw') continue
+      // the fox is seat 0 here: a fox with nowhere to go is the challenger's loss
+      expect(foxMoves(game(last.state)).length === 0).toBe(winner === 1)
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('reads the side from the settings and nothing else: the geese by default, the fox when asked, versus only', () => {
+    for (const side of [undefined, 'geese'])
+      expect(decide(fx({ settings: side ? { side } : {} }), B, { op: 'accept' })).toEqual({
+        kind: 'begin',
+        state: { moves: [] },
+        turn: 0,
+      })
+    for (const side of ['goose', 'Fox', 1, true, ''])
+      expect(status(decide(fx({ settings: { side } }), B, { op: 'accept' }))).toBe(422)
+    // together the two friends herd the geese: there is no side for the challenger to take
+    expect(
+      status(decide(fx({ mode: 'together', settings: { side: 'fox' } }), B, { op: 'accept' })),
+    ).toBe(422)
+    expect(
+      decide(fx({ mode: 'together', settings: { side: 'geese', level: 'easy' } }), B, {
+        op: 'accept',
+      }).kind,
+    ).toBe('begin')
+  })
+
+  it('refuses a goose stepping back, the fox leaping where there is no goose, the other side’s piece, and a stored game no moves could make', () => {
+    let row = after(fx(), decide(fx(), B, { op: 'accept' }))
+    expect(status(decide(row, A, move(row.seq, [24, 23])))).toBe(400)
+    row = after(row, decide(row, A, move(row.seq, [22, 29])))
+    expect(status(decide(row, B, move(row.seq, [24, 38])))).toBe(400)
+    row = after(row, decide(row, B, move(row.seq, [24, 23])))
+    expect(status(decide(row, A, move(row.seq, [29, 22])))).toBe(400)
+    expect(
+      status(decide({ ...row, state: { moves: [[29, 22]] } }, A, move(row.seq, [16, 23]))),
+    ).toBe(500)
+  })
+})
+
+describe('noughts and crosses in a cube by turns: four in a line, any way through', () => {
+  const cb = (over: Partial<Row> = {}) => invite({ demo_id: 'cube', settings: {}, ...over })
+  const game = (state: unknown) => cubeRules.decode(state)!
+  /**
+   * Every line of four through the cube, found here rather than taken from cube.ts: each of the
+   * thirteen directions (a vector and its opposite are one), from every cell where four steps fit.
+   */
+  const LINES4 = (() => {
+    const out: number[][] = []
+    const dirs: number[][] = []
+    for (let x = -1; x <= 1; x++)
+      for (let y = -1; y <= 1; y++)
+        for (let z = -1; z <= 1; z++) {
+          const first = [x, y, z].find((v) => v !== 0)
+          if (first === 1) dirs.push([x, y, z])
+        }
+    const at = (x: number, y: number, z: number) => z * 16 + y * 4 + x
+    for (const [dx, dy, dz] of dirs)
+      for (let x = 0; x < 4; x++)
+        for (let y = 0; y < 4; y++)
+          for (let z = 0; z < 4; z++) {
+            const end = [x + 3 * dx, y + 3 * dy, z + 3 * dz]
+            if (end.some((v) => v < 0 || v > 3)) continue
+            out.push([0, 1, 2, 3].map((k) => at(x + k * dx, y + k * dy, z + k * dz)))
+          }
+    return out
+  })()
+  const hasLine = (cells: ArrayLike<number>, side: number) =>
+    LINES4.some((l) => l.every((i) => cells[i] === side))
+
+  it('counts the 76 lines a 4×4×4 cube has, none twice', () => {
+    expect(LINES4).toHaveLength(76)
+    expect(new Set(LINES4.map((l) => [...l].sort((x, y) => x - y).join())).size).toBe(76)
+  })
+
+  it('plays versus to the end, the winner whoever has four in a line', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 16; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(cb(), (r) => {
+        const g = game(r.state)
+        const free = [...g.cells.keys()].filter((i) => !g.cells[i])
+        return free[Math.floor(rnd() * free.length)]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      if (last.result!.winner === 'draw') {
+        expect(g.cells.every((c) => c !== 0)).toBe(true)
+        expect(hasLine(g.cells, 1) || hasLine(g.cells, 2)).toBe(false)
+        seen.add('draw')
+        continue
+      }
+      const side = last.result!.winner === 0 ? 1 : 2
+      expect(hasLine(g.cells, side)).toBe(true)
+      expect(hasLine(g.cells, side === 1 ? 2 : 1)).toBe(false)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('ends on a line straight through the middle, corner to corner', () => {
+    let row = after(cb(), decide(cb(), B, { op: 'accept' }))
+    for (const [who, i] of [
+      [A, 0],
+      [B, 1],
+      [A, 21],
+      [B, 2],
+      [A, 42],
+      [B, 3],
+    ] as const)
+      row = after(row, decide(row, who, move(row.seq, i)))
+    expect(row.status).toBe('active')
+    const p = decide(row, A, move(row.seq, 63))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.result).toEqual({ winner: 0 })
+    expect(after(row, p).status).toBe('finished')
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = cb({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const g = game(row.state)
+        const free = [...g.cells.keys()].filter((i) => !g.cells[i])
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, free[0]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  })
+
+  it('refuses a taken cell, one off the cube, a move that is not a cell, and a stored game no moves could make', () => {
+    let row = after(cb(), decide(cb(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, 21)))
+    expect(status(decide(row, B, move(row.seq, 21)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 64)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, -1)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 1.5)))).toBe(400)
+    expect(status(decide({ ...row, state: { moves: [5, 5] } }, B, move(row.seq, 6)))).toBe(500)
   })
 })
