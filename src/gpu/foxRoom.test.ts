@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { IDLE_LIMIT, TAKE_TO_WIN, choose, foxMoves, gooseMoves, newGame } from './fox'
 import { foxRules as R, replay, type FoxGame } from './foxRoom'
+import { matches, named, sample } from './testMatches'
 
 function seeded(seed: number) {
   let s = seed >>> 0
@@ -27,10 +28,22 @@ function playThrough(seed: number) {
   return { d, seen }
 }
 
+/** each game played once, however many tests ask about it */
+const played = new Map<number, ReturnType<typeof playThrough>>()
+const game = (seed: number) => played.get(seed) ?? played.set(seed, playThrough(seed)).get(seed)!
+
+/**
+ * Seed 8 is the one game of the ten where the geese trap the fox, and seed 1 the computer on Fair
+ * (odd seeds play Fair, which is most of the cost); nightly, all ten.
+ */
+const FEW = [8, 1]
+const EVERY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
 describe('fox and geese on the wire', () => {
-  it('survives the round trip for every position of real games', () => {
-    for (let seed = 1; seed <= 4; seed++)
-      for (const d of playThrough(seed).seen.filter((_, i) => i % 3 === 0)) {
+  it.each(matches(FEW, EVERY))(
+    'survives the round trip through a whole game (seed $seed, $kind)',
+    ({ seed }) => {
+      for (const d of sample(game(seed).seen, 3)) {
         const wire = JSON.parse(JSON.stringify(R.encode(d)))
         const back = R.decode(wire)!
         expect([...back.g.geese].sort()).toEqual([...d.g.geese].sort())
@@ -39,7 +52,8 @@ describe('fox and geese on the wire', () => {
         expect(back.g.idle).toBe(d.g.idle)
         expect(R.encode(back)).toEqual(wire)
       }
-  })
+    },
+  )
 
   it('refuses a goose stepping backwards, the fox moving first, and paths that are not moves', () => {
     const g = newGame()
@@ -62,12 +76,11 @@ describe('fox and geese on the wire', () => {
 })
 
 describe('fox and geese as a room game', () => {
-  it('ends with the fox taking enough, the geese trapping it, or a draw, as the board says', () => {
-    const seen = new Set<string>()
-    for (let seed = 1; seed <= 10; seed++) {
-      const { d } = playThrough(seed)
+  it.each(matches(FEW, EVERY))(
+    'ends with the fox taking enough, the geese trapping it, or a draw, as the board says (seed $seed, $kind)',
+    ({ seed }) => {
+      const { d } = game(seed)
       const r = R.result!(d)
-      seen.add(String(r))
       // the fox wins by taking enough, by the geese shuffling without stepping forward, or by
       // leaving the geese no move: asked of the board, never of the stored winner
       if (r === 1)
@@ -76,7 +89,11 @@ describe('fox and geese as a room game', () => {
         ).toBe(true)
       // the geese win by leaving the fox nowhere to go
       if (r === 0) expect(foxMoves(d.g)).toHaveLength(0)
-    }
+    },
+  )
+
+  it('ends more than one way across the games it names', () => {
+    const seen = new Set(named(FEW, EVERY).map((seed) => String(R.result!(game(seed).d))))
     expect(seen.size).toBeGreaterThan(1)
   })
 

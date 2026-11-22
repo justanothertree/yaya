@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { rng } from './bricks'
 import { bowl, score, wobble, type Shot } from './bowling'
 import { MAX_BALLS, bowlingRules as R, inside, readBall, type BowlingGame } from './bowlingRoom'
+import { matches, named, sample } from './testMatches'
 
 const ALL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 /** a ball that drops into the gutter before the pins: nothing down, whatever is standing */
@@ -37,20 +38,22 @@ function playThrough(seed: number) {
   return { g, seen }
 }
 
+/** each match played once, however many tests ask about it */
+const played = new Map<number, ReturnType<typeof playThrough>>()
+const match = (seed: number) => played.get(seed) ?? played.set(seed, playThrough(seed)).get(seed)!
+
+/** seed 4 has strikes and spares both; nightly, the four this test always bowled */
+const FEW = [4]
+const EVERY = [1, 2, 3, 4]
+
 describe('bowling on the wire', () => {
-  it('replays to the very same game from its balls, at every ball of real matches', () => {
-    let strikes = 0
-    let spares = 0
-    for (const seed of [1, 2, 3, 4]) {
-      const { g, seen } = playThrough(seed)
-      for (const d of seen.slice(1)) {
-        const { standing, roll } = d.last!
-        if (roll.felled.length === 10) strikes++
-        else if (standing.length < 10 && roll.felled.length === standing.length) spares++
-      }
+  it.each(matches(FEW, EVERY))(
+    'replays to the very same game from its balls, through a real match (seed $seed, $kind)',
+    ({ seed }) => {
+      const { g, seen } = match(seed)
       expect(g.rolls[0].length).toBeGreaterThanOrEqual(11)
       expect(g.rolls[1].length).toBeGreaterThanOrEqual(11)
-      for (const d of seen) {
+      for (const d of sample(seen)) {
         const w = JSON.parse(JSON.stringify(R.encode(d)))
         const back = R.decode(w)!
         expect(back.rolls).toEqual(d.rolls)
@@ -64,8 +67,18 @@ describe('bowling on the wire', () => {
       // and the winner is the one with the higher score
       const [a, b] = [score(g.rolls[0]), score(g.rolls[1])]
       expect(R.result!(g)).toBe(a > b ? 0 : b > a ? 1 : 'draw')
-    }
-    // the matches were worth replaying: racks cleared both ways, not only open frames
+    },
+  )
+
+  it('replays matches worth replaying: racks cleared both ways, not only open frames', () => {
+    let strikes = 0
+    let spares = 0
+    for (const seed of named(FEW, EVERY))
+      for (const d of match(seed).seen.slice(1)) {
+        const { standing, roll } = d.last!
+        if (roll.felled.length === 10) strikes++
+        else if (standing.length < 10 && roll.felled.length === standing.length) spares++
+      }
     expect(strikes).toBeGreaterThan(0)
     expect(spares).toBeGreaterThan(0)
   })
