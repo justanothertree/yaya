@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { markThreadRead, useThread } from '../circuit/roomThread'
 import type { Msg } from '../circuit/chatRooms'
+import type { ChatSong } from '../circuit/chatSongs'
 import { nextSeen, unseenOf } from './callChatLog'
 import { useCallChat } from './callChatStore'
 import type { RoomKind } from './voiceSession'
@@ -54,5 +55,8 @@ export function useCallMessages(roomId: string | null, kind: RoomKind | null, op
     if (open && inRoom && roomId) markThreadRead(roomId)
   }, [open, inRoom, roomId])
 
-  return { msgs, unseen, inRoom, err: inRoom ? thread.err : null }
+  /* a song lives in a chat room; the call's loose chat has none to hold one */
+  const songs: Record<string, ChatSong> | undefined = inRoom ? thread.songs : undefined
+
+  return { msgs, unseen, inRoom, err: inRoom ? thread.err : null, songs }
 }
