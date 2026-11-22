@@ -26,6 +26,11 @@ import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -124,32 +129,58 @@ export function MancalaDemo() {
   const later = (f: () => void, ms: number) => timers.current.push(window.setTimeout(f, ms))
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A chosen pit
+     is sown at once and waits for Send; the server sows it and the board comes back. */
+  const lm = useLabMatch('mancala')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as MancalaGame | null) : null
+
   /* ── the call's room: the host's rules start each game, which then travels as its sowings */
   const { pits, seeds, captures } = saved.rules
   const roomRules = useMemo(() => mancalaRules({ pits, seeds, captures }), [pits, seeds, captures])
   const lab = useLabRoom('mancala', roomRules)
   const words = tableSeats(lab, roomRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** the toy's own controls: alone or two on one screen, neither in a call nor in a match */
+  const local = mode !== 'call' && !inMatch
   /**
    * The side whose row is drawn nearest you: the second side only for whoever sits second in a
    * versus game. Together, the two of you sow for the near side.
    */
-  const near: Side = room?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+  const near: Side = inMatch
+    ? lm.view?.mode === 'versus' && lm.view.you === 1
+      ? 1
+      : 0
+    : room?.mode === 'versus' && words.mySeat === 1
+      ? 1
+      : 0
   /** the game on screen: the call's in a call, else this one */
-  const view: Game = room ? fromRoom(room.game, game) : game
+  const view: Game = matchGame ? fromRoom(matchGame, game) : room ? fromRoom(room.game, game) : game
 
-  const names = room
-    ? room.mode === 'together'
-      ? ['Together', 'The computer']
-      : [words.who(room.seats[0]), words.who(room.seats[1])]
-    : mode === 'bot'
-      ? ['You', 'The computer']
-      : ['Player 1', 'Player 2']
+  const names = inMatch
+    ? lm.view?.mode === 'together'
+      ? ['You two', 'The computer']
+      : lm.view
+        ? lm.view.you === 0
+          ? ['You', otherName(lm.view)]
+          : [otherName(lm.view), 'You']
+        : ['First', 'Second']
+    : room
+      ? room.mode === 'together'
+        ? ['Together', 'The computer']
+        : [words.who(room.seats[0]), words.who(room.seats[1])]
+      : mode === 'bot'
+        ? ['You', 'The computer']
+        : ['Player 1', 'Player 2']
   const busy = shown !== null
-  const computerTurn = mode === 'bot' && game.side === 1 && !game.over
-  const humanTurn = room
-    ? lab.live && myTurn(roomRules, room)
-    : mode !== 'call' && !game.over && !busy && !computerTurn
+  const computerTurn = mode === 'bot' && !inMatch && game.side === 1 && !game.over
+  const humanTurn = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(roomRules, room)
+      : mode !== 'call' && !game.over && !busy && !computerTurn
 
   const finish = (g: Game) => {
     const [a, b] = score(g.board)
@@ -188,6 +219,7 @@ export function MancalaDemo() {
   /** sow from a pit: seed by seed on screen, or at once under reduced motion */
   const play = (pit: number) => {
     // in the call the host decides: this asks it, and the board comes back with everybody's
+    if (inMatch) return void lm.play(pit)
     if (room) return lab.act({ t: 'move', move: pit })
     const g = game
     const who = g.side
@@ -268,6 +300,13 @@ export function MancalaDemo() {
     )
   }
   const started = game.path.length > 0 || busy
+
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) newGame('bot')
+    wasInMatch.current = inMatch
+  })
   const setRules = (p: Partial<Rules>) => {
     const rules = { ...saved.rules, ...p }
     setSaved((s) => ({ ...s, rules }))
@@ -366,6 +405,7 @@ export function MancalaDemo() {
     if (nm === 'You' || (room?.mode === 'together' && side === 0 && words.mySeat !== null))
       return 'Your'
     if (nm === 'Together') return 'The team’s'
+    if (nm === 'You two') return 'Your'
     return `${nm}’s`
   }
   const seedsText = (k: number) => `${k} seed${k === 1 ? '' : 's'}`
@@ -381,56 +421,66 @@ export function MancalaDemo() {
 
   return (
     <div className={`lab-keys mc-room is-${saved.look}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => newGame('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => newGame('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['first', 'second']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => setMode('call')}
+              aria-pressed={mode === 'bot'}
+              onClick={() => newGame('bot')}
             >
-              👥 With the call
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => newGame('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => setMode('call')}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (!started || game.over) newGame(mode, saved.rules, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => newGame()}>
+              ↻ New game
             </button>
           )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge
+              demo="mancala"
+              settings={{ pits, seeds, captures }}
+              levelNames={LEVEL_NAMES}
+            />
+          )}
         </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
-              <button
-                key={l}
-                className="btn btn-ghost"
-                aria-pressed={saved.level === l}
-                onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (!started || game.over) newGame(mode, saved.rules, l)
-                }}
-              >
-                {LEVEL_NAMES[l]}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => newGame()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={roomRules}
@@ -509,8 +559,9 @@ export function MancalaDemo() {
           {names[near]}
         </span>
       </div>
+      {inMatch && <MatchSend lm={lm} />}
 
-      {mode === 'call' ? (
+      {!local ? (
         hint && <p className="muted mc-note">This pit {hint.text}</p>
       ) : (
         <p className="mc-line" aria-live="polite">
@@ -518,7 +569,7 @@ export function MancalaDemo() {
           {hint && <span className="muted"> · this pit {hint.text}</span>}
         </p>
       )}
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -531,8 +582,9 @@ export function MancalaDemo() {
       <div className="fw-panel">
         <section aria-label="Rules">
           <h3 className="fw-h">Rules</h3>
-          {/* in a call the host's rules start each game, and they travel with it */}
-          {mode !== 'call' && (
+          {/* in a call the host's rules start each game, and in a match the challenge's; either
+              way they travel with it */}
+          {local && (
             <>
               <div className="lab-controls" role="group" aria-label="Pits a side">
                 <span className="fw-label">Pits</span>
@@ -565,7 +617,7 @@ export function MancalaDemo() {
             </>
           )}
           <div className="lab-controls">
-            {mode !== 'call' && (
+            {local && (
               <button
                 className="btn btn-ghost"
                 aria-pressed={saved.rules.captures}
@@ -583,7 +635,7 @@ export function MancalaDemo() {
             </button>
           </div>
           {started &&
-            mode !== 'call' &&
+            local &&
             !game.over &&
             (JSON.stringify(saved.rules) !== JSON.stringify(game.rules) ||
               (mode === 'bot' && saved.level !== game.level)) && (
