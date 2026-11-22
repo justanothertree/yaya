@@ -77,7 +77,7 @@ that rolls back:
 
 The CI probe runs it against today's policy (must fail), applies the draft, runs it (must pass),
 applies again (must refuse), rolls back (must restore `cpg_write`) and runs the standing guards with
-the draft in place.
+the draft in place. **db guards run 45082980602** did all of it: the control named the hole, the test then passed, the second apply was refused, the rollback restored `cpg_write` exactly, and the standing guards held with the draft in place.
 
 ## To apply (needs Evan's yes)
 
