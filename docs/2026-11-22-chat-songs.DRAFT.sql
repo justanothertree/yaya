@@ -6,16 +6,23 @@
 -- The contract both halves are built against is docs/2026-11-22-chat-songs.md; the names, shapes
 -- and caps below are that file's. The plan before it was docs/2026-11-17-share-a-song-in-site.md.
 --
--- WHY THIS SHAPE. The bytes live in R2 under songs/<id>.<ext>, beside the pictures and signed by
--- the `chat-songs` edge function, which reads the same project secrets the `pictures` function
--- does. What may be heard by whom is decided here, and only here: the function signs a URL only
--- after one of these has answered, as the caller.
+-- WHY THIS SHAPE. The bytes live in R2 under songs/<id>.<ext>, beside the pictures, written and
+-- signed by the `chat-songs` edge function, which reads the same project secrets the `pictures`
+-- function does. What may be sent and heard by whom is decided here, and only here: the function
+-- touches the bucket only after one of these has answered, as the caller.
 --
--- ⚠️ NOTHING HERE DELETES A ROW. A song somebody removes, and an upload never sent within the hour,
--- is marked `deleted_at`; the function deletes its object from R2 and then marks `object_gone_at`.
--- The row stays, so an object whose delete failed can still be found from it — which is the gap
--- `picture_drop` left, where the row went first and the key with it. `chat_song_abandoned` is how
--- the function finds those again.
+-- ⚠️ THE BROWSER NEVER WRITES TO R2. The recording is the body of the upload request; the function
+-- reads at most 5 MB of it, claims a row with the length it actually holds, checks the bytes,
+-- writes them itself, and only then marks the row ready as the service. A signed PUT, which the
+-- first draft used, stays good after the object has been checked, so anything could be put at the
+-- key afterwards — which is why there is no `chat_song_pending` any more.
+--
+-- ⚠️ NOTHING HERE DELETES A ROW. A song somebody removes, a song whose message goes, and an upload
+-- never sent within the hour are marked `deleted_at`; the function deletes the object from R2 and
+-- then marks `object_gone_at`. The row stays, so an object whose delete failed can still be found
+-- from it — which is the gap `picture_drop` left, where the row went first and the key with it.
+-- `chat_song_abandoned` is how the function finds those again, at its owner's next upload or
+-- remove.
 --
 -- ⚠️ NO OWNER ON ANYTHING A ROOM CAN SEE. The Lounge is pseudonymous: its messages carry no user id
 -- and their authors live in a table members cannot read. So the owner of a song is kept only here,
@@ -34,8 +41,9 @@
 --
 -- TESTED: supabase/tests/chat-songs.sql, run by .github/workflows/db-guards.yml after loading this
 -- file in one transaction (psql -1), then the standing guards again with it in place.
--- ROLLBACK, while nothing has been sent: drop the nine functions and the table. After a song has
--- been sent, the rows are the only record of which R2 objects exist — export them first.
+-- ROLLBACK, while nothing has been sent: drop the ten functions and the table (its trigger goes
+-- with it). After a song has been sent, the rows are the only record of which R2 objects exist —
+-- export them first.
 
 create table public.chat_song_files (
   id uuid primary key default gen_random_uuid(),
@@ -52,6 +60,8 @@ create table public.chat_song_files (
   /* the room it is going to, chosen when the upload starts, so access is decided by the room it
      was SENT to and never by where a message mentioning it appears */
   room_id uuid references public.chat_rooms (id) on delete set null,
+  /* set null when its message goes, which `chat_song_files_message_gone` below turns into a
+     removal: a sent song with no message would otherwise count for ever and show nowhere */
   message_id uuid references public.chat_messages (id) on delete set null,
   ready boolean not null default false,
   sent_at timestamptz,
@@ -99,10 +109,11 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('chat_song_claim:' || v_me::text, 0));
 
   /* ⚠️ A SONG NOT SENT WITHIN THE HOUR IS LET GO, so it stops counting. "Unfinished" means not
-     SENT rather than not ready: a song that went up and was never sent is in no chat, so nothing
-     anywhere shows it and nothing could ever remove it — it would hold quota for ever. Sending
-     follows ready within a second, so an hour is far longer than any honest gap. The objects are
-     deleted later, by the function, from `chat_song_abandoned`. */
+     SENT rather than not ready: a song that went up and was never sent is in no chat, so no thread
+     shows it, and it would hold quota until its owner happened to find it in `chat_songs_mine`. A
+     row is unready only while its upload request is running, or after one died midway; sending
+     follows that request within a second, so an hour is far longer than any honest gap. The
+     objects are deleted later, by the function, from `chat_song_abandoned`. */
   update public.chat_song_files f set deleted_at = now()
    where f.owner = v_me and f.sent_at is null and f.deleted_at is null
      and f.created_at < now() - interval '1 hour';
@@ -119,19 +130,11 @@ begin
   return query select v_id, 'songs/' || v_id || '.' || v_ext;
 end $$;
 
-/* ── finishing it: the function checks the object, then marks it ready as the service ───────── */
-/* ⚠️ `owner` IS RETURNED, AND IS ONLY EVER THE CALLER'S OWN ID: the row is found by
-   `owner = auth.uid()` or not at all. It is what lets `ready` run as the service without the
-   function deciding anything about ownership, as `picture_pending` does. */
-create function public.chat_song_pending(p_id uuid)
-returns table (key text, mime text, bytes integer, ready boolean, owner uuid)
-language sql stable security definer set search_path = public, pg_temp as $$
-  select f.key, f.mime, f.bytes, f.ready, f.owner from public.chat_song_files f
-   where f.id = p_id and f.owner = auth.uid() and f.deleted_at is null;
-$$;
-
-/* ⚠️ SERVICE ONLY. A member who could call this could mark an object ready without the function
-   ever measuring it, and the size and the first bytes are the only check on what R2 holds. */
+/* ── finishing it: the function has checked the bytes and written them, then marks it ready ─── */
+/* ⚠️ SERVICE ONLY. A member who could call this could mark a row ready that the function never
+   wrote, and the function's check of the bytes it held is the only check on what R2 holds. The
+   owner is the caller as Auth named them to the function, and is checked against the row, so a
+   wrong one marks nothing. */
 create function public.chat_song_ready(p_id uuid, p_owner uuid)
 returns void
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -224,8 +227,11 @@ begin
 end $$;
 
 /* ── tidying R2: what was let go and may still be there ──────────────────────────────────── */
-/* the caller's own, oldest first, twenty at a time: the function deletes these before each upload,
-   so a delete that failed once is tried again rather than forgotten */
+/* the caller's own, oldest first, twenty at a time: the function deletes these at the start of
+   each upload and each remove, so a delete that failed once is tried again rather than forgotten.
+   ⚠️ ONLY THEN: an account that never uploads or removes again keeps them in the bucket, and a
+   deleted account is never asked at all. A periodic sweep by the service, over every owner, is
+   what would close that; the contract's "Left" says so. */
 create function public.chat_song_abandoned()
 returns table (id uuid, key text)
 language plpgsql stable security definer set search_path = public, pg_temp as $$
@@ -250,9 +256,56 @@ begin
   if not found then raise exception 'no such song'; end if;
 end $$;
 
+/* ── a sent song whose message goes ─────────────────────────────────────────────────────────── */
+/* ⚠️ A MESSAGE CAN GO WITHOUT ANYBODY REMOVING ITS SONG. Nothing a member calls deletes one, but
+   foreign keys do: `delete_circuit` deletes the circuit, which takes its room and the room's
+   messages with it, and deleting an account takes that account's DM and circuit messages. The
+   foreign key can only set `message_id` null, and a sent song with no message is in no chat
+   (`chat_songs_in` lists sent songs by their message): nothing could play it or remove it, and it
+   went on counting toward its owner's 25 MB for ever. So a message GOING is a removal. The row is
+   marked `deleted_at`, it stops counting and leaves `chat_songs_mine`, and `chat_song_abandoned`
+   hands its object back to be deleted. A song never sent has no message to lose, so only
+   not-null to null counts.
+
+   Not SECURITY DEFINER, because it only sets a field on the row being written, which needs no
+   privilege; and nobody holds EXECUTE, because a trigger's function is never called by name. */
+create function public.chat_song_files_message_gone()
+returns trigger
+language plpgsql set search_path = public, pg_temp as $$
+begin
+  new.deleted_at := coalesce(new.deleted_at, now());
+  return new;
+end $$;
+
+create trigger chat_song_files_message_gone
+  before update on public.chat_song_files
+  for each row
+  when (old.message_id is not null and new.message_id is null)
+  execute function public.chat_song_files_message_gone();
+
+/* ── your own songs, from anywhere ───────────────────────────────────────────────────────────── */
+/* ⚠️ NO ROOM CHECK, ON PURPOSE. Every other way to see a song goes through its room, and a member
+   can lose the room and keep the song: they leave a circuit, or they are suspended and so are out
+   of the Lounge. Their 25 MB would then hold songs they could neither see nor take down. This
+   lists exactly what counts toward it, the caller's rows not yet let go, unsent ones included,
+   newest first, so each can be removed. It answers only about `auth.uid()`'s own rows and returns
+   no owner, so it tells nobody anything about anybody else; `room_kind` is null once a room is
+   gone. Not refused to a suspended member: it writes nothing, and removing is what it is for. */
+create function public.chat_songs_mine()
+returns table (file_id uuid, name text, seconds numeric, bytes integer, sent boolean, room_kind text)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  return query
+  select f.id, f.name, f.seconds, f.bytes, f.sent_at is not null, r.kind
+    from public.chat_song_files f
+    left join public.chat_rooms r on r.id = f.room_id
+   where f.owner = auth.uid() and f.deleted_at is null
+   order by f.created_at desc, f.id;
+end $$;
+
 /* ── who may call what ────────────────────────────────────────────────────────────────────── */
 revoke all on function public.chat_song_claim(uuid, text, integer, numeric, text) from public, anon;
-revoke all on function public.chat_song_pending(uuid) from public, anon;
 revoke all on function public.chat_song_ready(uuid, uuid) from public, anon, authenticated;
 revoke all on function public.send_chat_song(uuid) from public, anon;
 revoke all on function public.chat_songs_in(uuid) from public, anon;
@@ -260,8 +313,9 @@ revoke all on function public.chat_song_get(uuid) from public, anon;
 revoke all on function public.chat_song_remove(uuid) from public, anon;
 revoke all on function public.chat_song_abandoned() from public, anon;
 revoke all on function public.chat_song_gone(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.chat_songs_mine() from public, anon;
+revoke all on function public.chat_song_files_message_gone() from public, anon, authenticated;
 grant execute on function public.chat_song_claim(uuid, text, integer, numeric, text) to authenticated;
-grant execute on function public.chat_song_pending(uuid) to authenticated;
 grant execute on function public.chat_song_ready(uuid, uuid) to service_role;
 grant execute on function public.send_chat_song(uuid) to authenticated;
 grant execute on function public.chat_songs_in(uuid) to authenticated;
@@ -269,3 +323,4 @@ grant execute on function public.chat_song_get(uuid) to authenticated;
 grant execute on function public.chat_song_remove(uuid) to authenticated;
 grant execute on function public.chat_song_abandoned() to authenticated;
 grant execute on function public.chat_song_gone(uuid, uuid) to service_role;
+grant execute on function public.chat_songs_mine() to authenticated;

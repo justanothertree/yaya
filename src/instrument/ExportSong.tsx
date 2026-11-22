@@ -4,7 +4,8 @@ import { songToMidi } from '../audio/midiFile'
 import { exportSong, type ExportProgress, type SongExport } from './songExport'
 import { bareMime } from '../circuit/chatSongs'
 import { exportName, songName, subscribeSongName } from './songName'
-import { SendToChat } from './SendToChat'
+import { SendStatus, SendToChat } from './SendToChat'
+import { newExport } from './sendOutcome'
 
 /**
  * ⬇ Export song and ⬇ MIDI, in 📁 Songs. Evan, 16 Nov 2026: "renders the full mix (every part,
@@ -82,6 +83,7 @@ export function ExportSong({
     setDone(null)
     setSay('')
     setSending(false)
+    newExport()
     const ctl = new AbortController()
     stop.current = ctl
     setBusy(true)
@@ -197,6 +199,9 @@ export function ExportSong({
           onClose={() => setSending(false)}
         />
       )}
+      {/* ⚠️ OUTSIDE THE `done` GATE: a send outlives its export (sendOutcome.ts), so how it went is
+          shown whether or not the picker, or the export it was a send of, is still here */}
+      {member && <SendStatus />}
     </div>
   )
 }

@@ -4985,6 +4985,10 @@ select {
   min-width: 0;
   height: 40px;
 }
+/* there from the start so ▶ can unlock it inside the tap (iPhone Safari), shown once it has a link */
+.cz-song-audio.is-waiting {
+  display: none;
+}
 .cz-song-mine {
   display: flex;
   flex-wrap: wrap;
@@ -5012,6 +5016,12 @@ select {
   background: transparent;
   color: inherit;
   border: 1px solid currentColor;
+}
+/* ⚠️ AND SO IS THE FOCUS RING: the site's is a 2px accent outline, which on your own bubble is
+   accent on accent — a keyboard reaching ▶, Remove or the player saw nothing move. The bubble's
+   own text colour is the one thing guaranteed to stand against its fill. */
+.cz-msg.is-mine :focus-visible {
+  outline-color: currentColor;
 }
 
 /* ── make your own palette ──────────────────────────────────────────────────
@@ -22157,11 +22167,13 @@ button.chron-runnote-n {
    phone. The name takes the room left over and keeps a floor in pixels, because an input's own
    minimum is its `size` (~200px) and the root size is fluid. */
 .inst-send-pick {
+  margin-top: 0.4rem;
+}
+.inst-send-form {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 0.7rem;
-  margin-top: 0.4rem;
 }
 .inst-send-chat {
   min-width: 0;
@@ -22189,9 +22201,60 @@ button.chron-runnote-n {
 .inst-send-say {
   margin: 0.3rem 0 0;
   font-size: 0.8rem;
+  /* it quotes the song's name, which is whatever was typed — sixty letters with no space in them
+     included */
+  overflow-wrap: anywhere;
 }
 .inst-send-say:empty {
   margin: 0;
+}
+/* Your songs in chat: a song a line, its name taking what the length and Remove leave, with a
+   floor in pixels so a long name wraps rather than being crushed to nothing */
+.inst-send-mine {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+}
+.inst-send-mine-head {
+  margin: 0 0 0.3rem;
+  font-weight: 600;
+}
+.inst-send-mine-head .muted {
+  font-weight: 400;
+}
+.inst-send-mine-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.inst-send-mine-one {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.6rem;
+  min-width: 0;
+}
+.inst-send-mine-name {
+  flex: 1 1 120px;
+  min-width: 80px;
+  overflow-wrap: anywhere;
+}
+.inst-send-mine-len {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.inst-send-mine-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+.inst-send-mine-x {
+  min-height: 26px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
 }
 .inst-copy-all .inst-pick {
   min-width: 0;

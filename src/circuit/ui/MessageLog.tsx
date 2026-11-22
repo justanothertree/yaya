@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { challengeRoomOf, challengeText } from '../../game/challenge'
 import { boutCodeOf, boutInviteText } from '../../pets/boutInvite'
 import { circuitInviteText, circuitJoinCodeOf } from '../inviteLink'
@@ -99,18 +99,57 @@ export function MessageLog({
     }
   }, [last?.id, last?.mine, room, msgs.length])
 
-  /* The log's own box changes under a reader who has not moved: the keyboard opens, a challenge
-     panel unfolds above it, a window is dragged shorter. If they were at the bottom they still
-     should be — otherwise the newest message slides out from under the composer. */
-  useEffect(() => {
+  /**
+   * The log's own box changes under a reader who has not moved: the keyboard opens, a challenge
+   * panel unfolds above it, a window is dragged shorter. If they were at the bottom they still
+   * should be — otherwise the newest message slides out from under the composer.
+   *
+   * ⚠️ AND SO DOES WHAT IS IN IT, WHICH THE LOG'S OWN BOX NEVER SHOWS. A player grows when its
+   * controls appear or it says something, under a reader who may be at the bottom — and a scrolling
+   * box keeps its size while its content grows, so observing the box saw none of it. Each row is
+   * observed too. (The bigger growth, text turning into a player, is the songs effect below.)
+   */
+  const follow = useRef<ResizeObserver | null>(null)
+  useLayoutEffect(() => {
     const el = logRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(() => {
       if (pinned.current) el.scrollTop = el.scrollHeight
     })
     ro.observe(el)
-    return () => ro.disconnect()
+    follow.current = ro
+    return () => {
+      ro.disconnect()
+      follow.current = null
+    }
   }, [])
+  /* every row as it is drawn — started afresh each time, so a row that has left (another room's)
+     is not held on to */
+  useLayoutEffect(() => {
+    const el = logRef.current
+    const ro = follow.current
+    if (!el || !ro) return
+    ro.disconnect()
+    ro.observe(el)
+    for (const row of Array.from(el.children)) ro.observe(row)
+  }, [msgs, songs])
+
+  /**
+   * ⚠️ A SONG'S MESSAGE IS TEXT UNTIL THE ROOM'S SONGS ARE READ, and that read is its own round trip
+   * that often lands AFTER the jump above. The bubble then grows into a player under a reader who
+   * is at the bottom: the newest message slides below the fold, and no new message arrived to put
+   * up the pill — so nothing on screen says anything happened. Measured at 375px on a thread whose
+   * newest message is a song: that row ended 51px past the log's bottom edge, its ▶ out of sight.
+   *
+   * ⚠️ IN A LAYOUT EFFECT ON THE ANSWER ITSELF, not left to the observer above, because an observer
+   * only reports at the browser's next rendering step, and a page that is not being drawn has none
+   * (the Browser pane, hidden, delivered no callback at all). This runs with the commit that grew
+   * the bubble, before anything is painted, whatever the browser is doing.
+   */
+  useLayoutEffect(() => {
+    const el = logRef.current
+    if (el && pinned.current) el.scrollTop = el.scrollHeight
+  }, [songs])
 
   const unseen = away ? unseenAfter(msgs, seenId) : 0
 

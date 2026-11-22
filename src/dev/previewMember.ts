@@ -57,6 +57,8 @@ export const PREVIEW_PEOPLE: PreviewPerson[] = [
   { user_id: 'preview-morgan', username: 'morgan_k', name: 'Morgan', rel: 'friend' },
   { user_id: 'preview-riley', username: 'Riley', name: 'Riley', rel: 'out' },
   { user_id: 'preview-alex', username: 'Alex', name: 'Alex', rel: 'in' },
+  // a friend who shares Alex's first name: two DMs both named "Alex" (see pv-dm-alex-r)
+  { user_id: 'preview-alex-r', username: 'alex_r', name: 'Alex', rel: 'friend' },
   { user_id: 'preview-sam', username: 'Sam', name: 'Sam', rel: 'none' },
   { user_id: 'preview-casey', username: 'casey_m', name: 'Casey', rel: 'none' },
 ]
@@ -98,6 +100,7 @@ export const PREVIEW_ROOMS: PreviewRoom[] = [
   // as a conversation without being offered the things only friends get
   { id: 'pv-dm', kind: 'dm', name: 'Alex', peer_user_id: 'preview-alex' },
   { id: 'pv-dm-morgan', kind: 'dm', name: 'Morgan', peer_user_id: 'preview-morgan' },
+  { id: 'pv-dm-alex-r', kind: 'dm', name: 'Alex', peer_user_id: 'preview-alex-r' },
 ]
 
 /**
@@ -274,6 +277,16 @@ export const previewMsgs = (): Record<string, PreviewMsg[]> =>
         body: 'welcome!',
         created_at: t(280),
       },
+      // a song no browser can play (dev/chatSongsPreview.ts `broken`): its player must end on
+      // saying so rather than offering ▶ for ever
+      {
+        id: 'l3',
+        room_id: 'pv-lounge',
+        user_id: 'pv-sam',
+        author_name: 'Sam',
+        body: '🎵 Rough mix (0:20)',
+        created_at: t(200),
+      },
     ],
     'pv-dm': [
       {
@@ -310,17 +323,40 @@ export const previewMsgs = (): Record<string, PreviewMsg[]> =>
       },
     ],
     // long on purpose: enough to overflow any thread, so its height is something you can see
-    'pv-dm-morgan': Array.from({ length: 40 }, (_, i) => ({
-      id: 'm' + i,
-      room_id: 'pv-dm-morgan',
-      user_id: i % 3 === 1 ? PREVIEW_ME.id : 'preview-morgan',
-      author_name: i % 3 === 1 ? 'Preview You' : 'Morgan',
-      body:
-        i % 7 === 0
-          ? `message ${i + 1}: a longer one, the kind that wraps onto a second line on a phone and shows how wide a bubble is allowed to get`
-          : `message ${i + 1}`,
-      created_at: t(600 - i * 9),
-    })),
+    'pv-dm-morgan': [
+      ...Array.from({ length: 40 }, (_, i) => ({
+        id: 'm' + i,
+        room_id: 'pv-dm-morgan',
+        user_id: i % 3 === 1 ? PREVIEW_ME.id : 'preview-morgan',
+        author_name: i % 3 === 1 ? 'Preview You' : 'Morgan',
+        body:
+          i % 7 === 0
+            ? `message ${i + 1}: a longer one, the kind that wraps onto a second line on a phone and shows how wide a bubble is allowed to get`
+            : `message ${i + 1}`,
+        created_at: t(600 - i * 9),
+      })),
+      // the newest message is a song: its answer lands after the log has pinned to the bottom,
+      // and the bubble growing under a reader there must not push the newest out of view
+      {
+        id: 'm40',
+        room_id: 'pv-dm-morgan',
+        user_id: 'preview-morgan',
+        author_name: 'Morgan',
+        body: '🎵 Late answer (0:31)',
+        created_at: t(4),
+      },
+    ],
+    // a second Alex, so the song picker has two DMs whose names alone are one line
+    'pv-dm-alex-r': [
+      {
+        id: 'a1',
+        room_id: 'pv-dm-alex-r',
+        user_id: 'preview-alex-r',
+        author_name: 'Alex',
+        body: 'send me the new one when it’s done',
+        created_at: t(90),
+      },
+    ],
   })
 
 /**

@@ -2,9 +2,16 @@ import { getSupabaseClient } from '../finance/client'
 import { getFinanceEnv } from '../finance/env'
 import { readFunctionError, type FunctionFailure } from '../finance/functionError'
 import { previewMember } from '../dev/previewMember'
-import { pvPlayUrl, pvRemoveSong, pvSendSong, pvSongsIn } from '../dev/chatSongsPreview'
+import {
+  pvPlayUrl,
+  pvRemoveSong,
+  pvSendSong,
+  pvSongsIn,
+  pvSongsMine,
+  pvUploadSong,
+} from '../dev/chatSongsPreview'
 import { addToThread, songGone } from './roomThread'
-import type { Msg } from './chatRooms'
+import type { Msg, Overview } from './chatRooms'
 
 /**
  * Songs in chat: a recording from the Instrument room, sent into a chat room and played there.
@@ -37,6 +44,51 @@ export const SONGS_OFF = 'Songs in chat aren’t switched on yet.'
 const NO_REACH = 'Couldn’t reach the server. Try again.'
 
 /**
+ * A file's ceiling, in BYTES, as `chat_song_claim` measures it, and its sentence for one over.
+ *
+ * ⚠️ CHECKED HERE AS WELL, BEFORE A BYTE MOVES, because the upload now carries the file itself:
+ * the function stops reading at this many bytes and refuses, so a file over it would be sent in
+ * full only to be turned away — and a server that answers before it has read the body can end
+ * the request in a way the browser reports as no response at all, which this file would call
+ * "couldn't reach the server". The same number and the same words, so the two cannot disagree.
+ */
+export const SONG_BYTES = 5_242_880
+export const SONG_TOO_BIG = 'that one is over 5 MB'
+/** an account's ceiling, counting every song not removed (sent or not), as the claim sums it */
+export const SONGS_BYTES = 26_214_400
+/** a name's ceiling, in characters as Postgres's `char_length` counts them: code points */
+const NAME_MAX = 60
+
+/**
+ * A name with nothing in it that is half a character, cut to {@link NAME_MAX} code points. For
+ * the name box as it is typed and offered — it keeps spaces, so a space can still be typed.
+ *
+ * ⚠️ A LONE SURROGATE IS HALF AN EMOJI, AND IT ARRIVES FROM OUTSIDE. The kept song name is cut
+ * with `.slice(0, 60)`, which counts UTF-16 units, so a name ending in an emoji at the boundary
+ * comes back as its first half — and `encodeURIComponent`, which the upload's name header goes
+ * through, THROWS on one. So it is dropped rather than cut around: a code-point cap alone keeps
+ * a lone surrogate as a "character" of its own.
+ */
+export function nameCap(name: string): string {
+  return wholeChars(name).slice(0, NAME_MAX).join('')
+}
+
+/** a string's code points, without any that is half of one */
+const wholeChars = (s: string) =>
+  Array.from(s).filter((c) => !(c.length === 1 && c >= '\uD800' && c <= '\uDFFF'))
+
+/**
+ * A name as it is sent: whole characters, one line, trimmed, at most 60 — in the order
+ * `chat_song_claim` does it, `btrim(left(btrim(regexp_replace(name, '\s+', ' ', 'g')), 60))`, so
+ * the name drawn at once is the name read back later. (Cutting BEFORE the spaces are squeezed
+ * would keep fewer characters than the server does from a name with a run of them in it.)
+ */
+export function songTitle(name: string): string {
+  const line = wholeChars(name).join('').replace(/\s+/g, ' ').trim()
+  return Array.from(line).slice(0, NAME_MAX).join('').trim()
+}
+
+/**
  * A song's length as `send_chat_song` writes it into the message:
  * `floor(seconds / 60)::int || ':' || lpad((floor(seconds)::int % 60)::text, 2, '0')`.
  *
@@ -54,8 +106,8 @@ export function lengthLabel(seconds: number): string {
  * A recording's length as it is sent: whole seconds, floored, and never 0.
  *
  * ⚠️ FLOORED SO THE LABEL IS THE SAME SUM ON BOTH SIDES (see lengthLabel), and AT LEAST ONE because
- * `chat_song_claim` refuses `seconds <= 0` as "not a song's length" — a sub-second recording is
- * still a recording, and that sentence would be wrong about it. An export is a bar and a tail at
+ * `chat_song_claim` refuses `seconds <= 0` as "that recording has no length" — a sub-second
+ * recording is still a recording, and that sentence would be wrong about it. An export is a bar and a tail at
  * the least, so this floor is a guard rather than something anybody meets.
  */
 export function songSeconds(duration: number): number {
@@ -65,9 +117,9 @@ export function songSeconds(duration: number): number {
 /**
  * A recorder's type without its codec details: `audio/webm;codecs=opus` is `audio/webm`.
  *
- * ⚠️ THE CLAIM, THE PUT AND THE SERVER'S HEAD MUST ALL AGREE ON IT. `chat_song_claim` keeps
- * exactly `audio/mp4`, `audio/webm` or `audio/ogg`, and the function drops an object whose
- * `content-type` is not the claimed one — and MediaRecorder's own type carries the codec.
+ * ⚠️ THE CLAIM, THE FUNCTION'S CHECK AND THE TYPE R2 SERVES MUST ALL AGREE ON IT. `chat_song_claim`
+ * keeps exactly `audio/mp4`, `audio/webm` or `audio/ogg`, the function refuses any other, and it
+ * stores the object under the type it was told — and MediaRecorder's own type carries the codec.
  */
 export function bareMime(type: string): string {
   return type.split(';')[0].trim().toLowerCase()
@@ -199,7 +251,13 @@ export function mergeSongs(
 export async function songsIn(
   room: string,
 ): Promise<{ songs: Record<string, ChatSong> } | { why: string }> {
-  if (previewMember) return { songs: pvSongsIn(room) }
+  if (previewMember) {
+    /* a real read is a round trip, so the harness's answer lands after the messages' as it
+       usually will on the site — answering at once would hide the bubble that grows after the
+       log has pinned to the bottom */
+    await new Promise((r) => setTimeout(r, 250))
+    return { songs: pvSongsIn(room) }
+  }
   /* never asked about a room the database did not make: the call's loose chat is `'call'` */
   if (!isRoomId(room)) return { songs: {} }
   const { data, error } = await getSupabaseClient().rpc('chat_songs_in', { p_room: room })
@@ -240,14 +298,19 @@ export async function removeSong(id: string): Promise<{ why: string } | null> {
 }
 
 /**
- * Send a recording into a room: claim it, put the bytes in R2, have the server check them, then
+ * Send a recording into a room: hand the bytes to the function, which checks and keeps them, then
  * send the message.
  *
- * ⚠️ FOUR STEPS, AND ONLY THE LAST ONE IS SEEN BY ANYBODY. The claim reserves a key and checks
- * every ceiling before a byte moves; the PUT goes straight to R2, so nothing but JSON crosses
- * Supabase; `ready` is the function measuring what actually arrived (a signed PUT binds neither
- * length nor type); and only then does `send_chat_song` write the message. A failure part way
- * leaves a claim nobody sees, which the next claim lets go of after an hour.
+ * ⚠️ THE BYTES GO THROUGH THE FUNCTION, NOT STRAIGHT TO R2. A signed PUT stays good after the
+ * server has looked at what arrived, so a sender could put any file in its place afterwards, or
+ * leave objects behind that no row knows about. Now the function holds the bytes it checks: it
+ * claims them at their real length, checks them in hand (size, type, first bytes), puts them in
+ * R2 itself and marks them ready, and on any failure lets the claim go and deletes what it wrote.
+ * So the answer is one `{ id }` or one sentence, and nothing half-done is left for anybody.
+ *
+ * ⚠️ AND THE FIELDS ARE HEADERS, because the body is the file. The name is URI-encoded: a header
+ * is not a place for `é` or an emoji, and {@link songTitle} has already made it something
+ * `encodeURIComponent` will take (it throws on half an emoji).
  */
 export async function sendSong(
   room: string,
@@ -256,62 +319,172 @@ export async function sendSong(
   seconds: number,
 ): Promise<{ msg: Msg } | { why: string }> {
   const mime = bareMime(blob.type)
-  /* the server cuts a name to 60 characters (`left(btrim(name), 60)`); cut here first, trimmed
-     after the cut as well, so what it keeps is exactly what was sent — and the song drawn at once
-     carries the same name as the one read back later */
-  const title = Array.from(name.trim()).slice(0, 60).join('').trim()
+  const title = songTitle(name)
+  const whole = songSeconds(seconds)
+  if (blob.size > SONG_BYTES) return { why: SONG_TOO_BIG }
   if (previewMember) {
-    const sent = pvSendSong(room, mime, blob.size, seconds, title)
+    const up = pvUploadSong(room, mime, blob.size, whole, title)
+    if ('why' in up) return up
+    const sent = pvSendSong(up.id)
     if ('why' in sent) return sent
     addToThread(room, sent.msg, sent.song)
     return { msg: sent.msg }
   }
   const sb = getSupabaseClient()
   const { data, error } = await sb.functions.invoke('chat-songs', {
-    body: { op: 'upload', room, mime, bytes: blob.size, seconds, name: title },
+    body: blob,
+    headers: {
+      'x-song-op': 'upload',
+      'x-song-room': room,
+      'x-song-mime': mime,
+      'x-song-seconds': String(whole),
+      'x-song-name': encodeURIComponent(title),
+    },
   })
   if (error) return { why: await functionFailed(error, 'That song didn’t go up.') }
-  const mint = data as { id?: string; put?: string } | null
-  if (!mint?.id || !mint.put) return { why: 'That song didn’t go up.' }
+  const id = (data as { id?: unknown } | null)?.id
+  if (typeof id !== 'string' || !id) return { why: 'That song didn’t go up.' }
 
-  /**
-   * ⚠️ THE TYPE IS SET HERE, BARE, AND NOT LEFT TO THE BLOB. `fetch` with a Blob body sends the
-   * blob's own type when no header is given, and MediaRecorder's carries `;codecs=opus` — which is
-   * not the type that was claimed, so `ready` would drop the object as "not the recording this
-   * account was told about".
-   *
-   * ⚠️ AND A REJECTION IS CAUGHT, because `fetch` rejects on a CORS failure rather than answering:
-   * without the catch it would leave the caller's busy flag set for ever (pictures/cloud.ts).
-   */
-  try {
-    const res = await fetch(mint.put, {
-      method: 'PUT',
-      body: blob,
-      headers: { 'Content-Type': mime },
-    })
-    if (!res.ok) return { why: `The store refused the upload (${res.status}).` }
-  } catch {
-    return { why: 'The upload couldn’t reach the store. Try again.' }
-  }
-
-  const { error: badReady } = await sb.functions.invoke('chat-songs', {
-    body: { op: 'ready', id: mint.id },
-  })
-  if (badReady) return { why: await functionFailed(badReady, 'That song didn’t go up.') }
-
-  const { data: sent, error: badSend } = await sb.rpc('send_chat_song', { p_id: mint.id })
+  const { data: sent, error: badSend } = await sb.rpc('send_chat_song', { p_id: id })
   if (badSend) return { why: sayRpcError(badSend, 'That song didn’t send.') }
   // ⚠️ send_chat_song returns a SET, like send_chat_message, so this is an array
   const msg = (sent as unknown as Msg[] | null)?.[0]
   if (!msg?.id) return { why: 'That song didn’t send.' }
   addToThread(room, msg, {
     message_id: msg.id,
-    file_id: mint.id,
+    file_id: id,
     name: title,
-    seconds,
+    seconds: whole,
     mime,
     mine: true,
     removed: false,
   })
   return { msg }
+}
+
+/** one row of `chat_songs_mine`: a song of yours that still holds room, sent or not */
+export type MySong = {
+  file_id: string
+  name: string
+  seconds: number
+  bytes: number
+  sent: boolean
+  /** the kind of room it went to, or null when that room is gone */
+  room_kind: string | null
+}
+
+/**
+ * Your songs that still count toward 25 MB, newest first.
+ *
+ * ⚠️ NOT ASKED THROUGH ANY ROOM. `chat_songs_mine` answers about the caller's own rows with no
+ * membership check, because the rows that most need removing are the ones no room shows any more:
+ * a song sent to a chat you have since left, or one that went up and was never sent. A suspended
+ * member can still take theirs down. Every other way to Remove is a ▶ in a thread you are in.
+ */
+export async function songsMine(): Promise<{ songs: MySong[] } | { why: string }> {
+  if (previewMember) return { songs: pvSongsMine() }
+  const { data, error } = await getSupabaseClient().rpc('chat_songs_mine')
+  if (error) return { why: sayRpcError(error, 'Couldn’t load your songs.') }
+  return {
+    songs: ((data as Record<string, unknown>[] | null) ?? []).map((r) => ({
+      file_id: String(r.file_id),
+      name: String(r.name ?? ''),
+      seconds: Number(r.seconds) || 0,
+      bytes: Number(r.bytes) || 0,
+      sent: r.sent === true,
+      room_kind: typeof r.room_kind === 'string' ? r.room_kind : null,
+    })),
+  }
+}
+
+/**
+ * How much of an account's room the songs take, against the 25 MB they may.
+ *
+ * ⚠️ MB HERE IS 1,048,576 BYTES, because that is the MB the server's sentences use: "over 5 MB" is
+ * 5,242,880 and "come to 25 MB" is 26,214,400. ⚠️ AND IT ROUNDS UP: a figure shown against a limit
+ * must never read lower than the one the limit is applied to, or a refusal arrives at a number the
+ * screen calls fine (Pictures learned that).
+ */
+export function usedLabel(bytes: number): string {
+  const tenths = Math.ceil((Math.max(0, bytes) / 1_048_576) * 10)
+  return `${tenths / 10} of ${SONGS_BYTES / 1_048_576} MB`
+}
+
+const KIND_WORD: Record<string, string> = { dm: 'DM', circuit: 'circuit', lounge: 'Lounge' }
+
+/**
+ * The chats a song can be sent to, each named so that no two read alike.
+ *
+ * ⚠️ A ROOM'S NAME IS NOT AN ID. A DM is named after the other person's first name and a circuit
+ * after whatever it was called, so two friends called Alex, or two circuits called The Crew, were
+ * two identical lines in a picker that sends a recording to whichever one you meant. A DM whose
+ * name is shared takes its person's @username (looked up by `peer_user_id`, the key Overview says
+ * a DM is matched by); anything still alike after that takes its kind and its place in the list.
+ *
+ * @param usernameOf a DM peer's username, or null when the directory does not know them
+ */
+export function roomChoices(
+  rooms: Pick<Overview, 'id' | 'kind' | 'name' | 'peer_user_id'>[],
+  usernameOf: (userId: string) => string | null,
+): { id: string; kind: string; name: string }[] {
+  const tally = (names: string[]) => {
+    const n = new Map<string, number>()
+    for (const s of names) n.set(s, (n.get(s) ?? 0) + 1)
+    return n
+  }
+  const alike = tally(rooms.map((r) => r.kind + ' ' + r.name))
+  const first = rooms.map((r) => {
+    if ((alike.get(r.kind + ' ' + r.name) ?? 0) < 2 || r.kind !== 'dm' || !r.peer_user_id)
+      return r.name
+    const handle = usernameOf(r.peer_user_id)
+    return handle ? `${r.name} (@${handle})` : r.name
+  })
+  const still = tally(rooms.map((r, i) => r.kind + ' ' + first[i]))
+  const place = new Map<string, number>()
+  return rooms.map((r, i) => {
+    const key = r.kind + ' ' + first[i]
+    if ((still.get(key) ?? 0) < 2) return { id: r.id, kind: r.kind, name: first[i] }
+    const n = (place.get(key) ?? 0) + 1
+    place.set(key, n)
+    return { id: r.id, kind: r.kind, name: `${first[i]} (${KIND_WORD[r.kind] ?? r.kind} ${n})` }
+  })
+}
+
+/** how long a link to a song is good for: the function signs it for 3600 s */
+export const LINK_LIFE_MS = 3_600_000
+
+/**
+ * What a player says after its `<audio>` failed: that this browser cannot play the recording,
+ * or ▶ again for a fresh link.
+ *
+ * ⚠️ "TRY AGAIN" WAS A LOOP FOR A RECORDING THE BROWSER CANNOT DECODE. Safari meeting an Ogg, say:
+ * MEDIA_ERR_SRC_NOT_SUPPORTED (4), and a fresh link fetches the same bytes and fails the same way,
+ * for ever. So a format failure ends on a sentence that says so — and so does a decode failure
+ * (3), which is the same bytes failing later in the file.
+ *
+ * ⚠️ BUT ONLY ON A FRESH LINK, because an EXPIRED one fails with that same code: R2 answers 403,
+ * and a browser reports an HTTP error on a media source as "not supported". A link close to its
+ * hour is the one case where asking again is exactly the cure, so a minute's grace is given
+ * against the clock and the fetch itself. A network failure (2) or an abort (1) is always worth
+ * trying again.
+ */
+export function afterPlayError(code: number | undefined, linkAgeMs: number): 'cannot' | 'again' {
+  if (linkAgeMs >= LINK_LIFE_MS - 60_000) return 'again'
+  return code === 3 || code === 4 ? 'cannot' : 'again'
+}
+
+/**
+ * One song sounding at a time: starting a player pauses whichever was playing.
+ *
+ * ⚠️ AT MODULE SCOPE, NOT IN A COMPONENT, because the players do not know about each other: a
+ * thread holds many, and the same thread can be drawn twice at once (Chat and the call's panel).
+ * Two songs talking over each other is never what a press meant.
+ */
+let sounding: { pause(): void } | null = null
+export function startedPlaying(player: { pause(): void }) {
+  if (sounding && sounding !== player) sounding.pause()
+  sounding = player
+}
+export function stoppedPlaying(player: { pause(): void }) {
+  if (sounding === player) sounding = null
 }
