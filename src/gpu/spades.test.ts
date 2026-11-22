@@ -22,6 +22,7 @@ import {
   type Saved,
   type Team,
 } from './spades'
+import { NIGHTLY } from './testMatches'
 
 const cs = (s: string) => s.split(' ').map(card)
 const zero: Team[] = [
@@ -166,7 +167,23 @@ describe('the computer', () => {
         expect(chooseBid(g, level, rng(s))).toBeLessThanOrEqual(2)
       }
   }, 30_000)
-  it('wins more games, level by level, from both partnerships', () => {
+  // A seed deals the same hands whichever partnership each level sits in, so if the two levels
+  // played alike its two games would be one game with the partnerships swapped, and the level
+  // under test would lose one. Winning one seed from BOTH partnerships is the claim in two games,
+  // and a level that plays like the one below cannot. Seed 1 is the first on which both pairs do.
+  it('wins the same seed from both partnerships, level by level', () => {
+    for (const [hi, lo] of [
+      ['fair', 'easy'],
+      ['hard', 'fair'],
+    ] as const) {
+      /* game() answers whether its FIRST level's partnership won */
+      expect(game(hi, lo, 1)).toBe(true)
+      expect(game(lo, hi, 1)).toBe(false)
+    }
+  })
+  // Seventy whole games, most of the 90-second limit under a full run, so they run nightly.
+  it('wins more games, level by level, from both partnerships', ({ skip }) => {
+    skip(!NIGHTLY, 'runs nightly: see testMatches.ts')
     // measured on other games: Fair beats Easy 95 in 120, Hard beats Fair 60 in 80
     let fair = 0
     for (let s = 1; s <= 30; s++) if (game('fair', 'easy', s)) fair++

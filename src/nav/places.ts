@@ -85,8 +85,15 @@ export const PLACES = [
    */
   { id: 'circuit', label: 'Circuit', icon: '🏆', title: 'The Circuit', nav: () => true },
   { id: 'ratings', label: 'Ratings', icon: '⭐', title: 'Ratings', nav: () => true },
-  { id: 'chat', label: 'Chat', icon: '💬', title: 'Chat', nav: member },
-  { id: 'people', label: 'People', icon: '🧑‍🤝‍🧑', title: 'People', nav: member },
+  /**
+   * ⚠️ `people` WAS A PLACE BESIDE THIS ONE AND IS AN ALIAS NOW — see SECTION_ALIASES below. It
+   * listed everybody and its Message button navigated here; this listed conversations and could
+   * not start one. Asked for as "your friends list with each person's conversation right there",
+   * so the directory became this room's left-hand side: a friend is a row, the row is the
+   * thread, and the thread is where you call or challenge them. The id stays `chat` because
+   * `#chat?room=…` is in the bell, in the call anchor and in every Message button on the site.
+   */
+  { id: 'chat', label: 'Chat', icon: '💬', title: 'Friends & chat', nav: member },
   /**
    * ⚠️ MEMBERS ONLY, AND WITH NO DEMO, which is the difference between this and Circuit or
    * Investments. Those two have something honest to show a visitor — a public board, a sample
@@ -254,6 +261,13 @@ export const SECTION_ALIASES: Record<string, Section> = {
    * mistyped. A dead end that reads as your own mistake is the kind nobody reports.
    */
   account: 'account-settings',
+  /**
+   * ⚠️ A WHOLE ROOM UNTIL IT MERGED INTO CHAT, so the word is in people's history, in the
+   * accept-an-invite page's "find your people" link, and in the bell's "wants to be friends"
+   * notice on any tab left open across the deploy. It lands on the room the directory moved
+   * into, where a waiting request is the first thing in the list.
+   */
+  people: 'chat',
 }
 
 /**

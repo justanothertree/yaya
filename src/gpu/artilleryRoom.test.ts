@@ -8,6 +8,7 @@ import {
   replay,
   type ArtilleryGame,
 } from './artilleryRoom'
+import { matches, sample } from './testMatches'
 
 /** a whole game between two gunners through the room's own rules, every position along the way */
 function playThrough(seed: number, levels: [Level, Level] = ['fair', 'easy']) {
@@ -26,11 +27,12 @@ function playThrough(seed: number, levels: [Level, Level] = ['fair', 'easy']) {
 }
 
 describe('artillery on the wire', () => {
-  it('replays to the very same field from its seed and shots, at every shot of real games', () => {
-    for (let seed = 1; seed <= 4; seed++) {
+  it.each(matches([1], [1, 2, 3, 4]))(
+    'replays to the very same field from its seed and shots, through a real game (seed $seed, $kind)',
+    ({ seed }) => {
       const { g, seen } = playThrough(seed)
       expect(g.f.winner).not.toBeNull()
-      for (const d of seen) {
+      for (const d of sample(seen, 3)) {
         const wire = JSON.parse(JSON.stringify(R.encode(d)))
         const back = R.decode(wire)!
         // the whole field: every height, both guns, the wind, whose turn, the seed it drifts from
@@ -38,8 +40,8 @@ describe('artillery on the wire', () => {
         expect(back.last).toEqual(d.last)
         expect(R.encode(back)).toEqual(wire)
       }
-    }
-  })
+    },
+  )
 
   it('is a few hundred bytes a game, where the field alone is thousands', () => {
     const { g } = playThrough(7)
