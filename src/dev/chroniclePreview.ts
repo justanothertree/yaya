@@ -832,6 +832,8 @@ const mint = (p: string): string => `${p}-new-${next++}`
  * is written in characters.
  */
 const chars = (t: string): number => [...t].length
+/** Postgres's one-argument `btrim`: spaces only, where String#trim also takes tabs and newlines */
+const btrim = (t: string): string => t.replace(/^ +| +$/g, '')
 const leftChars = (t: string, n: number): string => [...t].slice(0, n).join('')
 /* chronicle_activity_save's session length: 1 to 1440 minutes, or none */
 const sessionMins = (m: number | null | undefined): number | null =>
@@ -1261,6 +1263,18 @@ export const pvSaveActivity = (
    * reached it — but a double that invents a row where the server refuses one is the direction
    * that hides a bug.
    */
+  /**
+   * ⚠️ SAID IN WORDS BEFORE THE TABLE SAYS IT IN ITS OWN, as chronicle_activity_save does since
+   * `chronicle_activity_refusals` went live on 22 Nov 2026 (OPEN-DECISIONS, #144): checked straight
+   * after the suspension check, so ahead of the ownership and clash checks below. Before it, the
+   * live site showed the constraint's sentence — `violates check constraint
+   * "chronicle_activities_name_check"` — and this double let the name through.
+   */
+  if (btrim(name ?? '') === '') return { why: 'an activity needs a name' }
+  if (chars(btrim(name)) > 60) return { why: 'that is longer than a name — 60 characters' }
+  if (metric != null && chars(btrim(metric)) > 16) {
+    return { why: 'that is longer than a unit — 16 characters' }
+  }
   if (id && !found) return { why: 'no such activity' }
   /**
    * ⚠️ THE NAME CLASH, in chronicle_activity_save's own words. `chronicle_activities` is
