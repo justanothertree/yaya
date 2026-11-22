@@ -1,4 +1,5 @@
 import type { Session, Subscription, User } from '@supabase/supabase-js'
+import { VAPID_PUBLIC_KEY } from '../notify/vapid'
 import { getSupabaseClient, getSupabaseClientOrNull, isSessionDefinitelyDead } from './client'
 
 /**
@@ -100,6 +101,24 @@ export async function signInWithPassword(email: string, password: string): Promi
 
 export async function signOut(): Promise<void> {
   const sb = getSupabaseClient()
+  /* ⚠️ THIS BROWSER'S PHONE ALERTS GO FIRST, WHILE THE TOKEN STILL WORKS. Signing out does not
+     unsubscribe anything by itself, so the alerts — with whatever a message said in them — went on
+     arriving on a browser its member had left. Best effort and capped (FORGET_WITHIN_MS), so it
+     can cost sign-out a moment and never the sign-out itself; with no VAPID key it asks nothing.
+     Loaded only when there is a key, so the module stays out of the entry chunk while the feature
+     is off (it was 3 kB of it). */
+  if (VAPID_PUBLIC_KEY) {
+    try {
+      const { makeAlerts, realBrowser } = await import('../notify/phoneAlerts')
+      await makeAlerts(
+        VAPID_PUBLIC_KEY,
+        async (fn, args) => await sb.rpc(fn, args),
+        realBrowser,
+      ).forgetHere()
+    } catch {
+      /* a chunk that would not load must not stop anybody signing out */
+    }
+  }
   const { error } = await sb.auth.signOut()
   if (error) throw error
 }

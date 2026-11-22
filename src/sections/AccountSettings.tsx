@@ -20,6 +20,7 @@ import { PICTURES_EACH, PICTURE_BYTES_ALL, picturesUsed, type Used } from '../pi
 import { sayBytes } from '../pictures/shrink'
 import { showToast } from '../circuit/toast'
 import { YourCopy } from '../chronicle/YourCopy'
+import { PhoneAlertsCard } from '../notify/PhoneAlertsCard'
 import { Toast } from '../circuit/ui/Toast'
 import {
   backupName,
@@ -1417,6 +1418,9 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
           <CircuitsCard />
           <CirclesCard />
           <PublishCard />
+          {/* renders nothing until there is a key and a browser that can take alerts — see the
+              card's own note */}
+          <PhoneAlertsCard />
           <BackupCard />
           {/* ⚠️ DIRECTLY BELOW `BackupCard`, because that card's third paragraph now points at
               it by name. Two inches, not a room with no nav entry — which is what "see what you

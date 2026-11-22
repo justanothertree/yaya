@@ -1986,7 +1986,8 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.cz-msg-line > .cz-challenge {
+.cz-msg-line > .cz-challenge,
+.cz-msg-line > .cz-song {
   flex: 1 1 100%;
 }
 .cz-msg-time {
@@ -3155,6 +3156,48 @@ section[id] {
   left: calc(100% - 0.72rem - 2px);
   background: var(--btn-text);
   opacity: 1;
+}
+
+/**
+ * 📱 Phone alerts' switches, in Account (src/notify/PhoneAlertsCard.tsx). The WHOLE ROW is the
+ * button, so the target is the card's width and 2.5rem tall — over the 1.77rem line that clears
+ * WCAG 2.5.8's 24px at every UI scale, and nothing to aim at with a thumb but the row itself. The
+ * switch drawn at its end is the menu's own, so a switch looks like one switch across the site.
+ * It stops at a phone's width, because a full-width card at 1440 put every switch 1,200px from the
+ * words it answers to.
+ */
+.alerts-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 26rem;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: var(--r-sm, 7px);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+.alerts-switch:hover:not(:disabled) {
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
+}
+.alerts-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* six rows stacked 2px apart and pressed with a thumb: the comfortable 44 on a touch screen, in
+   pixels because the root size is fluid, and gated on the pointer as well as the width because a
+   width query is not a pointer (CLAUDE.md §6) */
+@media (max-width: 640px), (pointer: coarse) {
+  .alerts-switch {
+    min-height: 44px;
+  }
 }
 
 /* ── the canvas menu ──
@@ -4940,6 +4983,87 @@ select {
 .cz-challenge-join {
   text-decoration: none;
   font-weight: 600;
+}
+
+/* ── a song sent into a chat (ChatSongPlayer) ───────────────────────────────
+   Inside the bubble and the whole width of it, like the invite card above. A song's words are
+   short and a bubble is as wide as its words, so the player asks for a width of its own — in
+   PIXELS, because the root size is fluid — that fits the browser's audio controls, and never more
+   than the bubble may be. */
+.cz-song {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  max-width: 100%;
+  min-width: 0;
+}
+.cz-song-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+/* a floor in pixels, so a long name wraps rather than being crushed by the length beside it */
+.cz-song-name {
+  flex: 1 1 auto;
+  min-width: 60px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cz-song-len {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+.cz-song-play {
+  align-self: flex-start;
+}
+.cz-song-audio {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+}
+/* there from the start so ▶ can unlock it inside the tap (iPhone Safari), shown once it has a link */
+.cz-song-audio.is-waiting {
+  display: none;
+}
+.cz-song-mine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+.cz-song-remove {
+  min-height: 26px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+}
+.cz-song-say {
+  margin: 0;
+  font-size: 0.8rem;
+}
+.cz-song.is-removed {
+  font-size: 0.85rem;
+  font-style: italic;
+  opacity: 0.8;
+}
+/* your own bubble is the accent colour, and so is a button: on it, a button is drawn in the
+   bubble's own text colour instead, or ▶ would be accent on accent */
+.cz-msg.is-mine .cz-song .btn {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+}
+/* ⚠️ AND SO IS THE FOCUS RING: the site's is a 2px accent outline, which on your own bubble is
+   accent on accent — a keyboard reaching ▶, Remove or the player saw nothing move. The bubble's
+   own text colour is the one thing guaranteed to stand against its fill. */
+.cz-msg.is-mine :focus-visible {
+  outline-color: currentColor;
 }
 
 /* ── make your own palette ──────────────────────────────────────────────────
@@ -22080,6 +22204,99 @@ button.chron-runnote-n {
 }
 .inst-export-done {
   margin-top: 0.4rem;
+}
+/* 💬 Send in a chat: the chat and the name, then Send, wrapping onto lines of their own on a
+   phone. The name takes the room left over and keeps a floor in pixels, because an input's own
+   minimum is its `size` (~200px) and the root size is fluid. */
+.inst-send-pick {
+  margin-top: 0.4rem;
+}
+.inst-send-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.7rem;
+}
+.inst-send-chat {
+  min-width: 0;
+  max-width: 100%;
+}
+.inst-send-chat select {
+  min-width: 0;
+  max-width: 100%;
+}
+.inst-send-name {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.inst-send-name input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 100px;
+  font: inherit;
+  padding: 0.15rem 0.4rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.inst-send-say {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  /* it quotes the song's name, which is whatever was typed — sixty letters with no space in them
+     included */
+  overflow-wrap: anywhere;
+}
+.inst-send-say:empty {
+  margin: 0;
+}
+/* Your songs in chat: a song a line, its name taking what the length and Remove leave, with a
+   floor in pixels so a long name wraps rather than being crushed to nothing */
+.inst-send-mine {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+}
+.inst-send-mine-head {
+  margin: 0 0 0.3rem;
+  font-weight: 600;
+}
+.inst-send-mine-head .muted {
+  font-weight: 400;
+}
+.inst-send-mine-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.inst-send-mine-one {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.6rem;
+  min-width: 0;
+}
+.inst-send-mine-name {
+  flex: 1 1 120px;
+  min-width: 80px;
+  overflow-wrap: anywhere;
+}
+.inst-send-mine-len {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.inst-send-mine-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+.inst-send-mine-x {
+  min-height: 26px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
 }
 .inst-copy-all .inst-pick {
   min-width: 0;

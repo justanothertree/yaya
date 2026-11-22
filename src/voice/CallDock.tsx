@@ -273,6 +273,7 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
           msgs={chat.msgs}
           inRoom={chat.inRoom}
           err={chat.err}
+          songs={chat.songs}
           focusBox={chatFrom !== null}
           onClose={() => {
             // back to where it was opened from, before the ✕ holding the focus goes

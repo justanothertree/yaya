@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../finance/client'
+import { sayFunctionError } from '../finance/functionError'
 import { previewMember } from '../dev/previewMember'
 import { pvDescribe, pvDrop, pvKeep, pvPictures, pvUsed } from '../dev/picturePreview'
 import {
@@ -370,25 +371,4 @@ export async function describePicture(id: string, alt: string): Promise<{ why: s
   if (previewMember) return pvDescribe(id, alt)
   const { error } = await getSupabaseClient().rpc('picture_alt', { p_id: id, p_alt: alt })
   return error ? { why: error.message || 'that did not save' } : null
-}
-
-/**
- * ⚠️ A FUNCTION'S REFUSAL IS IN ITS BODY, NOT IN `error.message`. supabase-js reports a non-2xx
- * from `functions.invoke` as "Edge Function returned a non-2xx status code" and puts the response
- * on the error — so every ceiling `picture_claim` raises would arrive as that one useless
- * sentence unless the body is read. The ceilings are written to be read by a person; this is what
- * lets them be.
- */
-async function sayFunctionError(error: unknown, fallback: string): Promise<string> {
-  const res = (error as { context?: Response })?.context
-  if (res && typeof res.json === 'function') {
-    try {
-      const body = await res.json()
-      if (body?.error) return String(body.error)
-    } catch {
-      /* not json, or already read — fall through to the plain message */
-    }
-  }
-  const msg = (error as { message?: string })?.message
-  return msg && !/non-2xx/i.test(msg) ? msg : fallback
 }
