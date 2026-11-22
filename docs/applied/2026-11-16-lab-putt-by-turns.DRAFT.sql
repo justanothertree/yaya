@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Putt by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_putt_by_turns`, version 20261122025239:
+-- md5(statements[1]) = be1a0147b23178432bc19678735b339f, this file's body. The record is
+-- supabase/migrations/20261122025239_lab_putt_by_turns.sql.
+--
+-- (as drafted) Putt by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
