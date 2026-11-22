@@ -4,7 +4,7 @@ import { countText } from './record'
 /**
  * A set: a quantity of one Circuit exercise on one day — recorded once, and canonical for both
  * rooms. Step 1 of docs/2026-11-07-chronicle-recorded-once.md §2f, whose table is
- * docs/2026-11-08-chronicle-sets.DRAFT.sql.
+ * docs/applied/2026-11-08-chronicle-sets.DRAFT.sql.
  *
  * ⚠️ THE TABLE IS A DRAFT, NOT APPLIED TO PRODUCTION, and nothing on screen counts sets yet: the
  * tally, the Circuit grid and the day's feed learn them in step 2. What the room does with them
@@ -34,9 +34,16 @@ export type ChronSet = {
   counted: boolean
 }
 
+/**
+ * A sum of typed decimals, as Postgres `numeric` holds it. Floats make 1.1 + 2.2 into
+ * 3.3000000000000003 while the server's sum is exactly 3.3; fifteen significant digits is as many as
+ * a double always carries faithfully, so this drops the float's noise and nothing a person typed.
+ */
+export const asNumeric = (n: number): number => Number(n.toPrecision(15))
+
 /** How much of a sitting's count its sets hold — the floor the server holds that count to. */
 export const countedIn = (sets: readonly ChronSet[], entry: string): number =>
-  sets.reduce((n, s) => (s.entry === entry && s.counted ? n + s.value : n), 0)
+  asNumeric(sets.reduce((n, s) => (s.entry === entry && s.counted ? n + s.value : n), 0))
 
 /**
  * What a set is called on screen: the exercise's name today, or the one it had when the set was

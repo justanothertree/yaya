@@ -583,3 +583,36 @@ export function packTable(
   u.set([p.walls, p.rung, p.preview], TABLE.walls / 4)
   return into
 }
+
+/** fewest dominoes kept per puzzle, by name */
+export type Best = Record<string, number>
+/**
+ * What Topple keeps: the puzzle it was on, the fewest dominoes per puzzle, and the free layout.
+ * Moved here unchanged from ToppleDemo so the Lab's share card reads it the toy's own way.
+ */
+export function readSaved(text: string | null): { puzzle: number; best: Best; free: Layout } {
+  const empty: Layout = { dominoes: [], bells: [], walls: [] }
+  try {
+    const v = JSON.parse(text ?? 'null') as {
+      puzzle?: unknown
+      best?: Record<string, unknown>
+      free?: unknown
+    } | null
+    const puzzle =
+      typeof v?.puzzle === 'number' &&
+      Number.isInteger(v.puzzle) &&
+      v.puzzle >= 0 &&
+      v.puzzle < PUZZLES.length
+        ? v.puzzle
+        : 0
+    const best: Best = {}
+    for (const p of PUZZLES) {
+      const n = v?.best?.[p.name]
+      if (typeof n === 'number' && Number.isInteger(n) && n > 0) best[p.name] = n
+    }
+    const free = readLayout(JSON.stringify(v?.free ?? empty))
+    return { puzzle, best, free: typeof free === 'string' ? empty : free }
+  } catch {
+    return { puzzle: 0, best: {}, free: empty }
+  }
+}

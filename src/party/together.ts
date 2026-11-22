@@ -20,15 +20,21 @@
  * a different feature wearing this one's label. Joining stays a decision.
  */
 
-const KEY = 'party_share_all_v1'
+/**
+ * ⚠️ NOT REMEMBERED, AND OFF AGAIN WHEN A CALL ENDS (Evan, 13 Nov). It was kept in localStorage
+ * under this key, so a switch turned on once came back on by itself in every later call, and
+ * party.ts's own promise ("off by default, not persisted") had quietly stopped being true. Now it
+ * starts off on every load and party.ts turns it off as a call ends. The old key is removed so a
+ * stale '1' cannot sit in somebody's browser meaning nothing.
+ */
+const OLD_KEY = 'party_share_all_v1'
+try {
+  localStorage.removeItem(OLD_KEY)
+} catch {
+  /* private mode, or no storage at all: nothing was kept */
+}
 
-let on = (() => {
-  try {
-    return localStorage.getItem(KEY) === '1'
-  } catch {
-    return false
-  }
-})()
+let on = false
 
 const listeners = new Set<() => void>()
 /* a stable snapshot, so useSyncExternalStore does not see a new object every render */
@@ -47,11 +53,6 @@ export const together = {
     if (next === on) return
     on = next
     snap = { on }
-    try {
-      localStorage.setItem(KEY, on ? '1' : '0')
-    } catch {
-      /* private mode: it holds for this visit */
-    }
     for (const fn of listeners) fn()
   },
 }

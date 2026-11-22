@@ -22,6 +22,7 @@ import {
   type V2,
 } from './epicycles'
 import { createEpicycles, type EpicyclesView } from './epicyclesEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -77,7 +78,7 @@ export function EpicyclesDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(EPICYCLES_KEY, JSON.stringify(kept))
+      writeKept(EPICYCLES_KEY, JSON.stringify(kept))
     } catch {
       /* private mode: kept for this visit */
     }

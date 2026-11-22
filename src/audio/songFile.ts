@@ -2,6 +2,7 @@ import { INSTRUMENTS, type Fx, type InstrumentId } from './synth'
 import { toEvents, toNotes, type Note } from './noteEdit'
 import type { Layer, LoopEvent } from './looper'
 import { markOf, readMark, uniqueMarks } from './patternMark'
+import { tidyLyrics } from './lyricLines'
 
 /**
  * A song, as data you can keep.
@@ -122,6 +123,16 @@ export type SongLayer = {
    * open exactly as they do today.
    */
   kind?: string
+  /**
+   * The words this part sings, one line per bar of the song — see songLyrics.ts.
+   *
+   * ⚠️ ADDITIVE, like `plan` and `kind`: absent on every part nobody wrote on, and an older
+   * bundle reading a newer file simply does not see it. Read through `tidyLyrics`, which is the
+   * same bound the room holds itself to, because a file is a stranger's text.
+   */
+  lyrics?: string[]
+  /** how loud the words are sung, 0..MAX_GAIN; absent means 1 — see Layer.wordsGain. Additive. */
+  wordsGain?: number
 }
 
 export type Song = {
@@ -156,6 +167,8 @@ export function toSong(
       play: l.play,
       plan: l.plan,
       kind: markOf(l.id) ?? undefined,
+      lyrics: l.lyrics,
+      wordsGain: l.wordsGain,
     })),
   }
 }
@@ -253,6 +266,8 @@ function readLayer(v: unknown, budget: number): SongLayer | null {
     play: readPlay(o.play),
     plan: readPlan(o.plan),
     kind: readMark(o.kind) ?? undefined,
+    lyrics: tidyLyrics(o.lyrics, MAX_BARS),
+    wordsGain: typeof o.wordsGain === 'number' ? num(o.wordsGain, 0, MAX_GAIN, 1) : undefined,
   }
 }
 
@@ -337,6 +352,10 @@ export type PackedSong = {
     m: 0 | 1
     /** which picker owns it, as the live id's tag — see patternMark.ts */
     k?: string
+    /** the words it sings, one line per song bar — see SongLayer.lyrics; absent when none */
+    w?: string[]
+    /** how loud they are sung, in hundredths like `v` — absent at 1, the common case */
+    wv?: number
     n: number[]
   }>
 }
@@ -402,6 +421,8 @@ export function packSong(song: Song): PackedSong {
         ].map((x) => Math.round(x * 100) / 100) as [number, number, number, number, number, number],
         m: layer.muted ? 1 : 0,
         k: layer.kind,
+        w: tidyLyrics(layer.lyrics, MAX_BARS),
+        wv: layer.wordsGain !== undefined ? Math.round(layer.wordsGain * 100) : undefined,
         n,
       }
     }),
@@ -472,6 +493,10 @@ function readPacked(v: Record<string, unknown>): Song | null {
       : undefined
     const gain =
       typeof o.v === 'number' && Number.isFinite(o.v) ? num(o.v / 100, 0, MAX_GAIN, 1) : undefined
+    const wordsGain =
+      typeof o.wv === 'number' && Number.isFinite(o.wv)
+        ? num(o.wv / 100, 0, MAX_GAIN, 1)
+        : undefined
     layers.push({
       instrument: inst,
       events,
@@ -482,6 +507,8 @@ function readPacked(v: Record<string, unknown>): Song | null {
       play,
       plan,
       kind: readMark(o.k) ?? undefined,
+      lyrics: tidyLyrics(o.w, MAX_BARS),
+      wordsGain,
     })
   }
   if (!layers.length) return null
@@ -543,5 +570,9 @@ export function songToLayers(s: Song): Layer[] {
     gain: l.gain,
     play: l.play,
     plan: l.plan,
+    /* ⚠️ the words too — the last step before the looper is where `gain` and `plan` were once
+       lost, and a lyric left behind here would be a song that opens without its words */
+    ...(l.lyrics ? { lyrics: l.lyrics } : {}),
+    ...(l.wordsGain !== undefined ? { wordsGain: l.wordsGain } : {}),
   }))
 }

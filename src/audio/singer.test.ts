@@ -1,34 +1,111 @@
 import { describe, expect, it } from 'vitest'
-import { assignSyllables, splitLyrics } from './lyrics'
-import { chopGates, consonantLength, crushCurve, planLine, type SingOpts } from './singer'
+import { GLIDES, VOWELS, assignSyllables, splitLyrics } from './lyrics'
+import {
+  PRESETS,
+  chopGates,
+  onsetLength,
+  crushCurve,
+  doublePhrase,
+  hz,
+  LIGHT,
+  lateVibratoOf,
+  lightTail,
+  plate,
+  planLine,
+  planPhrases,
+  TAIL,
+  voicesFor,
+  glideStretch,
+  type Burst,
+  type Phrase,
+  type SingOpts,
+  type Step,
+  type Voice,
+} from './singer'
 
 /**
- * The voice's timing, asked without a browser. What is checked is where things land in seconds —
- * the vowel on the beat, the consonant before it, a hold carrying the vowel — which is the part
- * of singing a test can be right about. Whether it sounds like singing is for ears.
+ * The voice, asked without a browser. The timeline is read through `valueAt`, a model of how Web
+ * Audio plays automation (set, linear ramp, exponential ramp, ease toward a target) written here
+ * and nowhere else — so a test asks "what pitch is the voice at 0.47s", not "did the planner push
+ * the step it pushes". Whether it sounds like singing is for ears.
  */
+
 const opts = (over: Partial<SingOpts> = {}): SingOpts => ({
-  lead: 'bright',
+  preset: 'clean',
+  double: false,
   harmony: null,
-  glitch: { stutter: false, crush: false, chop: false, formant: 1 },
   beat: 0.5,
   ...over,
 })
 const notes = [0, 0.5, 1, 1.5].map((t, i) => ({ t, dur: 0.45, midi: 72 + i }))
-const sung = (lyric: string) => assignSyllables(notes, splitLyrics(lyric)).sung
+const sung = (lyric: string, ns = notes) => assignSyllables(ns, splitLyrics(lyric)).sung
+
+/** a preset with the humanising off, so a test can ask for exact times and pitches */
+const exact = (v: Voice): Voice => ({ ...v, humanize: { cents: 0, ms: 0, db: 0, drift: 0 } })
+
+/** the value an AudioParam holds at time t after these events — Web Audio's rules, restated */
+type Ease = { to: number; tc: number; t0: number; v0: number }
+function valueAt(steps: readonly Step[], t: number): number {
+  let v = 0
+  let vt = -Infinity
+  let ease: Ease | null = null
+  const curve = (g: Ease, time: number) => g.to + (g.v0 - g.to) * Math.exp(-(time - g.t0) / g.tc)
+  for (const s of steps) {
+    if (s.t > t) {
+      if (s.how === 'ramp') return v + ((s.v - v) * (t - vt)) / (s.t - vt)
+      if (s.how === 'exp') return v * (s.v / v) ** ((t - vt) / (s.t - vt))
+      break
+    }
+    if (s.how === 'target') {
+      const base: number = ease ? curve(ease, s.t) : v
+      ease = { to: s.v, tc: s.tc, t0: s.t, v0: base }
+      v = base
+    } else {
+      v = s.v
+      ease = null
+    }
+    vt = s.t
+  }
+  return ease ? curve(ease, t) : v
+}
+
+const cents = (a: number, b: number) => 1200 * Math.log2(a / b)
+const plan = (lyric: string, ns: typeof notes, v: Voice, seed = 1, over: Partial<SingOpts> = {}) =>
+  planPhrases(planLine(sung(lyric, ns), 0, opts(over)), v, 0.5, seed)
 
 describe('words land on the beat', () => {
   it('the vowel starts on its note, and the consonant just before it', () => {
     const ev = planLine(sung('one sky two three'), 10, opts())
     const sky = ev[1]
     expect(sky.vowelAt).toBeCloseTo(10.5)
-    expect(sky.from).toBeCloseTo(10.5 - consonantLength(sky.phones.onset))
+    expect(sky.from).toBeCloseTo(10.5 - onsetLength(sky.phones.onsets))
     expect(sky.from).toBeLessThan(sky.vowelAt)
   })
 
   it('the first word of a line does not reach back before the line starts', () => {
     const ev = planLine(sung('sky one two three'), 10, opts())
     expect(ev[0].from).toBe(10)
+  })
+
+  it('with time in hand before the line, its first consonant comes before the downbeat', () => {
+    const ev = planLine(sung('sky one two three'), 10, opts({ lead: 0.5 }))
+    expect(ev[0].vowelAt).toBe(10)
+    expect(ev[0].from).toBeCloseTo(10 - onsetLength(ev[0].phones.onsets), 9)
+    /* and only as far as the time there is */
+    expect(planLine(sung('sky'), 10, opts({ lead: 0.02 }))[0].from).toBeCloseTo(9.98, 9)
+  })
+
+  it('on fast notes the consonant leaves the vowel before it more than half its note', () => {
+    /* sixteenths at 140 bpm: 107ms apart, against an 85ms s */
+    const step = 60 / 140 / 4
+    const fast = [0, 1, 2, 3].map((i) => ({ t: i * step, dur: step * 0.9, midi: 72 }))
+    const ev = planLine(sung('so so so so', fast), 0, opts())
+    for (let i = 1; i < ev.length; i++) {
+      const gap = ev[i].vowelAt - ev[i - 1].vowelAt
+      expect(ev[i].vowelAt).toBeCloseTo(i * step, 9)
+      expect(ev[i].from).toBeLessThan(ev[i].vowelAt)
+      expect(ev[i].from - ev[i - 1].vowelAt).toBeGreaterThan(gap / 2)
+    }
   })
 
   it('a hold carries the syllable across: one event, its pitches, its end', () => {
@@ -40,26 +117,50 @@ describe('words land on the beat', () => {
 })
 
 describe('two voices, in harmony', () => {
-  it('the harmony is the other voice, singing its own notes at the same times', () => {
+  it('the harmony is its own part, singing its own notes at the same times', () => {
     const ev = planLine(sung('one two three four'), 0, opts({ harmony: (m) => m + 4 }))
-    const lead = ev.filter((e) => e.voice === 'bright')
-    const harm = ev.filter((e) => e.voice === 'airy')
+    const lead = ev.filter((e) => e.part === 'lead')
+    const harm = ev.filter((e) => e.part === 'harmony')
     expect(lead).toHaveLength(4)
     expect(harm).toHaveLength(4)
     expect(harm.map((e) => e.pitches[0].midi)).toEqual(lead.map((e) => e.pitches[0].midi + 4))
     expect(harm.map((e) => e.vowelAt)).toEqual(lead.map((e) => e.vowelAt))
   })
+
+  it('the harmony sings vowels only — its consonant noise would smear the lead’s', () => {
+    const ps = plan('see sky too far', notes, PRESETS.clean, 1, { harmony: (m) => m + 4 })
+    expect(ps.find((p) => p.part === 'lead')!.bursts.length).toBeGreaterThan(0)
+    expect(ps.find((p) => p.part === 'harmony')!.bursts).toEqual([])
+  })
 })
 
 describe('the glitches', () => {
   it('a syllable on the top of a bar stutters three times on 32nds; one off the bar does not', () => {
-    const ev = planLine(
-      sung('one two three four'),
-      0,
-      opts({ glitch: { stutter: true, crush: false, chop: false, formant: 1 } }),
-    )
+    const ev = planLine(sung('one two three four'), 0, opts({ preset: 'glitchy' }))
     expect(ev[0].stutter).toEqual([0, 0.0625, 0.125])
     expect(ev[1].stutter).toEqual([])
+  })
+
+  it('the stutter repeats the start quietly, silent between, each sliver louder, then the voice', () => {
+    const [p] = plan('o two three four', notes, PRESETS.glitchy, 1, { preset: 'glitchy' })
+    const first = valueAt(p.voicing, 0.015)
+    const third = valueAt(p.voicing, 0.14)
+    expect(first).toBeGreaterThan(0.3)
+    expect(first).toBeLessThan(0.7)
+    expect(valueAt(p.voicing, 0.045)).toBe(0)
+    expect(third).toBeGreaterThan(first)
+    expect(valueAt(p.voicing, 0.2)).toBeGreaterThan(0.85)
+  })
+
+  it('the stutter fades its slivers in and out instead of switching them — no clicks', () => {
+    const [p] = plan('o two three four', notes, PRESETS.glitchy, 1, { preset: 'glitchy' })
+    let last = valueAt(p.voicing, 0)
+    for (let t = 0.0005; t < 0.21; t += 0.0005) {
+      const v = valueAt(p.voicing, t)
+      /* half a millisecond may move it by a little, never by a step */
+      expect(Math.abs(v - last)).toBeLessThan(0.1)
+      last = v
+    }
   })
 
   it('the chop gates every sixteenth, on for 60% of it', () => {
@@ -74,4 +175,696 @@ describe('the glitches', () => {
     /* -1, -0.75 … 0.75, 1: nine levels for four steps each side */
     expect(levels.size).toBe(9)
   })
+})
+
+describe('phrases', () => {
+  it('one voice sings through a phrase; a real rest starts another', () => {
+    const ns = [
+      { t: 0, dur: 0.45, midi: 72 },
+      { t: 0.5, dur: 0.45, midi: 74 },
+      { t: 2, dur: 0.45, midi: 76 },
+    ]
+    const ps = plan('o o o', ns, exact(PRESETS.clean))
+    expect(ps).toHaveLength(2)
+    expect(ps[0].to).toBeGreaterThanOrEqual(0.95)
+    expect(ps[1].from).toBeGreaterThan(1)
+  })
+
+  it('a small gap is sung straight through, a vowel stretching to the next syllable', () => {
+    const [p] = plan('o o', notes.slice(0, 2), exact(PRESETS.clean))
+    /* the notes end at 0.45 and the next starts at 0.5: the voice does not let go in between */
+    expect(valueAt(p.voicing, 0.47)).toBeGreaterThan(0.4)
+  })
+
+  it('a vowel fills its whole note and, at the end of a phrase, lets go just after it', () => {
+    const [p] = plan('o', [{ t: 0, dur: 1.5, midi: 72 }], exact(PRESETS.clean))
+    expect(valueAt(p.voicing, 1.4)).toBeCloseTo(1, 5)
+    /* still sounding as the note ends, fading rather than stopped */
+    expect(valueAt(p.voicing, 1.5)).toBeGreaterThan(0.2)
+    expect(valueAt(p.voicing, 1.5)).toBeLessThan(0.8)
+    expect(valueAt(p.voicing, 1.5 + TAIL + 0.001)).toBe(0)
+    expect(p.to).toBeGreaterThan(1.5 + TAIL)
+  })
+
+  it('inside a phrase a syllable still lets go at its own end, so the next one is heard', () => {
+    /* a quarter-second gap: past legato, short of a rest — one phrase, two releases */
+    const [p] = plan(
+      'o o',
+      [
+        { t: 0, dur: 0.5, midi: 72 },
+        { t: 0.75, dur: 0.5, midi: 72 },
+      ],
+      exact(PRESETS.clean),
+    )
+    expect(valueAt(p.voicing, 0.51)).toBe(0)
+  })
+})
+
+describe('pitch', () => {
+  const two = [
+    { t: 0, dur: 0.48, midi: 72 },
+    { t: 0.5, dur: 0.48, midi: 76 },
+  ]
+
+  it('glides between notes, leaving after the last one and arriving just after the beat', () => {
+    const v = exact(PRESETS.clean)
+    const [p] = plan('o o', two, v)
+    const before = valueAt(p.pitch, 0.5 - v.glide)
+    const after = valueAt(p.pitch, 0.5 + v.glide * 0.35 + 0.005)
+    expect(Math.abs(cents(before, hz(72)))).toBeLessThan(1)
+    expect(Math.abs(cents(after, hz(76)))).toBeLessThan(1)
+    /* in between it is somewhere in between, and only ever climbing */
+    let last = 0
+    for (let t = 0.5 - v.glide * 0.65; t <= 0.5 + v.glide * 0.35; t += 0.002) {
+      const f = valueAt(p.pitch, t)
+      expect(f).toBeGreaterThanOrEqual(last)
+      last = f
+    }
+    const mid = valueAt(p.pitch, 0.5 - v.glide * 0.15)
+    expect(mid).toBeGreaterThan(hz(72) * 1.01)
+    expect(mid).toBeLessThan(hz(76) * 0.99)
+  })
+
+  it('hard tune snaps: no pitch between the two notes, ever', () => {
+    const [p] = plan('o o', two, PRESETS.glitchy)
+    for (let t = 0.3; t < 0.7; t += 0.001) {
+      const f = valueAt(p.pitch, t)
+      const near = Math.min(Math.abs(cents(f, hz(72))), Math.abs(cents(f, hz(76))))
+      expect(near).toBeLessThan(0.5)
+    }
+    expect(Math.abs(cents(valueAt(p.pitch, 0.5), hz(76)))).toBeLessThan(0.5)
+  })
+
+  it('a phrase scoops up into its first note', () => {
+    const v = exact(PRESETS.breathy)
+    const [p] = plan('o', [{ t: 0.2, dur: 0.6, midi: 72 }], v)
+    expect(cents(valueAt(p.pitch, 0.19), hz(72))).toBeCloseTo(-v.scoop * 100, 0)
+    expect(Math.abs(cents(valueAt(p.pitch, 0.3), hz(72)))).toBeLessThan(1)
+  })
+})
+
+describe('a glide like a voice', () => {
+  /** where the pitch is between two notes, as a share of the way from the first to the second */
+  const share = (p: Phrase, t: number, a: number, b: number) =>
+    cents(valueAt(p.pitch, t), hz(a)) / cents(hz(b), hz(a))
+  const leap = (to: number) => [
+    { t: 0, dur: 0.48, midi: 60 },
+    { t: 0.5, dur: 0.48, midi: to },
+  ]
+
+  it('leaves slowly, moves fastest between the notes, and settles slowly into the new one', () => {
+    const v = exact(PRESETS.clean)
+    const [p] = plan('o o', leap(64), v)
+    const arrive = 0.5 + v.glide * 0.35
+    const leave = arrive - v.glide * glideStretch(4)
+    const at = (u: number) => share(p, leave + (arrive - leave) * u, 60, 64)
+    /* a straight line in cents would be at 10% and 90% here: an S is well short of both */
+    expect(at(0.1)).toBeLessThan(0.05)
+    expect(at(0.9)).toBeGreaterThan(0.95)
+    expect(at(0.5)).toBeCloseTo(0.5, 1)
+    /* and the middle fifth of the time covers more than twice the way of the first (a line: as much) */
+    expect(at(0.6) - at(0.4)).toBeGreaterThan(2 * (at(0.2) - at(0)))
+  })
+
+  it('takes a leap a little longer than a step, arriving at the same place after the beat', () => {
+    const v = exact(PRESETS.clean)
+    const start = (to: number) => {
+      const [p] = plan('o o', leap(to), v)
+      let t = 0.3
+      while (share(p, t, 60, to) < 0.02) t += 0.001
+      return t
+    }
+    expect(start(67)).toBeLessThan(start(62) - 0.015)
+    for (const to of [62, 67])
+      expect(share(plan('o o', leap(to), v)[0], 0.5 + v.glide * 0.35 + 0.002, 60, to)).toBeCloseTo(
+        1,
+        2,
+      )
+  })
+})
+
+describe('a word heard to begin', () => {
+  /** one syllable on one note, said as a word's start or not */
+  const said = (text: string, start: boolean, ns = [{ t: 0.4, dur: 0.5, midi: 69 }]) =>
+    planPhrases(
+      planLine(
+        ns.map((n) => ({ ...n, text, hold: false, start })),
+        0,
+        opts(),
+      ),
+      exact(PRESETS.clean),
+      0.5,
+    )[0]
+
+  it("a word's first consonant is louder than the same one inside a word", () => {
+    for (const text of ['pa', 'ta', 'ka', 'sa', 'fa', 'ha', 'cha']) {
+      const loud = said(text, true).bursts.map((b) => b.level)
+      const inside = said(text, false).bursts.map((b) => b.level)
+      expect(loud.length, text).toBeGreaterThan(0)
+      /* about 3.5dB: heard as leaning on it, never as a shout */
+      loud.forEach((l, k) => {
+        const db = 20 * Math.log10(l / inside[k])
+        expect(db, text).toBeGreaterThan(3)
+        expect(db, text).toBeLessThan(6)
+      })
+    }
+  })
+
+  it('the voice sinks further under an m or an l that starts a word', () => {
+    const two = [
+      { t: 0, dur: 0.45, midi: 69 },
+      { t: 0.5, dur: 0.45, midi: 69 },
+    ]
+    for (const text of ['ma', 'la']) {
+      const low = (start: boolean) => {
+        const p = planPhrases(
+          planLine(
+            two.map((n, i) => ({
+              ...n,
+              text: i ? text : 'a',
+              hold: false,
+              start: i ? start : true,
+            })),
+            0,
+            opts(),
+          ),
+          exact(PRESETS.clean),
+          0.5,
+        )[0]
+        let m = Infinity
+        for (let t = 0.4; t < 0.5; t += 0.001) m = Math.min(m, valueAt(p.voicing, t))
+        return m
+      }
+      expect(low(true), text).toBeLessThan(low(false) * 0.85)
+    }
+  })
+
+  it('between two vowels the voice holds until just before the second, dips, and comes back up', () => {
+    const [p] = plan('o o', notes.slice(0, 2), exact(PRESETS.clean))
+    /* full through the first vowel: it is not fading out under the second's dip */
+    for (let t = 0.1; t < 0.46; t += 0.01) expect(valueAt(p.voicing, t)).toBeGreaterThan(0.99)
+    /* a dip a word deep, just before the second */
+    let low = 1
+    for (let t = 0.46; t < 0.5; t += 0.001) low = Math.min(low, valueAt(p.voicing, t))
+    /* deeper than the half a syllable inside a word gets, and never down to silence */
+    expect(low).toBeLessThan(0.35)
+    expect(low).toBeGreaterThan(0.1)
+    /* and back up without a step: no two readings a millisecond apart differ by more than a ramp */
+    for (let t = 0.46; t < 0.56; t += 0.001)
+      expect(Math.abs(valueAt(p.voicing, t + 0.001) - valueAt(p.voicing, t))).toBeLessThan(0.05)
+    /* inside a word the same dip is half as deep */
+    const [inWord] = plan('o-o', notes.slice(0, 2), exact(PRESETS.clean))
+    let half = 1
+    for (let t = 0.46; t < 0.5; t += 0.001) half = Math.min(half, valueAt(inWord.voicing, t))
+    expect(half).toBeCloseTo(0.5, 2)
+  })
+})
+
+describe('vibrato', () => {
+  it('waits, then grows — only on a note held long enough to settle', () => {
+    const v = exact(PRESETS.clean)
+    const [p] = plan('o', [{ t: 0, dur: 1.2, midi: 72 }], v)
+    expect(valueAt(p.vibrato, 0.2)).toBe(0)
+    expect(valueAt(p.vibrato, v.vibrato.delay - 0.01)).toBe(0)
+    expect(valueAt(p.vibrato, v.vibrato.delay + v.vibrato.rise + 0.05)).toBeCloseTo(
+      v.vibrato.cents,
+      5,
+    )
+    expect(valueAt(p.vibrato, 1.21)).toBe(0)
+  })
+
+  it('a short note has none', () => {
+    const [p] = plan('o', [{ t: 0, dur: 0.3, midi: 72 }], exact(PRESETS.clean))
+    for (let t = 0; t < 0.35; t += 0.01) expect(valueAt(p.vibrato, t)).toBe(0)
+  })
+
+  it('the glitchy voice has none at all', () => {
+    const [p] = plan('o', [{ t: 0, dur: 2, midi: 72 }], PRESETS.glitchy)
+    for (let t = 0; t < 2; t += 0.05) expect(valueAt(p.vibrato, t)).toBe(0)
+  })
+})
+
+describe('the mouth', () => {
+  it('reaches the vowel’s own resonances, from the measured table', () => {
+    const [p] = plan('see', [{ t: 0.5, dur: 0.6, midi: 64 }], exact(PRESETS.clean))
+    const at = (k: number) => valueAt(p.formants[k], 0.75)
+    /* F2 and F3 straight from Peterson & Barney; F1 is lifted above the pitch (next test) */
+    expect(at(1) / VOWELS.ee[1]).toBeCloseTo(1, 1)
+    expect(at(2) / VOWELS.ee[2]).toBeCloseTo(1, 1)
+  })
+
+  it('a high note lifts F1 above its own pitch, as a soprano opens her jaw', () => {
+    const [p] = plan('see', [{ t: 0.5, dur: 0.6, midi: 76 }], exact(PRESETS.clean))
+    const f1 = valueAt(p.formants[0], 0.75)
+    expect(f1).toBeGreaterThan(hz(76) * 1.1)
+    expect(VOWELS.ee[0]).toBeLessThan(hz(76))
+  })
+
+  it('a diphthong moves from its first vowel to its second across the note', () => {
+    const [p] = plan('night', [{ t: 0.5, dur: 1, midi: 60 }], exact(PRESETS.clean))
+    expect(valueAt(p.formants[1], 0.6) / VOWELS.ah[1]).toBeCloseTo(1, 1)
+    expect(valueAt(p.formants[1], 1.35) / VOWELS.ee[1]).toBeCloseTo(1, 1)
+  })
+
+  it('moves smoothly: no formant jumps once the phrase has started', () => {
+    const [p] = plan(
+      'glit-ter in the dark',
+      notes.concat({ t: 2, dur: 0.45, midi: 70 }),
+      exact(PRESETS.clean),
+    )
+    for (const f of p.formants) expect(f.slice(1).every((s) => s.how === 'target')).toBe(true)
+  })
+})
+
+describe('consonants', () => {
+  const one = (lyric: string) =>
+    plan(lyric, [{ t: 1, dur: 0.8, midi: 69 }], exact(PRESETS.clean))[0] as Phrase
+
+  it('s: a hiss before the beat with the voice silent, then the vowel on the beat', () => {
+    const p = one('see')
+    const [h] = p.bursts
+    expect(h.through).toBe('band')
+    expect(h.at).toBeCloseTo(1 - onsetLength([{ kind: 'hiss', place: 'ridge' }]), 5)
+    expect(h.at + h.len).toBeGreaterThanOrEqual(1)
+    expect(valueAt(p.voicing, 0.96)).toBe(0)
+    expect(valueAt(p.voicing, 1 + PRESETS.clean.attack + 0.01)).toBeCloseTo(1, 5)
+  })
+
+  it('z keeps the voice humming under its hiss, well under a vowel', () => {
+    const z = valueAt(one('zee').voicing, 0.96)
+    expect(z).toBeGreaterThan(0.1)
+    expect(z).toBeLessThan(0.5)
+  })
+
+  it('t: closure, a short burst, then breath, then the voice', () => {
+    const p = one('tee')
+    const burst = p.bursts.find((b) => b.through === 'band')!
+    const breath = p.bursts.find((b) => b.through === 'vowel')!
+    expect(burst.len).toBeLessThanOrEqual(0.015)
+    expect(burst.at + burst.len).toBeLessThanOrEqual(1)
+    expect(breath.at).toBeGreaterThanOrEqual(burst.at + burst.len - 1e-9)
+    expect(valueAt(p.voicing, 0.98)).toBe(0)
+  })
+
+  it('a closing k stops the voice before the note ends and bursts at the end', () => {
+    const p = one('dark')
+    expect(valueAt(p.voicing, 1.5)).toBeCloseTo(1, 5)
+    expect(valueAt(p.voicing, 1.77)).toBe(0)
+    expect(p.bursts.some((b) => b.at > 1.7 && b.at < 1.8)).toBe(true)
+  })
+
+  it('h is breath through the coming vowel, not a hiss of its own', () => {
+    expect(one('he').bursts[0].through).toBe('vowel')
+  })
+})
+
+describe('words you can make out', () => {
+  /* one syllable, on its own note after a rest: A4, most of a second long */
+  const one = (lyric: string) =>
+    plan(lyric, [{ t: 1, dur: 0.8, midi: 69 }], exact(PRESETS.clean))[0] as Phrase
+  /* a vowel, then the syllable straight after it — the way a stop is heard inside a line */
+  const after = (lyric: string) =>
+    plan(
+      `o ${lyric}`,
+      [
+        { t: 0.6, dur: 0.38, midi: 69 },
+        { t: 1, dur: 0.8, midi: 69 },
+      ],
+      exact(PRESETS.clean),
+    )[0] as Phrase
+  const clicks = (p: Phrase) => p.bursts.filter((b) => b.through === 'band' && b.rise <= 0.001)
+  const hisses = (p: Phrase) => p.bursts.filter((b) => b.through === 'band' && b.rise > 0.001)
+  const f = (p: Phrase, k: number, t: number) => valueAt(p.formants[k], t)
+
+  it('a stop inside a line is a real silence before its burst', () => {
+    for (const word of ['pa', 'ta', 'ka']) {
+      const p = after(word)
+      const [burst] = clicks(p)
+      /* 30ms of nothing — the gap is half of what makes a stop a stop */
+      for (let t = burst.at - 0.03; t < burst.at; t += 0.002) expect(valueAt(p.voicing, t)).toBe(0)
+      expect(valueAt(p.voicing, 0.85)).toBeGreaterThan(0.5)
+    }
+  })
+
+  it('even squeezed onto fast notes, a stop keeps a silence', () => {
+    const step = 60 / 140 / 4
+    const fast = [0, 1, 2, 3].map((i) => ({ t: 0.5 + i * step, dur: step * 0.95, midi: 72 }))
+    const [p] = plan('o to to to', fast, exact(PRESETS.clean))
+    const bursts = clicks(p)
+    expect(bursts).toHaveLength(3)
+    for (const burst of bursts) {
+      expect(valueAt(p.voicing, burst.at - 0.012)).toBe(0)
+      expect(valueAt(p.voicing, burst.at - 0.002)).toBe(0)
+    }
+  })
+
+  it('a stop after silence spends the time it has on its burst and breath, not on more silence', () => {
+    /* a line starting at 1s on a t, with 60ms in hand before it: what a t needs once its
+       closure is free */
+    const ev = planLine(sung('to', [{ t: 0, dur: 0.6, midi: 69 }]), 1, opts({ lead: 0.06 }))
+    const [p] = planPhrases(ev, exact(PRESETS.clean), 0.5, 1)
+    expect(ev[0].from).toBeCloseTo(0.94, 9)
+    const breath = p.bursts.find((b) => b.through === 'vowel')!
+    expect(breath.len).toBeGreaterThanOrEqual(0.035)
+  })
+
+  it('a line that starts on its consonant with no time for it still reaches the vowel', () => {
+    /* a line starting at 1s, its first note on its first beat and nothing in hand before it */
+    for (const word of ['la', 'wa', 'sa', 'the', 'ma']) {
+      const ev = planLine(sung(word, [{ t: 0, dur: 0.6, midi: 69 }]), 1, opts())
+      const [p] = planPhrases(ev, exact(PRESETS.clean), 0.5, 1)
+      const want = word === 'the' ? VOWELS.uh[1] : VOWELS.ah[1]
+      expect(ev[0].from, word).toBe(1)
+      expect(f(p, 1, 1.3) / want, word).toBeCloseTo(1, 1)
+    }
+  })
+
+  it('a burst is there at once and short; a hiss swells in', () => {
+    for (const b of clicks(one('ta'))) expect(b.len).toBeLessThanOrEqual(0.02)
+    const [s] = hisses(one('sa'))
+    expect(s.rise).toBeGreaterThanOrEqual(0.005)
+  })
+
+  it('where the mouth closes moves the vowel: F2 starts low after a b, high after a d, and meets F3 after a g', () => {
+    const at = (word: string) => {
+      const p = one(word)
+      const t = clicks(p)[0].at
+      return { p, f1: f(p, 0, t), f2: f(p, 1, t), f3: f(p, 2, t) }
+    }
+    const b = at('ba')
+    const d = at('da')
+    const g = at('ga')
+    expect(d.f2 - b.f2).toBeGreaterThan(300)
+    expect(g.f2).toBeGreaterThan(b.f2)
+    expect(g.f2).toBeLessThan(d.f2)
+    /* the velar pinch: F2 and F3 far closer at the release than in the vowel */
+    expect(g.f3 - g.f2).toBeLessThan(0.6 * (f(g.p, 2, 1.5) - f(g.p, 1, 1.5)))
+    /* any closure starts the first formant low, and the vowel opens it */
+    for (const x of [b, d, g]) expect(x.f1).toBeLessThan(0.7 * f(x.p, 0, 1.5))
+    /* and then it is the vowel, whatever came first */
+    for (const x of [d, g]) expect(f(x.p, 1, 1.25) / f(b.p, 1, 1.25)).toBeCloseTo(1, 1)
+  })
+
+  it('m and n are different sounds: their murmurs differ, and so does the vowel leaving them', () => {
+    const m = one('ma')
+    const n = one('na')
+    expect(f(n, 1, 0.97) - f(m, 1, 0.97)).toBeGreaterThan(250)
+    expect(valueAt(n.muffle, 0.97)).toBeGreaterThan(valueAt(m.muffle, 0.97))
+    expect(f(n, 1, 1.01) - f(m, 1, 1.01)).toBeGreaterThan(250)
+  })
+
+  it('a hum and a voice bar are heard through a nearly closed mouth, a vowel through an open one', () => {
+    const m = one('ma')
+    expect(valueAt(m.muffle, 0.97)).toBeLessThan(2000)
+    expect(valueAt(m.muffle, 1.3)).toBeGreaterThan(10000)
+    const b = after('ba')
+    const [burst] = clicks(b)
+    expect(valueAt(b.muffle, burst.at - 0.01)).toBeLessThan(1000)
+    expect(valueAt(b.voicing, burst.at - 0.01)).toBeGreaterThan(0)
+    expect(valueAt(b.voicing, burst.at - 0.01)).toBeLessThan(0.2)
+  })
+
+  it('a k is a different click before "ee" than before "oo": its burst sits on the vowel coming', () => {
+    const k = (word: string) => clicks(one(word))[0].hz
+    expect(k('kee') - k('koo')).toBeGreaterThan(500)
+  })
+
+  it('a closing consonant run straight into the same one opening the next word is sung once', () => {
+    const ns = [
+      { t: 1, dur: 0.48, midi: 69 },
+      { t: 1.5, dur: 0.5, midi: 69 },
+    ]
+    const [p] = plan('eat tea', ns, exact(PRESETS.clean))
+    expect(clicks(p).filter((b) => b.at > 1.2 && b.at < 1.6)).toHaveLength(1)
+  })
+
+  it('each hiss by its place: s high, sh lower and louder, f and th quiet and wide', () => {
+    const band = (word: string): Burst => hisses(one(word))[0]
+    const s = band('sa')
+    const sh = band('sha')
+    const fh = band('fa')
+    const th = band('tha')
+    expect(s.hz).toBeGreaterThan(5000)
+    expect(sh.hz).toBeLessThan(4000)
+    expect(sh.level).toBeGreaterThan(s.level)
+    for (const weak of [fh, th]) {
+      expect(weak.level).toBeLessThan(s.level / 2)
+      expect(weak.q).toBeLessThan(0.6)
+    }
+  })
+
+  it('w, y, l and r each have their own shape: l keeps F3 high, r pulls it down', () => {
+    const start = (word: string) => {
+      const p = one(word)
+      return [0, 1, 2].map((k) => f(p, k, 0.96))
+    }
+    const l = start('la')
+    const r = start('ra')
+    const w = start('wa')
+    expect(l[2] - r[2]).toBeGreaterThan(700)
+    expect(r[2]).toBeLessThan(2100)
+    expect(w[1]).toBeLessThan(l[1])
+    expect(l[2]).toBeGreaterThan(2750)
+    expect(start('ya')[1]).toBeGreaterThan(2400)
+    expect(GLIDES.r[2]).toBeLessThan(GLIDES.l[2])
+  })
+
+  it('every consonant of a cluster is sung, in order, before the vowel', () => {
+    const p = one('street')
+    const before = p.bursts.filter((b) => b.at < 1).sort((a, b) => a.at - b.at)
+    /* s, then the t's burst, both before the vowel */
+    expect(before[0].hz).toBeGreaterThan(5000)
+    expect(before[0].rise).toBeGreaterThan(0.001)
+    const t = before.find((b) => b.rise <= 0.001)!
+    expect(t.at).toBeGreaterThan(before[0].at + 0.03)
+    expect(t.at).toBeLessThan(1)
+    /* and the r: F3 pulled down just before the vowel, which then opens it */
+    expect(f(p, 2, 0.985)).toBeLessThan(f(p, 2, 1.3) - 300)
+  })
+
+  it('a word ends on its own consonants: "fish" on a sh, "six" on a k and an s', () => {
+    const fish = one('fish')
+    const end = fish.bursts.filter((b) => b.at > 1.3)
+    expect(end).toHaveLength(1)
+    expect(end[0].through).toBe('band')
+    expect(end[0].hz).toBeLessThan(4000)
+    const six = one('six')
+    const tail = six.bursts
+      .filter((b) => b.at > 1.3 && b.through === 'band')
+      .sort((a, b) => a.at - b.at)
+    expect(tail[0].rise).toBeLessThanOrEqual(0.001)
+    expect(tail[tail.length - 1].hz).toBeGreaterThan(5000)
+    expect(tail[tail.length - 1].rise).toBeGreaterThan(0.001)
+  })
+
+  it('the vowel heads for a closing consonant before the mouth closes on it', () => {
+    const p = one('bead')
+    const [close] = clicks(p).filter((b) => b.at > 1.3)
+    expect(f(p, 1, 1.4)).toBeGreaterThan(VOWELS.ee[1] * 0.95)
+    expect(f(p, 1, close.at)).toBeLessThan(f(p, 1, 1.4) - 250)
+  })
+
+  it('a word on its own is sung as a word: "my" is "mai", "we" is "wee"', () => {
+    expect(planLine(sung('my', notes.slice(0, 1)), 0, opts())[0].phones.to).toBe('ee')
+    expect(planLine(sung('we', notes.slice(0, 1)), 0, opts())[0].phones.vowel).toBe('ee')
+  })
+})
+
+describe('humanising', () => {
+  const ns = [0, 0.5, 1, 1.5, 2, 2.5].map((t, i) => ({ t, dur: 0.3, midi: 64 + i }))
+
+  it('the same seed sings the same line the same way, and another seed does not', () => {
+    const a = plan('o o o o o o', ns, PRESETS.clean, 7)
+    expect(plan('o o o o o o', ns, PRESETS.clean, 7)).toEqual(a)
+    expect(plan('o o o o o o', ns, PRESETS.clean, 8)).not.toEqual(a)
+  })
+
+  it('never strays further than it is allowed', () => {
+    const v = PRESETS.clean
+    for (let seed = 1; seed <= 20; seed++) {
+      const [p] = plan('o o o o o o', ns, v, seed)
+      ns.forEach((n) => {
+        /* the middle of each note, before any vibrato could begin */
+        const f = valueAt(p.pitch, n.t + 0.2)
+        expect(Math.abs(cents(f, hz(n.midi)))).toBeLessThanOrEqual(v.humanize.cents + 1e-6)
+      })
+    }
+  })
+})
+
+/* ── the vibe pass, round two (14 Nov 2026): three switches, each off unless asked for ── */
+describe('the late vibrato', () => {
+  const late = lateVibratoOf(exact(PRESETS.clean))
+
+  it("leaves a note of just over half a second alone, where today's voice wavers on it", () => {
+    const n = [{ t: 0, dur: 0.62, midi: 72 }]
+    const [today] = plan('o', n, exact(PRESETS.clean))
+    const [p] = plan('o', n, late)
+    let wavers = 0
+    for (let t = 0; t < 0.62; t += 0.01) {
+      expect(valueAt(p.vibrato, t)).toBe(0)
+      wavers = Math.max(wavers, valueAt(today.vibrato, t))
+    }
+    expect(wavers).toBeGreaterThan(5)
+  })
+
+  it('on a long note waits half a second, then grows to a gentler depth than today, more slowly', () => {
+    const [p] = plan('o', [{ t: 0, dur: 1.6, midi: 72 }], late)
+    expect(valueAt(p.vibrato, 0.49)).toBe(0)
+    const depth = valueAt(p.vibrato, 1.2)
+    expect(depth).toBeGreaterThan(10)
+    expect(depth).toBeLessThan(PRESETS.clean.vibrato.cents * 0.75)
+    expect(late.vibrato.rate).toBeLessThan(PRESETS.clean.vibrato.rate)
+    expect(valueAt(p.vibrato, 1.61)).toBe(0)
+  })
+
+  it('leaves alone a note too short for it to grow to half its depth', () => {
+    /* 0.7s: it would start at 0.5 and have 0.15s, not the 0.275s half its rise needs */
+    const [p] = plan('o', [{ t: 0, dur: 0.7, midi: 72 }], late)
+    for (let t = 0; t < 0.72; t += 0.005) expect(valueAt(p.vibrato, t)).toBe(0)
+    /* and 0.85s is long enough */
+    const [q] = plan('o', [{ t: 0, dur: 0.85, midi: 72 }], late)
+    let most = 0
+    for (let t = 0; t < 0.85; t += 0.005) most = Math.max(most, valueAt(q.vibrato, t))
+    expect(most).toBeGreaterThan(4)
+  })
+
+  it('the hard-tuned voice, which has none today, gets a light one, so the switch is never silent', () => {
+    expect(PRESETS.glitchy.vibrato.cents).toBe(0)
+    expect(lateVibratoOf(PRESETS.glitchy).vibrato.cents).toBeGreaterThan(0)
+  })
+})
+
+describe('the voices a line is sung with', () => {
+  const ns = [
+    { t: 0, dur: 0.45, midi: 72 },
+    { t: 0.5, dur: 0.45, midi: 74 },
+    { t: 1.5, dur: 0.45, midi: 76 },
+  ]
+  const v = PRESETS.clean
+  const specs = (over: Partial<SingOpts>) => {
+    const o = opts(over)
+    return voicesFor(planPhrases(planLine(sung('o o o', ns), 0, o), v, 0.5, 1), v, o)
+  }
+
+  it("with no switch on, the lead alone, or doubled either side — as today's voice sings", () => {
+    const one = specs({})
+    expect(one.map(({ ph, ...x }) => [ph.part, x])).toEqual([
+      ['lead', { pan: 0, gain: 1, cents: 0, bursts: true }],
+      ['lead', { pan: 0, gain: 1, cents: 0, bursts: true }],
+    ])
+    const two = specs({ double: true })
+    expect(two).toHaveLength(4)
+    expect(two.map((x) => x.pan)).toEqual([
+      -v.double.pan,
+      v.double.pan,
+      -v.double.pan,
+      v.double.pan,
+    ])
+  })
+
+  it('the octave: under every lead phrase once, an octave down, quiet, late, with no consonants', () => {
+    for (const double of [false, true]) {
+      const all = specs({ double, harmony: (m) => m + 4, octave: true })
+      const leads = all.filter((x) => x.ph.part === 'lead' && x.cents === 0)
+      const octaves = all.filter((x) => x.cents < -1000)
+      const harmony = all.filter((x) => x.ph.part === 'harmony')
+      expect(octaves).toHaveLength(leads.length)
+      expect(harmony.length).toBeGreaterThan(0)
+      for (const o of octaves) {
+        expect(Math.abs(o.cents + 1200)).toBeLessThan(10)
+        expect(o.bursts).toBe(false)
+        expect(o.gain).toBeLessThan(harmony[0].gain)
+        expect(o.ph.part).toBe('lead')
+      }
+      /* each a few milliseconds behind the lead it doubles */
+      octaves.forEach((o, i) => {
+        const late = o.ph.from - leads[i].ph.from
+        expect(late).toBeGreaterThan(0.002)
+        expect(late).toBeLessThan(0.02)
+      })
+    }
+  })
+})
+
+describe('the light room and the soft echo', () => {
+  it('the echo repeats every half beat, and the room outlasts its last repeat by 60dB', () => {
+    const { delay, tail } = lightTail(0.5)
+    expect(delay).toBeCloseTo(0.25, 9)
+    expect(LIGHT.echo.feedback).toBeLessThan(0.6)
+    let level = 1
+    let t = 0
+    while (level > 0.001) {
+      level *= LIGHT.echo.feedback
+      t += delay
+    }
+    expect(tail).toBeGreaterThanOrEqual(t - 1e-9)
+    expect(tail).toBeGreaterThanOrEqual(LIGHT.room.pre + LIGHT.room.decay)
+  })
+
+  it('the plate falls 60dB over its decay, and darkens as it falls', () => {
+    let x = 12345
+    const rand = () => (x = (x * 1103515245 + 12345) % 2 ** 31) / 2 ** 31
+    const rate = 8000
+    const [l] = plate(rate, 1, rand)
+    expect(l.length).toBe(rate)
+    const rms = (a: number, b: number) => {
+      let sum = 0
+      for (let i = a; i < b; i++) sum += l[i] * l[i]
+      return Math.sqrt(sum / (b - a))
+    }
+    expect(20 * Math.log10(rms(rate - rate / 20, rate) / rms(0, rate / 20))).toBeLessThan(-50)
+    /* darker: the sign changes far less often at the end than at the start */
+    const crossings = (a: number, b: number) => {
+      let n = 0
+      for (let i = a + 1; i < b; i++) if (l[i - 1] < 0 !== l[i] < 0) n++
+      return n / (b - a)
+    }
+    expect(crossings(rate - rate / 5, rate)).toBeLessThan(crossings(0, rate / 5) * 0.6)
+  })
+})
+
+describe('doubling', () => {
+  it('the second voice is the same phrase a little later, with a slightly different throat', () => {
+    const [p] = plan('see you', notes.slice(0, 2), PRESETS.clean)
+    const d = doublePhrase(p, 0.016, 1.015)
+    expect(valueAt(d.pitch, 0.316)).toBeCloseTo(valueAt(p.pitch, 0.3), 6)
+    expect(valueAt(d.formants[1], 0.316)).toBeCloseTo(valueAt(p.formants[1], 0.3) * 1.015, 3)
+    expect(d.bursts[0].at).toBeCloseTo(p.bursts[0].at + 0.016, 9)
+  })
+})
+
+describe('every preset, every kind of consonant: a timeline Web Audio will accept', () => {
+  const lyric = 'the quick brown fox jumps o-ver the la-zy dog _ shine night'
+  const ns = Array.from({ length: 16 }, (_, i) => ({
+    t: i * 0.4,
+    dur: i % 5 === 4 ? 0.75 : 0.35,
+    midi: 62 + ((i * 5) % 12),
+  }))
+  for (const id of Object.keys(PRESETS) as (keyof typeof PRESETS)[])
+    it(`${PRESETS[id].name}: ordered, finite, in range, inside its phrase`, () => {
+      for (const p of plan(lyric, ns, PRESETS[id], 3, { harmony: (m) => m + 3, preset: id })) {
+        const lists = [p.pitch, p.vibrato, p.voicing, p.muffle, p.gate, ...p.formants]
+        for (const l of lists)
+          l.forEach((s, i) => {
+            expect(Number.isFinite(s.v)).toBe(true)
+            expect(s.t).toBeGreaterThanOrEqual(p.from - 1e-9)
+            expect(s.t).toBeLessThanOrEqual(p.to)
+            if (i) expect(s.t).toBeGreaterThanOrEqual(l[i - 1].t)
+          })
+        for (const s of p.pitch) expect(s.v).toBeGreaterThan(20)
+        for (const s of p.voicing) expect(s.v).toBeGreaterThanOrEqual(0)
+        for (const s of p.voicing) expect(s.v).toBeLessThanOrEqual(1.2)
+        for (const f of p.formants) for (const s of f) expect(s.v).toBeGreaterThan(100)
+        for (const s of p.muffle) expect(s.v).toBeGreaterThan(100)
+        for (const b of p.bursts) {
+          expect(b.len).toBeGreaterThan(0)
+          expect(b.rise).toBeGreaterThan(0)
+          expect(b.rise).toBeLessThanOrEqual(b.len)
+          expect(b.level).toBeGreaterThan(0)
+          expect(b.at).toBeGreaterThanOrEqual(p.from - 1e-9)
+          expect(b.at + b.len).toBeLessThanOrEqual(p.to)
+        }
+      }
+    })
 })

@@ -52,6 +52,33 @@
   text-overflow: ellipsis;
 }
 
+/* A friend's finger on a Lab toy: a ring where it landed, fading out (src/party/party.ts onTap).
+   Centred on the point by its own negative margin; the transform is the rAF loop's. */
+.party-tap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  border: 3px solid hsl(var(--party-hue) 80% 55%);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: party-tap 0.7s ease-out forwards;
+}
+@keyframes party-tap {
+  from {
+    opacity: 1;
+    transform-origin: center;
+    scale: 0.6;
+  }
+  to {
+    opacity: 0;
+    scale: 1.4;
+  }
+}
+
 /* Someone who set "reduce motion" still wants to see the cursor, just not chase a lagging
    ghost of it — the rAF loop already snaps rather than tweens, so there is nothing to disable
    beyond the fade. */
@@ -59,4 +86,11 @@
   .party-cursor {
     transition: none;
   }
+}
+/* ⚠️ NOT LEFT TO index.css's BLANKET RULE, which shortens every animation to 1ms: this one ends
+   at opacity 0 and holds there, so 1ms would be a ring nobody sees. Without animation it stays
+   still and visible, and the loop hides it when its time is up. data-motion covers the OS
+   setting as well as the site's own switch (ui/motion.ts). */
+:root[data-motion='reduce'] .party-tap {
+  animation: none;
 }

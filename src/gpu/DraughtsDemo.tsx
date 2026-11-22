@@ -1,0 +1,472 @@
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  BOARDS,
+  DRAUGHTS_KEY,
+  LEVELS,
+  PIECES,
+  at,
+  choose,
+  colOf,
+  count,
+  isKing,
+  moves,
+  newGame,
+  owner,
+  play,
+  readSaved,
+  rowOf,
+  type Game,
+  type Level,
+  type Move,
+  type Saved,
+  type Who,
+} from './draughts'
+import { useKept } from './kept'
+import { draughtsRules, type DraughtsGame } from './draughtsRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
+const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
+const BOARD_NAMES: Record<Saved['board'], string> = { classic: 'Classic', wood: 'Wood', ice: 'Ice' }
+/** each set of pieces names its two sides */
+const SIDES: Record<Saved['pieces'], [string, string]> = {
+  red: ['Red', 'Black'],
+  wood: ['Light', 'Dark'],
+  mint: ['Mint', 'Plum'],
+}
+const FILES = 'abcdefgh'
+const COUNT_WORDS = ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+const squareName = (i: number) => `${FILES[colOf(i)]}${8 - rowOf(i)}`
+const same = (a: number[], b: number[]) => a.length === b.length && a.every((x, i) => x === b[i])
+
+export function DraughtsDemo() {
+  const [saved, setSaved] = useKept(DRAUGHTS_KEY, readSaved)
+  const [mode, setMode] = useState<Mode>('bot')
+  const [game, setGame] = useState<Game>(newGame)
+  const [you, setYou] = useState<Who>(1)
+  const [level, setLevel] = useState<Level>(saved.level)
+  /** the squares picked so far: the piece, then each landing of a jump in progress */
+  const [prefix, setPrefix] = useState<number[]>([])
+  const [last, setLast] = useState<Move | null>(null)
+  const [line, setLine] = useState('You play from the bottom and move first.')
+  const [cursor, setCursor] = useState(at(5, 0))
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const recorded = useRef(false)
+
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A move is
+     picked square by square as ever, shows once its last landing is picked, and waits for Send. */
+  const lm = useLabMatch('draughts')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as DraughtsGame | null) : null
+
+  /* ── the call's room: the game travels as the paths its pieces took */
+  const lab = useLabRoom('draughts', draughtsRules)
+  const words = tableSeats(lab, draughtsRules)
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** the side I move for: the bottom in seat 0 and together, the top in seat 1 */
+  const mySide: Who = inMatch
+    ? lm.view?.mode === 'versus' && lm.view.you === 1
+      ? 2
+      : 1
+    : room && room.mode === 'versus' && words.mySeat === 1
+      ? 2
+      : 1
+  /** the board on screen: the match's, the call's in a call, else this one */
+  const shown = matchGame ? matchGame.g : room ? room.game.g : game
+  const shownLast = matchGame ? matchGame.last : room ? room.game.last : last
+
+  const sides = SIDES[saved.pieces]
+  const all = moves(shown)
+  const yours = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(draughtsRules, room)
+      : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === you)
+  const computerTurn = mode === 'bot' && !inMatch && !game.winner && game.turn !== you
+  // the board turns round so the side you play is always at the bottom
+  const flip = inMatch || room ? mySide === 2 : mode === 'bot' ? you === 2 : false
+  const nameOf = (w: Who) =>
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
+        ? w === 1
+          ? 'You two'
+          : 'The computer'
+        : w - 1 === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? w === 1
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[w - 1])
+        : mode === 'bot'
+          ? w === you
+            ? 'You'
+            : 'The computer'
+          : sides[w - 1]
+  const verb = (w: Who, plain: string, s: string) => (nameOf(w) === 'You' ? plain : s)
+
+  const candidates = prefix.length
+    ? all.filter((m) => same(m.path.slice(0, prefix.length), prefix))
+    : []
+  const movable = new Set(all.map((m) => m.path[0]))
+  const lit = new Set(candidates.map((m) => m.path[prefix.length]).filter((x) => x !== undefined))
+  // pieces already jumped in a take that is still going
+  const jumped = new Set(
+    candidates.length ? candidates[0].taken.slice(0, Math.max(0, prefix.length - 1)) : [],
+  )
+
+  const apply = (m: Move) => {
+    const by = game.turn
+    const g = play(game, m)
+    setGame(g)
+    setLast(m)
+    setPrefix([])
+    if (g.winner) {
+      if (mode === 'bot' && !recorded.current) {
+        recorded.current = true
+        const r = g.winner === 3 ? 'drawn' : g.winner === you ? 'won' : 'lost'
+        setSaved((s) => ({
+          ...s,
+          record: { ...s.record, [level]: { ...s.record[level], [r]: s.record[level][r] + 1 } },
+        }))
+      }
+      const w = g.winner
+      setLine(
+        w === 3
+          ? 'A draw — only kings moving, and nothing taken, for forty moves each.'
+          : `${w === you || mode === 'two' ? '🏆 ' : ''}${nameOf(w)} ${verb(w, 'win', 'wins')} — ${count(g, w === 1 ? 2 : 1) ? 'no move left for the other side' : 'every piece taken'}.`,
+      )
+      return
+    }
+    const crowned = !isKing(game.board[m.path[0]]) && isKing(g.board[m.path[m.path.length - 1]])
+    const took = m.taken.length
+      ? `${nameOf(by)} ${verb(by, 'take', 'takes')} ${COUNT_WORDS[m.taken.length] ?? m.taken.length}${crowned ? ' and crowns' : ''}. `
+      : crowned
+        ? `${nameOf(by)} ${verb(by, 'reach', 'reaches')} the far row: a king. `
+        : ''
+    const forced = moves(g)[0]?.taken.length ? ' A take is there, so it must be taken.' : ''
+    setLine(
+      `${took}${mode === 'bot' ? (g.turn === you ? `Your move.${forced}` : 'The computer is thinking…') : `${sides[g.turn - 1]} to move.${forced}`}`,
+    )
+  }
+
+  const tap = (i: number) => {
+    if (!yours) return
+    if (movable.has(i) && (prefix.length <= 1 || !lit.has(i))) {
+      setPrefix(prefix[0] === i ? [] : [i])
+      return
+    }
+    if (!lit.has(i)) return
+    const next = [...prefix, i]
+    const done = all.find((m) => same(m.path, next))
+    if (done && inMatch) {
+      // in a match the move waits for Send; the server plays it and the board comes back
+      setPrefix([])
+      lm.play(done.path)
+    } else if (done && room) {
+      // in the call the host decides: this asks it, and the board comes back with everybody's
+      setPrefix([])
+      lab.act({ t: 'move', move: done.path })
+    } else if (done) apply(done)
+    else setPrefix(next)
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
+   * keeping their side — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.g.winner) return fresh('bot')
+    recorded.current = false
+    setMode('bot')
+    setLevel(saved.level)
+    setYou(mySide)
+    setGame(r.game.g)
+    setLast(r.game.last)
+    setPrefix([])
+    setLine(r.game.g.turn === mySide ? 'Your move.' : 'The computer is thinking…')
+  }
+
+  useEffect(() => {
+    if (!computerTurn) return
+    const t = window.setTimeout(() => apply(choose(game, level)), 600)
+    return () => window.clearTimeout(t)
+    // the game is what starts the computer's move
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computerTurn, game])
+
+  const fresh = (m: Mode = mode, lv: Level = saved.level) => {
+    const nextYou: Who = last && m === mode ? (you === 1 ? 2 : 1) : 1
+    recorded.current = false
+    setMode(m)
+    setLevel(lv)
+    setYou(nextYou)
+    setGame(newGame())
+    setPrefix([])
+    setLast(null)
+    setLine(
+      m === 'two'
+        ? `${sides[0]} moves first, up the board.`
+        : nextYou === 1
+          ? 'You play from the bottom and move first.'
+          : 'You play from the bottom; the computer moves first this time…',
+    )
+  }
+
+  /** display row and column of a square, with the board turned when it is */
+  const view = (i: number) => (flip ? [7 - rowOf(i), 7 - colOf(i)] : [rowOf(i), colOf(i)])
+  const fromView = (r: number, c: number) => (flip ? at(7 - r, 7 - c) : at(r, c))
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const [r, c] = view(cursor)
+    let next = -1
+    if (e.key === 'ArrowLeft') next = fromView(r, c - 2)
+    else if (e.key === 'ArrowRight') next = fromView(r, c + 2)
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const nr = r + (e.key === 'ArrowUp' ? -1 : 1)
+      next = fromView(nr, c + 1) >= 0 ? fromView(nr, c + 1) : fromView(nr, c - 1)
+    } else return
+    e.preventDefault()
+    e.stopPropagation()
+    if (next < 0) return
+    setCursor(next)
+    refs.current[next]?.focus()
+  }
+
+  const describe = (i: number) => {
+    const p = shown.board[i]
+    const o = owner(p)
+    const what = o ? `${sides[o - 1]} ${isKing(p) ? 'king' : 'man'}` : 'empty'
+    const extra = [
+      prefix[0] === i ? 'picked' : '',
+      lit.has(i) ? 'can go here' : '',
+      jumped.has(i) ? 'being taken' : '',
+      saved.hints && yours && !prefix.length && movable.has(i) ? 'can move' : '',
+    ].filter(Boolean)
+    return `${squareName(i)}: ${what}${extra.length ? `, ${extra.join(', ')}` : ''}`
+  }
+
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
+
+  const record = saved.record[saved.level]
+  const marks = new Set(shownLast ? [...shownLast.path, ...shownLast.taken] : [])
+  return (
+    <div className={`lab-keys dr-room is-${saved.board} pieces-${saved.pieces}`}>
+      {inMatch && <MatchBar lm={lm} sides={[sides[0].toLowerCase(), sides[1].toLowerCase()]} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
+            >
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => {
+                  setMode('call')
+                  setPrefix([])
+                }}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (!last || game.winner) fresh(mode, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
+            </button>
+          )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge demo="draughts" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
+        </div>
+      )}
+      {mode === 'call' && !inMatch && (
+        <CallTable
+          table={lab}
+          rules={draughtsRules}
+          sides={sides}
+          levelNames={LEVEL_NAMES}
+          score={(d) =>
+            d.g.winner === 1 || d.g.winner === 2
+              ? count(d.g, d.g.winner === 1 ? 2 : 1)
+                ? ' — no move left for the other side'
+                : ' — every piece taken'
+              : null
+          }
+          onCarryOn={carryOn}
+        />
+      )}
+
+      <div className="dice-scores">
+        {([1, 2] as Who[]).map((w) => (
+          <div key={w} className={`dice-score${shown.turn === w && !shown.winner ? ' is-up' : ''}`}>
+            <span>
+              {nameOf(w)} · {sides[w - 1].toLowerCase()}
+            </span>
+            <strong>{count(shown, w)}</strong>
+            <span className="muted">
+              {shown.board.filter((p) => owner(p) === w && isKing(p)).length || 'no'} king
+              {shown.board.filter((p) => owner(p) === w && isKing(p)).length === 1 ? '' : 's'}
+            </span>
+          </div>
+        ))}
+      </div>
+      {mode !== 'call' && !inMatch && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
+
+      <div
+        className="dr-board"
+        role="group"
+        aria-label="The board. Arrow keys move between the dark squares, Enter picks and moves."
+        onKeyDown={onKey}
+      >
+        {Array.from({ length: 64 }, (_, k) => {
+          const r = k >> 3
+          const c = k & 7
+          const i = fromView(r, c)
+          if (i < 0) return <div key={k} className="dr-light" aria-hidden />
+          const p = shown.board[i]
+          const o = owner(p)
+          return (
+            <button
+              key={k}
+              ref={(el) => {
+                refs.current[i] = el
+              }}
+              className={[
+                'dr-sq',
+                o ? `is-p${o}` : '',
+                isKing(p) ? 'is-king' : '',
+                prefix[0] === i ? 'is-picked' : '',
+                prefix.slice(1).includes(i) ? 'is-path' : '',
+                lit.has(i) ? 'is-lit' : '',
+                jumped.has(i) ? 'is-jumped' : '',
+                saved.hints && yours && !prefix.length && movable.has(i) ? 'can-move' : '',
+                marks.has(i) ? 'is-last' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              tabIndex={i === cursor ? 0 : -1}
+              aria-label={describe(i)}
+              onFocus={() => setCursor(i)}
+              onClick={() => {
+                setCursor(i)
+                tap(i)
+              }}
+            >
+              <span aria-hidden>{isKing(p) ? '♛' : ''}</span>
+            </button>
+          )
+        })}
+      </div>
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
+        <p className="sun-reading">
+          <span className="muted">
+            On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
+            {record.drawn ? `, drawn ${record.drawn}` : ''} · you are {sides[you - 1].toLowerCase()}
+          </span>
+        </p>
+      )}
+      {mode === 'bot' && !inMatch && last && !game.winner && level !== saved.level && (
+        <p className="muted mc-note">The new level starts with the next game.</p>
+      )}
+
+      <div className="fw-panel">
+        <section aria-label="Looks">
+          <h3 className="fw-h">Board and pieces</h3>
+          <div className="lab-controls" role="group" aria-label="Board">
+            {BOARDS.map((b) => (
+              <button
+                key={b}
+                className="btn btn-ghost"
+                aria-pressed={saved.board === b}
+                onClick={() => setSaved((s) => ({ ...s, board: b }))}
+              >
+                {BOARD_NAMES[b]}
+              </button>
+            ))}
+          </div>
+          <div className="lab-controls" role="group" aria-label="Pieces">
+            {PIECES.map((p) => (
+              <button
+                key={p}
+                className="btn btn-ghost"
+                aria-pressed={saved.pieces === p}
+                onClick={() => setSaved((s) => ({ ...s, pieces: p }))}
+              >
+                {SIDES[p].join(' and ')}
+              </button>
+            ))}
+            <button
+              className="btn btn-ghost"
+              aria-pressed={saved.hints}
+              onClick={() => setSaved((s) => ({ ...s, hints: !s.hints }))}
+            >
+              Show which pieces can move
+            </button>
+          </div>
+        </section>
+      </div>
+      <p className="muted lab-hint">
+        Men move one square diagonally forward. Take by jumping over a piece onto the empty square
+        beyond — and when a take is there, you must take it, and keep jumping with the same piece
+        while it can. A man that reaches the far row is crowned a king, which moves and takes
+        backwards too. Take every piece or leave the other side no move to win. Pick a piece, then
+        its square; for a jump of several, pick each landing in turn. Easy looks two moves ahead,
+        Fair four and Hard six, and every take is followed to its end. Keys: arrows move between the
+        dark squares, Enter picks and moves.
+      </p>
+    </div>
+  )
+}

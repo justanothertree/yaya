@@ -25,6 +25,7 @@ import {
   type V2,
 } from './critters'
 import { createCritters, type CrittersView } from './crittersEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -109,7 +110,7 @@ export function CrittersDemo({ running, setRunning, onAdapter }: Props) {
   /* the body and the champion are kept in this browser */
   useEffect(() => {
     try {
-      localStorage.setItem(CRITTER_KEY, JSON.stringify({ body, brain: champion }))
+      writeKept(CRITTER_KEY, JSON.stringify({ body, brain: champion }))
     } catch {
       /* private mode */
     }

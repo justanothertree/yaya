@@ -373,3 +373,34 @@ export function guide(h: Hole, sp: Space, at: V2, s: Shot, metres = 3.5): V2[] {
 }
 
 export const MOBIUS_KEY = 'lab_mobius_v1'
+
+/** fewest strokes kept per hole, by name, with the space it was played in */
+export type Best = Record<string, { strokes: number; space: SpaceId }>
+/**
+ * What Möbius golf keeps: the hole it was on and the fewest strokes per hole. Moved here unchanged
+ * from MobiusDemo so the Lab's share card (src/lab/shares/arcade.ts) reads it the toy's own way.
+ */
+export function readSaved(text: string | null): { hole: number; best: Best } {
+  try {
+    const v = JSON.parse(text ?? 'null') as {
+      hole?: unknown
+      best?: Record<string, { strokes?: unknown; space?: unknown }>
+    } | null
+    const hole =
+      typeof v?.hole === 'number' &&
+      Number.isInteger(v.hole) &&
+      v.hole >= 0 &&
+      v.hole < HOLES.length
+        ? v.hole
+        : 0
+    const best: Best = {}
+    for (const h of HOLES) {
+      const b = v?.best?.[h.name]
+      if (b && Number.isInteger(b.strokes) && typeof b.space === 'string' && b.space in SPACES)
+        best[h.name] = { strokes: b.strokes as number, space: b.space as SpaceId }
+    }
+    return { hole, best }
+  } catch {
+    return { hole: 0, best: {} }
+  }
+}

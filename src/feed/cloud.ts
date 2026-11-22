@@ -1,13 +1,22 @@
 import { getSupabaseClient } from '../finance/client'
 import { previewMember } from '../dev/previewMember'
-import type { FeedEvent, FeedKind, FeedScope } from './event'
+import {
+  COMMENT_PLACES,
+  MADE_KINDS,
+  MATCH_OUTCOMES,
+  type MatchOutcome,
+  type CommentPlace,
+  type FeedEvent,
+  type FeedKind,
+  type FeedScope,
+} from './event'
 
 /**
  * The feed, fetched.
  *
- * ⚠️ ONE ROUND TRIP FOR FIVE KINDS, which is the point of `feed_recent` existing at all. The
+ * ⚠️ ONE ROUND TRIP FOR EVERY KIND, which is the point of `feed_recent` existing at all. The
  * alternative — ask each room separately and stitch the answers here — puts the visibility rules
- * in the client, where they would be a second copy of five server-side decisions. The server
+ * in the client, where they would be a second copy of every server-side decision. The server
  * merges; this file only translates.
  */
 
@@ -17,6 +26,9 @@ const KINDS: ReadonlySet<string> = new Set<FeedKind>([
   'rating',
   'snake_score',
   'snake_trophy',
+  'comment',
+  'made',
+  'match',
 ])
 
 /**
@@ -27,13 +39,23 @@ const KINDS: ReadonlySet<string> = new Set<FeedKind>([
  * both would render as a blank line in the middle of the feed — which reads as missing data
  * when it is really a client that is older than its server. Dropping it is the honest failure.
  */
-function toEvent(r: Record<string, unknown>): FeedEvent | null {
+export function toEvent(r: Record<string, unknown>): FeedEvent | null {
   const kind = String(r.kind ?? '')
   if (!KINDS.has(kind)) return null
   const at = String(r.at ?? '')
   if (!at || Number.isNaN(Date.parse(at))) return null
   const id = String(r.id ?? '')
   if (!id) return null
+  /* the same honest failure one level down: a comment from a place, or a made thing of a type,
+     that this bundle has no words for is dropped rather than drawn as "Wrote something" */
+  if (kind === 'comment' && !COMMENT_PLACES.has(String(r.on ?? ''))) return null
+  if (kind === 'made' && !MADE_KINDS.has(String(r.detail ?? ''))) return null
+  /* a match needs its toy and how it ended; a toy this bundle has not heard of is still named,
+     by its id, as a note on one is */
+  if (kind === 'match' && (typeof r.detail !== 'string' || !MATCH_OUTCOMES.has(String(r.outcome))))
+    return null
+  const match = kind === 'match'
+  const text = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null)
   const num = (v: unknown) => (v == null || v === '' ? null : Number(v))
   return {
     kind: kind as FeedKind,
@@ -49,6 +71,20 @@ function toEvent(r: Record<string, unknown>): FeedEvent | null {
     metric: typeof r.metric === 'string' ? r.metric : null,
     items: Array.isArray(r.items) ? (r.items as FeedEvent['items']) : null,
     mine: r.mine === true,
+    on: kind === 'comment' ? (String(r.on) as CommentPlace) : null,
+    about: typeof r.about === 'string' ? r.about : null,
+    aboutWho: typeof r.about_who === 'string' ? r.about_who : null,
+    aboutMine: r.about_mine === true,
+    ...(match
+      ? {
+          outcome: String(r.outcome) as MatchOutcome,
+          how: text(r.how),
+          result: text(r.result),
+          other: text(r.other),
+          otherWho: text(r.other_who),
+          otherMine: r.other_mine === true,
+        }
+      : {}),
   }
 }
 
@@ -158,6 +194,138 @@ export function previewFeed(scope: FeedScope = 'all_members'): FeedEvent[] {
       detail: 'Classic',
       score: 870,
       mine: true,
+    },
+    /* the three places a comment is left, both sides of "your", and one preview the server cut
+       at 80 characters -- the longest a row ever has to hold */
+    {
+      kind: 'comment',
+      id: 'workout:pv-f-7',
+      who: 'marlow',
+      name: 'Marlow',
+      at: ago(150),
+      detail: 'Strong finish — that last kilometre looked like it hurt, and you kept the pace…',
+      score: null,
+      on: 'workout',
+      about: 'You',
+      aboutMine: true,
+    },
+    {
+      kind: 'comment',
+      id: 'guestbook:pv-f-8',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(600),
+      detail: 'Love the new banner!',
+      score: null,
+      on: 'guestbook',
+      about: 'Tolliver',
+      aboutWho: 'tolliver',
+    },
+    {
+      kind: 'comment',
+      id: 'lab:pv-f-9',
+      who: 'preview-you',
+      name: 'You',
+      at: ago(1_000),
+      detail: 'More colours, please',
+      score: null,
+      on: 'lab',
+      about: 'fluid',
+      mine: true,
+    },
+    /* made: three of somebody else's drawings in one sitting, which the room folds into one row
+       (oneMadePerDay), and one of yours */
+    {
+      kind: 'made',
+      id: 'pv-f-10',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(300),
+      detail: 'art',
+      score: null,
+    },
+    {
+      kind: 'made',
+      id: 'pv-f-12',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(305),
+      detail: 'art',
+      score: null,
+    },
+    {
+      kind: 'made',
+      id: 'pv-f-13',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(320),
+      detail: 'art',
+      score: null,
+    },
+    {
+      kind: 'made',
+      id: 'pv-f-11',
+      who: 'preview-you',
+      name: 'You',
+      at: ago(2_000),
+      detail: 'song',
+      score: null,
+      mine: true,
+    },
+    /* matches: a win named to a friend of both, a draw against you, a win together, and one whose
+       other player this reader may not know -- the line reads "a friend" */
+    {
+      kind: 'match',
+      id: 'pv-f-14',
+      who: 'marlow',
+      name: 'Marlow',
+      at: ago(240),
+      detail: 'reversi',
+      score: null,
+      outcome: 'won',
+      how: 'played',
+      result: '40–24',
+      other: 'Quill',
+      otherWho: 'quill',
+    },
+    {
+      kind: 'match',
+      id: 'pv-f-15',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(800),
+      detail: 'chess',
+      score: null,
+      outcome: 'drew',
+      how: 'played',
+      otherMine: true,
+      other: 'Preview',
+      otherWho: 'preview-you',
+    },
+    {
+      kind: 'match',
+      id: 'pv-f-16',
+      who: 'preview-you',
+      name: 'You',
+      at: ago(1_200),
+      detail: 'pool',
+      score: null,
+      outcome: 'together',
+      how: 'played',
+      other: 'Marlow',
+      otherWho: 'marlow',
+      mine: true,
+    },
+    {
+      kind: 'match',
+      id: 'pv-f-17',
+      who: 'tolliver',
+      name: 'Tolliver',
+      at: ago(3_100),
+      detail: 'chess',
+      score: null,
+      outcome: 'won',
+      how: 'resigned',
     },
   ]
   return scope === 'all_members' ? all : all.filter((e) => e.mine || friends.has(e.who))

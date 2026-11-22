@@ -39,6 +39,7 @@ import {
   type Verdict,
 } from './nonogram'
 import { createNonogram, type NonogramView } from './nonogramEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -137,7 +138,7 @@ export function NonogramDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(NONOGRAM_KEY, JSON.stringify(saved))
+      writeKept(NONOGRAM_KEY, JSON.stringify(saved))
     } catch {
       /* private mode: kept for this visit */
     }

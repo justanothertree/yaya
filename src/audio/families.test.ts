@@ -39,7 +39,9 @@ describe('every voice on the picker has a family', () => {
 
   it('a bass is in Bass, a bell in Bells, and the kit in Drums', () => {
     expect(familyOf('bass')).toBe('bass')
-    expect(familyOf('sub')).toBe('bass')
+    expect(familyOf('slap')).toBe('bass')
+    expect(familyOf('sub')).toBe('synth-bass')
+    expect(familyOf('acid')).toBe('synth-bass')
     expect(familyOf('vibes')).toBe('bells')
     expect(familyOf('drums')).toBe('drums')
     /* something nobody has filed opens on Keys rather than on nothing */
@@ -47,6 +49,6 @@ describe('every voice on the picker has a family', () => {
   })
 
   it('a voice this bundle does not have is not shown', () => {
-    expect(familyVoices('bass', ['bass', 'sub'])).toEqual(['bass', 'sub'])
+    expect(familyVoices('bass', ['bass', 'slap'])).toEqual(['bass', 'slap'])
   })
 })

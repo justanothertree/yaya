@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { touchOnly } from '../ui/pointerKind'
 import { LabStage } from './LabStage'
+import { useKept } from './kept'
 import {
+  SPEEDS,
+  SPEED_IDS,
   THEMES,
   THEME_IDS,
+  TUNNEL_KEY,
   camera,
   fly,
+  keptBest,
+  readSaved,
+  slower,
   takeOff,
   tiltStick,
   type Flight,
+  type Speed,
   type Theme,
 } from './tunnel'
 import { createTunnel } from './tunnelEngine'
@@ -19,8 +27,6 @@ type Props = {
   onAdapter: (adapter: GPUAdapter, format: GPUTextureFormat) => void
 }
 
-const SPEEDS = { cruise: ['Cruise', 5], fast: ['Fast', 9], warp: ['Warp', 15] } as const
-type Speed = keyof typeof SPEEDS
 type Score = Pick<Flight, 'caught' | 'streak' | 'best'>
 
 /** a drag this far from where it started is a full stick, as a share of the canvas's short side */
@@ -35,7 +41,14 @@ const canTilt = () => typeof window !== 'undefined' && 'DeviceOrientationEvent' 
 /** Fly down an endless tunnel, catching orbs. Drag to steer — or tilt the phone. */
 export function TunnelDemo({ running, setRunning, onAdapter }: Props) {
   const [live, setLive] = useState(false)
-  const [speed, setSpeed] = useState<Speed>('cruise')
+  const [speed, pickSpeed] = useState<Speed>('cruise')
+  const [saved, setSaved] = useKept(TUNNEL_KEY, readSaved)
+  /** the slowest speed flown since take-off: what this flight's streak counts at */
+  const slowest = useRef<Speed>(speed)
+  const setSpeed = (v: Speed) => {
+    pickSpeed(v)
+    slowest.current = slower(slowest.current, v)
+  }
   const [theme, setTheme] = useState<Theme>('neon')
   const [score, setScore] = useState<Score>({ caught: 0, streak: 0, best: 0 })
   const [tilt, setTilt] = useState<'off' | 'on' | 'refused' | 'silent'>('off')
@@ -101,6 +114,7 @@ export function TunnelDemo({ running, setRunning, onAdapter }: Props) {
 
   const restart = () => {
     flight.current = takeOff()
+    slowest.current = speedRef.current
     setScore({ caught: 0, streak: 0, best: 0 })
   }
 
@@ -119,7 +133,7 @@ export function TunnelDemo({ running, setRunning, onAdapter }: Props) {
     const k = e.key.toLowerCase()
     if (KEYS[k]) keys.current.add(KEYS[k])
     else if (k === ' ') setRunning((r) => !r)
-    else if (/^[1-3]$/.test(k)) setSpeed((Object.keys(SPEEDS) as Speed[])[Number(k) - 1])
+    else if (/^[1-3]$/.test(k)) setSpeed(SPEED_IDS[Number(k) - 1])
     else if (k === 'c') setTheme((t) => THEME_IDS[(THEME_IDS.indexOf(t) + 1) % THEME_IDS.length])
     else if (k === 'r') restart()
     else return
@@ -166,8 +180,13 @@ export function TunnelDemo({ running, setRunning, onAdapter }: Props) {
                 const r = fly(before, dt, s, v)
                 flight.current = r.f
                 if (r.caught) flash.current = 1
-                if (r.f.caught !== before.caught || r.f.missed !== before.missed)
+                if (r.f.caught !== before.caught || r.f.missed !== before.missed) {
                   setScore({ caught: r.f.caught, streak: r.f.streak, best: r.f.best })
+                  if (r.f.best > before.best) {
+                    const at = slowest.current
+                    setSaved((x) => keptBest(x, at, r.f.best))
+                  }
+                }
                 flash.current = Math.max(0, flash.current - dt * 3)
                 clock.current += dt
                 const k = Math.min(1, dt * 6)
@@ -214,7 +233,7 @@ export function TunnelDemo({ running, setRunning, onAdapter }: Props) {
             ↺ Start over
           </button>
           <div className="lab-group" role="group" aria-label="Speed">
-            {(Object.keys(SPEEDS) as Speed[]).map((s) => (
+            {SPEED_IDS.map((s) => (
               <button
                 key={s}
                 className="btn btn-ghost"
@@ -245,6 +264,16 @@ export function TunnelDemo({ running, setRunning, onAdapter }: Props) {
         </div>
       )}
 
+      {live && SPEED_IDS.some((v) => saved.best[v] > 0) && (
+        <p className="sun-reading">
+          <span className="muted">
+            Longest streak without a miss:{' '}
+            {SPEED_IDS.filter((v) => saved.best[v] > 0)
+              .map((v) => `${saved.best[v]} at ${SPEEDS[v][0]}`)
+              .join(', ')}
+          </span>
+        </p>
+      )}
       {live && (
         <p className="muted lab-hint">
           {tilt === 'refused'

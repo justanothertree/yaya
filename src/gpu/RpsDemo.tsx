@@ -16,6 +16,14 @@ import {
   type Saved,
   type Side,
 } from './rps'
+import { useKept } from './kept'
+import { wins, type RpsGame } from './rpsRoom'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 type Tab = 'reader' | 'two' | 'coin'
 const TABS: { id: Tab; label: string }[] = [
@@ -24,27 +32,20 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'coin', label: '🪙 Call the coin' },
 ]
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(RPS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
-
 const said = (r: 1 | 0 | -1) =>
   r > 0 ? 'You win the round' : r < 0 ? 'It wins the round' : 'A draw'
 
+const MATCH_LEVELS = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
+
 export function RpsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(RPS_KEY, readSaved)
   const [tab, setTab] = useState<Tab>('reader')
-  useEffect(() => {
-    try {
-      localStorage.setItem(RPS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
+  /* a match by turns, when the address names one (src/lab/matches/useLabMatch.ts): first to three
+     wins, the challenger's move each round sealed on the server until the friend answers
+     (rpsRoom.ts). ⚠️ NO PREVIEW: a sealed move is not the browser's to play out. */
+  const lm = useLabMatch('rps', { preview: false })
+  const signedIn = useSignedIn()
+  if (lm.id) return <Match lm={lm} />
 
   return (
     <div className="lab-keys rps-room">
@@ -62,9 +63,142 @@ export function RpsDemo() {
           ))}
         </div>
       </div>
+      {signedIn && tab !== 'coin' && (
+        <div className="lab-controls">
+          <MatchChallenge demo="rps" settings={{}} levelNames={MATCH_LEVELS} />
+        </div>
+      )}
       {tab === 'reader' && <Reader saved={saved} setSaved={setSaved} />}
       {tab === 'two' && <TwoPlayers />}
       {tab === 'coin' && <Coin saved={saved} setSaved={setSaved} />}
+    </div>
+  )
+}
+
+/** a match by turns: the rounds so far, and this round's move — sealed until it is answered */
+function Match({ lm }: { lm: LabMatch }) {
+  const g = lm.shown as RpsGame | null
+  const together = lm.view?.mode === 'together'
+  const side: 0 | 1 = together ? 0 : lm.view?.you === 1 ? 1 : 0
+  const theirs: 0 | 1 = side === 0 ? 1 : 0
+  const them = !lm.view ? 'They' : together ? 'The computer' : otherName(lm.view)
+  const play = (m: Move) => {
+    if (lm.canPlay) lm.play({ play: m })
+  }
+  useKeys((code) => {
+    if (code in ONE) play(ONE[code])
+  })
+  /* my own sealed move, once it is in: asked of lab-move, which shows it to me alone */
+  const [sealedMine, setSealedMine] = useState<Move | null>(null)
+  const waitingOnThem = !!g?.sealed && side === 0 && !lm.canPlay
+  const played = g?.rounds.length ?? 0
+  useEffect(() => {
+    setSealedMine(null)
+    if (!waitingOnThem || !lm.id) return
+    let live = true
+    myHidden(lm.id)
+      .then((m) => {
+        if (live && (m === 0 || m === 1 || m === 2)) setSealedMine(m)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [waitingOnThem, lm.id, played])
+
+  const w = g ? wins(g) : [0, 0]
+  const last = g?.rounds[played - 1] ?? null
+  const r = last ? result(last[side], last[theirs]) : null
+  const firstTo = g?.firstTo ?? 3
+  const over = lm.view?.status === 'finished'
+  const words = !g
+    ? ''
+    : over
+      ? ''
+      : lm.hasPending
+        ? 'Send it — they will not see it until they have answered.'
+        : lm.canPlay
+          ? g.sealed
+            ? `${them} has played, sealed. Your answer.`
+            : `Round ${played + 1}: your move. ${side === 0 ? 'It stays sealed until they answer.' : ''}`
+          : waitingOnThem
+            ? `You played ${sealedMine === null ? '' : `${ICONS[sealedMine]} ${NAMES[sealedMine]}`} — sealed until ${them} answers.`
+            : `Waiting for ${together ? 'your partner' : them}.`
+  return (
+    <div className="lab-keys rps-room">
+      <MatchBar lm={lm} sides={['the first to play each round', 'the one who answers']} />
+      {g && (
+        <>
+          <div className="rps-table" aria-live="polite">
+            <div className="rps-side">
+              <span className="rps-who">{together ? 'You two' : 'You'}</span>
+              <span className="rps-big" aria-hidden>
+                {last ? ICONS[last[side]] : '·'}
+              </span>
+              <span className="rps-score">{w[side]}</span>
+            </div>
+            <div className="rps-mid">
+              {r === null ? (
+                <span className="muted">First to {firstTo}</span>
+              ) : (
+                <strong className={r > 0 ? 'rps-good' : r < 0 ? 'rps-bad' : undefined}>
+                  {r > 0 ? 'You won the round' : r < 0 ? `${them} won the round` : 'A draw'}
+                </strong>
+              )}
+              {last && (
+                <span className="sr-only">
+                  Last round: you played {NAMES[last[side]]}, {them} played {NAMES[last[theirs]]}.
+                </span>
+              )}
+            </div>
+            <div className="rps-side">
+              <span className="rps-who">{them}</span>
+              <span className="rps-big" aria-hidden>
+                {g.sealed && side === 1 ? '🔒' : last ? ICONS[last[theirs]] : '·'}
+              </span>
+              <span className="rps-score">{w[theirs]}</span>
+            </div>
+          </div>
+          {words && (
+            <p className="mc-line" aria-live="polite">
+              {words}
+            </p>
+          )}
+          {lm.canPlay && (
+            <div className="rps-hands" role="group" aria-label="Your move">
+              {MOVES.map((m) => (
+                <button
+                  key={m}
+                  className="btn rps-hand"
+                  onClick={() => play(m)}
+                  aria-keyshortcuts={`${m + 1}`}
+                >
+                  <span aria-hidden>{ICONS[m]}</span> {NAMES[m]}
+                </button>
+              ))}
+            </div>
+          )}
+          <MatchSend lm={lm} />
+          {played > 0 && (
+            <p className="rps-strip" aria-label="The rounds so far, your moves">
+              {g.rounds.map((h, i) => {
+                const k = result(h[side], h[theirs])
+                return (
+                  <span key={i} className={k > 0 ? 'rps-good' : k < 0 ? 'rps-bad' : 'muted'}>
+                    {ICONS[h[side]]}
+                  </span>
+                )
+              })}
+            </p>
+          )}
+        </>
+      )}
+      <p className="muted lab-hint">
+        First to {firstTo} rounds. Each round the challenger plays first and the move is sealed —
+        kept on the server, not in either browser — until the answer comes, and then both show.
+        Together, the two of you take the rounds in turn and the computer answers each one without
+        seeing it. Keys 1 2 3, or R P S.
+      </p>
     </div>
   )
 }

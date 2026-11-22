@@ -1,4 +1,5 @@
 import { sharedCtx } from './context'
+import { roundTrip, type RecordStart } from './punchIn'
 
 /**
  * Catching a voice.
@@ -19,6 +20,12 @@ import { sharedCtx } from './context'
 export type Recording = {
   /** ms since epoch, so a caller can show how long it has been going */
   from: number
+  /**
+   * The audio clock when the recorder was started, which is within about 10ms of its first sample
+   * (measured; see below), and how far behind the song a voice reaches it, so the take can be
+   * placed where it was sung (punchIn.ts).
+   */
+  start: () => RecordStart
   /** what it caught, or null if nothing usable arrived */
   stop: () => Promise<{ blob: Blob; len: number } | null>
   /** throw it away and let the microphone go */
@@ -97,8 +104,23 @@ export async function recordTake(): Promise<Recording | null> {
    */
   const ctx = sharedCtx()
   const began = ctx.currentTime
+  /* ⚠️ THE CALL, NOT THE START EVENT, and that was measured rather than reasoned (21 Nov 2026,
+     Chrome). A burst put into the recorded stream at a known time on this clock was found in the
+     kept recording: its first sample was 10ms BEFORE start() was called, because the recorder takes
+     what the stream already held, and 70ms before the start event fired, because that waits for
+     the encoder. Placed by the start event, the take was 70ms late; by the call, about 10ms. */
+  const startedAt = began
   rec.start()
   const from = Date.now()
+  /* the input side of the round trip, where the browser reports it (Chrome does) */
+  let input: number | undefined
+  try {
+    const set = stream.getAudioTracks()[0]?.getSettings() as { latency?: number } | undefined
+    input = set?.latency
+  } catch {
+    input = undefined
+  }
+  const lag = roundTrip(ctx, input)
 
   let done = false
   const release = () => {
@@ -108,6 +130,7 @@ export async function recordTake(): Promise<Recording | null> {
 
   return {
     from,
+    start: () => ({ startedAt, lag }),
     drop: () => {
       if (done) return
       try {

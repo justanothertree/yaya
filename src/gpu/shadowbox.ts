@@ -71,8 +71,8 @@ export function nudge(b: Build, i: number, by: number): Build {
  * Few blocks that throw a clue's shadows: what the puzzles call par. Without the floor's shadow it is
  * exactly the fewest — for each height, one stack does for a column and a row that both need it, so
  * a height needs as many stacks as the larger of its columns and its rows. With the floor's, every
- * marked cell needs a block and a stack can only stand where the floor says; it is found greedily the
- * same way, and the tests check it against a full search on small cases.
+ * marked cell needs a block and a stack can only stand where the floor says; the pairing is then a
+ * maximum matching over the lit cells, and the tests check it against a full search.
  */
 export function fewest(clue: Shadows, show: Show): Build {
   const b = emptyBuild()
@@ -85,10 +85,27 @@ export function fewest(clue: Shadows, show: Show): Build {
     const rows = show.side ? [...Array(N).keys()].filter((z) => clue.side[z] === v) : []
     const colDone = (x: number) => [...Array(N).keys()].some((z) => b[at(x, z)] >= v)
     const rowDone = (z: number) => [...Array(N).keys()].some((x) => b[at(x, z)] >= v)
-    // first a stack wherever one column and one row both need this height (a greedy matching)
-    for (const x of cols)
-      for (const z of rows)
-        if (!colDone(x) && !rowDone(z) && can(x, z) && cap(x, z) >= v) b[at(x, z)] = v
+    // first a stack wherever one column and one row both need this height — as many such stacks
+    // as can be had, which is a MAXIMUM matching between them. ⚠️ A greedy one was here, and is
+    // exact only while every cell may hold a stack; with the floor lit, the first pair it took
+    // could leave two others with no lit cell between them (4043000020000004000000004 was par 21,
+    // and is 18). Augmenting paths (Kuhn's): at most five of each, so it is instant.
+    const pair = new Map<number, number>() // row z → the column x its stack also serves
+    const open = (x: number, z: number) => can(x, z) && cap(x, z) >= v
+    const claim = (x: number, seen: Set<number>): boolean => {
+      for (const z of rows) {
+        if (seen.has(z) || rowDone(z) || !open(x, z)) continue
+        seen.add(z)
+        const y = pair.get(z)
+        if (y === undefined || claim(y, seen)) {
+          pair.set(z, x)
+          return true
+        }
+      }
+      return false
+    }
+    for (const x of cols) if (!colDone(x)) claim(x, new Set())
+    for (const [z, x] of pair) b[at(x, z)] = v
     // then each column or row still short, at any cell that may stand that tall
     for (const x of cols)
       if (!colDone(x)) {
@@ -322,4 +339,34 @@ export function pickCell(b: Build, size: [number, number], yaw: number, px: [num
     if (x >= 0 && z >= 0 && x < N && z < N) return at(x, z)
   }
   return -1
+}
+
+/** fewest blocks kept per puzzle, by name */
+export type Best = Record<string, number>
+/**
+ * What Shadow box keeps: the puzzle it was on and the fewest blocks per puzzle. Moved here
+ * unchanged from ShadowboxDemo so the Lab's share card reads it the toy's own way.
+ */
+export function readSaved(text: string | null): { puzzle: number; best: Best } {
+  try {
+    const v = JSON.parse(text ?? 'null') as {
+      puzzle?: unknown
+      best?: Record<string, unknown>
+    } | null
+    const puzzle =
+      typeof v?.puzzle === 'number' &&
+      Number.isInteger(v.puzzle) &&
+      v.puzzle >= 0 &&
+      v.puzzle < PUZZLES.length
+        ? v.puzzle
+        : 0
+    const best: Best = {}
+    for (const p of PUZZLES) {
+      const n = v?.best?.[p.name]
+      if (typeof n === 'number' && Number.isInteger(n) && n > 0) best[p.name] = n
+    }
+    return { puzzle, best }
+  } catch {
+    return { puzzle: 0, best: {} }
+  }
 }

@@ -6,8 +6,8 @@ import { peopleInGroup } from '../groupFilter'
 import { isImportedTotal, logPoints } from '../scoring'
 import { catColor } from '../catColors'
 import { GoalBar } from './GoalBar'
-import { todayISO as isoToday, localISO } from '../dates'
-import { useFeedSocial, KUDOS, type FeedSocial } from '../social'
+import { dayOfMonth, todayISO as isoToday, localISO } from '../dates'
+import { useFeedSocial, KUDOS, COMMENT_MAX, type FeedSocial } from '../social'
 import type { DayLog, Person } from '../types'
 import { useSeenPicture } from '../../pictures/seen'
 import { useBigPicture } from '../../pictures/useBigPicture'
@@ -35,7 +35,7 @@ function monthCells(ym: string): (string | null)[] {
   const days = new Date(y, m, 0).getDate()
   const cells: (string | null)[] = []
   for (let i = 0; i < lead; i++) cells.push(null)
-  for (let d = 1; d <= days; d++) cells.push(`${ym}-${String(d).padStart(2, '0')}`)
+  for (let d = 1; d <= days; d++) cells.push(dayOfMonth(ym, d))
   while (cells.length % 7 !== 0) cells.push(null)
   return cells
 }
@@ -188,22 +188,32 @@ function LogPhoto({
 }) {
   const pic = useSeenPicture(id)
   if (!pic) return null
+  /* ⚠️ THE PICTURE IS INSIDE A BUTTON, so a keyboard can open it: a bare <img> with a click was
+     out of the tab order, and opening the photo was mouse-only */
   return (
-    <img
-      src={pic.thumbUrl}
-      alt={pic.alt ?? 'workout'}
+    <button
+      type="button"
+      aria-label={`Open the photo${pic.alt ? `: ${pic.alt}` : ''}`}
       onClick={(e) => {
         e.stopPropagation()
         onPhoto(pic.url, pic.alt)
       }}
       style={{
         marginTop: 6,
-        maxHeight: 96,
+        padding: 0,
+        border: 'none',
+        background: 'none',
         borderRadius: 8,
         cursor: 'zoom-in',
         display: 'block',
       }}
-    />
+    >
+      <img
+        src={pic.thumbUrl}
+        alt={pic.alt ?? 'workout'}
+        style={{ maxHeight: 96, borderRadius: 8, display: 'block' }}
+      />
+    </button>
   )
 }
 
@@ -229,6 +239,11 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
     cursor: 'pointer',
     background: 'transparent',
     lineHeight: 1.6,
+    /* 24px with a mouse: at 820 the kudos chips measured 23 tall, under the WCAG 2.5.8 floor —
+       reachable only once the feed had a stand-in (OPEN-DECISIONS §22c), and the 10 Nov sweep
+       measured 820 with the touch rules on. A touch screen's .cz-tap is !important and grows them
+       to 38 over this, as for the board's log-today ＋. */
+    minHeight: 24,
   }
   const post = () => {
     void social.addComment(logId, draft, me)
@@ -327,7 +342,11 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
       {open && (
         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {comments.map((c) => (
-            <div key={c.id} style={{ fontSize: '0.78rem' }}>
+            /* ⚠️ `overflowWrap: 'anywhere'`, or one pasted link takes the page sideways: a map
+               link with no hyphen in it ran 31px past the card at 375, and a 1000-character word
+               5,024px at 1440. Found once the feed had a stand-in (OPEN-DECISIONS §22c). It
+               breaks a word only when nothing else fits, so ordinary sentences wrap as before. */
+            <div key={c.id} style={{ fontSize: '0.78rem', overflowWrap: 'anywhere' }}>
               <strong>{c.author_name || 'Member'}</strong> <span className="muted">{c.body}</span>
               {/* ⚠️ A BUTTON, NOT A SPAN WITH A CLICK. It was a bare `×` in a <span>, measured 8.5x16
                   at 375, out of the tab order, and named only by a title a phone never shows. */}
@@ -366,6 +385,7 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
                 if (e.key === 'Enter') post()
               }}
               placeholder="Add a comment…"
+              maxLength={COMMENT_MAX}
               style={{ flex: 1, minWidth: 0, padding: '0.3rem 0.5rem', fontSize: '0.78rem' }}
             />
             <button
@@ -684,9 +704,8 @@ function DateNav({
   if (view === 'month') {
     const [y, m] = cur.split('-').map(Number)
     label = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    prev = `${new Date(y, m - 2, 1).getFullYear()}-${String(new Date(y, m - 2, 1).getMonth() + 1).padStart(2, '0')}-01`
-    const nx = new Date(y, m, 1)
-    next = `${nx.getFullYear()}-${String(nx.getMonth() + 1).padStart(2, '0')}-01`
+    prev = localISO(new Date(y, m - 2, 1))
+    next = localISO(new Date(y, m, 1))
     nextDisabled = cur.slice(0, 7) >= latest.slice(0, 7)
   } else if (view === 'week') {
     const sow = startOfWeek(cur)

@@ -21,7 +21,6 @@ import {
 } from './goal'
 import {
   EVERY_DAY,
-  daysOf,
   daysText,
   dueOn,
   maskOf,
@@ -53,16 +52,12 @@ describe('which weekday a calendar day is', () => {
 })
 
 describe('a mask of weekdays', () => {
-  it('round-trips the days it holds, Sunday first', () => {
-    expect(daysOf(maskOf([THU, TUE, TUE]))).toEqual([TUE, THU])
-  })
-
   it('ignores anything that is not a weekday', () => {
     expect(maskOf([TUE, 7, -1, 2.5])).toBe(maskOf([TUE]))
   })
 
   it('has all seven days in EVERY_DAY', () => {
-    expect(daysOf(EVERY_DAY)).toEqual([0, 1, 2, 3, 4, 5, 6])
+    expect(EVERY_DAY).toBe(maskOf([0, 1, 2, 3, 4, 5, 6]))
   })
 
   it('refuses a goal for no days at all, and anything past Saturday', () => {

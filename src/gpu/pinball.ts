@@ -545,3 +545,23 @@ export function tableFit(size: V2, p: V2): V2 {
   const o: V2 = [(size[0] - W * s) / 2, (size[1] - H * s) / 2]
   return [(p[0] - o[0]) / s, H - (p[1] - o[1]) / s]
 }
+
+/**
+ * What Pinball workshop keeps: the table being built and the best score per table, by its name.
+ * Moved here unchanged from PinballDemo so the Lab's share card reads it the toy's own way.
+ */
+export function readSaved(text: string | null): { table: Table; best: Record<string, number> } {
+  try {
+    const v = JSON.parse(text ?? 'null') as {
+      table?: unknown
+      best?: Record<string, unknown>
+    } | null
+    const t = readTable(JSON.stringify(v?.table ?? null))
+    const best: Record<string, number> = {}
+    for (const [k, n] of Object.entries(v?.best ?? {}).slice(0, 50))
+      if (typeof n === 'number' && Number.isInteger(n) && n >= 0) best[k.slice(0, 40)] = n
+    return { table: typeof t === 'string' ? DEFAULT_TABLE : t, best }
+  } catch {
+    return { table: DEFAULT_TABLE, best: {} }
+  }
+}
