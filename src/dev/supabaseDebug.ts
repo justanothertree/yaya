@@ -2,13 +2,23 @@
 // This file must never be imported in production code.
 // Used for manual Supabase debugging only.
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL!,
-  import.meta.env.VITE_SUPABASE_ANON_KEY!,
-  { auth: { persistSession: false, storageKey: 'sb-debug' } },
-)
+/**
+ * Made on first use, never at import. App.tsx imports this file on every dev load, and
+ * `createClient` throws "supabaseUrl is required" when .env.local is missing — so a checkout
+ * without one took the whole dev page down for the sake of a console helper nobody had called.
+ * Without the env it now answers `null`, and `run()` says why instead of throwing.
+ */
+let client: SupabaseClient | null = null
+function debugClient(): SupabaseClient | null {
+  if (client) return client
+  const url = import.meta.env.VITE_SUPABASE_URL
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+  if (!url || !key) return null
+  client = createClient(url, key, { auth: { persistSession: false, storageKey: 'sb-debug' } })
+  return client
+}
 
 declare global {
   interface Window {
@@ -21,7 +31,7 @@ declare global {
 /* -----------------------------
    Table sanity check
 -------------------------------- */
-async function testTable(tableName: string) {
+async function testTable(supabase: SupabaseClient, tableName: string) {
   const { data, error } = await supabase.from(tableName).select('*').limit(5)
 
   if (error) {
@@ -35,7 +45,7 @@ async function testTable(tableName: string) {
 /* -----------------------------
    finalize_round_rpc test
 -------------------------------- */
-async function testFinalizeRoundRPC() {
+async function testFinalizeRoundRPC(supabase: SupabaseClient) {
   console.log('\nTesting finalize_round_rpc...')
 
   const { data, error } = await supabase.rpc('finalize_round_rpc', {
@@ -62,7 +72,7 @@ async function testFinalizeRoundRPC() {
    NOTE: only uses parameters
    that actually exist
 -------------------------------- */
-async function testEnforceBestScore() {
+async function testEnforceBestScore(supabase: SupabaseClient) {
   console.log('\nTesting enforce_best_score...')
 
   const { data, error } = await supabase.rpc('enforce_best_score', {
@@ -98,16 +108,23 @@ async function main() {
 //main()
 
 export async function runSupabaseDebug() {
+  const supabase = debugClient()
+  if (!supabase) {
+    console.warn(
+      '🧪 Supabase debug skipped: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set (.env.local).',
+    )
+    return
+  }
   console.log('🧪 Supabase debug starting...')
 
-  await testTable('leaderboard')
-  await testTable('score_history')
-  await testTable('player_registry')
-  await testTable('trophies')
-  await testTable('round_results')
+  await testTable(supabase, 'leaderboard')
+  await testTable(supabase, 'score_history')
+  await testTable(supabase, 'player_registry')
+  await testTable(supabase, 'trophies')
+  await testTable(supabase, 'round_results')
 
-  await testFinalizeRoundRPC()
-  await testEnforceBestScore()
+  await testFinalizeRoundRPC(supabase)
+  await testEnforceBestScore(supabase)
 
   console.log('🧪 Supabase debug completed.')
 }
