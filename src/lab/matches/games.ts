@@ -59,6 +59,10 @@ import { cribRules } from '../../gpu/cribbageRoom'
 import { dominoRules, readDominoSettings } from '../../gpu/dominoesRoom'
 import { heartsRules, readHeartsSettings } from '../../gpu/heartsRoom'
 import { readSpadesSettings, spadesRules } from '../../gpu/spadesRoom'
+import { eightsRules, readEightsSettings } from '../../gpu/eightsRoom'
+import { liarsRules, readLiarsSettings } from '../../gpu/liarsRoom'
+import { holdemRules } from '../../gpu/holdemRoom'
+import { duelRules, readDuelSettings } from '../../gpu/lampsDuel'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -275,6 +279,36 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
       return set === null ? null : spadesRules(set.target, set.level)
     },
     levels: ['easy', 'fair', 'hard'],
+  },
+  eights: {
+    name: MATCH_NAMES.eights,
+    rulesFor: (s) => {
+      const set = readEightsSettings(s)
+      return set === null ? null : eightsRules(set.target)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  liars: {
+    name: MATCH_NAMES.liars,
+    rulesFor: (s) => {
+      const set = readLiarsSettings(s)
+      return set === null ? null : liarsRules(set.wild)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  poker: {
+    name: MATCH_NAMES.poker,
+    rulesFor: () => holdemRules,
+    levels: ['easy', 'fair', 'hard'],
+  },
+  lamps: {
+    name: MATCH_NAMES.lamps,
+    rulesFor: (s) => {
+      const set = readDuelSettings(s)
+      return set === null ? null : duelRules(set.size, set.pattern)
+    },
+    // a duel: no computer, so no Together
+    levels: [],
   },
 }
 

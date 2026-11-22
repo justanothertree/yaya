@@ -1367,6 +1367,19 @@ html:has(.lab) {
   height: 76px;
   font-size: 1.25rem;
 }
+/* a match by turns: the last hand, with the hands turned up at its showdown */
+.pk-last p {
+  margin: 0.25rem 0;
+}
+.pk-shown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: center;
+}
+.pk-shown .pk-hole {
+  align-items: center;
+}
 .pk-raise {
   flex: 1 1 10rem;
   min-width: 140px;

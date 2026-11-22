@@ -84,6 +84,15 @@ import {
   teams as spadesTeams,
   type SpadesGame,
 } from '../../../src/gpu/spadesRoom'
+import {
+  eightsRules,
+  readEightsSettings,
+  totals as eightsTotals,
+  type EightsGame,
+} from '../../../src/gpu/eightsRoom'
+import { liarsRules, readLiarsSettings, type LiarsGame } from '../../../src/gpu/liarsRoom'
+import { holdemRules, type HoldemGame } from '../../../src/gpu/holdemRoom'
+import { duelRules, pressesBoth, readDuelSettings, type DuelGame } from '../../../src/gpu/lampsDuel'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -273,6 +282,32 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
         .map((t) => t.score)
         .join('–')
     return { rules: spadesRules(set.target, set.level), score }
+  },
+  eights: (s) => {
+    const set = readEightsSettings(s)
+    if (set === null) return null
+    // each side's points over the hands, the challenger's first
+    return { rules: eightsRules(set.target), score: (g: EightsGame) => eightsTotals(g).join('–') }
+  },
+  liars: (s) => {
+    const set = readLiarsSettings(s)
+    if (set === null) return null
+    // the dice each side has left, the challenger's first
+    return { rules: liarsRules(set.wild), score: (x: LiarsGame) => x.g.left.join('–') }
+  },
+  poker: () => ({
+    rules: holdemRules,
+    // each seat's chips at the end, the challenger's first
+    score: (g: HoldemGame) => g.t.seats.map((s) => s.chips).join('–'),
+  }),
+  lamps: (s) => {
+    const set = readDuelSettings(s)
+    if (set === null) return null
+    // each side's presses, the challenger's first: fewer wins
+    return {
+      rules: duelRules(set.size, set.pattern),
+      score: (g: DuelGame) => pressesBoth(g)?.join('–') ?? '',
+    }
   },
 }
 
