@@ -3657,3 +3657,72 @@ describe('dominoes by turns: the hands and boneyard kept back', () => {
     }
   })
 })
+
+describe('hearts by turns: four at the table, two of them friends', () => {
+  const hr = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'hearts', settings: { end: 50 }, ...over })
+  type Mine = { hand: number[]; passed: number[] | null; got: number[] | null }
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as Mine
+  }
+  type Sec = { dealt: number[][]; passes: (number[] | null)[] }
+
+  it('deals with the yes, seals each friend’s pass, and the computers play in the same call', () => {
+    let row = after(hr(), decide(hr(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(mine(row, A).hand).toEqual(sec.dealt[0])
+    expect(mine(row, B).hand).toEqual(sec.dealt[2])
+    const a = mine(row, A).hand
+    const p = decide(row, A, move(row.seq, { pass: a.slice(0, 3) }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.move).toEqual({ m: { pass: 'face down' } })
+    row = after(row, p)
+    expect(row.turn).toBe(1)
+    expect(JSON.stringify(row.state)).not.toMatch(/dealt|passes|hands/)
+    const b = mine(row, B).hand
+    row = after(row, decide(row, B, move(row.seq, { pass: b.slice(0, 3) })))
+    // the computers have played up to a friend's turn: whoever's it is, it is a friend's
+    const st = row.state as { phase: string; played: number[] }
+    expect(st.phase).toBe('play')
+    expect(row.turn === 0 || row.turn === 1).toBe(true)
+    expect(st.played.length).toBeLessThanOrEqual(3)
+  })
+
+  it('together: whose turn it is goes by the seat at the table, and each friend sees their own hand', () => {
+    const start = hr({ mode: 'together', settings: { end: 50, level: 'fair' } })
+    let row = after(start, decide(start, B, { op: 'accept' }))
+    expect(row.turn).toBe(0)
+    const sec = row.secret as Sec
+    expect(mine(row, A).hand).toEqual(sec.dealt[0])
+    expect(mine(row, B).hand).toEqual(sec.dealt[2])
+    row = after(row, decide(row, A, move(row.seq, { pass: mine(row, A).hand.slice(0, 3) })))
+    expect(row.turn).toBe(1)
+    row = after(row, decide(row, B, move(row.seq, { pass: mine(row, B).hand.slice(0, 3) })))
+    // play under way: the friend whose seat it is has the turn, and it is not simply the other one
+    for (let k = 0; k < 20 && row.status === 'active'; k++) {
+      const st = row.state as { played: number[]; first: number }
+      const who = row.turn === 0 ? A : B
+      const hand = mine(row, who).hand
+      // the seat to play, as the table says, is the one whose hand this is
+      const card = hand.find((c) => status(decide(row, who, move(row.seq, { play: c }))) !== 400)!
+      row = after(row, decide(row, who, move(row.seq, { play: card })))
+      expect((row.state as { played: number[] }).played.length).toBeGreaterThan(st.played.length)
+    }
+  })
+
+  it('refuses a stored hand that is not one deck', () => {
+    const row = after(hr(), decide(hr(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    const twice = {
+      ...sec,
+      dealt: sec.dealt.map((h, i) => (i === 0 ? [sec.dealt[1][0], ...h.slice(1)] : h)),
+    }
+    expect(
+      status(
+        decide({ ...row, secret: twice }, A, move(row.seq, { pass: sec.dealt[0].slice(0, 3) })),
+      ),
+    ).toBe(500)
+  })
+})

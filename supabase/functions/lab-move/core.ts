@@ -72,6 +72,12 @@ import {
   totals as dominoTotals,
   type DominoGame,
 } from '../../../src/gpu/dominoesRoom'
+import {
+  heartsRules,
+  readHeartsSettings,
+  totals as heartsTotals,
+  type HeartsGame,
+} from '../../../src/gpu/heartsRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -242,6 +248,16 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // each side's points over the rounds, the challenger's first
     return { rules: dominoRules(set.target), score: (g: DominoGame) => dominoTotals(g).join('–') }
   },
+  hearts: (s) => {
+    const set = readHeartsSettings(s)
+    if (set === null) return null
+    // versus, the two friends' points; together, the pairs' — the friends' first; lower wins
+    const score = (g: HeartsGame) => {
+      const t = heartsTotals(g)
+      return (g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]]).join('–')
+    }
+    return { rules: heartsRules(set.end, set.level), score }
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
@@ -392,7 +408,7 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
     if (row.status === 'invited') return { kind: 'mine', data: null }
     const g = whole(row)
     if (g === null) return refuse(500, 'this match’s board cannot be read')
-    return { kind: 'mine', data: hidden.mine(g, row.mode === 'together' ? 0 : seat) }
+    return { kind: 'mine', data: hidden.mine(g, row.mode === 'together' ? 0 : seat, seat) }
   }
 
   if (ask.op === 'accept') {
@@ -408,7 +424,12 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
       return {
         kind: 'begin',
         state: rules.encode(g),
-        turn: row.mode === 'together' || t === null || t === 'any' ? 0 : t,
+        turn:
+          row.mode === 'together'
+            ? (rules.friendTurn?.(g) ?? 0)
+            : t === null || t === 'any'
+              ? 0
+              : t,
         secret: hidden.secret(g),
       }
     }
@@ -427,7 +448,12 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
     return {
       kind: 'begin',
       state: rules.encode(opened.g),
-      turn: row.mode === 'together' || t === null || t === 'any' ? 0 : t,
+      turn:
+        row.mode === 'together'
+          ? (rules.friendTurn?.(opened.g) ?? 0)
+          : t === null || t === 'any'
+            ? 0
+            : t,
     }
   }
 
@@ -458,8 +484,13 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
       : historyRow(move, then),
     state: rules.encode(g),
     ...(hidden ? { secret: hidden.secret(g) } : {}),
-    // versus: whoever the board says; together: the other friend takes the team's next move
-    turn: over ? null : row.mode === 'together' ? ((1 - seat) as Seat) : (rules.turn(g) as Seat),
+    // versus: whoever the board says; together: the other friend takes the team's next move,
+    // unless the toy seats the friends apart and says which of them it is (Hearts, Spades)
+    turn: over
+      ? null
+      : row.mode === 'together'
+        ? (rules.friendTurn?.(g) ?? ((1 - seat) as Seat))
+        : (rules.turn(g) as Seat),
     result:
       winner === null
         ? null
