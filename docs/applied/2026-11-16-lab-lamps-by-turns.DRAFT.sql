@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Lamps as a duel by turns: step 9 of the Lab multiplayer plan, the
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_lamps_by_turns`, version 20261122124749:
+-- md5(statements[1]) = 5618c9e6a7d409f8960ca83fa6acc623, this file's body. The record is
+-- supabase/migrations/20261122124749_lab_lamps_by_turns.sql.
+--
+-- (as drafted) Lamps as a duel by turns: step 9 of the Lab multiplayer plan, the
 -- same board for both and the fewer presses wins (src/gpu/lampsDuel.ts).
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
