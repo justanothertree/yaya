@@ -1,7 +1,7 @@
 name: db guards
 
-# Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, against a
-# throwaway local database on every push.
+# Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, then
+# supabase/tests/lab-nudge-guards.sql, against a throwaway local database on every push.
 #
 # ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
 # `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
@@ -16,9 +16,23 @@ name: db guards
 # that block has a non-zero to measure against; the comment on it says so, in case it ever looks
 # redundant.
 
+# ⚠️ ONCE PER COMMIT, NOT TWICE. These used to be bare `push:` and `pull_request:`, which was
+# the only unqualified pair in `.github/workflows/` — build, lint and test all scope both to
+# `main`. On a branch with an open PR, bare triggers run the WHOLE Supabase stack twice for the
+# same commit, two seconds apart, and that is the pair sitting on both of this job's failures:
+# `push` red, `pull_request` green, same SHA. Two separate runners cannot share a host port, so
+# the duplication is not proof of the cause — but it doubles the exposure to whatever takes
+# 54324, and it is a wasted full-stack run on every commit either way.
+#
+# What this gives up: a push to a branch with no PR yet no longer runs the guards. That is already
+# the trade the other three workflows make, the SQL still runs on every PR and on main, and
+# `scripts/migration-md5.mjs` — the half that protects the applied migrations — runs in the
+# pre-push hook as part of `npm run test`.
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # read-only: this job checks out code and talks to a local container, nothing else
@@ -30,9 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -74,8 +88,74 @@ jobs:
         with:
           version: 2.122.0
 
-      - name: Start a throwaway database
-        run: supabase start
+      # ⚠️ WITHOUT THE MAIL CATCHER, BECAUSE IT IS THE ONE CONTAINER THAT HAS EVER FAILED HERE.
+      # Twice in two days this job died on
+      #   failed to bind host port 0.0.0.0:54324/tcp: address already in use
+      # starting `supabase_inbucket_yaya`, after the schema had seeded and before a line of SQL
+      # ran — once on #227 (16 Nov) and once on #341 (17 Nov). Both times the remedy was a manual
+      # re-run, and both times the SAME COMMIT had already passed this same workflow on its other
+      # trigger, which is as clear as a flake gets. 54324 is the mail catcher's port; nothing in
+      # `supabase/tests/` or `supabase/seed.sql` sends or reads mail, so the honest fix is not to
+      # start it. A container that is not started cannot lose a race for a port.
+      #
+      # ⚠️ AND THE EXCLUDE NAME IS `mailpit`, NOT `inbucket` — WHICH IS A TRAP WITH NO ERROR IN
+      # IT. The container is called `supabase_inbucket_yaya`, so `inbucket` is what the failure
+      # message hands you, and it is wrong: in the pinned 2.122.0 the catalog entry is
+      # `{ service: "mailpit", containerSuffix: "inbucket", excludeKey: "mailpit" }`, and the
+      # excludeKey is what `-x` takes. An unrecognised value DOES NOT FAIL the command —
+      # `partitionStartExcludeFlags` prints `WARNING: ... not valid to exclude` to stderr and
+      # proceeds — so `-x inbucket` would have started the mail catcher anyway, left this job
+      # green, and "fixed" nothing while the flake went on happening.
+      #
+      # The CLI's own docs are no help here and actively mislead: supabase.com/docs currently
+      # documents `--exclude` as taking `rest, auth, realtime, storage, functions, studio, mail,
+      # analytics, pooler`, which is a LATER CLI. Against 2.122.0, `mail` is not a valid value and
+      # neither are `auth`, `rest`, `functions`, `analytics` or `pooler`; even `storage` is wrong,
+      # the key being `storage-api`. The list that governs this line is
+      # `apps/cli/src/command-internal/service-catalog.ts` at the tag this workflow pins, and it
+      # must be re-read when that pin moves.
+      #
+      # Which is why the two checks below exist rather than a comment promising it worked: one
+      # fails if the name stops being accepted, the other if a mail container turns up regardless.
+      # Only `mailpit` is excluded. `gotrue` STAYS, and not for tidiness — `supabase/seed.sql`
+      # inserts into `auth.users` and the baseline has four references to it, and that table is
+      # created by GoTrue's own migrations when the auth container boots. Excluding it would fail
+      # the seed. studio, imgproxy, postgres-meta, realtime, storage-api and edge-runtime are
+      # unused by `db reset` and psql and could go the same way; they are left alone because none
+      # of them has ever broken this job, and this job is what stands between a bad migration and
+      # the live database.
+      - name: Start a throwaway database, without the mail catcher
+        run: |
+          set -o pipefail
+          supabase start -x mailpit 2>&1 | tee /tmp/supabase-start.log
+
+          # the typo case: a bad -x value is a stderr warning, not a failure
+          if grep -q 'not valid to exclude' /tmp/supabase-start.log; then
+            echo "::error title=The -x name is stale::supabase start rejected the exclude value, so the mail catcher was started anyway. The CLI pin above moved, or the name changed: re-read excludeKey in apps/cli/src/command-internal/service-catalog.ts at that tag."
+            exit 1
+          fi
+
+          # ⚠️ ASKED ONCE, PRINTED, AND REQUIRED TO HAVE WORKED. A silent pass is
+          # indistinguishable from a check that never ran: written the obvious way, as
+          # `if docker ps | grep -q ...`, a missing `docker` fails the pipeline, leaves the `if`
+          # simply false, and takes the step green having asserted nothing. That exact vacuous
+          # pass happened twice while this was being written, on a machine where the stub `docker`
+          # was not on PATH — two of three test cases "passed" for that reason. So the list is
+          # captured once, a failure to capture it is fatal, and the list itself goes into the log
+          # so the proof is readable later instead of inferred from silence.
+          if ! RUNNING="$(docker ps --format '{{.Names}}')"; then
+            echo "::error title=Could not list containers::docker ps failed, so the mail-catcher check below would have asserted nothing and passed. Failing instead."
+            exit 1
+          fi
+          echo "containers running after start:"
+          echo "$RUNNING" | sed 's/^/  /'
+
+          # the rename case: the value was accepted but something still bound 54324
+          if echo "$RUNNING" | grep -qE 'inbucket|mailpit'; then
+            echo "::error title=The mail catcher started anyway::-x mailpit was accepted and a mail container is running, so the exclusion no longer does what this step says it does."
+            docker ps --format '{{.Names}}  {{.Ports}}'
+            exit 1
+          fi
 
       # applies [db.seed] sql_paths: privileges, extensions, the dump, triggers, then seed
       - name: Apply migrations and seed
@@ -97,6 +177,16 @@ jobs:
           # ON_ERROR_STOP turns the suite's own RAISE into a failed job
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chronicle-daily-flow.sql
+          # the nudge's realtime topic: closed to anon by privilege and by calling, open only to a
+          # match's two players, and both realtime.messages policies written for authenticated.
+          # ⚠️ `db reset` builds from the 4 Nov dump, which predates the Lab: its catalog (9 Nov),
+          # its matches (15 Nov) and the nudge (17 Nov) are applied here, each in one transaction,
+          # exactly as production ran them, before the file that asks about them.
+          for m in 20261109030613_lab_catalog_and_feedback 20261115002456_lab_matches_and_results \
+                   20261117003350_lab_match_nudge; do
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/migrations/$m.sql"
+          done
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-nudge-guards.sql
 
       - name: Stop the database
         if: always()
