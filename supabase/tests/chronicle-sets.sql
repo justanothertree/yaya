@@ -2,7 +2,7 @@
 -- members.
 --
 -- ⛔ NEEDS THE DRAFT APPLIED FIRST, and refuses to run otherwise:
---      docs/2026-11-08-chronicle-sets.DRAFT.sql
+--      docs/applied/2026-11-08-chronicle-sets.DRAFT.sql
 -- It is not applied to production. This file runs only where a throwaway database has been built
 -- from the migrations and seed — the `db guards` CI job — and it rolls back. NEVER against
 -- production: it writes rows, edits a person's exercise list and suspends a member.
@@ -50,7 +50,7 @@ begin
   if to_regclass('public.chronicle_sets') is null
      or to_regprocedure('public.chronicle_set_add(text, text, numeric, date, uuid)') is null
      or to_regprocedure('public.chronicle_entry_edit_day(uuid, timestamptz, timestamptz, uuid, date)') is null then
-    raise exception 'apply docs/2026-11-08-chronicle-sets.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-08-chronicle-sets.DRAFT.sql before this file';
   end if;
 end $$;
 

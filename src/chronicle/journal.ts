@@ -34,7 +34,7 @@ export type JournalRow = {
 /**
  * A note that belongs to a DAY rather than a sitting — "writing a note must not require starting a
  * timer". Private, in the export, never on anybody's timeline: see
- * docs/2026-11-08-chronicle-day-notes.DRAFT.sql, which is not applied yet.
+ * docs/applied/2026-11-08-chronicle-day-notes.DRAFT.sql, which is not applied yet.
  */
 export type DayNote = { id: string; on: string; at: string; body: string }
 

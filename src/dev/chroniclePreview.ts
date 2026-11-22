@@ -2635,7 +2635,7 @@ export const pvMemberChronicle = (
   const to = Date.now()
   const from = to - days * 86_400_000
   /* ⚠️ BROWSING IS LEFT OUT, as `(v_target = v_viewer or not a.auto)` leaves it out of each of the
-     server's three queries (docs/2026-11-14-card-hides-browsing.DRAFT.sql). The viewer here is a
+     server's three queries (docs/applied/2026-11-14-card-hides-browsing.DRAFT.sql). The viewer here is a
      friend — see `reachesAFriend` — so the owner's half of that rule never applies. A sitting
      whose activity is not in this map is skipped here and in "now" below, before any figure is
      made from it, as the server's join drops it. */

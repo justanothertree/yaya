@@ -58,6 +58,53 @@ next sweep (21:10 UTC) prices them and all four figures close.
 imported at any hour is worth something immediately. It is reported separately from the import,
 like `splitError`, because the trades are already in by then.
 
+## Re-measured after the next sweep — 16 Nov 2026, 02:1x UTC
+
+The prediction above was that the 21:10 UTC sweep would price the seven and all four figures would
+close. It ran at 21:10–21:16 on 15 Nov, took `price_cache` from 182 rows to 189, and **every held
+position on both platforms is priced now** — `unpriced` is 0 on all four rows, and integrity check
+5 ("family holding with no price") has gone from flagging to **0**.
+
+| Number           | Page           | Broker app     | Gap (was)             | %       |
+| ---------------- | -------------- | -------------- | --------------------- | ------- |
+| Cash App stocks  | $13,563.93     | $13,527.00     | **+36.93** (+36.93)   | +0.273% |
+| Cash App bitcoin | $2,559.83      | $2,558.30      | **+1.53** (−25.84)    | +0.060% |
+| Robinhood stocks | $7,069.81      | $7,259.00      | **−189.19** (−977.13) | −2.606% |
+| Robinhood crypto | $33.82         | $35.00         | **−1.18** (−2.35)     | −3.377% |
+| **Everything**   | **$23,227.39** | **$23,379.30** | **−151.91** (−968.39) | −0.650% |
+
+Family fund worth: **$13,270.30** (was $12,534.59). Cash still $0.00 on all 33, contributed
+$18,104.13, held basis $17,610.12. Sums taken from SQL rather than added by hand — the $2.00 slip
+corrected above was exactly that mistake.
+
+**Three of the four gaps are price timing, and they are closed or trivial.** Bitcoin is +$1.53 on
+$2,558 because the sweep is once a day and BTC trades round the clock, so the two readings are
+minutes-to-hours apart rather than wrong. Robinhood crypto is −$1.18 for the same reason, and the
+app figure is rounded to $35 anyway. Cash App stocks are +0.27% and will not close on a weekend:
+that one is a price _source_ difference, not timing — the cache holds Friday's 16:00 close and Cash
+App shows its own last price including Friday's extended-hours session.
+
+**The fourth is real, and no longer has the explanation it had yesterday.** The seven contributed
+**+$787.94**, closing $788 of the $977. The $189 that remains is not price staleness:
+
+- **Zero unpriced** Robinhood stock positions.
+- The only prices the sweep did not refresh are **FATAQ** (60 days, $0.0001, worth $0.00, the known
+  delisting) and **OCCI, DPRO, GP** — one day old, $143.74 between them, holding Friday's close
+  across a weekend, which is the correct price.
+- **No missing-buy shape.** Three Robinhood positions read closed-or-inverted with real money
+  spent, and all three are explained: YOLO (19 trades, net exactly 0 units) and BTOG (2 trades,
+  net 0) are genuinely sold out, and CCIV is the documented −0.000036 symbol-change residue.
+- **The null control points the wrong way.** If Robinhood's stocks carried the same bias as Cash
+  App's (+0.273%), the page would read **$7,278.82** against the app's $7,259 — $209 _above_ where
+  it actually reads. So the price-source effect cannot be the cause; it is working against it.
+
+What is left is the one exposure this audit already named and could not measure: **the Robinhood
+same-day collapse**. Activity Date carries no time and Robinhood rows have no transaction ID, so
+identical same-day buys of the same stock collapse to one row, and 2.6% of that book is entirely
+consistent with a handful of them. Nothing in the database can settle it — there is no import-log
+table, and `summary.collapsed` lives only in the import screen at the moment of import. **Re-run
+the parse on the same CSV and read the collapsed block**; that is the only thing that will say.
+
 ## Missing, duplicated, untagged
 
 **Duplicates: none.** Two groups of same-shape rows exist — MTCH ×4 ($50 each, 2020-07-01) and
@@ -107,9 +154,14 @@ It is not a contradiction in the data; it is two write paths and one read. Three
    units the family holds, and the hero lists the affected symbols.
 2. `admin_even_split_trades` will not auto-split future trades of those symbols. That is arguably
    right — they come back to the review queue instead — and is left alone.
-3. **`admin_correct_position` gates the family's share of a correction on that same flag.** Fixing
-   a missed split on one of these hands them none of it, silently. That one is a real latent loss
-   and needs SQL — see `2026-11-14-correction-follows-ownership.sql`, **not applied**.
+3. **`admin_correct_position` gated the family's share of a correction on that same flag.** Fixing
+   a missed split on one of these handed them none of it, silently — a real latent loss. ✅ **Fixed
+   16 Nov 2026**, migration `20261116020828`: the correction asks `finance.family_share_at`, which
+   is their actual ownership. Previewed against the whole book first — all 203 positions, 198
+   decisions unchanged, these 5 going from share 0 to 1. See
+   `2026-11-14-correction-follows-ownership.sql` and `2026-11-15-correction-preview.md`.
+   ⚠️ Two pieces of on-screen copy promised the old behaviour and were corrected in the same
+   sitting; the consequence of a change is usually a sentence somewhere.
 
 ## Two figures that described the trade history and called it holdings
 
@@ -169,8 +221,18 @@ the feed has stopped the line above already says it. Both of those were found on
 
 ## Still open, needing Evan
 
-1. `2026-11-14-correction-follows-ownership.sql` — **not applied**, needs a go-ahead.
-2. The Robinhood same-day collapse. Needs a migration that re-keys the history.
-3. NFLX and AEON: undesignate, or leave the decision sitting there.
-4. FATAQ is delisted as far as Finnhub is concerned. `admin_set_price` is the keyless fallback if
-   it is worth anything; integrity check 6 will keep reporting it until something changes.
+1. ✅ `2026-11-14-correction-follows-ownership.sql` — **applied 16 Nov 2026** as
+   `20261116020828`. Payload fingerprint byte-identical either side; no rows changed.
+2. ✅ `2026-11-16-integrity-check-10.sql` — **applied 16 Nov 2026** as `20261116031637`. The
+   Reconcile list is ten checks and the attention badge went 2 → 3; check 10 reads **5**. No DML,
+   payload fingerprint unchanged.
+3. **The Robinhood same-day collapse, and it is now the largest unexplained number on the page.**
+   With the seven priced, the −$977 Robinhood stock gap is −$189, and nothing about prices accounts
+   for the remainder (see the re-measurement above: zero unpriced, no missing-buy shapes, and the
+   null control pointing $209 the other way). Needs a migration that re-keys the history with an
+   occurrence ordinal — which changes the `import_key` of every Robinhood row already imported, and
+   `import_key` is what makes re-imports idempotent. Before that: re-run the parse on the same CSV
+   and read the collapsed block, which is the only way to learn whether rows were actually lost.
+4. NFLX and AEON: undesignate, or leave the decision sitting there. Integrity check 9 still reads 2.
+5. FATAQ is delisted as far as Finnhub is concerned — now 60 days stale and the sole remaining
+   finding of integrity check 6. `admin_set_price` is the keyless fallback if it is worth anything.
