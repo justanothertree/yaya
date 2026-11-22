@@ -55,6 +55,7 @@ declare
   id1 uuid;
   dev2 uuid;
   dev5 uuid;
+  back uuid;
   r1 bigint; r2 bigint; r3 bigint; r4 bigint; r5 bigint; r6 bigint;
   stuck0 int;
   first_ boolean;
@@ -340,7 +341,11 @@ begin
   end if;
   perform set_config('role', 'authenticated', true);
   asked := asked + 1;
-  if public.push_device_add(e2, good_key, good_auth) is distinct from dev2
+  /* ⚠️ TWO STATEMENTS, NOT ONE EXPRESSION: push_devices_mine is STABLE, so inside the same query as
+     the add it reads the snapshot from before the add and cannot see the row come back. CI's first
+     run failed here on exactly that, with the function right. */
+  back := public.push_device_add(e2, good_key, good_auth);
+  if back is distinct from dev2
      or not exists (select 1 from jsonb_array_elements(public.push_devices_mine()) x where x->>'endpoint' = e2) then
     fails := array_append(fails, '3: turning a removed device back on did not bring the same row back');
   end if;
