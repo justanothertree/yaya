@@ -4,7 +4,7 @@ import { peopleInGroup } from '../groupFilter'
 import { isImportedTotal } from '../scoring'
 import { daySave } from '../daySave'
 import { todayISO, localISO } from '../dates'
-import { getSupabaseClient } from '../../finance/client'
+import { getSupabaseClientOrNull } from '../../finance/client'
 
 /**
  * Everything the Circuit's log holds: whose day it is and which day, the numbers being typed,
@@ -84,7 +84,14 @@ export function useLog({
   // owner, so it falls through to the first person (the demo "Example" persona).
   useEffect(() => {
     let cancelled = false
-    const sb = getSupabaseClient()
+    /* a build with no Supabase env has nobody to sign in: resolve straight to the signed-out
+       sandbox, which is what a session that came back empty does below */
+    const sb = getSupabaseClientOrNull()
+    if (!sb) {
+      setUid(null)
+      setAuthReady(true)
+      return
+    }
     // local session first (instant, no network) so the owner default lands fast
     void sb.auth.getSession().then(async ({ data }) => {
       if (cancelled) return

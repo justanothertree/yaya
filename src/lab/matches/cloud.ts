@@ -1,4 +1,7 @@
 import { getSupabaseClient } from '../../finance/client'
+import { MatchError, SIGN_IN_TO_SEE, matchErrorOf } from './errors'
+
+export { MatchError }
 
 /**
  * A Lab match by turns, as the server shows it to one of its two players — and every way to ask
@@ -92,22 +95,9 @@ export function readView(x: unknown): MatchView | null {
   }
 }
 
-/** what went wrong, in the server's own words where it gave some */
-export class MatchError extends Error {
-  status: number
-  constructor(message: string, status = 0) {
-    super(message)
-    this.status = status
-  }
-}
-
 async function rpc(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const { data, error } = await getSupabaseClient().rpc(name, args)
-  if (error)
-    throw new MatchError(
-      error.code === 'P0002' ? 'There’s no match here for you.' : error.message,
-      error.code === 'P0002' ? 404 : 400,
-    )
+  if (error) throw matchErrorOf(error)
   return data
 }
 const one = (x: unknown) => {
@@ -159,6 +149,8 @@ async function move(body: Record<string, unknown>): Promise<MatchView> {
       } catch {
         /* not json: say what we can below */
       }
+      // a session that has lapsed: lab-move's "not authenticated" is the gateway's or its own
+      if (ctx.status === 401) throw new MatchError(SIGN_IN_TO_SEE, 401)
       throw new MatchError(said || `The move was refused (${ctx.status}).`, ctx.status)
     }
     throw new MatchError('The move could not be sent. Check your connection and try again.')

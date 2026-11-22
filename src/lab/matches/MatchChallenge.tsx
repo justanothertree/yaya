@@ -93,7 +93,7 @@ export function MatchChallenge({
           {friends === null && !error && <p className="muted">Loading your friends…</p>}
           {friends?.length === 0 && (
             <p className="muted">
-              You have no friends here yet. Add some on <a href="#people">People</a>, then challenge
+              You have no friends here yet. Add some in <a href="#chat">Chat</a>, then challenge
               them.
             </p>
           )}

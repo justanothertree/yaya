@@ -2,7 +2,7 @@
 -- as a seeded member.
 --
 -- ⛔ NEEDS THE DRAFT APPLIED FIRST, and refuses to run otherwise:
---      docs/2026-11-08-chronicle-weekdays.DRAFT.sql
+--      docs/applied/2026-11-08-chronicle-weekdays.DRAFT.sql
 -- It is not applied to production. This file runs only where a throwaway database has been built
 -- from the migrations and seed — the `db guards` CI job — and it rolls back. NEVER against
 -- production: it writes rows and suspends a member to ask about refusals.
@@ -47,7 +47,7 @@ begin
      or to_regprocedure('public.chronicle_goal_days_set(uuid, smallint, date)') is null
      or position('chronicle_goal_days' in
           pg_get_functiondef('public.chronicle_goals_mine()'::regprocedure)) = 0 then
-    raise exception 'apply docs/2026-11-08-chronicle-weekdays.DRAFT.sql before this file';
+    raise exception 'apply docs/applied/2026-11-08-chronicle-weekdays.DRAFT.sql before this file';
   end if;
 end $$;
 

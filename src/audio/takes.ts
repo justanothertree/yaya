@@ -104,6 +104,26 @@ export type TakeRow = {
    * to play it plain, never a reason to drop the take. Every reader goes through `readVoiceFx`.
    */
   voice?: Partial<VoiceFx>
+  /**
+   * Seconds into the song where this recording belongs: where the playhead was when it was sung
+   * (punchIn.ts), written when the take is kept, and again wherever it is dragged on the timeline
+   * (`keepOnTake`). Absent for a recording made with the song stopped and for a file opened from
+   * disk until somebody moves it, which go to the top as they always did.
+   *
+   * ⚠️ NOT `at`, WHICH THIS ROW ALREADY HAS AND WHICH MEANS SOMETHING ELSE: `at` is when it was
+   * recorded, in ms since 1970, and the list shows the date from it. A placement's `at` is a
+   * position in the song. Two fields called `at` on one record, meaning a date and a position,
+   * would be read the wrong way round by the next person to touch it.
+   *
+   * ⚠️ KEPT ON THE RECORDING as well as on its placement, because taking a take out of the loop
+   * forgets the placement, and putting it back used to start it from the top.
+   */
+  songAt?: number
+  /**
+   * How loud it was last set on the song, 0 to 2 — kept here for the same reason as `songAt`: so
+   * taking it off the song and putting it back does not reset its fader (keepOnTake).
+   */
+  gain?: number
 }
 
 let open: Promise<IDBDatabase | null> | null = null
@@ -218,7 +238,12 @@ export type PutResult = { ok: true; row: TakeRow } | { ok: false; why: 'full' | 
  * one thing a recorder must never do. Refusing is rude and recoverable; evicting is polite and
  * not.
  */
-export async function putTake(id: string, blob: Blob, len: number): Promise<PutResult> {
+export async function putTake(
+  id: string,
+  blob: Blob,
+  len: number,
+  songAt?: number,
+): Promise<PutResult> {
   const held = await takenBytes()
   const had = await getTake(id)
   /* replacing a take only costs the difference, so re-recording at the cap still works */
@@ -230,6 +255,7 @@ export async function putTake(id: string, blob: Blob, len: number): Promise<PutR
     bytes: blob.size,
     type: blob.type || 'audio/webm',
     blob,
+    ...(songAt !== undefined && Number.isFinite(songAt) && songAt >= 0 ? { songAt } : {}),
   }
   const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
   return done === null ? { ok: false, why: 'blocked' } : { ok: true, row }
@@ -285,6 +311,29 @@ export async function setTakeVoice(id: string, voice: VoiceFx | null): Promise<b
       space: voice.space,
     }
   else delete row.voice
+  const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
+  return done !== null
+}
+
+/**
+ * Keep where this recording goes on the song and how loud, once they have been set by hand — so
+ * taking it off the song and putting it back brings it back as it was left (looper.ts, `owe`).
+ *
+ * ⚠️ THE SAME READ-MODIFY-WRITE AS `setTakeLog`: the stored row is spread and only these fields
+ * change. One write for both, and none at all when neither moved, because each write rewrites the
+ * whole row, recording included.
+ */
+export async function keepOnTake(
+  id: string,
+  patch: { songAt?: number; gain?: number },
+): Promise<boolean> {
+  const had = await getTake(id)
+  if (!had) return false
+  const row: TakeRow = { ...had }
+  const ok = (v: number | undefined): v is number => v !== undefined && Number.isFinite(v) && v >= 0
+  if (ok(patch.songAt)) row.songAt = patch.songAt
+  if (ok(patch.gain)) row.gain = patch.gain
+  if (row.songAt === had.songAt && row.gain === had.gain) return true
   const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
   return done !== null
 }
