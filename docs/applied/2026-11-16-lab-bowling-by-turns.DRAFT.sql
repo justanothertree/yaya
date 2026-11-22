@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Bowling by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_bowling_by_turns`, version 20261122025215:
+-- md5(statements[1]) = aaed0f1ba77f730ecb7cd9d5ba54f625, this file's body. The record is
+-- supabase/migrations/20261122025215_lab_bowling_by_turns.sql.
+--
+-- (as drafted) Bowling by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
