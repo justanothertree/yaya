@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Curling by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_curling_by_turns`, version 20261122025228:
+-- md5(statements[1]) = 9445e4b72425541720197a19ae781b01, this file's body. The record is
+-- supabase/migrations/20261122025228_lab_curling_by_turns.sql.
+--
+-- (as drafted) Curling by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
