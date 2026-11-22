@@ -57,6 +57,7 @@ import {
   readCodeSettings,
   type CodeGame,
 } from '../../../src/gpu/codebreakerRoom'
+import { boxRules, readBoxSettings, totals, type BoxGame } from '../../../src/gpu/shadowboxRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -197,6 +198,12 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // the guesses each side took to crack the other's code, the challenger's first
     const took = (g: CodeGame, side: 0 | 1) => crackedIn(g, side) ?? 'uncracked'
     return { rules: codeRules(rules), score: (g: CodeGame) => `${took(g, 0)}–${took(g, 1)}` }
+  },
+  shadowbox: (s) => {
+    const set = readBoxSettings(s)
+    if (set === null) return null
+    // each side's blocks over par, the challenger's first
+    return { rules: boxRules(set.rounds), score: (g: BoxGame) => totals(g).join('–') }
   },
 }
 

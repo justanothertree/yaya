@@ -46,6 +46,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
     { length: 3, colours: 4 },
     { length: 5, colours: 8, repeats: false, tries: 12, level: 'hard' },
   ],
+  shadowbox: [{}, { rounds: 1 }, { rounds: 5, level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -76,6 +77,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   yacht: [],
   shut: [],
   codebreaker: [{ length: 6 }, { colours: 9 }, { repeats: 'no' }, { tries: 7 }],
+  shadowbox: [{ rounds: 2 }, { rounds: '3' }, { rounds: 0 }],
 }
 
 describe('the match toys', () => {
