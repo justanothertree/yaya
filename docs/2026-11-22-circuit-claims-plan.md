@@ -87,8 +87,10 @@ ship after the apply, not before:** before it, "an admin will confirm it" would 
   person id to their own circuit, and `circuit_can_see_person` lets every member of a circuit see
   its people. So a member who knows a person's id can make a circuit and read that person's logs
   whatever their visibility says. With this draft such a person can no longer be CLAIMED that way
-  (the admin sees "they added this board to a circuit themselves"), but the read remains. It wants
-  a draft of its own and a CI proof.
+  (the admin sees "they added this board to a circuit themselves"), but the read remains.
+  **Measured** in db guards run 45081011006: as the seeded stranger, 0 of the friend's private
+  board's logs before, 3 after one `create_circuit` and one insert. Drafted on its own, independent
+  of this one: `docs/2026-11-22-circuit-creator-staple-plan.md` on branch `circuit/creator-staple`.
 
 ## Evidence
 
