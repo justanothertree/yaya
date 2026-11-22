@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Codebreaker by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_codebreaker_by_turns`, version 20261122025418:
+-- md5(statements[1]) = fe23d78b9cae0c01c9f54c130c4bc40b, this file's body. The record is
+-- supabase/migrations/20261122025418_lab_codebreaker_by_turns.sql.
+--
+-- (as drafted) Codebreaker by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
