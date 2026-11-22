@@ -65,7 +65,11 @@ import { readPresets } from '../audio/vizPresets'
 
 import { packSong } from '../audio/songFile'
 import { ArtBlock } from '../profile/ProfileArt'
-import { CONFIG_LIMIT, PROFILE_LIMIT, configSize } from '../profile/blockSize'
+import { CONFIG_LIMIT, configSize } from '../profile/blockSize'
+import { preflight } from '../profile/pageStore'
+import { withSong } from '../profile/newBlock'
+import type { PageWriter, PutOutcome, Status } from '../profile/pageWriter'
+import type { Song } from '../audio/songFile'
 import { ARROW_STEP, gridKey } from '../profile/gridKeys'
 import { PetBlock, PetPicker } from '../pets/PetBlock'
 import { gallery, subscribeGallery, type Art } from '../draw/gallery'
@@ -183,6 +187,15 @@ type ProfileNote = {
  * second edit needed here, because the error it keys off simply stops happening.
  */
 const NEEDS_SERVER_SUPPORT: Array<ProfileBlock['block_type']> = ['art', 'looks', 'pet']
+
+/** what the editor says when the writer refused its copy (profile/pageWriter.ts) */
+const CONFLICT_SAYS: Record<'stale' | 'changed' | 'not-yours' | 'collided' | 'not-you', string> = {
+  stale: 'Your page changed in another window.',
+  changed: 'Your page changed somewhere else.',
+  'not-yours': 'This page isn\u2019t under your name any more. Reload the site.',
+  collided: 'Your page was saved from two places at once. Reload it to see what it holds.',
+  'not-you': 'You\u2019re signed in as someone else now, so this didn\u2019t save.',
+}
 
 /**
  * Does this block get a line to itself?
@@ -2298,7 +2311,9 @@ export function ProfileBlocksEditor({
   trophies,
   achievements,
   snakeBest,
-  onSaved,
+  writer,
+  seedRev,
+  onReload,
   page,
   onPage,
   onDone,
@@ -2310,7 +2325,15 @@ export function ProfileBlocksEditor({
   trophies: ProfileTrophy[]
   achievements?: Achievement[]
   snakeBest: { score: number; game_mode: string | null } | null
-  onSaved: (blocks: ProfileBlock[]) => void
+  /**
+   * The one way this page is written (profile/pageWriter.ts). The editor hands it every change;
+   * the writer decides when, checks the page has not changed since `seedRev`, and says how it went.
+   */
+  writer: PageWriter
+  /** the version of the page `initial` is — every copy this editor makes descends from it */
+  seedRev: number
+  /** start again from the page as it is now; what this editor had not saved is let go */
+  onReload: () => void
   /** the page shape, so the canvas composes at the width the page really uses */
   page?: unknown
   onPage?: (next: { width: string; gap: string }) => void
@@ -2325,8 +2348,12 @@ export function ProfileBlocksEditor({
   onDone?: () => void
 }) {
   const [blocks, setBlocksRaw] = useState<ProfileBlock[]>(initial)
+  /** what cannot be sent at all (too big, too many), said before the server says it */
   const [err, setErr] = useState<string | null>(null)
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  /** how the writer's last job for this editor went, derived by the writer — never set here */
+  const [saving, setSaving] = useState<Status>({ kind: 'idle' })
+  /** this editor's lineage in the writer: null until it has attached */
+  const [lineage, setLineage] = useState<number | null>(null)
 
   /**
    * EVERY change to the page, undoable.
@@ -2742,176 +2769,155 @@ export function ProfileBlocksEditor({
   }
 
   /**
-   * It saves itself.
+   * It saves itself — through the page writer, which is the one thing that writes this page.
    *
-   * There was a Save button at the very bottom of the panel — and on a phone the panel was
-   * 2011px tall with seven "+ block" buttons above it, so you typed a bio at the top and never
-   * reached the thing that kept it. "My bio isn't saving" was the button being unreachable,
-   * not the save being broken.
+   * ⚠️ THE EDITOR NO LONGER SAVES, IT HANDS OVER (22 Nov 2026). It used to send its whole copy a
+   * moment after each change and again on the way out, and that copy was saved over whatever else
+   * had written the page meanwhile: 🎵 Put it on my profile, another tab, the chronicle's sharing
+   * switch, and the editor's own save still in flight. The writer (profile/pageWriter.ts) keeps one
+   * queue per member, checks before every save that the page is still the version this editor
+   * started from, and refuses — keeping the copy and saying so — rather than deleting what changed.
+   * The status line below is the writer's account of it, derived, never set.
    *
-   * Debounced rather than per-keystroke: 700ms also coalesces a hue slider drag, which would
-   * otherwise post a couple of hundred times.
+   * ⚠️ AND IT ATTACHES ONCE, ON MOUNT, FROM `initial` AND `seedRev`. StrictMode's attach, release,
+   * attach is harmless: releasing a lineage with nothing waiting simply closes it, and a recovered
+   * copy (Open them again), which does have something waiting, is taken over by the second attach
+   * rather than offered back beside the editor holding it.
    */
-  /**
-   * ⚠️ `certain` IS SENT ON EVERY BLOCK, EVEN AN EMPTY ONE, and that is a protocol decision
-   * rather than tidiness. `save_my_profile_blocks` works out whether the sender knows about
-   * lists by asking whether the key appears ANYWHERE in the payload — because a bundle that has
-   * never heard of them must not have its silence read as "wipe every list", which is how one
-   * stale tab could clear the whole page's choices. Sending `[]` on a friends block is this
-   * client saying "I know about lists and that one has none"; sending nothing at all would put
-   * the server into the older-bundle path and make an emptied list unsaveable.
-   */
-  const payloadOf = (list: ProfileBlock[]) =>
-    list.map(({ block_type, size, config, visibility, certain }) => ({
-      block_type,
-      size,
-      config,
-      visibility,
-      certain: certain ?? [],
-    }))
-
-  /**
-   * ⚠️ Compares VALUES, not "have I run yet".
-   *
-   * StrictMode double-invokes effects, so a boolean first-run guard is defeated — and here the
-   * cost of getting it wrong is a write. Holding the JSON of what is actually stored means the
-   * second invocation sees no difference and does nothing, and so does a re-render that changed
-   * something other than the blocks.
-   */
-  const savedJsonRef = useRef(JSON.stringify(payloadOf(initial)))
-  /** the newest unsaved payload, for the unmount flush below */
-  const pendingRef = useRef<{
-    json: string
-    payload: ReturnType<typeof payloadOf>
-    blocks: ProfileBlock[]
-  } | null>(null)
-  const onSavedRef = useRef(onSaved)
+  const commitRef = useRef<(song: Song, approved: string | null) => Promise<PutOutcome>>(
+    async () => ({ kind: 'stale' }),
+  )
   useEffect(() => {
-    onSavedRef.current = onSaved
-  }, [onSaved])
+    const id = writer.attach({
+      seedRev,
+      seedBlocks: initial,
+      /* 🎵 Put it on my profile, while this editor is open: the song goes into THIS copy */
+      apply: {
+        peek: () => blocksRef.current,
+        commit: (song, approved) => commitRef.current(song, approved),
+      },
+    })
+    setLineage(id)
+    setSaving(writer.statusOf(id))
+    const off = writer.subscribe(() => setSaving(writer.statusOf(id)))
+    return () => {
+      off()
+      writer.release(id)
+    }
+    /* ⚠️ mount-only on purpose: `initial` and `seedRev` are where this editor starts, and a new
+       starting point is a new editor (Profile keys it on the version) */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writer])
+
+  /**
+   * A song from the Instrument room, added to this copy as it stands — unsaved edits included —
+   * as one undoable step, and sent straight away.
+   */
+  commitRef.current = async (song, approved) => {
+    if (lineage === null) return { kind: 'stale' }
+    const ws = withSong(blocksRef.current, song)
+    if (!ws.ok) return { kind: 'cannot', why: ws.why }
+    if (ws.how === 'updated' && ws.name !== approved) return { kind: 'ask', name: ws.name }
+    setBlocks(ws.blocks, `adding “${ws.name}” from the Instrument room`)
+    blocksRef.current = ws.blocks
+    const out = await writer.flushNow(lineage, ws.blocks)
+    return { ...out, song: ws.name, how: ws.how }
+  }
 
   useEffect(() => {
-    const payload = payloadOf(blocks)
-    const json = JSON.stringify(payload)
-
+    if (lineage === null) return
     /**
-     * ⚠️ Caught HERE rather than by the server, because the server's answer for this is the same
-     * "invalid block" it gives for an unknown type — and it refuses the entire payload, so one
-     * over-long block stops the whole page saving. Checking first names the block, keeps the rest
-     * of the page saveable the moment it is fixed, and spares a request that cannot succeed.
+     * ⚠️ Caught HERE rather than by the server, because the server refuses the entire page for an
+     * over-long block, an over-full page or too many blocks, with a message about nothing in
+     * particular — so finding out from it stops every later edit saving. Checking first names
+     * what to fix and keeps the rest of the page saveable the moment it is fixed.
      */
-    const overSized = blocks.find((b) => configSize(b.config) > CONFIG_LIMIT)
-    if (overSized) {
+    const pf = preflight(blocks)
+    if (pf) {
+      writer.unstage(lineage, blocks)
       setBlocked(null)
       setErr(
-        `the ${BLOCK_LABEL[overSized.block_type]} block holds too much — take something out of it`,
+        pf.why === 'block too big'
+          ? `the ${BLOCK_LABEL[blocks[pf.at].block_type]} block holds too much — take something out of it`
+          : pf.why === 'page too big'
+            ? 'the page holds too much altogether — take something out of one of the blocks'
+            : pf.why === 'too many blocks'
+              ? 'a page holds 20 blocks — take one out to save the rest'
+              : 'a song block plays 24 songs — take one off it to save the rest',
       )
-      setStatus('idle')
       return
     }
-
-    /**
-     * ⚠️ AND THE PAGE AS A WHOLE, checked here for the same reason and in the same breath: the
-     * server refuses the entire payload either way, so finding out from it means one over-full
-     * page stops every later edit saving with a message about nothing in particular. The two
-     * limits say different things and so does this — the block one is "this block holds too
-     * much", and this one is "everything together is too much", which is fixed by taking a
-     * different thing out.
-     */
-    const weight = blocks.reduce((n, b) => n + configSize(b.config), 0)
-    if (weight > PROFILE_LIMIT) {
-      setBlocked(null)
-      setErr('the page holds too much altogether — take something out of one of the blocks')
-      setStatus('idle')
-      return
-    }
-
-    /**
-     * ⚠️ Back in step with the server means there is nothing WRONG any more, so the warning has
-     * to go with it. Taking out a block the server refused returns the page to exactly what was
-     * last saved — so no save is needed, none runs, and without this the failure message from the
-     * attempt before it stayed on screen accusing a page that is now perfectly fine. Measured:
-     * one save attempted, one error shown, and the error still there afterwards.
-     */
-    if (json === savedJsonRef.current) {
-      setErr(null)
-      setBlocked(null)
-      setStatus('idle')
-      return
-    }
-    pendingRef.current = { json, payload, blocks }
-    const t = window.setTimeout(() => {
-      setStatus('saving')
-      void getSupabaseClient()
-        .rpc('save_my_profile_blocks', { p_blocks: payload })
-        .then(({ error }) => {
-          if (error) {
-            /* name the block that did it, rather than repeating the server's one-word refusal */
-            const culprit = /invalid block/i.test(error.message)
-              ? (blocks.find((b) => NEEDS_SERVER_SUPPORT.includes(b.block_type))?.block_type ??
-                null)
-              : null
-            setBlocked(culprit)
-            setErr(
-              culprit
-                ? `the ${BLOCK_LABEL[culprit]} block needs a one-time database change that hasn’t been applied yet`
-                : error.message,
-            )
-            setStatus('idle')
-            return
-          }
-          setBlocked(null)
-          savedJsonRef.current = json
-          pendingRef.current = null
-          setErr(null)
-          setStatus('saved')
-          onSavedRef.current(blocks)
-        })
-    }, 700)
-    return () => window.clearTimeout(t)
-  }, [blocks])
+    setErr(null)
+    writer.stage(lineage, blocks)
+  }, [blocks, lineage, writer])
 
   /**
-   * Leaving mid-debounce must not lose the last thing you typed.
-   *
-   * Tapping "Done editing" unmounts this, which clears the timer above — reintroducing exactly
-   * the bug being fixed for anyone who types and leaves inside 700ms. Fire-and-forget, because
-   * cleanup cannot await.
+   * ⚠️ THE SERVER'S REFUSAL NAMES A BLOCK WHERE IT CAN. Its answer for a block type it has not
+   * been taught yet is the same one-word "invalid block" it gives for anything else, so the block
+   * most likely to be it is offered for removal rather than the whole page staying unsaveable.
    */
-  useEffect(
-    () => () => {
-      const p = pendingRef.current
-      if (!p || p.json === savedJsonRef.current) return
-      void getSupabaseClient()
-        .rpc('save_my_profile_blocks', { p_blocks: p.payload })
-        .then(({ error }) => {
-          // The PARENT is still mounted — only the editor went away — so telling it what landed
-          // is both safe and necessary: without this, typing and immediately tapping "Done
-          // editing" stored the new text and then showed you the old one until a reload.
-          if (!error) onSavedRef.current(p.blocks)
-        })
-    },
-    [],
-  )
+  useEffect(() => {
+    if (saving.kind !== 'error') return setBlocked(null)
+    setBlocked(
+      /invalid block/i.test(saving.message)
+        ? (blocksRef.current.find((b) => NEEDS_SERVER_SUPPORT.includes(b.block_type))?.block_type ??
+            null)
+        : null,
+    )
+  }, [saving])
 
   /**
    * ⚠️ The shortcut everybody's hands already know, and it has to not fire while they are
    * typing — a textarea has its own undo, and stealing it mid-sentence would throw away a
    * paragraph to get back a colour.
    */
+  /**
+   * ⚠️ AND ONLY WHEN THE EDITOR IS WHERE THE HANDS ARE. It listens on the window, and used to take
+   * Ctrl+Z from anywhere — Paint's, the Circuit's, the Instrument's — undoing and saving a change to
+   * the profile that had already shown as saved. It answers now only when the key comes from inside
+   * it, or from nowhere in particular (the page body) just after a click or a focus inside it.
+   */
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * ⚠️ THE EDITOR IS MORE THAN ITS BOX: the block settings panel is portaled to the body, and Undo
+   * has to work there too — right after Remove this block above all. So everything that is this
+   * editor carries `data-profile-editor` with this editor's own id (two can be open at once, the
+   * page and a pinned window, and each answers only its own keys).
+   */
+  const editorId = useId()
+  const isMine = useCallback(
+    (n: EventTarget | null) =>
+      n instanceof Element && !!n.closest(`[data-profile-editor="${editorId}"]`),
+    [editorId],
+  )
+  const ownsKeys = useRef(false)
+  useEffect(() => {
+    const mark = (e: Event) => {
+      ownsKeys.current = isMine(e.target)
+    }
+    window.addEventListener('pointerdown', mark, true)
+    window.addEventListener('focusin', mark, true)
+    return () => {
+      window.removeEventListener('pointerdown', mark, true)
+      window.removeEventListener('focusin', mark, true)
+    }
+  }, [isMine])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z' || e.defaultPrevented) return
       const el = e.target as HTMLElement | null
       const tag = el?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable) return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return
+      const inside = isMine(el)
+      const fromNowhere = !el || el === document.body || el === document.documentElement
+      if (!inside && !(fromNowhere && ownsKeys.current)) return
       e.preventDefault()
       if (e.shiftKey) stepForward()
       else stepBack()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [stepBack, stepForward])
+  }, [stepBack, stepForward, isMine])
 
   /**
    * ⚠️ ESCAPE IS THE ONE THAT BELONGS ON THE WINDOW. Holding a look and holding a block are
@@ -2954,6 +2960,8 @@ export function ProfileBlocksEditor({
 
   return (
     <div
+      ref={rootRef}
+      data-profile-editor={editorId}
       /**
        * ⚠️ THE EDITOR MAKES ROOM FOR THE PANEL rather than being covered by it. Asked for in
        * those words: to the side of the profile, not over it.
@@ -3533,6 +3541,7 @@ export function ProfileBlocksEditor({
         createPortal(
           <div
             className={'profile-inspector'}
+            data-profile-editor={editorId}
             role="dialog"
             /**
              * ⚠️ NOT `aria-modal`, AND NO SCRIM, because the page behind this is still live and
@@ -4043,15 +4052,49 @@ export function ProfileBlocksEditor({
        * away with everything else.
        */}
       <div className="profile-editor-status" aria-live="polite">
-        <span className={err ? 'profile-editor-err' : 'muted'}>
-          {err
-            ? 'Couldn\u2019t save \u2014 ' + err
-            : status === 'saving'
-              ? 'Saving\u2026'
-              : status === 'saved'
-                ? 'Saved \u2713'
-                : 'Changes save themselves.'}
-        </span>
+        {saving.kind === 'conflict' ? (
+          /* ⚠️ REFUSED, KEPT AND SAID — never merged, never saved over what changed */
+          <span className="profile-editor-err profile-editor-conflict">
+            {CONFLICT_SAYS[saving.why]}{' '}
+            {saving.why === 'stale' || saving.why === 'changed' || saving.why === 'collided' ? (
+              <>
+                {saving.unsaved
+                  ? 'Your last change didn\u2019t save, and reloading drops it, so copy anything you want first. '
+                  : 'Nothing of yours is unsaved. '}
+                <button
+                  className="btn"
+                  onClick={() => {
+                    if (lineage !== null) writer.discard(lineage)
+                    onReload()
+                  }}
+                >
+                  Reload it
+                </button>
+              </>
+            ) : null}
+            {/* what could not be sent at all is still said, under the banner rather than hidden by it */}
+            {err && <> Also: {err}.</>}
+          </span>
+        ) : (
+          <span className={err || saving.kind === 'error' ? 'profile-editor-err' : 'muted'}>
+            {err
+              ? 'Couldn\u2019t save \u2014 ' + err
+              : saving.kind === 'error'
+                ? 'Couldn\u2019t save \u2014 ' +
+                  (blocked
+                    ? `the ${BLOCK_LABEL[blocked]} block needs a one-time database change that hasn\u2019t been applied yet`
+                    : saving.message)
+                : saving.kind === 'saving'
+                  ? 'Saving\u2026'
+                  : saving.kind === 'unverified'
+                    ? 'Couldn\u2019t reach your page to check it. Trying again.'
+                    : saving.kind === 'unacknowledged'
+                      ? 'No answer from the server yet. Checking whether it saved\u2026'
+                      : saving.kind === 'saved'
+                        ? 'Saved \u2713'
+                        : 'Changes save themselves.'}
+          </span>
+        )}
         {/**
          * ⚠️ WHAT A STRANGER ACTUALLY SEES, WHICH NOTHING ANYWHERE SAID. Publishing a page and
          * a block's tier are two switches and the note beside "Anyone" already explains the word

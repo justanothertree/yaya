@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { dropWriters } from './profile/writerRegistry'
 import { applyLook, registerLookApplier, type Look } from './ui/looks'
 import { lazyRetry } from './lazyRetry'
 import { VizFloat } from './audio/VizFloat'
@@ -1100,6 +1101,8 @@ export default function App() {
         onSignedIn()
         startLibrarySync()
       } else if (event === 'SIGNED_OUT') {
+        /* the profile page's writers are per session (profile/pageWriterLive.ts) */
+        dropWriters()
         uidRef.current = null
         setIsFinanceAuthed(false)
         onSignedOut()
@@ -1605,7 +1608,7 @@ export default function App() {
       case 'visualizer':
         return <AudioVisualizer />
       case 'instrument':
-        return <InstrumentRoom inCanvas />
+        return <InstrumentRoom inCanvas username={me.username} />
       case 'paint':
         return <PaintRoom />
       case 'lab':
@@ -2563,7 +2566,7 @@ export default function App() {
                 it.
               </p>
               <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <InstrumentRoom />
+                <InstrumentRoom username={me.username} />
               </Suspense>
             </section>
           )}
