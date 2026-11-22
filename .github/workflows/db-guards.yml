@@ -195,26 +195,56 @@ jobs:
       # file, and then the visibility guards run a SECOND time so their checks H and K see the new
       # functions too: the first run above is before the draft exists. When it is applied this
       # line moves to its migration, like the Lab's three above.
-      - name: Run the phone alerts checks
+      # ⚠️ A THROWAWAY BRANCH, NEVER MERGED: every rule of the phone alerts draft broken in turn,
+      # each expected to turn its test red. Each variant is made from the REAL draft by sed, loaded,
+      # asked, and undone with the real ROLLBACK file before the next.
+      - name: Break each rule of the phone alerts draft, and expect red
         run: |
           DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
           if [ -z "$DB_URL" ]; then
             DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           fi
-          # ⚠️ A DRAFT GOES INTO THE WORLD IT WILL MEET. This stack's baseline revokes the schema's
-          # default grants, while production's default ACL hands anon EXECUTE on every new function
-          # and arwdDxtm on every new table — so here a draft that forgot `revoke … from anon` would
-          # pass its own privilege checks. Production's defaults go back first, as
-          # supabase/tests/plain-postgres/build.sh does; they touch only what is created after them.
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q \
             -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role" \
             -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-phone-alerts.DRAFT.sql
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/phone-alerts.sql
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-phone-alerts.ROLLBACK.sql
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/phone-alerts-rollback.sql
+          D=docs/2026-11-22-phone-alerts.DRAFT.sql
+          R=docs/2026-11-22-phone-alerts.ROLLBACK.sql
+          bad=0
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$D"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/tests/phone-alerts.sql > /tmp/real.out 2>&1 || { echo "::error::the REAL draft fails its test"; cat /tmp/real.out; bad=1; }
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$R"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$D"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$R"
+          echo "the real draft loads, passes, rolls back, and loads again after its rollback"
+          try() {
+            name="$1"; shift
+            sed "$@" "$D" > "/tmp/$name.sql"
+            if cmp -s "$D" "/tmp/$name.sql"; then echo "::error::$name: the sed changed nothing"; bad=1; return; fi
+            if ! psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "/tmp/$name.sql" > "/tmp/$name.load" 2>&1; then
+              echo "::error::$name: the variant did not load"; cat "/tmp/$name.load"; bad=1; return
+            fi
+            if psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/tests/phone-alerts.sql > "/tmp/$name.v" 2>&1; then
+              echo "::error::GREEN $name -- the test did not notice"; bad=1
+            else
+              echo "RED   $name"
+            fi
+            grep -hE "FAILED|^ *[0-9]+: |ERROR" "/tmp/$name.v" | sed 's/^/      /' | head -6
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "$R"
+          }
+          try anon-everywhere -e '/^revoke all on function$/,/from public, anon, authenticated;/s/from public, anon, authenticated;/from public, authenticated;/'
+          try no-device-cap -e 's/) >= 10 then/) >= 1000 then/'
+          try no-daily-cap -e 's/) >= 30 then/) >= 3000 then/'
+          try no-test-limit -e "s/and o.created_at > now() - interval '1 minute') then/and false) then/"
+          try stuck-for-anyone -e 's/if not public.is_admin() then/if false then/'
+          try waiting-ignores-deliveries -e '/^create function public.push_waiting/,/^\$\$;/{/and not exists (select 1 from public.push_deliveries pd/d;/where pd.outbox_id = p_outbox and pd.device_id = d.id)/d;}'
+          try delivery-any-device -e 's/join public.push_devices d on d.id = p_device and d.user_id = o.user_id/join public.push_devices d on d.id = p_device/'
+          try delivery-last-wins -e 's/on conflict (outbox_id, device_id) do nothing;/on conflict (outbox_id, device_id) do update set ok_at = excluded.ok_at, final_error = excluded.final_error;/'
+          try remove-not-own -e "s/where d.endpoint = btrim(coalesce(p_endpoint, '')) and d.user_id = me and d.gone_at is null;/where d.endpoint = btrim(coalesce(p_endpoint, '')) and d.gone_at is null;/"
+          try mine-everyone -e "s/where d.user_id = me and d.gone_at is null), '\[\]'::jsonb);/where d.gone_at is null), '[]'::jsonb);/"
+          try stuck-blind-to-refusals -e "s/where d.final_error is not null and d.at > now() - interval '1 day'/where false/"
+          try null-label-erases -e 's/coalesce(excluded.label, d.label)/excluded.label/'
+          exit $bad
 
       - name: Stop the database
         if: always()
