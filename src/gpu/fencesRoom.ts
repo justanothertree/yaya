@@ -72,6 +72,12 @@ export function replay(n: number, list: readonly unknown[]): FencesGame | null {
   return d
 }
 
+/** a match's board from its settings: the toy's own sizes, 9 when none is named; null otherwise */
+export function readFencesSize(s: Record<string, unknown>): number | null {
+  const size = s.size ?? 9
+  return (SIZES as readonly unknown[]).includes(size) ? (size as number) : null
+}
+
 export function fencesRules(size: number): Rules<FencesGame, Move> {
   return {
     fresh: () => fresh(size),

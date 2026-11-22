@@ -52,6 +52,10 @@ import { chain as hexChain } from '../../../src/gpu/hex'
 import { SWAP, replay as hexReplay } from '../../../src/gpu/hexRoom'
 import { LINES as ULT_LINES, moves as ultMoves } from '../../../src/gpu/ultimate'
 import { replay as ultReplay } from '../../../src/gpu/ultimateRoom'
+import { moves as btMoves } from '../../../src/gpu/breakthrough'
+import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
+import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
+import { packMove as packFence, replay as fencesReplay } from '../../../src/gpu/fencesRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -1184,5 +1188,171 @@ describe('ultimate noughts by turns: your square sends them to its board', () =>
     expect(status(decide(row, B, move(row.seq, 40)))).toBe(400)
     expect(status(decide(row, B, move(row.seq, 81)))).toBe(400)
     expect(status(decide({ ...row, state: { moves: [40, 40] } }, B, move(row.seq, 36)))).toBe(500)
+  })
+})
+
+describe('breakthrough by turns: first through to the far row', () => {
+  const bt = (over: Partial<Row> = {}) => invite({ demo_id: 'breakthrough', settings: {}, ...over })
+  const game = (state: unknown) => {
+    const o = state as { n: number; moves: unknown[] }
+    return btReplay(o.n, o.moves)!.g
+  }
+
+  it('plays versus to the end on both boards, the winner whoever broke through or took every man', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 12; seed++) {
+      const rnd = seeded(seed)
+      const size = seed % 2 ? 6 : 8
+      const { row, plans } = playOut(bt({ settings: { size } }), (r) => {
+        const list = btMoves(game(r.state))
+        const m = list[Math.floor(rnd() * list.length)]
+        return [m.from, m.to]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const { board } = game(last.state)
+      expect(board.n).toBe(size)
+      // asked of the board: the first side (1) heads for row 0, the second (2) for the last row
+      const n = board.n
+      const at = (side: number) =>
+        Array.from(board.cells).flatMap((c, i) => (c === side ? [i] : []))
+      const through = (side: number) =>
+        at(side).some((i) => (side === 1 ? i < n : i >= n * (n - 1))) ||
+        at(side === 1 ? 2 : 1).length === 0
+      const w = last.result!.winner
+      expect(through(w === 0 ? 1 : 2)).toBe(true)
+      expect(through(w === 0 ? 2 : 1)).toBe(false)
+      seen.add(String(w))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = bt({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const m = btMoves(game(row.state))[0]
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, [m.from, m.to]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  }, 30000)
+
+  it('reads the toy’s boards and only those, 8 when none is named', () => {
+    for (const settings of [{ size: 7 }, { size: '8' }, { size: 10 }])
+      expect(status(decide(bt({ settings }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(bt(), B, { op: 'accept' })
+    expect(begun.kind === 'begin' && begun.state).toEqual({ n: 8, moves: [] })
+  })
+
+  it('refuses a man moved backwards, onto its own side, and a stored game no moves could make', () => {
+    const row = after(
+      bt({ settings: { size: 6 } }),
+      decide(bt({ settings: { size: 6 } }), B, { op: 'accept' }),
+    )
+    const g = game(row.state)
+    const mine = Array.from(g.board.cells).findIndex((c, i) => c === 1 && i < 30 && i >= 24)
+    // a man of the first side on the near row: straight back off the board, and onto its fellow
+    expect(status(decide(row, A, move(row.seq, [mine, mine + 6])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [mine, mine + 1])))).toBe(400)
+    const ok = btMoves(g)[0]
+    expect(status(decide(row, A, move(row.seq, [ok.from, ok.to])))).toBe('commit')
+    expect(
+      status(
+        decide({ ...row, state: { n: 6, moves: [[0, 0]] } }, A, move(row.seq, [ok.from, ok.to])),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('fences by turns: a step or a fence, and no fence that shuts a side in', () => {
+  const fences = (over: Partial<Row> = {}) => invite({ demo_id: 'fences', settings: {}, ...over })
+  const game = (state: unknown) => {
+    const o = state as { n: number; moves: unknown[] }
+    return fencesReplay(o.n, o.moves)!.g
+  }
+
+  it('plays versus to the end on both boards, the winner whoever reached their far row', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 10; seed++) {
+      const rnd = seeded(seed)
+      const size = seed % 2 ? 7 : 9
+      const { row, plans } = playOut(fences({ settings: { size } }), (r) =>
+        packFence(fencesChoose(game(r.state), seed % 3 ? 'easy' : 'fair', rnd)),
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      expect(g.n).toBe(size)
+      // asked of where the two stand: the winner on its goal row, the other not
+      const w = last.result!.winner as 0 | 1
+      expect(g.pos[w][0]).toBe(goalRow(g, w))
+      expect(g.pos[w === 0 ? 1 : 0][0]).not.toBe(goalRow(g, w === 0 ? 1 : 0))
+      seen.add(String(w))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('refuses a fence across another, and keeps every side a way through', () => {
+    let row = after(
+      fences({ settings: { size: 7 } }),
+      decide(fences({ settings: { size: 7 } }), B, { op: 'accept' }),
+    )
+    row = after(row, decide(row, A, move(row.seq, ['h', 2, 2])))
+    // the same groove crossing, standing: two fences cannot cross
+    expect(status(decide(row, B, move(row.seq, ['v', 2, 2])))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, ['h', 2, 2])))).toBe(400)
+    const p = decide(row, B, move(row.seq, ['h', 4, 0]))
+    expect(p.kind).toBe('commit')
+    if (p.kind === 'commit') {
+      const g = game(p.state)
+      expect(Number.isFinite(fencesDist(g, 0)) && Number.isFinite(fencesDist(g, 1))).toBe(true)
+    }
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = fences({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const m = packFence(fencesChoose(game(row.state), 'easy', seeded(k + 1)))
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, m))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  }, 30000)
+
+  it('reads the toy’s boards and only those, 9 when none is named', () => {
+    for (const settings of [{ size: 8 }, { size: '9' }, { size: 11 }])
+      expect(status(decide(fences({ settings }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(fences(), B, { op: 'accept' })
+    expect(begun.kind === 'begin' && begun.state).toEqual({ n: 9, moves: [] })
+  })
+
+  it('refuses a step of two squares, one off the board, and a stored game no moves could make', () => {
+    const row = after(fences(), decide(fences(), B, { op: 'accept' }))
+    const g = game(row.state)
+    const [r, c] = g.pos[0]
+    expect(status(decide(row, A, move(row.seq, ['s', r - 2, c])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, ['s', r, 9])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, ['s', r - 1, c])))).toBe('commit')
+    expect(
+      status(
+        decide(
+          { ...row, state: { n: 9, moves: [['s', 0, 0]] } },
+          A,
+          move(row.seq, ['s', r - 1, c]),
+        ),
+      ),
+    ).toBe(500)
   })
 })
