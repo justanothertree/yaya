@@ -2,9 +2,9 @@
 -- functions, against FIXTURES ONLY, in a throwaway database.
 --
 -- ⛔ NEEDS FOUR DRAFTS APPLIED FIRST, in order, and refuses to run otherwise:
---      docs/2026-11-08-chronicle-sets.DRAFT.sql
---      docs/2026-11-09-chronicle-sets-links.DRAFT.sql
---      docs/2026-11-09-circuit-grid-sessions.DRAFT.sql
+--      docs/applied/2026-11-08-chronicle-sets.DRAFT.sql
+--      docs/applied/2026-11-09-chronicle-sets-links.DRAFT.sql
+--      docs/applied/2026-11-09-circuit-grid-sessions.DRAFT.sql
 --      docs/2026-11-09-circuit-logs-conversion.DRAFT.sql
 -- The conversion is a proposal (OPEN-DECISIONS §19g(3)) and is not approved to run on anybody's
 -- real logs. This rolls back. NEVER against production.
