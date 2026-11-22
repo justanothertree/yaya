@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Crazy eights by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_eights_by_turns`, version 20261122124711:
+-- md5(statements[1]) = 3585e2d0f019a15534fda1b56b95a8f3, this file's body. The record is
+-- supabase/migrations/20261122124711_lab_eights_by_turns.sql.
+--
+-- (as drafted) Crazy eights by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
