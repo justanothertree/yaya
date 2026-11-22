@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { challenge, challengeableFriends } from './cloud'
-import { LEVEL_NAMES, MATCH_LEVELS, MATCH_NAMES } from './names'
+import { LEVEL_NAMES, MATCH_LEVELS, MATCH_NAMES, VERSUS_ONLY } from './names'
 import { matchHash } from './words'
 
 /**
@@ -62,6 +62,9 @@ export function ProfileChallenge({
   const [mode, setMode] = useState<'versus' | 'together'>('versus')
   const [level, setLevel] = useState<string>(MATCH_LEVELS[1])
   const [busy, setBusy] = useState(false)
+  // a duel has no computer: versus alone, whatever was picked for the toy before it
+  const together = !VERSUS_ONLY.has(demo)
+  const how = together ? mode : 'versus'
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -80,7 +83,7 @@ export function ProfileChallenge({
     setBusy(true)
     setError(null)
     try {
-      const v = await challenge(friend.id, demo, mode, mode === 'together' ? { level } : {})
+      const v = await challenge(friend.id, demo, how, how === 'together' ? { level } : {})
       location.hash = matchHash(demo, v.id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The challenge could not be sent.')
@@ -115,23 +118,25 @@ export function ProfileChallenge({
                   </button>
                 ))}
               </div>
-              <div className="lab-controls" role="group" aria-label="How to play">
-                <button
-                  className="btn btn-ghost"
-                  aria-pressed={mode === 'versus'}
-                  onClick={() => setMode('versus')}
-                >
-                  ⚔️ Versus
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  aria-pressed={mode === 'together'}
-                  onClick={() => setMode('together')}
-                >
-                  🤝 Together against the computer
-                </button>
-              </div>
-              {mode === 'together' && (
+              {together && (
+                <div className="lab-controls" role="group" aria-label="How to play">
+                  <button
+                    className="btn btn-ghost"
+                    aria-pressed={mode === 'versus'}
+                    onClick={() => setMode('versus')}
+                  >
+                    ⚔️ Versus
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    aria-pressed={mode === 'together'}
+                    onClick={() => setMode('together')}
+                  >
+                    🤝 Together against the computer
+                  </button>
+                </div>
+              )}
+              {how === 'together' && (
                 <div className="lab-controls" role="group" aria-label="How well the computer plays">
                   {MATCH_LEVELS.map((l) => (
                     <button

@@ -145,15 +145,33 @@ export function verifyLamps(r: Replay, today: number): Checked {
     return { ok: false, why: 'board' }
   const n = r.size
   const pattern = r.pattern as Pattern
-  const a = r.actions
+  const board = make(n, pattern, seedFor(r.day, n, pattern))
+  const run = runSolve(board, n, pattern, r.actions)
+  if (!run.ok) return run
+  return { ok: true, presses: run.presses, par: solve(board, n, pattern)!.length }
+}
+
+/** the most actions a solve may carry: far past par on any size */
+export const MAX_ACTIONS = 400
+
+/**
+ * Whether these actions — a press, or -1 to take the last press back — switch this board off,
+ * dark at the end and not before, and how many they were: every one counts, an undo included, as
+ * the toy counts them. Shared by verifyLamps and a duel by turns (lampsDuel.ts).
+ */
+export function runSolve(
+  board: boolean[],
+  n: number,
+  pattern: Pattern,
+  a: unknown,
+): { ok: true; presses: number } | { ok: false; why: 'actions' | 'not-dark' | 'after-dark' } {
   if (
     !Array.isArray(a) ||
     !a.length ||
-    a.length > 400 ||
+    a.length > MAX_ACTIONS ||
     !a.every((x) => Number.isInteger(x) && x >= -1 && x < n * n)
   )
     return { ok: false, why: 'actions' }
-  const board = make(n, pattern, seedFor(r.day, n, pattern))
   let lit = board
   const history: boolean[][] = []
   for (let i = 0; i < a.length; i++) {
@@ -164,11 +182,11 @@ export function verifyLamps(r: Replay, today: number): Checked {
       lit = back
     } else {
       history.push(lit)
-      lit = press(lit, n, a[i], pattern)
+      lit = press(lit, n, a[i] as number, pattern)
     }
   }
   if (!dark(lit)) return { ok: false, why: 'not-dark' }
-  return { ok: true, presses: a.length, par: solve(board, n, pattern)!.length }
+  return { ok: true, presses: a.length }
 }
 
 /* --------------------------------------------------------------------------- what is kept */

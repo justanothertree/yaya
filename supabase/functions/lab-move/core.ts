@@ -92,6 +92,7 @@ import {
 } from '../../../src/gpu/eightsRoom'
 import { liarsRules, readLiarsSettings, type LiarsGame } from '../../../src/gpu/liarsRoom'
 import { holdemRules, type HoldemGame } from '../../../src/gpu/holdemRoom'
+import { duelRules, pressesBoth, readDuelSettings, type DuelGame } from '../../../src/gpu/lampsDuel'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -299,6 +300,15 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // each seat's chips at the end, the challenger's first
     score: (g: HoldemGame) => g.t.seats.map((s) => s.chips).join('–'),
   }),
+  lamps: (s) => {
+    const set = readDuelSettings(s)
+    if (set === null) return null
+    // each side's presses, the challenger's first: fewer wins
+    return {
+      rules: duelRules(set.size, set.pattern),
+      score: (g: DuelGame) => pressesBoth(g)?.join('–') ?? '',
+    }
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */

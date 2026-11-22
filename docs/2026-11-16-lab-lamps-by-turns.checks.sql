@@ -1,0 +1,97 @@
+-- READ-ONLY CHECKS for docs/applied/2026-11-16-lab-lamps-by-turns.DRAFT.sql, to run against production. Each statement only reads;
+-- run block A before applying and block B after. If any answer differs, stop.
+--
+-- lab_match_playable's body (`prosrc`) by md5, measured on 16 Nov 2026 by applying each draft and
+-- its rollback to a database built from every migration:
+--
+--   reversi, chess                         ac752f0a53e7d77b222f3e51c6d939f2   <- 20261115002456
+--   reversi, chess, pool                   e33c8ae8a13bba967cd38113452ad444   <- Pool by turns
+--   reversi, chess, pool, gomoku           0ed51b64f0b7dbd20021d01ae1467050   <- Five in a row
+--   … and draughts                         7859d76c7370d9ef0743e377578aa2be   <- Draughts
+--   … and dots                             2c255a28a7dfc8ad3b31a26ff9c5e18b   <- Dots and boxes
+--   … and fourrow                          9daa1f0e0e5603b8ba2f1a92be94b2cc   <- Four in a row
+--   … and mancala                          720a81330b34079bafa38d44553b9f56   <- Mancala
+--   … and morris                           355217b73869d815bea4e77f4e3a581b   <- Nine men's morris
+--   … and hex                              10e1a3d44fccac252f20f492928cd537   <- Hex
+--   … and ultimate                         b6ba192db0f90965ae218086db960693   <- Ultimate noughts
+--   … and breakthrough                     3566c6186024dd27fe82a947ee29e6d8   <- Breakthrough
+--   … and fences                           b3d133ae75417732534a64deb0988d11   <- Fences
+--   … and halma                            2efad6dd0ac3ecb7a4166bcdb11f89d6   <- Chinese checkers
+--   … and go                               ecc3f356e7a74a851a7e0516bf565028   <- Go
+--   … and fox                              7c2ba9536c201ff1aed9997e6bc35cc4   <- Fox and geese
+--   … and cube                             42898e1e35a1e8fed935402f2ddd3966   <- Noughts and crosses in a cube
+--   … and artillery                        b28cca34d03b7ac6d7913c27c744c4d8   <- Artillery
+--   … and bowling                          bf7682b1ecbabdacbb3f3982775a8491   <- Bowling
+--   … and curling                          dd14c8f4dfbf3e41b1bc8332e83b08ff   <- Curling
+--   … and putt                             14079287d22c31a206d89ea63bff88cd   <- Putt
+--   … and darts                            ff48b06cb8235db030efe90e617cde05   <- Darts
+--   … and backgammon                       914547c8b2bb3f47ec845bddee171cc7   <- Backgammon
+--   … and seabattle                        1bd29742246961c18a01c7b224d12fd1   <- Sea battle
+--   … and dice                             ac10b561804c5ce90671c689251114f5   <- Ten thousand
+--   … and yacht                            48f571e453d04668734be812aab0ce03   <- Yacht
+--   … and shut                             84b7c14ab9f689e5b2ed3e3d00d65bcd   <- Shut the box
+--   … and codebreaker                      123912b22a6a4dc2e8677cdbea8f9baa   <- Codebreaker
+--   … and shadowbox                        f2385df492815f6424e2405e35492770   <- Shadow box
+--   … and rps                              27d86e1a78aa4920c8be242f906715e4   <- Rock, paper, scissors
+--   … and gin                              ab2ea665df100567606d6c5dd966975f   <- Gin rummy
+--   … and cribbage                         5ca9c177e8a11ed6f6c21005ad5fc9b7   <- Cribbage
+--   … and dominoes                         e509cf5707e8d783ed91a39c9449fb1a   <- Dominoes
+--   … and hearts                           1ae23b57d8818b098ecabcaad4d4bb6e   <- Hearts
+--   … and spades                           adab29bc7e6e3dde3feb37d6e4c3ab48   <- Spades
+--   … and eights                           1b242096f854cbcccfc0f2f0a066d66b   <- Crazy eights
+--   … and liars                            e6df7b642321f9375d17eb3c7792b130   <- Liar's dice
+--   … and poker                            9c167fd4e23ca785ef8b6235673254fe   <- Hold’em
+--   … and lamps                            9486daa52cd7c3e513d2b5bd45f69ad2   <- Lamps
+
+-- ── A. Before: one definition, holding the list this draft expects ('reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage, dominoes, hearts, spades, eights, liars, poker') ──
+-- ── B. After: the same query, now holding '… poker, lamps'; and nobody but the definer can call it ──
+select p.proname,
+       count(*) over () as definitions,
+       md5(p.prosrc) as body_md5,
+       case md5(p.prosrc)
+         when 'ac752f0a53e7d77b222f3e51c6d939f2' then 'reversi, chess'
+         when 'e33c8ae8a13bba967cd38113452ad444' then 'reversi, chess, pool'
+         when '0ed51b64f0b7dbd20021d01ae1467050' then 'reversi, chess, pool, gomoku'
+         when '7859d76c7370d9ef0743e377578aa2be' then 'reversi, chess, pool, gomoku, draughts'
+         when '2c255a28a7dfc8ad3b31a26ff9c5e18b' then 'reversi, chess, pool, gomoku, draughts, dots'
+         when '9daa1f0e0e5603b8ba2f1a92be94b2cc' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow'
+         when '720a81330b34079bafa38d44553b9f56' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala'
+         when '355217b73869d815bea4e77f4e3a581b' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris'
+         when '10e1a3d44fccac252f20f492928cd537' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex'
+         when 'b6ba192db0f90965ae218086db960693' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate'
+         when '3566c6186024dd27fe82a947ee29e6d8' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough'
+         when 'b3d133ae75417732534a64deb0988d11' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences'
+         when '2efad6dd0ac3ecb7a4166bcdb11f89d6' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma'
+         when 'ecc3f356e7a74a851a7e0516bf565028' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go'
+         when '7c2ba9536c201ff1aed9997e6bc35cc4' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox'
+         when '42898e1e35a1e8fed935402f2ddd3966' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube'
+         when 'b28cca34d03b7ac6d7913c27c744c4d8' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery'
+         when 'bf7682b1ecbabdacbb3f3982775a8491' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling'
+         when 'dd14c8f4dfbf3e41b1bc8332e83b08ff' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling'
+         when '14079287d22c31a206d89ea63bff88cd' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt'
+         when 'ff48b06cb8235db030efe90e617cde05' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts'
+         when '914547c8b2bb3f47ec845bddee171cc7' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon'
+         when '1bd29742246961c18a01c7b224d12fd1' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle'
+         when 'ac10b561804c5ce90671c689251114f5' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice'
+         when '48f571e453d04668734be812aab0ce03' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht'
+         when '84b7c14ab9f689e5b2ed3e3d00d65bcd' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut'
+         when '123912b22a6a4dc2e8677cdbea8f9baa' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker'
+         when 'f2385df492815f6424e2405e35492770' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox'
+         when '27d86e1a78aa4920c8be242f906715e4' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps'
+         when 'ab2ea665df100567606d6c5dd966975f' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin'
+         when '5ca9c177e8a11ed6f6c21005ad5fc9b7' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage'
+         when 'e509cf5707e8d783ed91a39c9449fb1a' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage, dominoes'
+         when '1ae23b57d8818b098ecabcaad4d4bb6e' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage, dominoes, hearts'
+         when 'adab29bc7e6e3dde3feb37d6e4c3ab48' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage, dominoes, hearts, spades'
+         when '1b242096f854cbcccfc0f2f0a066d66b' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage, dominoes, hearts, spades, eights'
+         when 'e6df7b642321f9375d17eb3c7792b130' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage, dominoes, hearts, spades, eights, liars'
+         when '9c167fd4e23ca785ef8b6235673254fe' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage, dominoes, hearts, spades, eights, liars, poker'
+         when '9486daa52cd7c3e513d2b5bd45f69ad2' then 'reversi, chess, pool, gomoku, draughts, dots, fourrow, mancala, morris, hex, ultimate, breakthrough, fences, halma, go, fox, cube, artillery, bowling, curling, putt, darts, backgammon, seabattle, dice, yacht, shut, codebreaker, shadowbox, rps, gin, cribbage, dominoes, hearts, spades, eights, liars, poker, lamps'
+         else 'UNEXPECTED: stop'
+       end as playable,
+       has_function_privilege('anon', p.oid, 'execute') as anon_can_execute,
+       has_function_privilege('authenticated', p.oid, 'execute') as authenticated_can_execute
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prokind = 'f' and p.proname = 'lab_match_playable';
+-- Expect, both times: definitions = 1, anon_can_execute = false, authenticated_can_execute = false.
