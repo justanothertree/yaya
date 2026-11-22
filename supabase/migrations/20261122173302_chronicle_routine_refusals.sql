@@ -1,20 +1,14 @@
--- ⛔ DRAFT, NOT APPLIED. Readable refusals for a routine's name, and a step's minutes; the plan is
--- docs/2026-11-10-chronicle-routine-refusals-plan.md, and nothing here runs until Evan approves it.
---
--- Two things, both measured in db guards run 42825583418.
--- chronicle_routine_save let the table refuse a name, so an empty or 61-character one came back as
--- 'new row for relation "chronicle_routines" violates check constraint
--- "chronicle_routines_name_check"'. The form checks only that a name is not empty, and the box
--- has no limit. It now says so in words first.
--- And a step's minutes passed '^[0-9]+$' and were cast to int BEFORE least(…, 600), so eleven
--- digits overflowed: 'value "99999999999" is out of range for type integer'. The form rounds
--- what is typed and sends the digits, so that is reachable by typing. The cast now goes through
--- numeric, which takes any run of digits, so a huge number is held at 600 like 601 already was.
---
--- It refuses to run unless the live function is the exact text it was written against (md5
--- 295c8b99…, the text CI builds as production's, which step 1 of the plan reads from
--- production itself), and unless each piece it replaces appears in it exactly once. No table, row
--- or grant changes.
+-- ✅ APPLIED to production 22 Nov 2026 at 12:33 PM EST as migration `chronicle_routine_refusals`,
+-- version 20261122173302, with Evan's approval of #146 that morning. Production recorded
+-- md5(statements[1]) = 8ccde95e681fe0e13808ddd18d8dd4a5, this file's body byte for byte.
+-- Check A before it: chronicle_routine_save 295c8b99…, the text this was written against.
+-- Check B after: f8a12a73…, anon refused, members allowed. Live, as a member and rolled back,
+-- before and after: a step of 99,999,999,999 minutes went from "value … is out of range for
+-- type integer" with nothing saved to a saved routine with that step held at 600; a blank name
+-- now says "a routine needs a name" and 61 characters "that is longer than a name — 60
+-- characters".
+-- Why, and the rollback: docs/applied/2026-11-10-chronicle-routine-refusals.DRAFT.sql,
+-- docs/2026-11-10-chronicle-routine-refusals-plan.md and its -rollback/ folder.
 
 do $mig$
 declare
