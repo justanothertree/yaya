@@ -1028,6 +1028,23 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
 
 export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   const id = g.id ?? mint('pv-g')
+  /**
+   * ⚠️ SAID IN WORDS BEFORE THE TABLE SAYS IT IN ITS OWN, as chronicle_goal_save does since
+   * `chronicle_goal_refusals` went live on 22 Nov 2026 (#145): straight after the suspension
+   * check, so ahead of the two below. A null target, unit or note is not measured — the server's
+   * `char_length(btrim(null))` is null, and a null note is "leave it alone".
+   */
+  if (btrim(g.title ?? '') === '') return { why: 'a goal needs a title' }
+  if (chars(btrim(g.title)) > 120) return { why: 'that is longer than a title — 120 characters' }
+  if (g.target != null && (g.target <= 0 || g.target > 1e9)) {
+    return { why: 'a target is more than 0 and at most a billion' }
+  }
+  if (g.unit != null && chars(btrim(g.unit)) > 16) {
+    return { why: 'that is longer than a unit — 16 characters' }
+  }
+  if (g.note != null && chars(btrim(g.note)) > 2000) {
+    return { why: 'that is longer than a note — 2000 characters' }
+  }
   /* ⚠️ the same two the server keeps, in its own words — see the note on pvSaveActivity */
   const was = db().goals.find((x) => x.id === id)
   const already = !!was
