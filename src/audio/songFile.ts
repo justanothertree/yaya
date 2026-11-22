@@ -131,6 +131,8 @@ export type SongLayer = {
    * same bound the room holds itself to, because a file is a stranger's text.
    */
   lyrics?: string[]
+  /** how loud the words are sung, 0..MAX_GAIN; absent means 1 — see Layer.wordsGain. Additive. */
+  wordsGain?: number
 }
 
 export type Song = {
@@ -166,6 +168,7 @@ export function toSong(
       plan: l.plan,
       kind: markOf(l.id) ?? undefined,
       lyrics: l.lyrics,
+      wordsGain: l.wordsGain,
     })),
   }
 }
@@ -264,6 +267,7 @@ function readLayer(v: unknown, budget: number): SongLayer | null {
     plan: readPlan(o.plan),
     kind: readMark(o.kind) ?? undefined,
     lyrics: tidyLyrics(o.lyrics, MAX_BARS),
+    wordsGain: typeof o.wordsGain === 'number' ? num(o.wordsGain, 0, MAX_GAIN, 1) : undefined,
   }
 }
 
@@ -350,6 +354,8 @@ export type PackedSong = {
     k?: string
     /** the words it sings, one line per song bar — see SongLayer.lyrics; absent when none */
     w?: string[]
+    /** how loud they are sung, in hundredths like `v` — absent at 1, the common case */
+    wv?: number
     n: number[]
   }>
 }
@@ -416,6 +422,7 @@ export function packSong(song: Song): PackedSong {
         m: layer.muted ? 1 : 0,
         k: layer.kind,
         w: tidyLyrics(layer.lyrics, MAX_BARS),
+        wv: layer.wordsGain !== undefined ? Math.round(layer.wordsGain * 100) : undefined,
         n,
       }
     }),
@@ -486,6 +493,10 @@ function readPacked(v: Record<string, unknown>): Song | null {
       : undefined
     const gain =
       typeof o.v === 'number' && Number.isFinite(o.v) ? num(o.v / 100, 0, MAX_GAIN, 1) : undefined
+    const wordsGain =
+      typeof o.wv === 'number' && Number.isFinite(o.wv)
+        ? num(o.wv / 100, 0, MAX_GAIN, 1)
+        : undefined
     layers.push({
       instrument: inst,
       events,
@@ -497,6 +508,7 @@ function readPacked(v: Record<string, unknown>): Song | null {
       plan,
       kind: readMark(o.k) ?? undefined,
       lyrics: tidyLyrics(o.w, MAX_BARS),
+      wordsGain,
     })
   }
   if (!layers.length) return null
@@ -561,5 +573,6 @@ export function songToLayers(s: Song): Layer[] {
     /* ⚠️ the words too — the last step before the looper is where `gain` and `plan` were once
        lost, and a lyric left behind here would be a song that opens without its words */
     ...(l.lyrics ? { lyrics: l.lyrics } : {}),
+    ...(l.wordsGain !== undefined ? { wordsGain: l.wordsGain } : {}),
   }))
 }

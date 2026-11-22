@@ -23,6 +23,13 @@ import {
 } from './seabattle'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { readSeaSettings, type SeaGame } from './seabattleRoom'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 type Phase = 'setup' | 'battle' | 'over'
 
@@ -206,6 +213,62 @@ export function SeaBattleDemo() {
   const firstMove = useRef<'you' | 'cpu'>('you')
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). Each fleet
+     is kept back by the server (seabattleRoom.ts): yours is set out here with the toy's own
+     board — the friend's comes with their yes, the challenger's with their first shot — and
+     afterwards it is fetched back from lab-move, the one place that will show it, and only to you.
+     ⚠️ NO PREVIEW: what a shot hits is only known where the other fleet is. */
+  const draft = useRef(b)
+  draft.current = b
+  const lm = useLabMatch('seabattle', {
+    preview: false,
+    bring: () => draft.current.mine.map((s) => s.cells),
+  })
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const set = inMatch && lm.view ? readSeaSettings(lm.view.settings) : null
+  const mg = inMatch ? (lm.shown as SeaGame | null) : null
+  /** my side of the match: my seat, or the team's (0) together */
+  const side: 0 | 1 = lm.view?.mode === 'together' ? 0 : lm.view?.you === 1 ? 1 : 0
+  const theirs: 0 | 1 = side === 0 ? 1 : 0
+  const placed = !!mg?.placed[side]
+  const [myFleet, setMyFleet] = useState<Fleet | null>(null)
+  /* a match's fleet to lay out is the match's size and make-up, not the toy's settings */
+  const setKey = set ? `${lm.id}|${set.size}|${set.fleet}|${set.apart}|${set.again}` : ''
+  useEffect(() => {
+    if (!set) return
+    window.clearTimeout(timer.current)
+    setB(fresh({ ...saved, size: set.size, fleet: set.fleet, apart: set.apart, again: set.again }))
+    setPicked(0)
+    setMyFleet(null)
+    // a new match, or new settings for it, is the only cue
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setKey])
+  /* my own fleet, once it is set out: asked of lab-move, which shows each player only theirs */
+  useEffect(() => {
+    if (!inMatch || !placed || myFleet || !lm.id) return
+    let live = true
+    myHidden(lm.id)
+      .then((cells) => {
+        if (!live || !Array.isArray(cells)) return
+        setMyFleet(
+          (cells as number[][]).map((c, id) => ({ id, size: c.length, cells: c as number[] })),
+        )
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [inMatch, placed, myFleet, lm.id])
+  /* leaving a match, the toy starts afresh with its own settings */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) restart()
+    wasInMatch.current = inMatch
+    // only leaving the match starts a battle
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   const restart = (s: Saved = saved) => {
     window.clearTimeout(timer.current)
     setB(fresh(s))
@@ -319,6 +382,158 @@ export function SeaBattleDemo() {
     }
   }
 
+  if (inMatch) {
+    const n = set?.size ?? b.n
+    const together = lm.view?.mode === 'together'
+    const them = !lm.view ? 'They' : together ? 'The computer' : otherName(lm.view)
+    const invited = lm.view?.status === 'invited'
+    // the side that still has its fleet to set out, and whether that is me now
+    const laying =
+      !placed && (invited ? lm.view?.you === 1 && !together : side === 0 && lm.view?.you === 0)
+    const sizes = set ? FLEETS[set.fleet] : b.sizes
+    const view = mg ?? null
+    const last = view?.shots[view.shots.length - 1]
+    const words = (() => {
+      if (!view || !set) return invited ? (laying ? 'Set out your fleet, then accept.' : '') : ''
+      if (view.winner !== null)
+        return view.winner === side
+          ? `🏆 Their whole fleet is sunk — in ${view.shots.filter((x) => x.by === side).length} shots.`
+          : 'Your fleet is sunk.'
+      const said = last
+        ? `${last.by === side ? (together && lm.view?.you !== 0 ? 'Your side' : 'You') : them} fired at ${where(n, last.at)} — ${last.shot === 'miss' ? 'a miss.' : last.shot === 'hit' ? 'a hit!' : `the ${SHIP_NAMES[last.sunk!.length].toLowerCase()} is sunk!`}`
+        : ''
+      if (!placed && side === 0 && lm.view?.you === 0)
+        return `${said ? said + ' ' : ''}Set out your fleet, then fire your first shot at their sea.`
+      return `${said ? said + ' ' : ''}${lm.canPlay ? 'Your shot.' : lm.hasPending ? 'Send it.' : ''}`
+    })()
+    const shootAt = (at: number) => {
+      lm.play(placed ? { at } : { at, fleet: b.mine.map((x) => x.cells) })
+    }
+    // my own fleet as the server keeps it; while I lay one out, the one on my board; else none yet
+    const shotsBy = (who: 0 | 1) => {
+      const k = view ? view.shots.filter((x) => x.by === who).length : 0
+      return `${k} shot${k === 1 ? '' : 's'}`
+    }
+    const myShips = placed ? (myFleet ?? []) : laying ? b.mine : []
+    const shipLitM = laying ? b.mine[picked]?.cells : undefined
+    return (
+      <div className={`lab-keys sb-room is-${saved.theme}`}>
+        <MatchBar lm={lm} sides={['the first fleet', 'the second fleet']} />
+        {laying && (
+          <div className="lab-controls">
+            <button
+              className="btn btn-ghost"
+              onClick={() => setB({ ...b, mine: randomFleet(b.n, b.sizes, b.apart, Math.random) })}
+            >
+              🎲 Shuffle my fleet
+            </button>
+          </div>
+        )}
+        {view && (
+          <div className="dice-scores">
+            <div className={`dice-score${view.turn === side ? ' is-up' : ''}`}>
+              <span>
+                {together ? 'You two' : 'You'} · {sizes.length - view.seen[theirs].sunk.length}{' '}
+                ships afloat
+              </span>
+              <strong>{shotsBy(side)}</strong>
+            </div>
+            <div className={`dice-score${view.turn === theirs ? ' is-up' : ''}`}>
+              <span>
+                {them} · {sizes.length - view.seen[side].sunk.length} ships afloat
+              </span>
+              <strong>{shotsBy(theirs)}</strong>
+            </div>
+          </div>
+        )}
+        {words && (
+          <p className="mc-line sb-said" aria-live="polite">
+            {words}
+          </p>
+        )}
+        <div className={`sb-seas${laying && !view ? ' is-setup' : ''}`}>
+          {view && (
+            <section className="sb-theirs" aria-label="Their sea">
+              <h3 className="fw-h">Their sea</h3>
+              <Sea
+                b={{ ...b, n }}
+                fleet={[]}
+                view={view.seen[side]}
+                showShips={false}
+                label="Their sea: arrow keys move, Enter fires"
+                onPick={shootAt}
+                canPick={(i) => lm.canPlay && !view.seen[side].marks[i]}
+                last={last && last.by === side ? last.at : null}
+                cursor={cursors.theirs}
+                setCursor={(i) => setCursors((c) => ({ ...c, theirs: i }))}
+                splash={!reduced()}
+              />
+            </section>
+          )}
+          <section className="sb-mine" aria-label="Your sea">
+            <h3 className="fw-h">Your sea</h3>
+            <Sea
+              b={{ ...b, n }}
+              fleet={myShips}
+              view={view ? view.seen[theirs] : blankSeen(n)}
+              showShips
+              label={
+                laying
+                  ? 'Your sea: arrow keys move, Enter puts the picked ship here, R turns it'
+                  : 'Your sea'
+              }
+              onPick={placeAt}
+              canPick={() => laying}
+              lit={shipLitM}
+              last={last && last.by === theirs ? last.at : null}
+              cursor={cursors.mine}
+              setCursor={(i) => setCursors((c) => ({ ...c, mine: i }))}
+              onKey={laying ? setupKey : undefined}
+              splash={!reduced()}
+            />
+          </section>
+          {laying && (
+            <section className="sb-dock" aria-label="Your ships">
+              <h3 className="fw-h">Your ships</h3>
+              <div className="lab-controls" role="group" aria-label="Pick a ship to move">
+                {b.mine.map((x, k) => (
+                  <button
+                    key={x.id}
+                    className="btn btn-ghost"
+                    aria-pressed={picked === k}
+                    onClick={() => setPicked(k)}
+                  >
+                    {SHIP_NAMES[x.size]} · {x.size}
+                  </button>
+                ))}
+              </div>
+              <div className="lab-controls">
+                <button
+                  className="btn btn-ghost"
+                  aria-pressed={across}
+                  onClick={() => setAcross(true)}
+                >
+                  ↔ Across
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  aria-pressed={!across}
+                  onClick={() => setAcross(false)}
+                >
+                  ↕ Down
+                </button>
+              </div>
+              <p className="muted mc-note">
+                Pick a ship, then tap the square where it should start. Nobody but you sees it.
+              </p>
+            </section>
+          )}
+        </div>
+        <MatchSend lm={lm} />
+      </div>
+    )
+  }
+
   const record = saved.record[saved.level]
   const pending =
     phase === 'battle' &&
@@ -361,6 +576,18 @@ export function SeaBattleDemo() {
           <button className="btn btn-ghost" onClick={() => restart()}>
             ↻ New battle
           </button>
+        )}
+        {signedIn && (
+          <MatchChallenge
+            demo="seabattle"
+            settings={{
+              size: saved.size,
+              fleet: saved.fleet,
+              apart: saved.apart,
+              again: saved.again,
+            }}
+            levelNames={LEVEL_NAMES}
+          />
         )}
       </div>
 
@@ -533,7 +760,9 @@ export function SeaBattleDemo() {
         chequerboard and works along a hit; Hard works out where the ships still afloat could lie
         and fires where they most likely are — it only ever knows what you would know, never where
         your ships are. Keys on a sea: arrows move, Enter fires; while laying out your fleet, Enter
-        puts the picked ship down and R turns it.
+        puts the picked ship down and R turns it. Challenge a friend and each of you lays out a
+        fleet that only you are shown: the server keeps both and tells each side only what its shots
+        did.
       </p>
     </div>
   )

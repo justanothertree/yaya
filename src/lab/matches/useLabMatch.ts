@@ -49,7 +49,17 @@ const WATCH_MS = 20000
  * outcome IS the physics. Its chosen move is shown as itself (the aim), never applied, and only
  * the server's answer moves anything.
  */
-export function useLabMatch(demo: string, { preview = true }: { preview?: boolean } = {}) {
+export function useLabMatch(
+  demo: string,
+  {
+    preview = true,
+    bring,
+  }: {
+    preview?: boolean
+    /** what accepting brings, for a toy that keeps the friend's side hidden: their fleet */
+    bring?: () => unknown
+  } = {},
+) {
   const [id, setId] = useState<string | null>(() => idFor(demo))
   const [view, setView] = useState<MatchView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -235,7 +245,7 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
     open,
     leave,
     reload: load,
-    accept: () => id && run(() => acceptMatch(id)),
+    accept: () => id && run(() => acceptMatch(id, bring?.())),
     decline: () => id && run(() => declineMatch(id)),
     resign: () => id && run(() => resignMatch(id)),
     claim: () => id && run(() => claimMatch(id)),

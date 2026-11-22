@@ -6,6 +6,7 @@ import {
   loopOrigin,
   loopState,
   seekTo,
+  setLayerWordsGain,
   startLoop,
   subscribeLoop,
 } from '../audio/looper'
@@ -39,6 +40,44 @@ const SOUND = { vibrato: 'late', space: 'room' } as const
 /* the voice brings its own vibrato, glide and breath — and its own light room, which REPLACES the
    bus's reverb, so the bus adds none (two rooms on one voice is the smear the A/B measured) */
 const DRY: Fx = { echo: 0, echoTime: 0.26, space: 0, vibrato: 0, glide: 0, tone: 0.5 }
+/** how loud the voice comes, before a part's own words fader */
+const WORDS = 0.9
+/**
+ * ⚠️ EACH PART'S WORDS ON A BUS OF THEIR OWN, so each can have its own fader. They shared one
+ * ('sing') while nothing could set a level; with two singing parts on one bus, the second part's
+ * level would simply overwrite the first's.
+ */
+const wordsBus = (id: string) => `sing:${id}`
+
+/**
+ * How loud a part's words are sung — the lyrics row's fader. Kept on the part, and heard at once
+ * if the song is being sung: the bus is ramped where it stands, rather than waiting for the next
+ * lap to be scheduled with the new level.
+ */
+export function setWordsLevel(id: string, gain: number) {
+  setLayerWordsGain(id, gain)
+  if (singing) levelWords()
+}
+
+/**
+ * The words' buses at the level each part now asks for — changed by the fader above, or by
+ * anything else that changes a part: an undo, a jam partner, a song put back. Only what moved is
+ * touched, so a bus is not re-ramped forty times a second for nothing.
+ *
+ * ⚠️ WITHOUT THIS, ONLY THE FADER REACHED A BUS THAT WAS SINGING. Undoing a level, or a partner
+ * changing it, was heard from the next lap — on a long song, over a minute later.
+ */
+const levelled = new Map<string, number>()
+function levelWords() {
+  for (const part of loopState().layers) {
+    if (!hasLyrics(part)) continue
+    const g = part.wordsGain ?? 1
+    if (levelled.get(part.id) === g) continue
+    levelled.set(part.id, g)
+    partInput(wordsBus(part.id), DRY, WORDS * g)
+  }
+}
+
 /** how far ahead of a lap its line is scheduled */
 const AHEAD = 1
 const TICK_MS = 150
@@ -125,7 +164,7 @@ function singLap(top: number, from: number): () => void {
     const sung = fitSongLyrics(part, s).sung.filter((n) => n.t >= from - 1e-6)
     if (!sung.length) continue
     stops.push(
-      singInto(c, partInput('sing', DRY, 0.9), sung, top, {
+      singInto(c, partInput(wordsBus(part.id), DRY, WORDS * (part.wordsGain ?? 1)), sung, top, {
         ...SOUND,
         preset: v.preset,
         double: v.double,
@@ -185,6 +224,7 @@ function follow() {
   if (now > next - AHEAD && !laps.has(key(next))) laps.set(key(next), singLap(next, 0))
   /* laps long finished keep nothing worth stopping */
   for (const k of [...laps.keys()]) if (k / 1000 < o - len - 2) laps.delete(k)
+  levelWords()
 }
 const key = (t: number) => Math.round(t * 1000)
 
