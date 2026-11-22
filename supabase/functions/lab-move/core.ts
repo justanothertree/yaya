@@ -90,6 +90,7 @@ import {
   totals as eightsTotals,
   type EightsGame,
 } from '../../../src/gpu/eightsRoom'
+import { liarsRules, readLiarsSettings, type LiarsGame } from '../../../src/gpu/liarsRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -285,6 +286,12 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     if (set === null) return null
     // each side's points over the hands, the challenger's first
     return { rules: eightsRules(set.target), score: (g: EightsGame) => eightsTotals(g).join('–') }
+  },
+  liars: (s) => {
+    const set = readLiarsSettings(s)
+    if (set === null) return null
+    // the dice each side has left, the challenger's first
+    return { rules: liarsRules(set.wild), score: (x: LiarsGame) => x.g.left.join('–') }
   },
 }
 
