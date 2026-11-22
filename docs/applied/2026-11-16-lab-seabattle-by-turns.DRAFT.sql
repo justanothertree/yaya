@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Sea battle by turns: step 10 of the Lab multiplayer plan, one of the toys
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_seabattle_by_turns`, version 20261122025322:
+-- md5(statements[1]) = 42845d25a94c658a9034d4188ca33a8c, this file's body. The record is
+-- supabase/migrations/20261122025322_lab_seabattle_by_turns.sql.
+--
+-- (as drafted) Sea battle by turns: step 10 of the Lab multiplayer plan, one of the toys
 -- whose rules were written for the call rooms.
 --
 -- One function, replaced: lab_match_playable names the toys a match may be played on, and
