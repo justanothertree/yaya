@@ -33,6 +33,8 @@ import { ultimateRules } from '../../../src/gpu/ultimateRoom'
 import { breakthroughRules, readBreakthroughSize } from '../../../src/gpu/breakthroughRoom'
 import { fencesRules, readFencesSize } from '../../../src/gpu/fencesRoom'
 import { halmaRules } from '../../../src/gpu/halmaRoom'
+import { score as goScore } from '../../../src/gpu/goboard'
+import { goRules, type GoGame } from '../../../src/gpu/goRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -99,6 +101,14 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     return size === null ? null : { rules: fencesRules(size) }
   },
   halma: () => ({ rules: halmaRules }),
+  go: () => ({
+    rules: goRules,
+    // area by colour, white's with its komi: the count the toy shows at the end
+    score: (d: GoGame) => {
+      const s = goScore(d.g.board)
+      return `${s.black}–${s.white}`
+    },
+  }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */

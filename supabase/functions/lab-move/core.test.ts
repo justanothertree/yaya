@@ -59,6 +59,8 @@ import {
   won as halmaWon,
 } from '../../../src/gpu/halma'
 import { replay as halmaReplay } from '../../../src/gpu/halmaRoom'
+import { KOMI, legal as goLegal, N as GO_N, PASS } from '../../../src/gpu/goboard'
+import { MAX_MOVES as GO_MAX, replay as goReplay } from '../../../src/gpu/goRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -1439,5 +1441,112 @@ describe('chinese checkers by turns: a peg and where it lands', () => {
     expect(
       status(decide({ ...row, state: { moves: [[111, 93]] } }, A, move(row.seq, [111, 102]))),
     ).toBe(500)
+  })
+})
+
+describe('go by turns: a point or a pass, two passes end it', () => {
+  const go = (over: Partial<Row> = {}) => invite({ demo_id: 'go', settings: {}, ...over })
+  const game = (state: unknown) => goReplay((state as { moves: unknown[] }).moves)!.g
+  /**
+   * Area by colour, counted here rather than by goboard.ts's own score: a stone is its colour's,
+   * and an empty point is whoever's stones are all that an empty walk from it ever meets.
+   */
+  const area = (board: readonly number[]) => {
+    const got = [0, 0, 0]
+    for (let i = 0; i < board.length; i++) {
+      if (board[i]) {
+        got[board[i]]++
+        continue
+      }
+      const meets = new Set<number>()
+      const seen = new Set([i])
+      const todo = [i]
+      while (todo.length) {
+        const p = todo.pop()!
+        const [r, c] = [Math.floor(p / GO_N), p % GO_N]
+        for (const [dr, dc] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          const [rr, cc] = [r + dr, c + dc]
+          if (rr < 0 || cc < 0 || rr >= GO_N || cc >= GO_N) continue
+          const q = rr * GO_N + cc
+          if (board[q]) meets.add(board[q])
+          else if (!seen.has(q)) {
+            seen.add(q)
+            todo.push(q)
+          }
+        }
+      }
+      if (meets.size === 1) got[[...meets][0]]++
+    }
+    return { black: got[1], white: got[2] + KOMI }
+  }
+
+  it('plays versus to the end, the winner whoever holds more of the board after komi', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 10; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(
+        go(),
+        (r) => {
+          const g = game(r.state)
+          const list = goLegal(g)
+          return !list.length || rnd() < 0.08 ? PASS : list[Math.floor(rnd() * list.length)]
+        },
+        GO_MAX + 1,
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      const a = area(g.board)
+      expect(last.result!.winner).toBe(a.black > a.white ? 0 : 1)
+      expect(last.result!.score).toBe(`${a.black}–${a.white}`)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('ends at two passes in a row, and an empty board is white’s by its komi', () => {
+    let row = after(go(), decide(go(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, PASS)))
+    expect(row.status).toBe('active')
+    const p = decide(row, B, move(row.seq, PASS))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(after(row, p).status).toBe('finished')
+    expect(p.result).toEqual({ winner: 1, score: `0–${KOMI}` })
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = go({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (const at of [40, 20, 60]) {
+        if (row.status !== 'active') break
+        const g = game(row.state)
+        const p = decide(
+          row,
+          row.turn === 0 ? A : B,
+          move(row.seq, g.board[at] ? goLegal(g)[0] : at),
+        )
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  }, 30000)
+
+  it('refuses a taken point, one off the board, a move that is not a point, and a stored game no moves could make', () => {
+    let row = after(go(), decide(go(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, 40)))
+    expect(status(decide(row, B, move(row.seq, 40)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 81)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, -2)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 4.5)))).toBe(400)
+    expect(status(decide({ ...row, state: { moves: [40, 40] } }, B, move(row.seq, 41)))).toBe(500)
   })
 })
