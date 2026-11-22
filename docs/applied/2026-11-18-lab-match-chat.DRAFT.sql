@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. Chat for a match by turns: one conversation per match, kept with it,
+-- ✅ APPLIED to production 22 Nov 2026 (UTC) as migration `lab_match_chat`, version 20261122124951:
+-- md5(statements[1]) = 5c4323e2b3aee06193af60cfaf02cd0d, this file's body. The record is
+-- supabase/migrations/20261122124951_lab_match_chat.sql.
+--
+-- (as drafted) Chat for a match by turns: one conversation per match, kept with it,
 -- that only the match's two players can read or write.
 --
 -- WHAT: a table, lab_match_chat, in the house pattern for member data (CLAUDE.md §3): RLS on, zero

@@ -1,4 +1,4 @@
--- READ-ONLY CHECKS for docs/2026-11-18-lab-match-chat.DRAFT.sql, to run against production.
+-- READ-ONLY CHECKS for docs/applied/2026-11-18-lab-match-chat.DRAFT.sql, to run against production.
 --
 -- Each block runs in a read-only transaction. If any answer differs from what the block expects,
 -- stop: do not apply the draft (block A), or apply the ROLLBACK beside it (block B) — and read the
@@ -21,7 +21,7 @@
 -- lines dropped, so the header can still be annotated), which is what production's
 -- md5(statements[1]) must equal once it is applied:
 --
---   docs/2026-11-18-lab-match-chat.DRAFT.sql   5c4323e2b3aee06193af60cfaf02cd0d   (5,180 bytes)
+--   docs/applied/2026-11-18-lab-match-chat.DRAFT.sql   5c4323e2b3aee06193af60cfaf02cd0d   (5,180 bytes)
 --
 -- On each of those, blocks A and B read as written below, supabase/tests/lab-match-chat.sql passed
 -- all 43 cases, lab-matches.sql passed all 49 before the draft, with it and after the rollback, and

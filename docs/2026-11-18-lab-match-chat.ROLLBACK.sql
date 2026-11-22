@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-18-lab-match-chat.DRAFT.sql: the two functions and the table, and every
+-- ROLLBACK for docs/applied/2026-11-18-lab-match-chat.DRAFT.sql: the two functions and the table, and every
 -- line in it. ⚠️ THAT LAST PART IS A DELETE OF WHAT PLAYERS WROTE — once the draft has been live,
 -- ask before running this, or keep the table and drop only the functions (the first two lines).
 -- The table's id sequence and both its indexes (lab_match_chat_match, lab_match_chat_said) are the
