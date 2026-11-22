@@ -10,6 +10,8 @@ import { devFriends } from '../lab/social/friends'
  *   kind=dm|circuit|profile|lounge   the room kind the call claims (default dm)
  *   stranger=1                       this tab is NOT a friend of the others
  *   meter=1                          show the admin's Realtime meter in the roster (👥)
+ *   id=<uuid>                        this tab stands in for that member, as a real call's peer id
+ *                                    is the member's user id: what a rematch by turns challenges
  * The tab remembers its identity in sessionStorage and goes on to the Lab; a reload keeps it.
  * Close the tab, or open `#dev-call?off=1`, to leave.
  *
@@ -39,7 +41,9 @@ function readCfg(asked: string): Cfg | null {
     }
     const kind = (q.get('kind') ?? 'dm') as RoomKind
     const cfg: Cfg = {
-      id: `dev-${Math.random().toString(36).slice(2, 8)}`,
+      id: /^[0-9a-f-]{36}$/.test(q.get('id') ?? '')
+        ? q.get('id')!
+        : `dev-${Math.random().toString(36).slice(2, 8)}`,
       name: (q.get('name') ?? 'Tab').slice(0, 20),
       kind: KINDS.includes(kind) ? kind : 'dm',
       stranger: q.get('stranger') === '1',

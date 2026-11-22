@@ -1611,7 +1611,7 @@ describe('go by turns: a point or a pass, two passes end it', () => {
   })
 })
 
-describe('fox and geese by turns: the challenger herds the geese, the friend is the fox', () => {
+describe('fox and geese by turns: the challenger picks a side, the geese unless they say', () => {
   const fx = (over: Partial<Row> = {}) => invite({ demo_id: 'fox', settings: {}, ...over })
   const game = (state: unknown) => foxReplay((state as { moves: unknown[] }).moves)!.g
 
@@ -1692,6 +1692,62 @@ describe('fox and geese by turns: the challenger herds the geese, the friend is 
       }
     }
   }, 30000)
+
+  it('a challenger who picks the fox: the friend herds the geese and moves first, and wins and losses go to the seat that played them', () => {
+    const start = fx({ settings: { side: 'fox' } })
+    const begun = decide(start, B, { op: 'accept' })
+    // the board is the same fresh game; only who moves on it first changes
+    expect(begun).toEqual({ kind: 'begin', state: { moves: [] }, turn: 1 })
+    let row = after(start, begun)
+    expect(status(decide(row, A, move(row.seq, [24, 23])))).toBe(409)
+    // the friend moves a goose; the challenger cannot move one, only the fox
+    row = after(row, decide(row, B, move(row.seq, [22, 29])))
+    expect(row.turn).toBe(0)
+    expect(status(decide(row, A, move(row.seq, [16, 23])))).toBe(400)
+    expect(decide(row, A, move(row.seq, [24, 23])).kind).toBe('commit')
+
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 12; seed++) {
+      const rnd = seeded(seed)
+      const { row: end, plans } = playOut(fx({ settings: { side: 'fox' } }), (r, who) => {
+        const g = game(r.state)
+        // asked of the board, never of the seat: whoever moves must be playing the side to move
+        expect(who === A ? 'fox' : 'geese').toBe(g.turn)
+        const list = foxMovesFor(g)
+        const think = g.turn === 'geese' ? rnd() < 0.9 : rnd() < 0.2
+        return (think ? foxChoose(g, 'fair', rnd) : list[Math.floor(rnd() * list.length)]).path
+      })
+      expect(end.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const winner = last.result!.winner
+      seen.add(String(winner))
+      if (winner === 'draw') continue
+      // the fox is seat 0 here: a fox with nowhere to go is the challenger's loss
+      expect(foxMoves(game(last.state)).length === 0).toBe(winner === 1)
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('reads the side from the settings and nothing else: the geese by default, the fox when asked, versus only', () => {
+    for (const side of [undefined, 'geese'])
+      expect(decide(fx({ settings: side ? { side } : {} }), B, { op: 'accept' })).toEqual({
+        kind: 'begin',
+        state: { moves: [] },
+        turn: 0,
+      })
+    for (const side of ['goose', 'Fox', 1, true, ''])
+      expect(status(decide(fx({ settings: { side } }), B, { op: 'accept' }))).toBe(422)
+    // together the two friends herd the geese: there is no side for the challenger to take
+    expect(
+      status(decide(fx({ mode: 'together', settings: { side: 'fox' } }), B, { op: 'accept' })),
+    ).toBe(422)
+    expect(
+      decide(fx({ mode: 'together', settings: { side: 'geese', level: 'easy' } }), B, {
+        op: 'accept',
+      }).kind,
+    ).toBe('begin')
+  })
 
   it('refuses a goose stepping back, the fox leaping where there is no goose, the other side’s piece, and a stored game no moves could make', () => {
     let row = after(fx(), decide(fx(), B, { op: 'accept' }))
@@ -1931,8 +1987,17 @@ describe('bowling by turns: a frame each, the server bowls every ball', () => {
     total += r[i] + r[i + 1] + (third ? r[i + 2] : 0)
     return { total, balls: i + (third ? 3 : 2) }
   }
-  const aim = (standing: number[], rnd: () => number) =>
-    bowlInside(bowlWobble(bowlPlan(standing, 'fair', rnd), 'fair', rnd))
+  /* ⚠️ THE TEST'S OWN AIM WAS NINE TENTHS OF ITS TIME: the toy's planner bowls two to four hundred
+     balls to choose one, and measured on 17 Nov 2026 it took 5.5–7.7s of each 6–8.6s game, so eight
+     games sat on the 60s limit and failed on a slower machine. What it plans depends only on the pins
+     standing, so it is planned once per set of pins; the hand's wobble still varies every ball. */
+  const planned = new Map<string, ReturnType<typeof bowlPlan>>()
+  const aim = (standing: number[], rnd: () => number) => {
+    const key = standing.join()
+    let p = planned.get(key)
+    if (!p) planned.set(key, (p = bowlPlan(standing, 'fair', rnd)))
+    return bowlInside(bowlWobble(p, 'fair', rnd))
+  }
 
   it('plays versus to the end, the winner the higher scorecard, every ball accounted for', () => {
     const seen = new Set<string>()
