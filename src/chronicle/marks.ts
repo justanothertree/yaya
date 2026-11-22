@@ -14,7 +14,7 @@ import { localMidnight } from './record'
  *
  * Goals the RECORD answers for were never affected, because the tally is asked per window. Only
  * the hand-moved half of a repeating goal had no window — which is what this module and
- * docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql give it.
+ * docs/applied/2026-11-08-chronicle-repeat-marks.DRAFT.sql give it.
  *
  * ⚠️ THE TABLE BEHIND IT IS A DRAFT, NOT APPLIED TO PRODUCTION. This module is wired into the room
  * on the `chronicle/marks-wired` branch, and the room must not ship before the migration does —
