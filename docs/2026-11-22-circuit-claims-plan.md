@@ -94,6 +94,11 @@ ship after the apply, not before:** before it, "an admin will confirm it" would 
 
 ## Evidence
 
+- **db guards run 45082980602**, the strictest: production's default grants put back first (CI's
+  baseline lacks them, so without this a missing `revoke … from anon` passes). Everything below
+  held again, and with two of the draft's revokes deliberately removed the test named both ("anon
+  can execute public.my_person_claims()", "anon holds SELECT … on circuit_person_claims").
+
 - **db guards run 45079301551** (the probe branch `circuit/ci-probe-claims`, never merged): the test
   against today's functions fails on all four doors; the draft applies; the test passes ("circuit
   claims: all checks passed"); applying it again is refused by its own guard and changes nothing;
