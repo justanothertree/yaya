@@ -2,6 +2,7 @@ import { MessageLog } from '../circuit/ui/MessageLog'
 import { Composer } from '../circuit/ui/Composer'
 import { sendToThread } from '../circuit/roomThread'
 import type { Msg } from '../circuit/chatRooms'
+import type { ChatSong } from '../circuit/chatSongs'
 import { sendCallChat } from './callChatStore'
 
 /**
@@ -17,6 +18,7 @@ export function CallChat({
   msgs,
   inRoom,
   err,
+  songs,
   onClose,
 }: {
   roomId: string | null
@@ -24,6 +26,8 @@ export function CallChat({
   msgs: Msg[]
   inRoom: boolean
   err: string | null
+  /** the room's songs, when the call is in a chat room — see useCallMessages */
+  songs?: Record<string, ChatSong>
   onClose: () => void
 }) {
   return (
@@ -49,6 +53,7 @@ export function CallChat({
       <MessageLog
         msgs={msgs}
         empty={inRoom ? undefined : 'Nothing yet — say something to the call.'}
+        songs={inRoom ? songs : undefined}
       />
       {err && (
         <p className="muted cz-chat-err" role="alert">

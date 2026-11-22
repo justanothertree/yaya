@@ -3,6 +3,8 @@ import { challengeRoomOf, challengeText } from '../../game/challenge'
 import { boutCodeOf, boutInviteText } from '../../pets/boutInvite'
 import { circuitInviteText, circuitJoinCodeOf } from '../inviteLink'
 import type { Msg } from '../chatRooms'
+import type { ChatSong } from '../chatSongs'
+import { ChatSongPlayer } from './ChatSongPlayer'
 import { atBottom, newMessagesLabel, shouldJump, unseenAfter } from '../logFollow'
 
 const dayOf = (iso: string) => iso.slice(0, 10)
@@ -36,9 +38,16 @@ export function MessageLog({
   msgs,
   empty,
   named = true,
+  songs,
 }: {
   msgs: Msg[]
   empty?: string
+  /**
+   * The songs sent into this room, by message id (roomThread's `songs`). A message named here is
+   * drawn as a player; one that is not is drawn as its text, whatever its text says — see
+   * chatSongs.ts. Absent for the call's loose chat, which has no room to hold a song.
+   */
+  songs?: Record<string, ChatSong>
   /**
    * Whether to put a name on the other side's messages. False for a DM: there are two of you,
    * the head of the thread already says who the other one is, and their name over every run
@@ -134,6 +143,7 @@ export function MessageLog({
             !prev ||
             speaker(prev) !== speaker(m) ||
             Date.parse(m.created_at) - Date.parse(prev.created_at) > 10 * 60000
+          const song = songs?.[m.id]
           const card = challengeRoomOf(m.body)
             ? {
                 say: challengeText(m.body),
@@ -178,7 +188,9 @@ export function MessageLog({
                   circuit/inviteLink.ts. One card for all three so they read alike, and each
                   falls back to plain text if its link is malformed. */}
                 <div className="cz-msg-line">
-                  {card ? (
+                  {song ? (
+                    <ChatSongPlayer song={song} roomId={m.room_id} />
+                  ) : card ? (
                     <div className="cz-challenge">
                       {card.say && <div className="cz-challenge-say">{card.say}</div>}
                       <a className="btn cz-challenge-join" href={card.href}>

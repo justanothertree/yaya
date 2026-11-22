@@ -77,7 +77,7 @@ const SMALL_GAIN = 10 ** (-1 / 20)
  * What the browser can compress to, best for a phone first: Safari records mp4 (AAC), which an
  * iPhone plays and shares anywhere; Chrome and Firefox record Opus in webm or ogg.
  */
-const SMALL: readonly [string, string][] = [
+export const SMALL: readonly [string, string][] = [
   ['audio/mp4;codecs=mp4a.40.2', 'm4a'],
   ['audio/mp4', 'm4a'],
   ['audio/webm;codecs=opus', 'webm'],

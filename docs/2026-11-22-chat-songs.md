@@ -116,3 +116,75 @@ Modelled on `pictures`:
 ## Checked, and left
 
 Filled in as it is built.
+
+### The server half (SQL, its test, the guards, the function)
+
+**Decided while building, so the client agrees:**
+
+- **The length is whole seconds, rounded down.** 59.999 s reads `0:59` and 125.7 s reads `2:05`.
+  `lengthLabel` must floor, never round; the SQL test pins both of those.
+- **A name is trimmed, put on one line, and cut to 60 characters**, never refused for being long.
+  Only a blank one is refused. It counts characters, not bytes: sixty `é` is a name of sixty.
+- **"Unfinished" means not sent.** The hour's sweep also lets go of a song that went up and was
+  never sent. Otherwise it would sit in no chat, count toward 25 MB for ever, and nothing could
+  remove it.
+- **The claim's refusals, word for word:**
+  - `not in this room`
+  - `that is not a kind of recording this keeps`
+  - `that recording came to nothing`
+  - `that one is over 5 MB`
+  - `that recording has no length`
+  - `that one is over 15 minutes`
+  - `needs a name`
+  - `your songs in chat come to 25 MB — remove one first`
+  - `your account is suspended`
+- **A missing RPC comes back from the function as a 404** with "Songs in chat aren't switched on
+  yet." (PostgREST's PGRST202), so a function deployed before the migration reads the same as no
+  function.
+- **`ready` also checks the stored `content-type`**: R2 serves the object with it. A first-bytes
+  read that fails is not dropped (try again); a head that is not a recording is.
+- **`chat_song_gone` takes the caller's id from `getUser()`.** No member call returns an owner, and
+  both paths that reach it (`chat_song_remove`, `chat_song_abandoned`) answer only about the
+  caller's own rows. It is checked against the row, so a wrong one marks nothing.
+- **Two backstops beyond the contract:**
+  - a CHECK that every key is `songs/<uuid>.(m4a|webm|ogg)`, because the function DELETEs
+    whatever key a row names;
+  - an advisory lock per account in the claim, because the 25 MB sums other rows and two claims
+    at once would both read it before either inserted.
+
+**Verified here:**
+
+- `verdict.test.ts`: 19 tests, every fixture field off its default. Sixteen perturbations of
+  `verdict.ts`, each from a scratch copy, each turned the intended test red: no exact size, only
+  larger refused, no ceiling, a 5,000,000 ceiling, no type check, parameters or capitals kept, MP4
+  read at offset 0, no first-bytes check, head checked before type, a missing object or an
+  unreadable head dropped, `Number()` lengths, an empty length read as zero, figures in the
+  sentence, an unknown mime read as WebM. The file was restored byte for byte.
+- `npm run typecheck`, `npm run lint` and the vitest run are green.
+
+**Only CI can check, and nothing here has run the SQL.** There is no Postgres on this machine, so
+the draft and `supabase/tests/chat-songs.sql` were reasoned against the baseline's definitions of
+`send_chat_message`, `chat_room_member` and `is_suspended`, not executed. db-guards.yml now loads
+the draft after putting production's default grants back, runs the test, then runs the standing
+guards again with the draft in place: that second run is the only one in which blocks H and K see
+these functions.
+
+**Left:**
+
+- `chat_song_files` is not in `visibility-guards.sql` block B. CI runs the guards before any draft
+  loads, and `has_table_privilege` on a table that does not exist yet raises. The chat-songs test
+  checks it per privilege instead. It joins block B's list when this is applied.
+- Applying the migration and deploying `chat-songs` both wait for Evan's yes. After the deploy:
+  diff `get_edge_function` against disk; send a preflight carrying
+  `Access-Control-Request-Headers`; and ask the deployed function to refuse an anon-key call with
+  its own `{"error":"not authenticated"}` (CLAUDE.md §2).
+- **The recorders' first bytes are assumed, not measured.** `ftyp` at offset 4 (Safari), EBML
+  (Chrome) and `OggS` (Firefox) are what those containers start with, but no real export from each
+  browser has been put through `looksLike`. Do that with one file from each before trusting the
+  drop.
+- **A deleted account's songs.** Their rows stay, which is the point, but `chat_song_abandoned`
+  only answers the owner, so nothing deletes those objects. An operator sweep by `owner` is the
+  way to do it.
+- **Deleting a message** is not possible today. If it ever is, `message_id` goes null, the song
+  drops out of `chat_songs_in` and still counts toward 25 MB. That writer would have to remove the
+  song as well.

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { loopLength, type loopState } from '../audio/looper'
 import { songToMidi } from '../audio/midiFile'
 import { exportSong, type ExportProgress, type SongExport } from './songExport'
+import { bareMime } from '../circuit/chatSongs'
 import { exportName, songName, subscribeSongName } from './songName'
+import { SendToChat } from './SendToChat'
 
 /**
  * ⬇ Export song and ⬇ MIDI, in 📁 Songs. Evan, 16 Nov 2026: "renders the full mix (every part,
@@ -21,21 +23,27 @@ import { exportName, songName, subscribeSongName } from './songName'
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const mb = (b: Blob) => `${(b.size / 1e6).toFixed(1)} MB`
 /** a file for the share sheet, typed without codec details, which some browsers refuse */
-const asFile = (b: Blob, name: string) => new File([b], name, { type: b.type.split(';')[0] })
+const asFile = (b: Blob, name: string) => new File([b], name, { type: bareMime(b.type) })
 
 export function ExportSong({
   loop,
   busy,
   setBusy,
+  member,
 }: {
   loop: ReturnType<typeof loopState>
   /** the stems are bouncing: one recording of the song at a time */
   busy: boolean
   setBusy: (on: boolean) => void
+  /** signed in with a profile: only a member has chats to send a song into */
+  member: boolean
 }) {
   const [going, setGoing] = useState<ExportProgress | null>(null)
   const [done, setDone] = useState<SongExport | null>(null)
   const [say, setSay] = useState('')
+  /** 💬 Send in a chat's picker is open */
+  const [sending, setSending] = useState(false)
+  const pickerId = useId()
   const stop = useRef<AbortController | null>(null)
   /* the song's kept name and the day, or song- and the day (songName.ts) */
   const kept = useSyncExternalStore(subscribeSongName, songName, songName)
@@ -73,6 +81,7 @@ export function ExportSong({
   const go = async () => {
     setDone(null)
     setSay('')
+    setSending(false)
     const ctl = new AbortController()
     stop.current = ctl
     setBusy(true)
@@ -152,6 +161,19 @@ export function ExportSong({
               Share…
             </button>
           )}
+          {/* ⚠️ OUTSIDE THE `share` GATE: desktop Firefox has no Web Share, and sending to a chat
+              needs nothing from the browser but the small file — which WebKit cannot make, so
+              this is hidden there rather than offering to send a WAV (the server keeps none) */}
+          {done.small && member && (
+            <button
+              className={'btn' + (sending ? ' is-on' : '')}
+              aria-expanded={sending}
+              aria-controls={pickerId}
+              onClick={() => setSending((v) => !v)}
+            >
+              💬 Send in a chat
+            </button>
+          )}
           {done.small && urls.small && (
             <a className="btn btn-ghost" href={urls.small} download={`${name}.${done.small.ext}`}>
               ⬇ {done.small.ext.toUpperCase()} · {mb(done.small.blob)}
@@ -164,6 +186,16 @@ export function ExportSong({
             {mmss(done.stats.seconds)} · peak {done.stats.peakDb.toFixed(1)} dB
           </span>
         </div>
+      )}
+      {done?.small && member && (
+        <SendToChat
+          open={sending}
+          id={pickerId}
+          blob={done.small.blob}
+          fallbackSeconds={done.stats.seconds}
+          kept={kept}
+          onClose={() => setSending(false)}
+        />
       )}
     </div>
   )

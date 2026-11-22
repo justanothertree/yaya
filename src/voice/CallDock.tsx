@@ -250,6 +250,7 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
           msgs={chat.msgs}
           inRoom={chat.inRoom}
           err={chat.err}
+          songs={chat.songs}
           onClose={() => setPanel(null)}
         />
       )}

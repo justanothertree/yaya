@@ -19,15 +19,21 @@ import {
   previewMsgs,
 } from '../dev/previewMember'
 import type { Msg } from './chatRooms'
+import { mergeSongs, songsIn, type ChatSong } from './chatSongs'
 
 export type ThreadState = {
   msgs: Msg[]
   /** false until the first read has come back — an empty room and an unread one look alike */
   loaded: boolean
   err: string | null
+  /**
+   * The songs sent into this room, by message id (chatSongs.ts). Empty until they are read, and
+   * empty for good while the server has none — the messages are drawn as their text then.
+   */
+  songs: Record<string, ChatSong>
 }
 
-const EMPTY: ThreadState = { msgs: [], loaded: false, err: null }
+const EMPTY: ThreadState = { msgs: [], loaded: false, err: null, songs: {} }
 
 type Thread = {
   state: ThreadState
@@ -53,6 +59,45 @@ function add(roomId: string, m: Msg) {
   set(roomId, { msgs: [...t.state.msgs, m] })
 }
 
+/**
+ * Ask the room's songs again, and fold the answer in. A refusal is not drawn: a thread whose
+ * songs cannot be read is still a thread, and its song messages read as the text they are.
+ */
+function askSongs(roomId: string) {
+  void songsIn(roomId).then((r) => {
+    const t = threads.get(roomId)
+    if (!t || !('songs' in r)) return
+    set(roomId, { songs: mergeSongs(t.state.songs, r.songs) })
+  })
+}
+
+/**
+ * A message that arrived by another road (sendSong), with the song it carries.
+ *
+ * ⚠️ ONLY FOR A THREAD SOMEBODY IS FOLLOWING. A room nobody has open has nothing to add to, and
+ * its first read will bring both.
+ */
+export function addToThread(roomId: string, m: Msg, song?: ChatSong) {
+  if (!threads.has(roomId)) return
+  add(roomId, m)
+  const t = threads.get(roomId)
+  if (song && t) set(roomId, { songs: mergeSongs(t.state.songs, { [song.message_id]: song }) })
+}
+
+/** A song was taken down: every open thread holding it says so. */
+export function songGone(fileId: string) {
+  for (const [roomId, t] of threads) {
+    const hit = Object.values(t.state.songs).find((s) => s.file_id === fileId)
+    if (hit)
+      set(roomId, { songs: { ...t.state.songs, [hit.message_id]: { ...hit, removed: true } } })
+  }
+}
+
+/** Read a room's songs again — after ▶ was refused, which is how a song removed elsewhere is found. */
+export function refreshSongs(roomId: string) {
+  if (threads.has(roomId)) askSongs(roomId)
+}
+
 /** the dev harness's read: the fixture, shaped the way list_room_messages shapes a real room */
 function previewRead(roomId: string, kind: string): Msg[] {
   return (previewMsgs()[roomId] ?? []).map((m) => ({
@@ -75,6 +120,7 @@ function previewRead(roomId: string, kind: string): Msg[] {
 function start(roomId: string, kind: string): () => void {
   if (previewMember) {
     set(roomId, { msgs: previewRead(roomId, kind), loaded: true })
+    askSongs(roomId)
     return () => {}
   }
   const sb = getSupabaseClient()
@@ -98,6 +144,9 @@ function start(roomId: string, kind: string): () => void {
     const extra = have.filter((m) => !read.some((x) => x.id === m.id))
     set(roomId, { msgs: [...read, ...extra], loaded: true })
   })
+  /* beside the first read, not after it: the two answers are independent, and the songs map is
+     keyed by message id, so whichever lands second finds the other already there */
+  askSongs(roomId)
   const ch = sb
     // private: gated on being in this room, so a non-member can't even hold the subscription
     // open. The row payloads were already filtered by chat_messages' RLS — this is depth.
@@ -137,6 +186,16 @@ function start(roomId: string, kind: string): () => void {
           body: row.body,
           created_at: row.created_at,
         })
+        /**
+         * A song may have arrived with it, so the room's songs are asked again.
+         *
+         * ⚠️ THE PREFIX IS A CHEAP FILTER, NEVER THE ANSWER. Every song's message begins `🎵 `
+         * (send_chat_song writes it), so a message that does not cannot be one and costs nothing;
+         * a message that does is only a song if `chat_songs_in` says so, because anybody can type
+         * the same text. The message and its song are written in one transaction and realtime
+         * delivers after the commit, so the song is there to be found.
+         */
+        if (typeof row.body === 'string' && row.body.startsWith('🎵 ')) askSongs(roomId)
         /**
          * Somebody is looking at it, so keep it read. The bell reloads off this same INSERT,
          * so without announcing after the write lands it races us and badges a room you are
@@ -198,6 +257,11 @@ export function watchThread(
   }
 }
 
+/** A room's thread as it stands, or an empty one when nobody is following it. */
+export function threadNow(roomId: string): ThreadState {
+  return threads.get(roomId)?.state ?? EMPTY
+}
+
 /**
  * A conversation's messages, live.
  *
@@ -210,7 +274,7 @@ export function useThread(roomId: string | null, kind: string, viewing = true): 
     (fn: () => void) => (roomId ? watchThread(roomId, kind, viewing, fn) : () => {}),
     [roomId, kind, viewing],
   )
-  const snap = () => (roomId ? (threads.get(roomId)?.state ?? EMPTY) : EMPTY)
+  const snap = () => (roomId ? threadNow(roomId) : EMPTY)
   return useSyncExternalStore(subscribe, snap, snap)
 }
 

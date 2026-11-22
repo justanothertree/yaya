@@ -230,6 +230,32 @@ export const previewMsgs = (): Record<string, PreviewMsg[]> =>
         body: 'beast. catching up tonight',
         created_at: t(12),
       },
+      // songs in chat: c5 and c6 are songs (dev/chatSongsPreview.ts), and c7 only LOOKS like one —
+      // it was typed, so it is in no song list and must draw as text
+      {
+        id: 'c5',
+        room_id: 'pv-crew',
+        user_id: 'pv-riley',
+        author_name: 'Riley',
+        body: '🎵 Night drive, take three (2:05)',
+        created_at: t(9),
+      },
+      {
+        id: 'c6',
+        room_id: 'pv-crew',
+        user_id: PREVIEW_ME.id,
+        author_name: 'Preview You',
+        body: '🎵 Sunday (0:48)',
+        created_at: t(6),
+      },
+      {
+        id: 'c7',
+        room_id: 'pv-crew',
+        user_id: 'pv-alex',
+        author_name: 'Alex',
+        body: '🎵 Not a song (1:00)',
+        created_at: t(4),
+      },
     ],
     'pv-lounge': [
       {
@@ -273,6 +299,14 @@ export const previewMsgs = (): Record<string, PreviewMsg[]> =>
         author_name: 'Alex',
         body: '🔥',
         created_at: t(38),
+      },
+      {
+        id: 'd4',
+        room_id: 'pv-dm',
+        user_id: 'pv-alex',
+        author_name: 'Alex',
+        body: '🎵 Old idea (1:10)',
+        created_at: t(30),
       },
     ],
     // long on purpose: enough to overflow any thread, so its height is something you can see
