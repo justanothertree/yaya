@@ -183,6 +183,26 @@ export function classify(r: {
   return 'refused'
 }
 
+/**
+ * PostgREST's "no such function": a server from before the function existed, or after a rollback.
+ * Nothing ran, so it is never an answer about the page.
+ */
+export function missingFunction(r: { status?: number; error: unknown }): boolean {
+  const e = r.error as { code?: unknown; message?: unknown } | null
+  if (!e) return false
+  return e.code === 'PGRST202'
+}
+
+/**
+ * The save's own refusal: the page is no longer the version this copy was checked against, because
+ * something wrote it in between (`save_my_profile_blocks`, PT409 → HTTP 409, "page changed").
+ */
+export function pageChanged(r: { status?: number; error: unknown }): boolean {
+  const e = r.error as { code?: unknown; message?: unknown } | null
+  if (!e) return false
+  return e.code === 'PT409' || String(e.message ?? '') === 'page changed'
+}
+
 /** Why a page cannot be sent, said before the server says it about the whole page. */
 export type Preflight =
   | { why: 'block too big'; at: number }

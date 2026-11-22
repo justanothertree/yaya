@@ -1,7 +1,8 @@
 name: db guards
 
 # Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, then
-# supabase/tests/lab-nudge-guards.sql, against a throwaway local database on every push.
+# supabase/tests/lab-nudge-guards.sql, then the profile page version checks and race, against a
+# throwaway local database on every push.
 #
 # ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
 # `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
@@ -187,6 +188,21 @@ jobs:
             psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/migrations/$m.sql"
           done
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/lab-nudge-guards.sql
+
+      # ⏳ A DRAFT, NOT YET APPLIED TO PRODUCTION: the profile save that refuses to overwrite a page
+      # that changed since it was read, and no longer doubles a page under two saves at once. It is
+      # loaded from docs/ in one transaction, the way apply_migration will run it, then asked about
+      # by its two test files — the race needs real sessions, so it is a script. When it is applied
+      # this line moves to its migration, like the Lab's three above.
+      - name: Run the profile page version checks and race
+        run: |
+          DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
+          if [ -z "$DB_URL" ]; then
+            DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          fi
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-22-profile-page-version.DRAFT.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profile-page-version.sql
+          bash supabase/tests/profile-page-race.sh "$DB_URL"
 
       - name: Stop the database
         if: always()
