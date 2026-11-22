@@ -2213,6 +2213,8 @@ describe('an exercise linked to an activity', () => {
     if ('why' in a || 'why' in b) throw new Error('fixture')
     expect(amount(s)).toBe(12)
     expect(pvAmount(s, 10)).toBe(false) // below its counted sets
+    expect(pvAmount(s, -4)).toBe(false) // a negative meets the floor as 0, still below 12
+    expect(pvAmount(s, null)).toBe(false) // and so does a blank
     expect(pvAmount(s, 40)).toBe(true)
     expect(pvSetDrop(b.id)).toBeNull() // uncounted: nothing moves
     expect(pvSetDrop(a.id)).toBeNull()
@@ -2484,14 +2486,18 @@ describe('the stand-ins keep the server rules the audit found missing', () => {
     expect(pvActivities().find((x) => x.id === id)!.session).toBeNull()
   })
 
-  it('refuses a negative amount, as the floor check does there, and caps at 1e9', () => {
+  it('stores a negative amount as none when nothing is counted, as 21b does, and caps at 1e9', () => {
     pvAddEntry(gym, h(9), h(10), null)
     const e = pvEntries(dayStart(), dayEnd()).find((x) => x.start === h(9))!
-    /* ⚠️ chronicle_entry_amount compares coalesce(p_amount, 0) with the counted sets' sum, 0 here,
-       so -4 is refused rather than stored as none — see OPEN-DECISIONS §21 */
-    expect(pvAmount(e.id, -4)).toBe(false)
+    const amountOf = () => pvEntries(dayStart(), dayEnd()).find((x) => x.id === e.id)!.amount
+    expect(pvAmount(e.id, 12)).toBe(true)
+    expect(amountOf()).toBe(12)
+    /* chronicle_entry_amount since 22 Nov: greatest(coalesce(p_amount, 0), 0) meets a floor of 0,
+       and the update stores a negative as null. Before 21b, -4 was refused with "<NULL>". */
+    expect(pvAmount(e.id, -4)).toBe(true)
+    expect(amountOf()).toBeNull()
     expect(pvAmount(e.id, 2e9)).toBe(true)
-    expect(pvEntries(dayStart(), dayEnd()).find((x) => x.id === e.id)!.amount).toBe(1e9)
+    expect(amountOf()).toBe(1e9)
   })
 
   it('counts a note in characters, as Postgres does, not in UTF-16 units', () => {
@@ -2666,27 +2672,47 @@ describe("the day's workout line, as chronicle_moments builds it", () => {
     new Date(localMidnight(day).getTime() + 86_400_000).toISOString(),
   ]
 
-  it('says the first four over zero, rounded the way to_char rounds, and counts them all', () => {
+  it('says the first four over zero, to two decimals as the server does since 21a, and counts them all', () => {
     pvGiveCircuitLog('p-1', DAY, [
       { eid: 'ex-none', val: 0 },
-      { eid: 'ex-quad', val: 12.5 },
-      { eid: 'ex-plank', val: 90 },
-      { eid: 'ex-what', val: 3 },
+      { eid: 'ex-quad', val: 12.345 },
+      { eid: 'ex-plank', val: 0.25 },
+      { eid: 'ex-what', val: 3.5 },
       { eid: 'ex-laps', val: 2 },
       { eid: 'ex-row', val: 10 },
     ])
     const [from, to] = around(DAY)
+    /* production's trim_scale(round(v, 2))::text on 22 Nov: 12.345 → 12.35, 0.25 → 0.25,
+       3.5 → 3.5, 2 → 2 (and a stored 3.5-mile walk reads "3.5 mi" there) */
     expect(pvMoments(from, to).filter((m) => m.kind === 'workout')).toEqual([
       {
         kind: 'workout',
         at: null,
         on: DAY,
-        title: 'Quad Curl 13 reps · Plank 90 sec · Mystery 3 · Laps 2 laps',
+        title: 'Quad Curl 12.35 reps · Plank 0.25 sec · Mystery 3.5 · Laps 2 laps',
         score: null,
         about: null,
         detail: '5',
       },
     ])
+  })
+
+  it('rounds the decimal it was given, as numeric does, not the double nearest it', () => {
+    /* round(1.005::numeric, 2) is 1.01 and round(0.001, 2) is 0; a 1e9 ceiling prints whole */
+    for (const val of [1.005, 0.001, 1e9, 12])
+      pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-quad', val }])
+    const [from, to] = around(DAY)
+    const said = pvMoments(from, to)
+      .filter((m) => m.kind === 'workout')
+      .map((m) => m.title)
+    expect([...said].sort()).toEqual(
+      [
+        'Quad Curl 1.01 reps',
+        'Quad Curl 0 reps',
+        'Quad Curl 1000000000 reps',
+        'Quad Curl 12 reps',
+      ].sort(),
+    )
   })
 
   it('reads a day a little either side of the window, and nothing further', () => {
