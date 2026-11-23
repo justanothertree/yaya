@@ -113,10 +113,16 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     stopRescue.current?.()
     stopRescue.current = el ? rescueFocus(el) : null
   }, [])
+  /** the friend whose toy you are going to wherever it goes (src/lab/social/TourStrip.tsx), or null */
+  const [following, setFollowing] = useState<string | null>(null)
   // and a link clicked while the Lab is already open changes only the hash
   useEffect(() => {
     const on = () => {
       const linked = hashParam('demo')
+      /* a toy named by a link, the roster's 🧪 or a typed address is a toy YOU chose: it ends a
+         follow, exactly as the picker does (a follow's own moves replace the address and fire no
+         hashchange) */
+      if (linked) setFollowing(null)
       if (linked && DEMOS.some((d) => d.id === linked)) setDemo(linked)
     }
     window.addEventListener('hashchange', on)
@@ -209,7 +215,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     return DEMOS.filter((d) => ids.has(d.id))
   }, [visible])
 
-  const pick = (id: DemoId) => {
+  /** show a toy: what the picker does, and what a follow does when the friend it follows moves */
+  const show = useCallback((id: DemoId) => {
     setDemo(id)
     try {
       localStorage.setItem(KEY, id)
@@ -224,6 +231,11 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
       history.replaceState(history.state, '', next)
       window.dispatchEvent(new Event(TOY_EVENT))
     }
+  }, [])
+  /** a toy you chose yourself — which is also how you stop following somebody */
+  const pick = (id: DemoId) => {
+    setFollowing(null)
+    show(id)
   }
   const patchFlags = (id: string, patch: Partial<Flags>) =>
     setFlags((was) => {
@@ -276,7 +288,14 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     <div className="lab">
       {viewer.authed && <YourGames />}
       {/* friends on your call, where each of them is on the board (src/lab/social/TourStrip.tsx) */}
-      <TourStrip current={current.id} toys={toys} onGo={pick} />
+      <TourStrip
+        current={current.id}
+        toys={toys}
+        onGo={pick}
+        following={following}
+        onFollow={setFollowing}
+        onLead={show}
+      />
       <div className="lab-filter" role="group" aria-label="Show which kind">
         <button
           className="btn btn-ghost"
