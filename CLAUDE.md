@@ -109,6 +109,16 @@ that render nothing at zero first**.
   `.claude/launch.json` defines the dev server; `#dev-profile`, `#dev-admin`, `#dev-usage`,
   `#dev-investments` and `#dev-park` are workbenches for surfaces that need a session. `DEV_PREVIEW`
   is read at module scope, so those need a full reload, not a hash change.
+- **`#dev-call?name=Ann` is the workbench for anything that rides a CALL** — the party, the Lab's
+  presence, cursors, call-table games and the tour — as a call between tabs of one browser
+  (`src/dev/labCall.ts`). Open one tab per person; `kind=` (dm, circuit, profile, lounge),
+  `stranger=1`, `unfriend=Cy` (one side is enough: the list travels with the tab, so the
+  friendship is broken both ways), `meter=1` and `id=` are in its header. No audio and no
+  Supabase: it carries exactly the `party` envelopes a real call does, so `speaking` is always
+  false and real Realtime latency is not in it. ⚠️ ITS ROSTER MUST CHANGE THE WAY A REAL CALL'S
+  DOES — on a `bye` and never on silence, because a crashed peer stays on a real roster for the
+  rest of the call. It used to expire silent tabs after 4 s, and that made a crash look eleven
+  seconds shorter than production can make it, in a commit message, as a measurement.
 - **`#dev-park` is the only workbench for a GAME, and it earns the difference.** The park is
   members-only, so its whole boss fight shipped on reasoning alone until it existed; the first
   fight run in it found a boss that walked off the map and never came back. It joins `park-dev`,
