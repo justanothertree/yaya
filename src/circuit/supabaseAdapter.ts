@@ -135,8 +135,11 @@ const personToRow = (p: Person): PersonRow => ({
   exercises: p.exercises,
   col_labels: p.colLabels,
   // Send the owner back unchanged so an owner's upsert passes the ownership INSERT check
-  // under the Phase-C policies. It's loaded from the DB, and the WITH CHECK forbids setting
-  // it to anyone but yourself, so this can't transfer/steal ownership.
+  // under the Phase-C policies. It's loaded from the DB, and it cannot hand the board on:
+  // ⚠️ NOT because of the policies, which this comment used to say. The INSERT check does
+  // require yourself, but the UPDATE policy only asks whether you own the row NOW, so an owner's
+  // own UPDATE could set it to anybody. The trigger circuit_people_owner_guard refuses any change
+  // to it that is not an admin's (§19e); the same value sent back is not a change.
   owner_user_id: p.ownerUserId ?? null,
 })
 const rowToPerson = (r: PersonRow): Person => ({
