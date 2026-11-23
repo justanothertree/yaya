@@ -20,7 +20,9 @@
  * ⚠️ NOBODY IS MOVED BY A STATE. The state says where the bus went and who said yes; a browser
  * moves only for its own press, kept here and never sent (`Consent`), and only to the toy that
  * press named. A lost, late or forged state can at most fail to move somebody — never move
- * somebody who did not press, nor to anywhere else (`hopPlan`, `rideStep`).
+ * somebody who did not press, nor to anywhere else (`hopPlan`, `rideStep`). And a press means what
+ * its button said when it was drawn, never what the bus has come to mean by the time it is handled
+ * (`meant`): a Take me there for one toy is never a yes to another.
  *
  * ⚠️ THE BUS WAITS ONLY FOR RIDERS WHO ARE HERE. Nobody who has not pressed is waited for — not a
  * friend who is busy, not a tab on an older build — so a silent non-rider can never hold it.
@@ -74,7 +76,7 @@ export type Knobs = {
   STATE_GAP_MS: number
   /** everyone: at most one request a second; later presses coalesce, the latest of each kind */
   ASK_GAP_MS: number
-  /** ready requests per person per departure; further presses stay local */
+  /** ready requests per person per window (a skipped one included); further presses stay local */
   READY_SENDS: number
   /** sit requests per person per stop: one on, one off */
   SIT_SENDS: number
@@ -155,6 +157,16 @@ export const MAX_TIMER_MS = 600_000
  */
 export const hopMs = (people: number, toy: string) => Math.max(250, 10 * people * sendsFor(toy))
 
+/**
+ * When the latest departure's last rider lands, by this browser's clock: Come too is taken until
+ * then — by the host (decide), by this browser for its own press (meant, hopPlan), and offered on
+ * screen until then (busWords). Nought before the first departure.
+ */
+export function landedAt(bus: Pick<Bus, 'stops' | 'leaveAt' | 'went'>, people: number) {
+  const stop = bus.stops[bus.stops.length - 1]
+  return stop ? bus.leaveAt + bus.went.length * hopMs(people, stop.toy) : 0
+}
+
 /** how many of a stop's games may star: about one per two riders who went, at least one */
 export const capFor = (went: number, k: Knobs): 1 | 2 | 3 =>
   Math.min(k.GAMES_CAP, 3, Math.max(1, Math.ceil(went / 2))) as 1 | 2 | 3
@@ -223,10 +235,10 @@ export type Bus = {
   /** the last repair hello, and the last answer to a host leading from a stale bus */
   repairAt: number
   answerAt: number
-  /** requests counted per person and departure (`id:n`), and sits per person and stop */
+  /** ready requests counted per person and window (`id:n:toy`), and sits per person and stop */
   presses: Record<string, number>
   sits: Record<string, number>
-  /** the host's: since when the guide has been away */
+  /** since when the guide has been away: kept by everybody holding the tour, used by its host */
   guideAway: number | null
   /** since when no rider has been here */
   quietSince: number | null
@@ -252,7 +264,8 @@ export type Ctx = {
 export type Req =
   | { v: 1; t: 'roll'; tour: string; n: number; faces: Faces; anyway?: true }
   | { v: 1; t: 'pick'; tour: string; n: number; toy: string }
-  | { v: 1; t: 'ready'; tour: string; n: number; on: boolean }
+  /** `toy`: the window's, or for Come too the stop's — what the press was for (`meant`) */
+  | { v: 1; t: 'ready'; tour: string; n: number; toy: string; on: boolean }
   | { v: 1; t: 'go'; tour: string; n: number }
   | { v: 1; t: 'off'; tour: string }
   | { v: 1; t: 'fin'; tour: string; anyway?: true }
@@ -565,7 +578,13 @@ export function decide(bus: Bus, ctx: Ctx, from: string, q: Req): Step {
     return publish(bus, ctx, { ...patch, ...(j !== i ? passTurn(after, ctx, j) : {}) })
   }
   if (q.t === 'sit') {
-    if (bus.phase !== 'pick' || !bus.stops.length || q.n !== bus.stops.length) return none(bus)
+    /* ⚠️ IN EVERY PHASE BUT THE END, NOT ONLY BETWEEN STOPS. A game goes on through the roll and
+       the ready check, and ends when it ends: a stand-up refused there left `busy` naming somebody
+       whose game was over, a skipped window kept it, and the next guide's roll was held by nobody
+       for up to five minutes — with the sender's two sits spent, so nothing could clear it. The
+       hold reads `busy` only between stops, so keeping it true the rest of the time costs nothing,
+       and a skip inherits the truth. (The end is refused above.) */
+    if (!bus.stops.length || q.n !== bus.stops.length) return none(bus)
     if (!rider?.on || !here) return none(bus)
     const key = `${from}:${q.n}`
     const used = bus.sits[key] ?? 0
@@ -577,18 +596,21 @@ export function decide(bus: Bus, ctx: Ctx, from: string, q: Req): Step {
   }
   if (q.t === 'ready') {
     if (!here) return none(bus)
-    const window = bus.phase === 'ready' && q.n === next
-    const comeToo = bus.phase === 'pick' && bus.stops.length > 0 && q.n === bus.stops.length
+    const last = bus.stops.length
+    const window = bus.phase === 'ready' && q.n === next && q.toy === bus.toy
+    const comeToo =
+      bus.phase === 'pick' && last > 0 && q.n === last && q.toy === bus.stops[last - 1].toy
     if (!window && !(comeToo && q.on)) return none(bus)
-    const key = `${from}:${q.n}`
+    /* ⚠️ COUNTED PER WINDOW, NOT PER DEPARTURE. A skipped window leaves the departure's number
+       where it was, so a count keyed by it alone carried a skipped window's three presses into
+       the next one — and a rider's first yes to a new toy, with a new guide, was dropped without
+       a word, here and in their own browser alike (ask). So the window's toy is in the key. */
+    const key = `${from}:${q.n}:${q.toy}`
     const used = bus.presses[key] ?? 0
     if (used >= k.READY_SENDS) return none(bus)
     const counted = { ...bus, presses: { ...bus.presses, [key]: used + 1 } }
-    if (comeToo) {
-      /* Come too: after a departure, while its riders are still landing; you land after them */
-      const stop = bus.stops[bus.stops.length - 1]
-      if (now >= bus.leaveAt + bus.went.length * hopMs(ctx.people, stop.toy)) return none(counted)
-    }
+    /* Come too: after a departure, while its riders are still landing; you land after them */
+    if (comeToo && now >= landedAt(bus, ctx.people)) return none(counted)
     let riders = bus.riders
     let j = i
     if (q.on) {
@@ -642,6 +664,14 @@ export function tick(bus: Bus, ctx: Ctx): Step {
     const anyone = b.riders.some((r) => r.on && ctx.present.has(r.id))
     const quietSince = anyone ? null : (b.quietSince ?? now)
     if (quietSince !== b.quietSince) b = { ...b, quietSince }
+    /* ⚠️ EVERYBODY HOLDING THE TOUR KEEPS THE GUIDE'S CLOCK, NOT ONLY ITS HOST. The clock is never
+       sent, so one kept by the host alone started again from nought at every change of host:
+       measured, a guide gone at t0 with the host leaving 15 s later lost the turn at 35.1 s, not
+       20. Only the turn to roll or to choose can be lost, so only then does the clock run. */
+    const g = b.riders[b.guide]
+    const turn = b.phase === 'pick' || b.phase === 'choose'
+    const guideAway = turn && (!g.on || !ctx.present.has(g.id)) ? (b.guideAway ?? now) : null
+    if (guideAway !== b.guideAway) b = { ...b, guideAway }
   }
   if (!b.heard && now - b.syncAt >= k.SYNC_MS) b = { ...b, heard: true }
   if (!leads(b, ctx) || b.phase === 'end') return { bus: b, out: said }
@@ -653,12 +683,9 @@ export function tick(bus: Bus, ctx: Ctx): Step {
     changed = true
   }
   /* the guide is away, or has hopped off: the turn passes after GUIDE_GONE_MS, or at once */
-  if (w.phase === 'pick' || w.phase === 'choose') {
+  if (w.guideAway !== null) {
     const g = w.riders[w.guide]
-    const away = !g.on || !ctx.present.has(g.id)
-    const guideAway = away ? (w.guideAway ?? now) : null
-    if (guideAway !== w.guideAway) w = { ...w, guideAway }
-    if (away && (!g.on || now - guideAway! >= k.GUIDE_GONE_MS)) {
+    if (!g.on || now - w.guideAway >= k.GUIDE_GONE_MS) {
       const j = nextGuide(w, ctx.present)
       if (j !== w.guide) change(passTurn(w, ctx, j))
     }
@@ -703,18 +730,43 @@ export function tick(bus: Bus, ctx: Ctx): Step {
 
 /* ── presses here ──────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Take me there, Come too, Stay here or Not this one — with the departure and the toy its button
+ * named when it was drawn (busWords puts them on the button), which `meant` reads it against.
+ */
+export type Answer = { t: 'ready'; on: boolean; n: number; toy: string }
 export type Press =
   | { t: 'roll'; faces: Faces; anyway?: boolean }
   | { t: 'pick'; toy: string }
-  /** Take me there (and Come too, after a departure), or Stay here / Not this one */
-  | { t: 'ready'; on: boolean }
+  | Answer
   | { t: 'go' }
   | { t: 'off' }
   | { t: 'fin'; anyway?: boolean }
   | { t: 'sit'; on: boolean }
 
+/**
+ * What an answer pressed here means against the bus held now: a yes or a no to the window that is
+ * boarding, Come too for the stop just left while its riders are still landing — or nothing.
+ *
+ * ⚠️ A PRESS MEANS WHAT ITS BUTTON SAID, NEVER WHAT THE PHASE NOW IMPLIES. The button is drawn
+ * from one bus and pressed against whichever is held by the time the press is handled, and a
+ * window can be skipped in between. Read from the phase alone, a Take me there for Hex that landed
+ * just after the skip was Come too for the stop before, long after its landing, and moved somebody
+ * to Four in a row — a toy the button never named. So an answer carries the departure and the toy
+ * its button named, and one the bus has moved past does nothing at all: no consent, no request.
+ * The panel can ask this to say so (busWords's missedWords).
+ */
+export function meant(bus: Bus, ctx: Pick<Ctx, 'now' | 'people'>, p: Answer) {
+  if (!holds(bus)) return null
+  const last = bus.stops.length
+  if (bus.phase === 'ready') return p.n === last + 1 && p.toy === bus.toy ? 'window' : null
+  if (bus.phase !== 'pick' || !last || !p.on) return null
+  if (p.n !== last || p.toy !== bus.stops[last - 1].toy) return null
+  return ctx.now < landedAt(bus, ctx.people) ? 'come' : null
+}
+
 /** the request a press makes, or null for one that asks nothing of anybody */
-function requestFor(bus: Bus, p: Press): Req | null {
+function requestFor(bus: Bus, ctx: Ctx, p: Press): Req | null {
   const { tour } = bus
   const next = bus.stops.length + 1
   const last = bus.stops.length
@@ -732,28 +784,27 @@ function requestFor(bus: Bus, p: Press): Req | null {
     case 'sit':
       return last ? { v: 1, t: 'sit', tour, n: last, on: p.on } : null
     case 'ready':
-      if (bus.phase === 'ready') return { v: 1, t: 'ready', tour, n: next, on: p.on }
-      /* Come too; and Stay here during the count is this browser's alone, and sends nothing */
-      return bus.phase === 'pick' && last && p.on
-        ? { v: 1, t: 'ready', tour, n: last, on: true }
-        : null
+      /* an answer to the window, or Come too; Stay here during the count is this browser's
+         alone, and an answer the bus has moved past asks nothing of anybody */
+      return meant(bus, ctx, p) ? { v: 1, t: 'ready', tour, n: p.n, toy: p.toy, on: p.on } : null
   }
 }
 
 /**
  * A button pressed here: the host decides it at once, anybody else asks.
  *
- * ⚠️ A PRESS PAST ITS CAP STAYS HERE. Three ready requests a departure and two sits a stop are
+ * ⚠️ A PRESS PAST ITS CAP STAYS HERE. Three ready requests a window and two sits a stop are
  * what anybody's browser sends; a fourth press still changes this browser's own consent
  * (consentAfter), which is what moves it, and the host simply goes on believing the third.
  */
 export function ask(bus: Bus, ctx: Ctx, p: Press): Step {
   if (!holds(bus) || !ctx.meLive || bus.phase === 'end') return none(bus)
-  const q = requestFor(bus, p)
+  const q = requestFor(bus, ctx, p)
   if (!q) return none(bus)
   if (leads(bus, ctx)) return decide(bus, ctx, bus.me, q)
   if (q.t === 'ready') {
-    const key = `${bus.me}:${q.n}`
+    /* per window, as the host counts them (decide) */
+    const key = `${bus.me}:${q.n}:${q.toy}`
     const used = bus.presses[key] ?? 0
     if (used >= ctx.k.READY_SENDS) return none(bus)
     return { bus: { ...bus, presses: { ...bus.presses, [key]: used + 1 } }, out: [q] }
@@ -909,8 +960,11 @@ export function readBus(x: unknown): Msg | null {
   }
   if (x.t === 'pick') return isToyId(x.toy) ? { v: 1, t: 'pick', tour, n, toy: x.toy } : null
   if (x.t === 'go') return { v: 1, t: 'go', tour, n }
-  if (x.t === 'ready' || x.t === 'sit')
-    return typeof x.on === 'boolean' ? { v: 1, t: x.t, tour, n, on: x.on } : null
+  if (x.t === 'sit') return typeof x.on === 'boolean' ? { v: 1, t: 'sit', tour, n, on: x.on } : null
+  if (x.t === 'ready')
+    return typeof x.on === 'boolean' && isToyId(x.toy)
+      ? { v: 1, t: 'ready', tour, n, toy: x.toy, on: x.on }
+      : null
   if (x.t === 'game') {
     const seats = readSeats(x.seats)
     const how = HOWS.find((h) => h === x.how)
@@ -1066,15 +1120,34 @@ function adopt(bus: Bus, s: State, from: string, ctx: Ctx): Bus {
     openAt: now + s.open,
     freeAt: now + s.free,
     holdUntil: now + s.hold,
-    leaveAt: now + s.leave,
+    leaveAt: leaveOf(bus, s, ctx),
     heard: true,
     asking: false,
     presses: same ? bus.presses : {},
     sits: same ? bus.sits : {},
-    guideAway: same ? bus.guideAway : null,
+    /* the clock is about one guide: the turn passing starts it again */
+    guideAway: same && s.guide === bus.guide ? bus.guideAway : null,
     quietSince: same ? bus.quietSince : null,
   }
   return mergeKnown(bus, next)
+}
+
+/**
+ * When the latest departure's count ended, as this state tells it.
+ *
+ * ⚠️ A CLOCK THAT HAS RUN OUT STAYS RUN OUT. The wire carries the time remaining, clamped at
+ * nought, so every state after the count — a sit, an off — says `leave: 0`, and read as "the count
+ * ends now" each one re-opened the landing, and Come too with it, for another went·hopMs: on
+ * screen Catch up turned back into Come too, and a new host took a Come too that the old one had
+ * refused. So nought, for a departure already held, keeps the clock where it was; and a departure
+ * first heard after its count reads as landed, which is what Catch up is for.
+ */
+function leaveOf(bus: Bus, s: State, ctx: Ctx): number {
+  const stop = s.stops[s.stops.length - 1]
+  if (s.leave > 0 || !stop) return ctx.now + s.leave
+  if (s.tour === bus.tour && s.stops.length === bus.stops.length)
+    return Math.min(bus.leaveAt, ctx.now)
+  return ctx.now - s.went.length * hopMs(ctx.people, stop.toy)
 }
 
 /** the second-lowest rider here: who repairs a host that came back leading from a stale bus */
@@ -1219,11 +1292,19 @@ export type Consent = {
 
 /**
  * Consent after a press here. Set by the guide's pick, Take me there (with what its label said it
- * would leave) and Come too; cleared by Stay here, Not this one and Hop off. Anything else leaves
- * it as it was — ⚠️ AN OWN PICK OF ANOTHER TOY NEVER CANCELS A YES, because nothing on screen
- * would say that it had.
+ * would leave) and Come too, each only for the departure and toy its button named and only while
+ * the bus still offers them (`meant`); cleared by Stay here, Not this one and Hop off, whatever the
+ * bus is doing, because a withdrawal never needs to match anything. Anything else leaves it as it
+ * was — ⚠️ AN OWN PICK OF ANOTHER TOY NEVER CANCELS A YES, because nothing on screen would say that
+ * it had.
  */
-export function consentAfter(c: Consent, bus: Bus, p: Press, leaves: Leaves = null): Consent {
+export function consentAfter(
+  c: Consent,
+  bus: Bus,
+  ctx: Pick<Ctx, 'now' | 'people'>,
+  p: Press,
+  leaves: Leaves = null,
+): Consent {
   if (p.t === 'off') return null
   if (!holds(bus)) return c
   const { tour } = bus
@@ -1231,9 +1312,9 @@ export function consentAfter(c: Consent, bus: Bus, p: Press, leaves: Leaves = nu
   if (p.t === 'pick') return bus.phase === 'choose' ? { tour, n: last + 1, toy: p.toy, leaves } : c
   if (p.t !== 'ready') return c
   if (!p.on) return null
-  if (bus.phase === 'ready' && bus.toy) return { tour, n: last + 1, toy: bus.toy, leaves }
-  if (bus.phase === 'pick' && last)
-    return { tour, n: last, toy: bus.stops[last - 1].toy, leaves, come: true }
+  const means = meant(bus, ctx, p)
+  if (means === 'window') return { tour, n: p.n, toy: p.toy, leaves }
+  if (means === 'come') return { tour, n: p.n, toy: p.toy, leaves, come: true }
   return c
 }
 
@@ -1250,7 +1331,8 @@ export type HopPlan =
  * wrong, late or lying, schedules nothing unless I pressed for that departure and that toy. My
  * place in the queue is my id's among those who went; a request of mine that never reached the
  * host puts me after them, and Come too after that. `receivedAt` is when the departure arrived —
- * for Come too, when it was pressed, since that is when its hop was asked for.
+ * for Come too, when it was pressed, since that is when its hop was asked for, and asked again on
+ * each state with that same time.
  */
 export function hopPlan(
   bus: Bus,
@@ -1275,8 +1357,12 @@ export function hopPlan(
        the last rider; and the host appends each Come too to `went` in the order it hears them, so
        once a state lists me, my place there is my slot — two friends pressing it together would
        otherwise both land one slot after the riders, at the same instant. Ask again on each
-       state while the hop waits. */
+       state while the hop waits.
+       ⚠️ AND NEVER AFTER THE LANDING. The host refuses a Come too once the last rider has landed,
+       and so does this browser: a consent that says `come` for a press made after that — however
+       it came to say so — is Catch up, never a move. */
     const at = bus.went.findIndex((i) => bus.riders[i]?.id === bus.me)
+    if (receivedAt >= landedAt(bus, people)) return { do: 'late', key }
     const rank = (at >= 0 ? at : ids.length) + 1
     return { do: 'hop', key, rank, at: Math.max(receivedAt, bus.leaveAt + rank * gap) }
   }

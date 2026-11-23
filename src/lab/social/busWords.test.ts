@@ -15,6 +15,7 @@ import {
   finaleWords,
   followEndedWords,
   followOffWords,
+  missedWords,
   gameWords,
   guideGoneWords,
   heading,
@@ -230,15 +231,38 @@ describe('the ready check (§1.2, 4–5)', () => {
     )
   })
   it('above the toy, for somebody scrolled down to it', () => {
+    /* each answer carries the departure and the toy it was drawn for: stop 2, Four in a row */
     expect(busLine(view(BO, ready()))).toEqual({
       text: '🚌 Four in a row in 12 s',
-      buttons: [{ act: 'take', label: 'Take me there' }],
+      buttons: [{ act: 'take', label: 'Take me there', n: 2, toy: 'fourrow' }],
     })
     const going = view(BO, ready({ due: NOW + 6000 }), { consent: yes() })
     expect(busLine(going)).toEqual({
       text: "🚌 You're going to Four in a row in 6 s",
-      buttons: [{ act: 'stay', label: 'Stay here' }],
+      buttons: [{ act: 'stay', label: 'Stay here', n: 2, toy: 'fourrow' }],
     })
+  })
+  it('a yes for another toy at the same departure is not a yes to this one', () => {
+    /* Bo said yes to Four in a row for stop 2, and that window was skipped; now it is Hex */
+    const stale = { consent: yes() }
+    const bo = view(BO, ready({ toy: 'hex' }), stale)
+    expect(text(bo)).toBe('Next stop: Hex. Going? The bus leaves in 12 s.')
+    expect(labels(bo)).toEqual(['🚌 Take me there', 'Not this one'])
+    expect(busLine(bo)).toEqual({
+      text: '🚌 Hex in 12 s',
+      buttons: [{ act: 'take', label: 'Take me there', n: 2, toy: 'hex' }],
+    })
+    /* and nobody is counted going who is not: Bo's stale yes is not one of the two */
+    const going = view(BO, ready({ toy: 'hex', ready: [0, 2], no: [1] }), stale)
+    expect(text(going)).toBe("You're staying here this stop. 2 going.")
+  })
+  it('a press the bus moved past says so', () => {
+    expect(missedWords(view(BO), 'hex')).toBe(
+      "Too late for Hex: the bus had moved on, so you're staying here.",
+    )
+    expect(missedWords(view(BO), 'secret')).toBe(
+      "Too late for a toy that isn't in your Lab: the bus had moved on, so you're staying here.",
+    )
   })
   it('following somebody ends when you take the bus, and the bus when you follow', () => {
     expect(followEndedWords('Cy')).toBe("You're on the bus, so you've stopped following Cy.")
@@ -284,6 +308,19 @@ describe('the bus leaves (§1.2, 6–7)', () => {
     expect(text(view(DEE, left({ went: [0] })))).toBe(
       'The bus is leaving for Four in a row with 1 rider.',
     )
+    /* Come too carries the stop it was drawn for: stop 1, Four in a row */
+    expect(phaseLine(dee)?.buttons).toEqual([
+      { act: 'come', label: 'Come too', n: 1, toy: 'fourrow' },
+    ])
+  })
+  it('a yes kept from a window that was skipped is not a yes to the stop the bus went to', () => {
+    /* Dee said yes to Four in a row for stop 1; that window was skipped, and the bus went to Hex */
+    const stale = { consent: { tour: 'tour0001', n: 1, toy: 'fourrow', leaves: null } }
+    const dee = view(DEE, left({ stops: [stop('hex')] }), stale)
+    expect(text(dee)).toBe('The bus is leaving for Hex with 3 riders.')
+    expect(labels(dee)).toEqual(['Come too'])
+    const counting = view(DEE, left({ stops: [stop('hex')] }), { ...stale, hopAt: NOW + 900 })
+    expect(text(counting)).toBe('The bus is leaving for Hex with 3 riders.')
   })
   it('offered, never moved', () => {
     const v = view(BO)

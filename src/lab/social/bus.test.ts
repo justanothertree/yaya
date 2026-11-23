@@ -10,6 +10,7 @@ import {
   knobs,
   leads,
   listen,
+  meant,
   mergeKnown,
   nextGuide,
   outbox,
@@ -20,6 +21,7 @@ import {
   startTour,
   tick,
   wireOf,
+  type Answer,
   type Bus,
   type Consent,
   type Ctx,
@@ -56,7 +58,8 @@ type Client = {
   consent: Consent
   moved: Set<string>
   planned: Set<string>
-  hop: { at: number; key: string; toy: string; n: number } | null
+  /** `asked`: when the hop was asked for — the departure's arrival, or Come too's press */
+  hop: { at: number; key: string; toy: string; n: number; asked: number } | null
   late: string[]
   /** the toy this client holds a seat at, in a game still going (held.ts) */
   seat: string | null
@@ -132,13 +135,13 @@ function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean
     const key = `${b.tour}:${n}`
     /* a Come too still waiting takes the slot each state gives it */
     if (c.hop?.key === key && c.consent?.come) {
-      const again = hopPlan(b, c.hop.at, c.consent, people(), c.moved)
+      const again = hopPlan(b, c.hop.asked, c.consent, people(), c.moved)
       if (again?.do === 'hop') c.hop = { ...c.hop, at: again.at }
     }
     if (!n || c.planned.has(key)) return
     c.planned.add(key)
     const p = hopPlan(b, now, c.consent, people(), c.moved)
-    if (p?.do === 'hop') c.hop = { at: p.at, key, toy: b.stops[n - 1].toy, n }
+    if (p?.do === 'hop') c.hop = { at: p.at, key, toy: b.stops[n - 1].toy, n, asked: now }
     if (p?.do === 'late') c.late.push(key)
   }
   const apply = (c: Client, s: Step) => {
@@ -243,13 +246,17 @@ function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean
     /** a button pressed in `id`'s browser: its consent first, as useBus will, then the press */
     press(id: string, p: Press, leaves: Leaves = null) {
       const c = cs.get(id)!
-      c.consent = consentAfter(c.consent, c.bus, p, leaves)
+      c.consent = consentAfter(c.consent, c.bus, ctx(id), p, leaves)
       apply(c, ask(c.bus, ctx(id), p))
       if (p.t === 'ready' && c.consent?.come) {
         const plan2 = hopPlan(c.bus, now, c.consent, people(), c.moved)
         if (plan2?.do === 'hop')
-          c.hop = { at: plan2.at, key: plan2.key, toy: c.consent.toy, n: c.consent.n }
+          c.hop = { at: plan2.at, key: plan2.key, toy: c.consent.toy, n: c.consent.n, asked: now }
       }
+    },
+    /** Take me there (or Come too) and Stay here, as drawn from the bus `id` holds this moment */
+    ready(id: string, on: boolean, leaves: Leaves = null) {
+      net.press(id, answerOn(cs.get(id)!.bus, on), leaves)
     },
     start(id: string) {
       const c = cs.get(id)!
@@ -284,6 +291,17 @@ function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean
 }
 type Net = ReturnType<typeof party>
 
+/**
+ * What an answer's button carries when it is drawn from `b` (busWords stamps the same two numbers
+ * on it): the window's departure and toy while boarding, the stop just left's after it.
+ */
+function answerOn(b: Bus, on: boolean): Answer {
+  const last = b.stops.length
+  return b.phase === 'ready'
+    ? { t: 'ready', on, n: last + 1, toy: b.toy! }
+    : { t: 'ready', on, n: last, toy: b.stops[last - 1]?.toy ?? '' }
+}
+
 /** ids that sort p01 < p02 < …, boarding in an order that is not that one */
 const named = (n: number) =>
   Array.from({ length: n }, (_, i) => `p${String(i + 1).padStart(2, '0')}`)
@@ -309,7 +327,10 @@ function rollAndPick(net: Net, rand: () => number, pickFace = 1) {
   return { guide, toy: faces[pickFace] }
 }
 
-/** a tour started by `boarding[0]`, everybody else on board in boarding order at the first stop */
+/**
+ * A tour started by `boarding[0]`, its only rider so far: everybody else holds it and has pressed
+ * nothing, so they board (or not) at the first stop, in whatever order the test presses them.
+ */
 function boarded(n: number, o: { k?: Knobs; people?: number } = {}) {
   const ids = named(n)
   const boarding = boardingOf(ids)
@@ -336,7 +357,7 @@ describe('a whole tour (3.1)', () => {
         if (s === 0) {
           /* everybody boards, one at a time, in an order that is not the ids' */
           for (const id of boarding.slice(1)) {
-            net.press(id, { t: 'ready', on: true })
+            net.ready(id, true)
             net.flush()
             expect(net.agree()).toBe(true)
           }
@@ -347,7 +368,7 @@ describe('a whole tour (3.1)', () => {
         } else
           for (const id of boarding)
             if (id !== guide) {
-              net.press(id, { t: 'ready', on: true })
+              net.ready(id, true)
               net.flush()
             }
         expect(net.agree()).toBe(true)
@@ -395,7 +416,7 @@ function atTable(extra: string[] = []) {
   net.press('p03', { t: 'pick', toy: 'fourrow' })
   net.flush()
   for (const id of ['p02', 'p01']) {
-    net.press(id, { t: 'ready', on: true })
+    net.ready(id, true)
     net.flush()
   }
   net.runUntil(() => net.bus('p01').stops.length === 1)
@@ -436,6 +457,62 @@ describe('the turn to roll (3.2)', () => {
     net.run(400)
     expect(net.bus('p01').guide).toBe(2) // p01, boarded third
     expect(net.agree(['p01', 'p03'])).toBe(true)
+  })
+  it('a guide away while the host changes still loses the turn GUIDE_GONE_MS after going', () => {
+    const net = atTable()
+    expect(net.bus('p01').guide).toBe(1) // p02
+    const gone = net.now
+    net.here.delete('p02')
+    net.run(15_000)
+    expect(net.bus('p03').guide).toBe(1)
+    /* the host goes too: p03 leads now, and the clock it kept since p02 went goes on */
+    net.here.delete('p01')
+    net.get('p01').listening = false
+    net.runUntil(() => net.bus('p03').guide !== 1, 60_000)
+    expect(net.now - gone).toBeLessThanOrEqual(net.k.GUIDE_GONE_MS + 200)
+    expect(net.bus('p03').riders[net.bus('p03').guide].id).toBe('p03')
+  })
+  it('the clock is about one guide: the turn passing to somebody else away here starts it again', () => {
+    /* p04 holds a tour p01 hosts; riders boarded p02, p03, p04, p01 and p02 has the turn */
+    const roster = new Set(['p01', 'p02', 'p03', 'p04'])
+    const at = (now: number, here: string[]): Ctx => ({
+      now,
+      present: new Set(here),
+      roster,
+      meLive: true,
+      subOf: () => null,
+      people: 4,
+      k: KNOBS,
+    })
+    const tourOf = (guide: number, seq: number): Bus => ({
+      ...listen('p01', 0),
+      seq,
+      tour: TOUR,
+      len: 5,
+      riders: ['p02', 'p03', 'p04', 'p01'].map((id) => ({ id, on: true, stars: 0, played: 0 })),
+      guide,
+      phase: 'pick',
+      stops: [{ toy: 'fourrow', cap: 2, games: [], won: [] }],
+      openAt: 0,
+      freeAt: KNOBS.IDLE_MS,
+      holdUntil: KNOBS.HOLD_MAX_MS,
+      due: KNOBS.TOUR_IDLE_MS,
+    })
+    const everyone = new Set(roster)
+    const heard = (b: Bus, now: number, here: string[]) =>
+      receive(listen('p04', 0), at(now, here), 'p01', wireOf(b, everyone, now)).bus
+    /* p02 goes at 1 s; at 21 s the host passes the turn to p03, whom p04 does not see here */
+    let x = heard(tourOf(0, 5), 0, ['p01', 'p02', 'p03', 'p04'])
+    x = tick(x, at(1000, ['p01', 'p03', 'p04'])).bus
+    const passed = wireOf(tourOf(1, 6), everyone, 21_000)
+    x = receive(x, at(21_000, ['p01', 'p04']), 'p01', passed).bus
+    x = tick(x, at(21_100, ['p01', 'p04'])).bus
+    /* the host leaves, and p04 leads: p03 has been away from p04's view for a moment, not 20 s */
+    x = tick(x, at(21_300, ['p04'])).bus
+    expect(leads(x, at(21_300, ['p04']))).toBe(true)
+    expect(x.guide).toBe(1)
+    x = tick(x, at(21_100 + KNOBS.GUIDE_GONE_MS, ['p04'])).bus
+    expect(x.guide).toBe(2)
   })
 })
 
@@ -541,6 +618,28 @@ describe('the hold: the bus waits for a game in progress (3.4)', () => {
     }
     expect(holdOn(capped, ctx)).toBe(false)
   })
+  it('a game that ends during the roll or the ready check stops holding, and a skip keeps that', () => {
+    const net = seated()
+    expect(net.bus('p01').busy).toEqual([0])
+    /* the guide rolls anyway and picks Hex; p03's game ends while the bus is boarding */
+    net.press('p02', { t: 'roll', faces, anyway: true })
+    net.flush()
+    net.press('p02', { t: 'pick', toy: 'hex' })
+    net.flush()
+    net.get('p03').seat = null
+    net.press('p03', { t: 'sit', on: false })
+    net.flush()
+    expect(net.bus('p01').busy).toEqual([])
+    /* nobody goes: the window is skipped, the turn passes to p01, and nothing holds its roll */
+    for (const id of ['p02', 'p01', 'p03']) net.ready(id, false)
+    net.flush()
+    net.runUntil(() => phase(net) === 'pick', 30_000)
+    const b = net.bus('p01')
+    expect([b.stops.length, b.busy, b.riders[b.guide].id]).toEqual([1, [], 'p01'])
+    net.press('p01', { t: 'roll', faces: ['go', 'aurora', 'paint'] })
+    net.flush()
+    expect(phase(net)).toBe('choose')
+  })
   it('anybody but the guide asking to roll anyway is refused, even once the roll is free', () => {
     const net = seated()
     net.at(net.bus('p01').holdUntil + net.k.IDLE_MS + 100)
@@ -590,8 +689,8 @@ describe('leaving early (3.6)', () => {
   }
   it('once every rider here has answered and READY_MIN_MS has passed, and not before', () => {
     const { net, readyAt } = withWatchers()
-    net.press('p03', { t: 'ready', on: true })
-    net.press('p01', { t: 'ready', on: false })
+    net.ready('p03', true)
+    net.ready('p01', false)
     net.flush()
     expect(leftAt(net) - readyAt).toBe(net.k.READY_MIN_MS)
     expect(
@@ -603,7 +702,7 @@ describe('leaving early (3.6)', () => {
   })
   it('a rider who has not answered keeps it open for the whole window', () => {
     const { net, readyAt } = withWatchers()
-    net.press('p03', { t: 'ready', on: true })
+    net.ready('p03', true)
     net.flush()
     expect(leftAt(net) - readyAt).toBe(net.k.READY_MS)
   })
@@ -625,9 +724,9 @@ describe('leaving early (3.6)', () => {
   })
   it('everybody says no: no departure, and the turn passes on at once', () => {
     const { net, readyAt } = withWatchers()
-    net.press('p02', { t: 'ready', on: false })
-    net.press('p03', { t: 'ready', on: false })
-    net.press('p01', { t: 'ready', on: false })
+    net.ready('p02', false)
+    net.ready('p03', false)
+    net.ready('p01', false)
     net.flush()
     net.runUntil(() => phase(net) === 'pick', 30_000)
     const b = net.bus('p01')
@@ -647,7 +746,7 @@ describe('the host leaves while the bus is boarding (3.7)', () => {
     net.press('p02', { t: 'pick', toy: 'hex' })
     net.flush()
     /* p01 (host) says yes; p03 never answers, so nothing closes early */
-    net.press('p01', { t: 'ready', on: true })
+    net.ready('p01', true)
     net.flush()
     const due = net.bus('p01').due
     net.run(7000)
@@ -669,7 +768,7 @@ describe('the cap on ready requests (3.12)', () => {
     net.flush()
     const sent = () => net.log.filter((e) => e.from === 'p03' && e.m.t === 'ready').length
     for (const on of [true, false, true, false]) {
-      net.press('p03', { t: 'ready', on })
+      net.ready('p03', on)
       net.flush()
     }
     expect(sent()).toBe(3)
@@ -678,9 +777,13 @@ describe('the cap on ready requests (3.12)', () => {
     const host = net.bus('p01')
     expect(host.ready).toContain(0)
     /* a fourth, straight onto the wire */
-    net.wire.push({ from: 'p03', m: { v: 1, t: 'ready', tour: host.tour, n: 2, on: false } })
+    net.wire.push({
+      from: 'p03',
+      m: { v: 1, t: 'ready', tour: host.tour, n: 2, toy: 'hex', on: false },
+    })
     net.flush()
-    expect(net.bus('p01')).toBe(net.bus('p01'))
+    /* refused, so the host's bus is the very one it held: nothing about it was replaced */
+    expect(net.bus('p01')).toBe(host)
     expect(net.bus('p01').seq).toBe(host.seq)
     expect(net.bus('p01').ready).toContain(0)
     /* and when the bus goes, p03 — listed as going — stays where they are */
@@ -688,6 +791,60 @@ describe('the cap on ready requests (3.12)', () => {
     net.run(10_000)
     expect(net.get('p03').sub).toBe('fourrow')
     expect(net.get('p02').sub).toBe('hex')
+  })
+  it('a window that was skipped leaves the next its own three, though the departure is the same', () => {
+    const net = atTable()
+    net.at(net.bus('p01').openAt)
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    net.press('p02', { t: 'pick', toy: 'hex' })
+    net.flush()
+    const sent = () => net.log.filter((e) => e.from === 'p03' && e.m.t === 'ready').length
+    for (const on of [false, true, false]) {
+      net.ready('p03', on)
+      net.flush()
+    }
+    for (const id of ['p02', 'p01']) net.ready(id, false)
+    net.flush()
+    net.runUntil(() => phase(net) === 'pick', 30_000)
+    expect([net.bus('p01').stops.length, sent()]).toEqual([1, 3])
+    /* the turn passed to p01, who rolls, picks Aurora and stays here; p03's first yes to it */
+    net.press('p01', { t: 'roll', faces: ['go', 'aurora', 'paint'] })
+    net.flush()
+    net.press('p01', { t: 'pick', toy: 'aurora' })
+    net.flush()
+    net.ready('p01', false)
+    net.flush()
+    net.ready('p03', true)
+    net.flush()
+    expect(sent()).toBe(4)
+    expect(net.bus('p01').ready).toEqual([0])
+    net.runUntil(() => net.bus('p01').stops.length === 2, 30_000)
+    net.run(10_000)
+    expect(net.bus('p01').stops.map((x) => x.toy)).toEqual(['fourrow', 'aurora'])
+    expect(net.get('p03').sub).toBe('aurora')
+  })
+})
+
+describe('the cap on sits', () => {
+  it('a third sit on the wire is refused by the host', () => {
+    const net = atTable()
+    const tour = net.bus('p01').tour
+    for (const on of [true, false, true]) {
+      net.wire.push({ from: 'p03', m: { v: 1, t: 'sit', tour, n: 1, on } })
+      net.flush()
+    }
+    expect(net.bus('p01').busy).toEqual([])
+  })
+  it('a third press stays in this browser', () => {
+    const net = atTable()
+    const from = net.log.length
+    for (const on of [true, false, true]) {
+      net.press('p02', { t: 'sit', on })
+      net.flush()
+    }
+    expect(net.log.slice(from).filter((e) => e.from === 'p02' && e.m.t === 'sit').length).toBe(2)
+    expect(net.bus('p01').busy).toEqual([])
   })
 })
 
@@ -801,6 +958,109 @@ describe('consent (3.13, 3.14)', () => {
   })
 })
 
+describe('an answer means what its button said, or nothing', () => {
+  /*
+   * p04 is on the Lab and has never ridden. The bus is at Four in a row; p02 rolls and picks Hex,
+   * and p04's line reads "Next stop: Hex … Take me there" — its button drawn for departure 2, Hex.
+   * Every rider says no, so the window is skipped. p04's press is handled after that.
+   */
+  const skipped = () => {
+    const net = atTable(['p04'])
+    net.at(net.bus('p01').openAt + 100)
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    net.press('p02', { t: 'pick', toy: 'hex' })
+    net.flush()
+    const take = answerOn(net.bus('p04'), true)
+    expect([take.n, take.toy]).toEqual([2, 'hex'])
+    for (const id of ['p02', 'p01', 'p03']) net.ready(id, false)
+    net.flush()
+    net.runUntil(() => net.bus('p04').phase === 'pick', 30_000)
+    expect(net.bus('p04').stops.map((x) => x.toy)).toEqual(['fourrow'])
+    return { net, take }
+  }
+  const nothingFrom = (net: Net, id: string, from: number) =>
+    expect(net.log.slice(from).filter((e) => e.from === id)).toEqual([])
+  it('a Take me there for Hex handled after Hex was skipped is not Come too to the stop before', () => {
+    const { net, take } = skipped()
+    const from = net.log.length
+    net.press('p04', take)
+    net.flush()
+    expect(net.get('p04').consent).toBeNull()
+    expect(net.get('p04').hop).toBeNull()
+    nothingFrom(net, 'p04', from)
+    net.run(10_000)
+    expect(net.get('p04').sub).toBe(START)
+    expect(net.landings.filter((l) => l.id === 'p04')).toEqual([])
+  })
+  it('nor a yes to the next window, for another toy at the same departure', () => {
+    const { net, take } = skipped()
+    /* the turn passed to p01, who rolls and picks Aurora: departure 2 again, another toy */
+    net.press('p01', { t: 'roll', faces: ['go', 'aurora', 'paint'] })
+    net.flush()
+    net.press('p01', { t: 'pick', toy: 'aurora' })
+    net.flush()
+    expect([net.bus('p04').phase, net.bus('p04').toy]).toEqual(['ready', 'aurora'])
+    const from = net.log.length
+    net.press('p04', take)
+    net.flush()
+    expect(net.get('p04').consent).toBeNull()
+    nothingFrom(net, 'p04', from)
+    expect(net.bus('p01').riders.map((r) => r.id)).not.toContain('p04')
+  })
+  it('a Come too long after the landing does nothing, here or on the wire', () => {
+    const net = atTable(['p04'])
+    net.run(60_000)
+    const from = net.log.length
+    net.ready('p04', true)
+    net.flush()
+    expect(net.get('p04').consent).toBeNull()
+    expect(net.get('p04').hop).toBeNull()
+    nothingFrom(net, 'p04', from)
+  })
+  it('an answer naming another departure or toy than the bus is on means nothing', () => {
+    /* the bus has just left for Hex, its second stop, and its riders are landing */
+    const net = atTable(['p04'])
+    net.at(net.bus('p01').openAt + 100)
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    net.press('p02', { t: 'pick', toy: 'hex' })
+    net.flush()
+    net.ready('p03', true)
+    net.flush()
+    net.runUntil(() => net.bus('p04').stops.length === 2, 30_000)
+    const b = net.bus('p04')
+    const ctx = net.ctx('p04')
+    const come = (n: number, toy: string): Answer => ({ t: 'ready', on: true, n, toy })
+    expect(meant(b, ctx, come(2, 'hex'))).toBe('come')
+    for (const [n, toy] of [
+      [1, 'fourrow'],
+      [1, 'hex'],
+      [3, 'hex'],
+      [2, 'fourrow'],
+    ] as const) {
+      expect([n, toy, meant(b, ctx, come(n, toy))]).toEqual([n, toy, null])
+      expect(consentAfter(null, b, ctx, come(n, toy))).toBeNull()
+    }
+    /* and in a window: only its own departure and toy */
+    const w: Bus = { ...b, phase: 'ready', toy: 'aurora', stops: b.stops, readyAt: net.now }
+    expect(meant(w, ctx, come(3, 'aurora'))).toBe('window')
+    expect(meant(w, ctx, come(2, 'aurora'))).toBeNull()
+    expect(meant(w, ctx, come(3, 'paint'))).toBeNull()
+  })
+  it('a consent saying Come too, for a press after the landing, is Catch up and never a hop', () => {
+    const net = atTable(['p04'])
+    const b = net.bus('p04')
+    const consent: Consent = { tour: b.tour, n: 1, toy: 'fourrow', leaves: null, come: true }
+    /* pressed as the first rider landed: the hop is after the last */
+    expect(hopPlan(b, net.landings[0].at, consent, 4, new Set())?.do).toBe('hop')
+    expect(hopPlan(b, net.now + 10_000, consent, 4, new Set())).toEqual({
+      do: 'late',
+      key: `${b.tour}:1`,
+    })
+  })
+})
+
 describe('the landing (3.15)', () => {
   it('twelve on a call onto a table: lowest id first, each hop far enough apart, a lost request and Come too after', () => {
     const ids = named(12)
@@ -817,17 +1077,17 @@ describe('the landing (3.15)', () => {
     net.press(starter, { t: 'pick', toy: 'fourrow' })
     net.flush()
     for (const id of riders) {
-      net.press(id, { t: 'ready', on: true })
+      net.ready(id, true)
       net.flush()
     }
     /* `lost` presses, and the request never arrives */
-    net.press(lost, { t: 'ready', on: true })
+    net.ready(lost, true)
     net.wire.length = 0
     net.runUntil(() => net.bus(starter).stops.length === 1, 30_000)
     const leaveAt = net.bus(starter).leaveAt
     net.run(1500)
     /* `late` presses Come too while the bus is landing */
-    net.press(late, { t: 'ready', on: true })
+    net.ready(late, true)
     net.flush()
     net.runUntil(() => net.landings.length === 11, 30_000)
     net.run(2000)
@@ -843,6 +1103,43 @@ describe('the landing (3.15)', () => {
       expect(net.landings[i].at - net.landings[i - 1].at).toBeGreaterThanOrEqual(
         (perHop / 100) * 1000,
       )
+  })
+})
+
+describe('a count that has run out stays run out', () => {
+  it('a state after the landing leaves it landed: no Come too here, and none from a new host', () => {
+    const net = atTable(['p04'])
+    const leaveAt = net.bus('p04').leaveAt
+    net.run(12_000)
+    /* p03 sits down: a state saying `leave: 0`, which is not "the count ends now" */
+    net.get('p03').seat = 'fourrow'
+    net.press('p03', { t: 'sit', on: true })
+    net.flush()
+    for (const id of ['p02', 'p03', 'p04']) expect([id, net.bus(id).leaveAt]).toEqual([id, leaveAt])
+    net.ready('p04', true)
+    net.flush()
+    expect(net.get('p04').consent).toBeNull()
+    /* the host goes; the next one refuses a Come too sent anyway, as the first one would have */
+    net.here.delete('p01')
+    net.get('p01').listening = false
+    net.run(200)
+    expect(net.host()).toBe('p02')
+    const tour = net.bus('p02').tour
+    net.wire.push({ from: 'p04', m: { v: 1, t: 'ready', tour, n: 1, toy: 'fourrow', on: true } })
+    net.flush()
+    expect(net.bus('p02').riders.map((r) => r.id)).toEqual(['p03', 'p02', 'p01'])
+  })
+  it('a departure first heard after its count reads as landed', () => {
+    const net = atTable()
+    net.run(12_000)
+    net.join('p05')
+    net.run(200)
+    expect(net.bus('p05').stops.map((x) => x.toy)).toEqual(['fourrow'])
+    net.ready('p05', true)
+    net.flush()
+    expect(net.get('p05').consent).toBeNull()
+    net.run(5000)
+    expect(net.get('p05').sub).toBe(START)
   })
 })
 
@@ -948,7 +1245,7 @@ function hostAway(during: 'choose' | 'pick') {
   }
   net.press('p02', { t: 'pick', toy: 'hex' })
   net.flush()
-  net.press('p03', { t: 'ready', on: true })
+  net.ready('p03', true)
   net.flush()
   net.runUntil(() => net.bus('p02').stops.length === 2, 30_000)
   net.run(net.k.CHOOSE_MS + 5000)
@@ -1052,24 +1349,29 @@ describe('two tours at once (3.9)', () => {
       expect(net.bus('p03').riders.map((r) => r.id)).toEqual(['p02'])
     }
   })
-  it('an ended tour, or one nobody on it has been here for, gives way to a new one', () => {
-    const net = fresh()
-    net.start('p03')
-    net.flush()
-    net.press('p03', { t: 'off' })
-    net.flush()
-    expect(net.bus('p01').phase).toBe('end')
+  /* ⚠️ each tour that gives way here would win on riders, stops and starter alike (beats), so
+     only being ended — or abandoned — can be what makes it give way */
+  it('an ended tour gives way to a new one, though it ended with more riders on it', () => {
+    const net = atTable(['p04'])
+    net.runUntil(() => net.bus('p01').phase === 'end', 700_000, 1000)
+    for (const id of ['p01', 'p02', 'p03', 'p04']) expect(net.bus(id).phase).toBe('end')
+    expect(net.bus('p01').riders.filter((r) => r.on).length).toBe(3)
     net.start('p04')
     net.flush()
     expect(net.agree()).toBe(true)
     expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p04'])
-    /* p04 leaves the Lab; after ABANDON_MS p02 may start again, and everybody follows */
-    net.here.delete('p04')
-    net.run(net.k.ABANDON_MS + 200)
+  })
+  it('a tour nobody on it has been here for gives way, though a lower id started it', () => {
+    const net = fresh()
     net.start('p02')
     net.flush()
-    expect(net.agree(['p01', 'p02', 'p03'])).toBe(true)
     expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p02'])
+    net.here.delete('p02')
+    net.run(net.k.ABANDON_MS + 200)
+    net.start('p04')
+    net.flush()
+    expect(net.agree(['p01', 'p03', 'p04'])).toBe(true)
+    expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p04'])
   })
   it('a fresh tour never replaces a live one with as many riders, whatever its id', () => {
     const net = atTable(['p00'])
@@ -1113,7 +1415,7 @@ const VALID: Record<string, Record<string, unknown>> = {
   hello: { v: 1, t: 'hello' },
   roll: { v: 1, t: 'roll', tour: TOUR, n: 2, faces: ['go', 'hex', 'paint'], anyway: true },
   pick: { v: 1, t: 'pick', tour: TOUR, n: 2, toy: 'hex' },
-  ready: { v: 1, t: 'ready', tour: TOUR, n: 2, on: false },
+  ready: { v: 1, t: 'ready', tour: TOUR, n: 2, toy: 'hex', on: false },
   go: { v: 1, t: 'go', tour: TOUR, n: 2 },
   off: { v: 1, t: 'off', tour: TOUR },
   fin: { v: 1, t: 'fin', tour: TOUR, anyway: true },
@@ -1187,6 +1489,8 @@ const MALFORMED: [string, unknown][] = [
   ['fin anyway a number', { ...VALID.fin, anyway: 1 }],
   ['pick toy not a toy id', { ...VALID.pick, toy: '../x' }],
   ['ready on a string', { ...VALID.ready, on: 'true' }],
+  ['ready toy not a toy id', { ...VALID.ready, toy: 'Hex!' }],
+  ['ready toy missing', { v: 1, t: 'ready', tour: TOUR, n: 2, on: false }],
   ['sit on missing', { v: 1, t: 'sit', tour: TOUR, n: 1 }],
   ['game sub not a toy id', { ...VALID.game, sub: 'Four in a row' }],
   ['game g nought', { ...VALID.game, g: 0 }],
@@ -1199,6 +1503,8 @@ const MALFORMED: [string, unknown][] = [
   ['game won three', { ...VALID.game, seats: ['p01', 'p02'], won: ['p01', 'p02', 'p03'] }],
   ['game won twice', { ...VALID.game, won: ['p01', 'p01'] }],
   ['game draw naming somebody', { ...VALID.game, how: 'draw' }],
+  /* readSeats allows an empty seat, so this is the one a string check on `won` alone refuses */
+  ['game won an empty seat', { ...VALID.game, seats: ['p01', null], won: [null] }],
   ['state seq nought', { ...st, seq: 0 }],
   ['state seq a fraction', { ...st, seq: 1.5 }],
   ['state seq too big', { ...st, seq: 1e9 + 1 }],
@@ -1211,6 +1517,7 @@ const MALFORMED: [string, unknown][] = [
     { ...st, riders: Array.from({ length: 17 }, (_, i) => [`r${i}`, 1, 0, 0]) },
   ],
   ['a rider id empty', { ...st, riders: rider(0, ['', 1, 2, 3]) }],
+  ['a rider id a number', { ...st, riders: rider(0, [7, 1, 2, 3]) }],
   ['a rider id too long', { ...st, riders: rider(0, ['x'.repeat(65), 1, 2, 3]) }],
   ['a rider twice', { ...st, riders: rider(1, ['p03', 0, null, 1]) }],
   ['a rider on 2', { ...st, riders: rider(0, ['p03', 2, 2, 3]) }],
@@ -1226,17 +1533,22 @@ const MALFORMED: [string, unknown][] = [
   ['faces outside choose', { ...st, phase: 'pick' }],
   ['no faces in choose', { ...st, faces: null }],
   ['a face already a stop', { ...st, faces: ['go', 'hex', 'swarm'] }],
+  ['state choose with two faces', { ...st, faces: ['go', 'hex'] }],
+  ['state a face not a toy id', { ...st, faces: ['go', 'Hex!', 'paint'] }],
   ['a toy outside ready', { ...st, toy: 'hex' }],
   ['no toy in ready', { ...st, phase: 'ready', faces: null }],
   ['a toy already a stop', { ...st, phase: 'ready', faces: null, toy: 'swarm' }],
+  ['a ready toy not a toy id', { ...st, phase: 'ready', faces: null, toy: 'Four in a row' }],
   ['ready twice', { ...st, ready: [2, 2] }],
   ['ready past the riders', { ...st, ready: [3] }],
   ['ready and no at once', { ...st, no: [0, 2] }],
+  ['no past the riders', { ...st, no: [9] }],
   ['went a fraction', { ...st, went: [0.5] }],
   ['busy not a list', { ...st, busy: 2 }],
   ['busy past the riders', { ...st, busy: [3] }],
   ['more stops than len', { ...st, len: 1 }],
   ['a stop twice', { ...st, stops: stopWith({ toy: 'swarm' }) }],
+  ['a stop toy not a toy id', { ...st, stops: stopWith({ toy: '../x' }) }],
   ['a stop cap nought', { ...st, stops: stopWith({ cap: 0 }) }],
   ['a stop cap four', { ...st, stops: stopWith({ cap: 4 }) }],
   [
@@ -1253,6 +1565,7 @@ const MALFORMED: [string, unknown][] = [
     },
   ],
   ['a game g nought', { ...st, stops: stopWith({ games: [[0, 0, 2]] }) }],
+  ['a game of four fields', { ...st, stops: stopWith({ games: [[17, 0, 2, 9]] }) }],
   ['a game seat past the riders', { ...st, stops: stopWith({ games: [[17, 0, 3]] }) }],
   ['won past the riders', { ...st, stops: stopWith({ won: [5] }) }],
   ['won more than twice cap', { ...st, stops: stopWith({ cap: 1, won: [0, 1, 2] }) }],
@@ -1315,7 +1628,7 @@ describe('who may ask what (3.11)', () => {
     expect(net.bus('p01').phase).toBe('choose')
     net.press('p02', { t: 'pick', toy: 'hex' })
     net.flush()
-    net.wire.push({ from: 'p04', m: { v: 1, t: 'ready', tour, n: 2, on: true } })
+    net.wire.push({ from: 'p04', m: { v: 1, t: 'ready', tour, n: 2, toy: 'hex', on: true } })
     net.wire.push({ from: 'p04', m: { v: 1, t: 'off', tour } })
     net.flush()
     expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p03', 'p02', 'p01'])
@@ -1324,6 +1637,164 @@ describe('who may ask what (3.11)', () => {
     net.flush()
     expect(net.bus('p01').stops.length).toBe(1)
     expect(net.bus('p01').seq).toBe(b.seq + 2)
+  })
+  /* p03 IS a rider, so only its being away can refuse it; each with the same ask from p03 here */
+  it('a rider not on the Lab cannot sit', () => {
+    for (const away of [true, false]) {
+      const net = atTable()
+      if (away) net.here.delete('p03')
+      net.wire.push({
+        from: 'p03',
+        m: { v: 1, t: 'sit', tour: net.bus('p01').tour, n: 1, on: true },
+      })
+      net.flush()
+      expect([away, net.bus('p01').busy]).toEqual([away, away ? [] : [0]])
+    }
+  })
+  it('a rider not on the Lab cannot roll for the guide, even once it is free', () => {
+    for (const away of [true, false]) {
+      const net = atTable()
+      const b = net.bus('p01')
+      if (away) net.here.delete('p03')
+      net.at(b.freeAt + 100)
+      const faces: [string, string, string] = ['go', 'hex', 'paint']
+      net.wire.push({ from: 'p03', m: { v: 1, t: 'roll', tour: b.tour, n: 2, faces } })
+      net.flush()
+      expect([away, phase(net)]).toEqual([away, away ? 'pick' : 'choose'])
+    }
+  })
+})
+
+describe('what the host checks of every request (§2.4)', () => {
+  const rolled = () => {
+    const net = atTable()
+    net.at(net.bus('p01').openAt)
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    return { net, tour: net.bus('p01').tour }
+  }
+  it('the guide picks one of the faces rolled, and nothing else', () => {
+    const { net, tour } = rolled()
+    net.wire.push({ from: 'p02', m: { v: 1, t: 'pick', tour, n: 2, toy: 'chess' } })
+    net.flush()
+    expect(phase(net)).toBe('choose')
+    net.wire.push({ from: 'p02', m: { v: 1, t: 'pick', tour, n: 2, toy: 'paint' } })
+    net.flush()
+    expect([phase(net), net.bus('p01').toy]).toEqual(['ready', 'paint'])
+  })
+  it('the finale opens only after the last stop', () => {
+    const net = atTable()
+    net.at(net.bus('p01').openAt)
+    net.wire.push({ from: 'p02', m: { v: 1, t: 'fin', tour: net.bus('p01').tour } })
+    net.flush()
+    expect(phase(net)).toBe('pick')
+  })
+  it('each request names the departure it is about, or is refused', () => {
+    const net = atTable()
+    const tour = net.bus('p01').tour
+    net.at(net.bus('p01').openAt)
+    /* a roll for the departure already made; a sit at a stop not yet reached */
+    const faces: [string, string, string] = ['go', 'hex', 'paint']
+    net.wire.push({ from: 'p02', m: { v: 1, t: 'roll', tour, n: 1, faces } })
+    net.wire.push({ from: 'p03', m: { v: 1, t: 'sit', tour, n: 2, on: true } })
+    net.flush()
+    expect([phase(net), net.bus('p01').busy]).toEqual(['pick', []])
+    net.wire.push({ from: 'p02', m: { v: 1, t: 'roll', tour, n: 2, faces } })
+    net.flush()
+    net.wire.push({ from: 'p02', m: { v: 1, t: 'pick', tour, n: 2, toy: 'hex' } })
+    net.flush()
+    expect(phase(net)).toBe('ready')
+    /* a yes under another departure's number, or for another toy: refused, and no fresh count */
+    const ready = (n: number, on: boolean, toy = 'hex') =>
+      net.wire.push({ from: 'p03', m: { v: 1, t: 'ready', tour, n, toy, on } })
+    ready(3, true)
+    ready(2, true, 'paint')
+    net.flush()
+    expect(net.bus('p01').ready).not.toContain(0)
+    for (const on of [true, false, true]) ready(2, on)
+    net.flush()
+    expect(net.bus('p01').ready).toContain(0)
+    ready(3, false)
+    net.flush()
+    expect(net.bus('p01').ready).toContain(0)
+  })
+  it('Come too after the last rider has landed is refused, and the sender stays off the bus', () => {
+    const net = atTable(['p04'])
+    net.run(10_000)
+    const tour = net.bus('p01').tour
+    net.wire.push({ from: 'p04', m: { v: 1, t: 'ready', tour, n: 1, toy: 'fourrow', on: true } })
+    net.flush()
+    expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p03', 'p02', 'p01'])
+  })
+  it('Come too names the stop the bus left for, or is refused', () => {
+    const net = party(['p01', 'p02', 'p03'])
+    net.run(2000)
+    net.start('p01')
+    net.flush()
+    net.press('p01', { t: 'roll', faces: ['chess', 'fourrow', 'swarm'] })
+    net.flush()
+    net.press('p01', { t: 'pick', toy: 'fourrow' })
+    net.flush()
+    net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)
+    const tour = net.bus('p01').tour
+    const come = (toy: string) =>
+      net.wire.push({ from: 'p03', m: { v: 1, t: 'ready', tour, n: 1, toy, on: true } })
+    come('chess')
+    net.flush()
+    expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p01'])
+    come('fourrow')
+    net.flush()
+    expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p01', 'p03'])
+  })
+  it('a request accepted between stops gives the quiet tour another TOUR_IDLE_MS', () => {
+    const net = atTable()
+    net.run(net.k.TOUR_IDLE_MS - 60_000, 500)
+    const tour = net.bus('p01').tour
+    net.wire.push({ from: 'p02', m: { v: 1, t: 'sit', tour, n: 1, on: true } })
+    net.flush()
+    const asked = net.now
+    expect(net.bus('p01').busy).toEqual([1])
+    net.runUntil(() => phase(net) === 'end', 700_000, 500)
+    expect(Math.abs(net.now - asked - net.k.TOUR_IDLE_MS)).toBeLessThanOrEqual(500)
+  })
+})
+
+describe('a repair hello (§2.5.4)', () => {
+  /* three on the Lab, none holding a tour; their arrival hellos long done */
+  const quiet = () => {
+    const net = party(['p01', 'p02', 'p03'])
+    net.run(10_000)
+    return { net, from: net.log.length }
+  }
+  const other = { v: 1 as const, t: 'sit' as const, tour: 'zzzz9999', n: 1, on: true }
+  it('traffic for a tour I do not hold asks for it, at most once every HELLO_REPAIR_MS', () => {
+    const { net, from } = quiet()
+    net.wire.push({ from: 'p02', m: other })
+    net.flush()
+    expect(hellos(net, 'p03', from)).toBe(1)
+    net.run(net.k.HELLO_REPAIR_MS - 200)
+    net.wire.push({ from: 'p02', m: other })
+    net.flush()
+    expect(hellos(net, 'p03', from)).toBe(1)
+    net.run(300)
+    net.wire.push({ from: 'p02', m: other })
+    net.flush()
+    expect(hellos(net, 'p03', from)).toBe(2)
+  })
+  it('not while holding a live tour, whose own states settle which tour wins', () => {
+    const { net, from } = quiet()
+    net.start('p01')
+    net.flush()
+    net.wire.push({ from: 'p02', m: other })
+    net.flush()
+    expect(hellos(net, 'p03', from)).toBe(0)
+  })
+  it('not from a browser that is not live', () => {
+    const { net, from } = quiet()
+    net.here.delete('p02')
+    net.wire.push({ from: 'p03', m: other })
+    net.flush()
+    expect([hellos(net, 'p01', from), hellos(net, 'p02', from)]).toEqual([1, 0])
   })
 })
 
@@ -1338,7 +1809,14 @@ describe('what the bus costs (3.16)', () => {
     expect(box.dueAt()).toBe(1000)
     expect(box.take(999)).toEqual([])
     expect(box.take(1000)).toEqual([{ t: 'state' }])
-    const ready = (on: boolean) => ({ v: 1 as const, t: 'ready' as const, tour: TOUR, n: 2, on })
+    const ready = (on: boolean) => ({
+      v: 1 as const,
+      t: 'ready' as const,
+      tour: TOUR,
+      n: 2,
+      toy: 'hex',
+      on,
+    })
     box.push(ready(true))
     box.push({ v: 1, t: 'sit', tour: TOUR, n: 1, on: true })
     box.push(ready(false))
@@ -1375,7 +1853,7 @@ describe('what the bus costs (3.16)', () => {
         expect(net.runUntil(all('ready'), 5000)).toBe(true)
         /* everybody else, in one breath: yes, no, yes */
         for (const id of boarding)
-          if (id !== guide) for (const on of [true, false, true]) net.press(id, { t: 'ready', on })
+          if (id !== guide) for (const on of [true, false, true]) net.ready(id, on)
         net.flush()
         const n = s + 1
         expect(net.runUntil(() => net.bus(h).stops.length === n, 30_000)).toBe(true)
@@ -1431,6 +1909,23 @@ describe('what the bus costs (3.16)', () => {
 })
 
 describe('hello (3.18)', () => {
+  it('twelve riders on the bus answer a newcomer once, not once each', () => {
+    const { net, boarding } = boarded(12)
+    const { guide } = rollAndPick(net, seeded(12))
+    for (const id of boarding.slice(1)) {
+      net.ready(id, true)
+      net.flush()
+    }
+    net.runUntil(() => net.bus(guide).stops.length === 1, 30_000)
+    net.run(5000)
+    expect(net.bus('p01').riders.filter((r) => r.on).length).toBe(12)
+    const from = net.log.length
+    net.join('p13')
+    net.run(500)
+    const answers = net.log.slice(from).filter((e) => e.m.t === 'state')
+    expect(answers.map((e) => e.from)).toEqual(['p01'])
+    expect(net.bus('p13').tour).toBe(net.bus('p01').tour)
+  })
   it('twelve holding the tour answer a newcomer once', () => {
     const { net } = boarded(12)
     net.run(5000)
@@ -1611,13 +2106,37 @@ describe('boarding all at once', () => {
     net.runUntil(() => ids.every((id) => net.bus(id).phase === 'choose'), 5000)
     net.press('p06', { t: 'pick', toy: 'fourrow' })
     net.runUntil(() => ids.every((id) => net.bus(id).phase === 'ready'), 5000)
-    for (const id of ['p01', 'p02', 'p03', 'p04', 'p05']) net.press(id, { t: 'ready', on: true })
+    for (const id of ['p01', 'p02', 'p03', 'p04', 'p05']) net.ready(id, true)
     net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)
     expect(net.agree()).toBe(true)
     const b = net.bus('p01')
     expect(b.went.map((i) => b.riders[i].id).sort()).toEqual(ids)
     net.run(10_000)
     expect(net.landings.map((l) => l.id)).toEqual(ids)
+  })
+})
+
+describe('the host never publishes a bus it could not read back', () => {
+  it('seventeen say yes: sixteen ride, and every state stays readable', () => {
+    const { net, boarding } = boarded(17)
+    const { guide } = rollAndPick(net, seeded(3))
+    for (const id of boarding.slice(1)) {
+      net.ready(id, true)
+      net.flush()
+    }
+    expect(net.bus(guide).riders.length).toBe(16)
+    expect(net.agree()).toBe(true)
+  })
+  it('a roll naming a toy already a stop is refused; one that fits goes', () => {
+    const net = atTable()
+    net.at(net.bus('p01').openAt)
+    expect(net.bus('p01').stops.map((x) => x.toy)).toEqual(['fourrow'])
+    net.press('p02', { t: 'roll', faces: ['fourrow', 'hex', 'paint'] })
+    net.flush()
+    expect([phase(net), net.bus('p02').phase]).toEqual(['pick', 'pick'])
+    net.press('p02', { t: 'roll', faces: ['chess', 'hex', 'paint'] })
+    net.flush()
+    expect(phase(net)).toBe('choose')
   })
 })
 
@@ -1631,11 +2150,11 @@ describe('Come too, twice at once', () => {
     net.flush()
     net.press('p01', { t: 'pick', toy: 'fourrow' })
     net.flush()
-    net.press('p02', { t: 'ready', on: true })
+    net.ready('p02', true)
     net.flush()
     net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)
     net.run(1000)
-    for (const id of ['p04', 'p03']) net.press(id, { t: 'ready', on: true })
+    for (const id of ['p04', 'p03']) net.ready(id, true)
     net.flush()
     net.runUntil(() => net.landings.length === 4, 10_000)
     const at = net.landings.map((l) => l.at)

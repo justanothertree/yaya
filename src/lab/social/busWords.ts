@@ -15,7 +15,7 @@
 import {
   holdOn,
   holds,
-  hopMs,
+  landedAt,
   podium,
   upNext,
   type Bus,
@@ -70,11 +70,23 @@ export type BusAct =
   | 'finAnyway'
   | 'another'
   | 'close'
-export type BusButton = { act: BusAct; label: string; toy?: string }
+/**
+ * `toy` on a face, and on every answer — take, no, stay, come — with `n`: the departure and the
+ * toy the line was drawn from, which the press carries (bus.ts's Answer), so a press handled
+ * after the bus has moved on is read as what the button said and not as what the bus now means.
+ */
+export type BusButton = { act: BusAct; label: string; toy?: string; n?: number }
 export type Line = { text: string; buttons: BusButton[] }
 
 const button = (act: BusAct, label: string, toy?: string): BusButton =>
   toy ? { act, label, toy } : { act, label }
+/** an answer's button: what it is for goes with it */
+const answer = (act: BusAct, label: string, n: number, toy: string): BusButton => ({
+  act,
+  label,
+  toy,
+  n,
+})
 
 /* ── the small words ───────────────────────────────────────────────────────────────────────── */
 
@@ -186,6 +198,12 @@ export const twoStartsWords = (v: View, starter: string) =>
   `Two tours started at once; this one is ${nameOf(v, starter)}'s. Press Take me there at the first stop to ride.`
 /** a button whose request is in flight: at most 3 s, then the button comes back */
 export const PENDING = { roll: 'Rolling…', ready: 'Going…' } as const
+/**
+ * A Take me there or Come too that the bus had moved past by the time it was handled (bus.ts's
+ * `meant` answers null): it did nothing, and says so, rather than seeming to have worked.
+ */
+export const missedWords = (v: View, toy: string) =>
+  `Too late for ${toyOf(v, toy)}: the bus had moved on, so you're staying here.`
 
 /**
  * What to say when the bus changes from `prev` to `v.bus`, or null for nothing. One sentence, the
@@ -238,9 +256,15 @@ export function faceCard(v: View, toy: string) {
 
 /* ── the line under the scoreboard: what is happening, and what you can do ─────────────────── */
 
-const yes = (v: View, n: number) => {
+/**
+ * Whether you said yes to this departure of this toy. ⚠️ THE TOY IS PART OF IT, as it is for the
+ * hop (bus.ts's rideStep): a yes for a window that was skipped is still held for the same
+ * departure, and keyed by that alone it told you "You're going to Hex" — counted among the going,
+ * with Take me there hidden — when your yes was for Four in a row and nothing would move you.
+ */
+const yes = (v: View, n: number, toy: string) => {
   const c = v.consent
-  return !!c && c.tour === v.bus.tour && c.n === n
+  return !!c && c.tour === v.bus.tour && c.n === n && c.toy === toy
 }
 /** the yes button says what it costs */
 const takeLabel = (v: View, after = false) =>
@@ -260,8 +284,9 @@ function readyLine(v: View): Line {
   if (!v.toy(toy))
     return { text: `Next stop: ${NOT_IN_LAB}, so you'll sit this one out.`, buttons: [] }
   if (v.myToy === toy) return { text: `Next stop: ${t}. You're already here.`, buttons: [] }
+  const n = b.stops.length + 1
   const going = new Set(b.ready.map((i) => b.riders[i].id))
-  const mine = yes(v, b.stops.length + 1)
+  const mine = yes(v, n, toy)
   if (mine) going.add(b.me)
   else going.delete(b.me)
   const i = myIndex(b)
@@ -269,24 +294,24 @@ function readyLine(v: View): Line {
     const guide = b.guide === i && v.now >= b.readyAt + v.k.READY_MIN_MS
     return {
       text: `You're going to ${t}. ${going.size} going so far. ${leaves}`,
-      buttons: [...(guide ? [button('go', 'Go now')] : []), button('stay', 'Stay here')],
+      buttons: [...(guide ? [button('go', 'Go now')] : []), answer('stay', 'Stay here', n, toy)],
     }
   }
   if (i >= 0 && b.no.includes(i))
     return {
       text: `You're staying here this stop. ${going.size} going.`,
-      buttons: [button('take', takeLabel(v, true))],
+      buttons: [answer('take', takeLabel(v, true), n, toy)],
     }
   if (i < 0 && b.riders.length >= v.k.MAX_RIDERS)
     return { text: `Next stop: ${t}. The bus is full.`, buttons: [] }
   if (onRider(b))
     return {
       text: `Next stop: ${t}. Going? ${leaves}`,
-      buttons: [button('take', takeLabel(v)), button('no', 'Not this one')],
+      buttons: [answer('take', takeLabel(v), n, toy), answer('no', 'Not this one', n, toy)],
     }
   return {
     text: `Next stop: ${t}. ${leaves} Press Take me there to come along.`,
-    buttons: [button('take', takeLabel(v))],
+    buttons: [answer('take', takeLabel(v), n, toy)],
   }
 }
 
@@ -341,21 +366,22 @@ function pickLine(v: View): Line {
     }
   }
   const t = toyOf(v, stop.toy)
-  const gap = b.went.length
+  const n = b.stops.length
   /* the host takes Come too until the last rider has landed, so the offer lasts as long */
-  const landed = v.now >= b.leaveAt + gap * hopMs(v.people, stop.toy)
+  const landed = v.now >= landedAt(b, v.people)
   /* my own count, to my own hop */
-  if (yes(v, b.stops.length) && v.hopAt !== null && v.now < v.hopAt)
+  const mine = yes(v, n, stop.toy)
+  if (mine && v.hopAt !== null && v.now < v.hopAt)
     return {
       text: `Off to ${t} in ${secs(v.hopAt - v.now)}`,
-      buttons: [button('stay', 'Stay here')],
+      buttons: [answer('stay', 'Stay here', n, stop.toy)],
     }
-  if (v.myToy !== stop.toy && !yes(v, b.stops.length)) {
-    const riders = count(gap, 'rider', 'riders')
+  if (v.myToy !== stop.toy && !mine) {
+    const riders = count(b.went.length, 'rider', 'riders')
     if (!landed)
       return {
         text: `The bus is leaving for ${t} with ${riders}.`,
-        buttons: v.toy(stop.toy) ? [button('come', 'Come too')] : [],
+        buttons: v.toy(stop.toy) ? [answer('come', 'Come too', n, stop.toy)] : [],
       }
     if (v.now < b.openAt)
       return {
@@ -444,13 +470,17 @@ export function busLine(v: View): Line | null {
     const toy = b.toy!
     if (!v.toy(toy) || v.myToy === toy) return null
     const s = secs(b.due - v.now)
-    if (yes(v, b.stops.length + 1))
+    const n = b.stops.length + 1
+    if (yes(v, n, toy))
       return {
         text: `🚌 You're going to ${toyOf(v, toy)} in ${s} s`,
-        buttons: [button('stay', 'Stay here')],
+        buttons: [answer('stay', 'Stay here', n, toy)],
       }
     if (i >= 0 && b.no.includes(i)) return null
-    return { text: `🚌 ${toyOf(v, toy)} in ${s} s`, buttons: [button('take', 'Take me there')] }
+    return {
+      text: `🚌 ${toyOf(v, toy)} in ${s} s`,
+      buttons: [answer('take', 'Take me there', n, toy)],
+    }
   }
   if (b.phase !== 'pick' || !b.stops.length) return null
   if (holdOn(b, v) && b.busy.includes(i))
