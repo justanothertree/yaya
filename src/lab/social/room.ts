@@ -13,7 +13,9 @@
  * answer from the same presence, so there is no election and nothing to agree on. The host alone
  * changes the room; everyone else asks (`sit`, `stand`, `move`, `new`) and the host answers with
  * `state` — the whole room: seats, a sequence number and the game. When the host leaves, the next
- * lowest id carries on from the last state it had.
+ * lowest id carries on from the last state it had. A newcomer's `hello` is answered by the host as
+ * it was before they arrived, or by whoever published the room we hold (answersHello): a newcomer
+ * with a lower id is host the moment they are present, and holds nothing yet.
  *
  * ⚠️ WHOLE STATE, NOT MOVES. A board game is under a kilobyte, so each change sends the room
  * entire. A lost message is then repaired by the next one, a repeated or late one is recognised by
@@ -171,6 +173,26 @@ export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string): Ste
 }
 
 export const hostOf = (room: Room<unknown>) => [room.me, ...room.present].sort()[0]
+
+/**
+ * Whether I hand a newcomer the room: I was host before they arrived, or I published the room we
+ * all hold.
+ *
+ * ⚠️ NOT "AM I HOST", WHICH WAS THE RULE AND BROKE GAMES IN PROGRESS. Presence makes somebody with
+ * a lower id host the moment their `where` lands — before their own room exists, because the toy's
+ * code mounts after. The old host stopped answering, nobody else ever had, and the newcomer led
+ * from an empty board: their state was older than everybody's and ignored, while every move went
+ * to them and was refused as made against a board that had changed. A game between two friends
+ * stopped the moment a third, with a lower id, came to watch.
+ *
+ * The host-before half covers one newcomer. The publisher half covers two arriving together (each
+ * is "before" the other) and a host who left the room in somebody else's hands. A newcomer who is
+ * not host costs nothing more: whoever was host already answered. Measured in room.test.ts on
+ * 23 Nov 2026: three sends for a higher id joining, ten for four filling a fresh toy, as before.
+ */
+export const answersHello = (room: Room<unknown>, from: string) =>
+  [room.me, ...room.present.filter((id) => id !== from)].sort()[0] === room.me ||
+  (room.seq > 0 && room.from === room.me)
 export const isHost = (room: Room<unknown>) => hostOf(room) === room.me
 export const seatOf = (room: Room<unknown>, id = room.me): Seat | null =>
   room.seats[0] === id ? 0 : room.seats[1] === id ? 1 : null
@@ -383,8 +405,9 @@ export function receive<G, M>(
     if (b.seq < room.seq || (b.seq === room.seq && from >= room.from)) return none
     return { room: { ...room, seq: b.seq, from, seats, mode, level, next: b.next, game }, out: [] }
   }
+  if (b.t === 'hello')
+    return answersHello(room, from) ? { room, out: [stateOf(rules, room)] } : none
   if (!isHost(room)) return none
-  if (b.t === 'hello') return { room, out: [stateOf(rules, room)] }
   if (b.t === 'sit')
     return isSeat(b.seat) ? decide(rules, room, from, { t: 'sit', seat: b.seat }) : none
   if (b.t === 'stand' || b.t === 'new') return decide(rules, room, from, { t: b.t })
