@@ -25,6 +25,7 @@ import {
   followStep,
   placeWords,
   summaryOf,
+  surprise,
   tourOf,
   whyWords,
   type FollowStep,
@@ -71,6 +72,8 @@ export function TourStrip({
   following,
   onFollow,
   onLead,
+  filter,
+  kindOf,
 }: {
   /** the toy on your screen */
   current: string
@@ -83,6 +86,9 @@ export function TourStrip({
   onFollow: (id: string | null) => void
   /** open a toy WITHOUT ending the follow: the move a follow makes */
   onLead: (toy: string) => void
+  /** the kind the Lab's filter brings forward, or 'all', and each toy's kind: for 🎲 */
+  filter: string
+  kindOf: (toy: string) => string | undefined
 }) {
   const byRoute = usePartyHere()
   const verdict = useSyncExternalStore(labSocial.subscribe, labSocial.get, labSocial.get)
@@ -196,6 +202,18 @@ export function TourStrip({
   }
 
   const quiet = tour.people.every((p) => p.place.at === 'quiet')
+  /* 🎲: a pick like the picker's, so it ends your own follow, and anybody following you comes */
+  const dice = (
+    <button
+      className="btn btn-ghost lab-tour-dice"
+      onClick={() => {
+        const toy = surprise([...toys.keys()], current, kindOf, filter, Math.random)
+        if (toy) onGo(toy)
+      }}
+    >
+      🎲 Surprise us
+    </button>
+  )
   const n = tour.people.length
   const list = (
     <ul className="lab-tour-people" id={listId} hidden={!wide && !open}>
@@ -237,7 +255,10 @@ export function TourStrip({
             <h3 className="fw-h lab-tour-title" id={headId}>
               👥 In the Lab with the call
             </h3>
-            <CallChatButton />
+            <span className="lab-tour-acts">
+              {dice}
+              <CallChatButton />
+            </span>
           </div>
           {quiet && (
             <p className="lab-tour-quiet">
@@ -285,7 +306,10 @@ export function TourStrip({
         {row}
         {open && (
           <div className="lab-tour-head">
-            <CallChatButton />
+            <span className="lab-tour-acts">
+              {dice}
+              <CallChatButton />
+            </span>
           </div>
         )}
         {list}

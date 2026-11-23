@@ -307,6 +307,11 @@ html:has(.lab) {
   justify-content: space-between;
   gap: 0.5rem;
 }
+.lab-tour-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
 .lab-tour-quiet,
 .lab-tour-note {
   margin: 0;
@@ -364,6 +369,7 @@ html:has(.lab) {
 }
 .lab-tour-go,
 .lab-tour-follow,
+.lab-tour-dice,
 .lab-tour-toggle {
   min-height: 36px;
   padding: 0.3rem 0.8rem;
@@ -481,6 +487,7 @@ html:has(.lab) {
 @media (max-width: 640px), (pointer: coarse) {
   .lab-tour-go,
   .lab-tour-follow,
+  .lab-tour-dice,
   .lab-tour-toggle {
     min-height: 44px;
   }
