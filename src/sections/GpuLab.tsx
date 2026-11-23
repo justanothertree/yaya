@@ -215,7 +215,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     return DEMOS.filter((d) => ids.has(d.id))
   }, [visible])
 
-  /** show a toy: what the picker does, and what a follow does when the friend it follows moves */
+  /** show a toy: what the picker does, what a follow does when the friend it follows moves, and the
+      party tour's hop (useBus), which ends no follow because taking the bus already did */
   const show = useCallback((id: DemoId) => {
     setDemo(id)
     try {
@@ -303,6 +304,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         filter={filter}
         kindOf={kindOf}
         rollable={rollable}
+        onShow={show}
       />
       <div className="lab-filter" role="group" aria-label="Show which kind">
         <button

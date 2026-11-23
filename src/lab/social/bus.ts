@@ -129,6 +129,9 @@ const PACED = [
   'TOUR_IDLE_MS',
 ] as const
 
+/** the windows a state has to reach somebody inside: to choose, to answer, to board, to count down */
+const AFTER_A_STATE = ['CHOOSE_MS', 'READY_MS', 'READY_MIN_MS', 'COUNT_MS'] as const
+
 /**
  * The knobs with the timers marked † multiplied by `pace` (the dev call's `pace=`).
  *
@@ -140,6 +143,13 @@ export function knobs(pace = 1): Knobs {
   const p = Number.isFinite(pace) && pace > 0 && pace <= 1 ? pace : 1
   const k = { ...KNOBS }
   for (const key of PACED) k[key] = Math.round(KNOBS[key] * p)
+  /* ⚠️ AND NO WINDOW SHORTER THAN A STATE CAN TAKE TO ARRIVE. The host sends one state a second, so
+     the state that opens a window, or says the bus has left, can wait up to STATE_GAP_MS to go out
+     — and a window shorter than that wait reaches everybody already closed: measured on the dev
+     call at pace 0.25, a 750 ms count meant every rider but the host was told the bus had left
+     without them. Twice the gap leaves the wait and the wire their second each; at the real pace
+     every one of these is far above it. */
+  for (const key of AFTER_A_STATE) k[key] = Math.max(k[key], 2 * k.STATE_GAP_MS)
   return k
 }
 
@@ -1316,6 +1326,29 @@ export function consentAfter(
   if (means === 'window') return { tour, n: p.n, toy: p.toy, leaves }
   if (means === 'come') return { tour, n: p.n, toy: p.toy, leaves, come: true }
   return c
+}
+
+/** a yes this browser holds, and the host it was last asked of */
+export type Asked = { key: string; host: string | null } | null
+
+/**
+ * Whom to ask again for a yes the bus does not show, or null. ⚠️ A YES STANDS UNTIL A HOST HAS
+ * HEARD IT. A press is a request to whoever hosts, and a host that leaves before its next state
+ * takes the yes with it: measured on the dev call, Ann said yes, the host closed its tab, Ann
+ * became host herself — and skipped the window she had said yes to, because the bus she now led
+ * had never been told. So a yes the window does not list is asked again, once of each new host
+ * (me, when I lead: decided at once), and `ask` counts it against READY_SENDS like any press.
+ */
+export function askAgain(bus: Bus, ctx: Ctx, consent: Consent, asked: Asked): Asked {
+  const n = bus.stops.length + 1
+  const c = consent
+  if (bus.phase !== 'ready' || !c || c.come || c.tour !== bus.tour) return null
+  if (c.n !== n || c.toy !== bus.toy || !ctx.meLive) return null
+  if (bus.ready.some((i) => bus.riders[i]?.id === bus.me)) return null
+  const host = leads(bus, ctx) ? bus.me : hostOf(bus, ctx)
+  const key = `${bus.tour}:${n}:${c.toy}`
+  if (!host || (asked?.key === key && asked.host === host)) return null
+  return { key, host }
 }
 
 export type HopPlan =

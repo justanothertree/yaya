@@ -194,6 +194,12 @@ export const HOPPED_OFF =
 export const ALL_OFF = 'Everyone got off the bus, so the tour is over.'
 export const GATE_SHUT =
   'Toys are private in this call now, so the party tour is hidden. Your place on the bus is kept.'
+/**
+ * The same pause for a reason that is yours: you switched 🫱 off. ⚠️ NOT GATE_SHUT, which says the
+ * CALL made toys private — true of a stranger joining, and untrue of a switch you pressed.
+ */
+export const SHARING_OFF =
+  'You stopped sharing, so the party tour is hidden. Your place on the bus is kept.'
 export const twoStartsWords = (v: View, starter: string) =>
   `Two tours started at once; this one is ${nameOf(v, starter)}'s. Press Take me there at the first stop to ride.`
 /** a button whose request is in flight: at most 3 s, then the button comes back */
@@ -229,7 +235,10 @@ export function saidOf(prev: Bus, v: View): string | null {
       const toy = lastStop(b).toy
       const c = v.consent
       if (c && c.tour === b.tour && c.n === b.stops.length && c.toy === toy)
-        return leavingWords(v, toy, b.leaveAt - v.now)
+        return b.leaveAt > v.now
+          ? leavingWords(v, toy, b.leaveAt - v.now)
+          : /* heard after its count: gone, as the line says (offerWords's late) */
+            `The bus already left for ${toyOf(v, toy)}.`
       return null
     }
     return prev.toy ? skippedWords(v, prev.toy, guideId(b)) : null
@@ -315,10 +324,17 @@ function readyLine(v: View): Line {
   }
 }
 
+/**
+ * Who is holding the bus with a game, here now, in turn order — the order the scoreboard reads,
+ * not the order their seats happened to reach the host in
+ */
+const playing = (v: View) =>
+  v.bus.busy.filter((i) => v.present.has(v.bus.riders[i].id)).sort((x, y) => x - y)
+
 /** the game holding the roll: who is still playing, and for how much longer at most */
 function holdWords(v: View, what: 'bus' | 'finale'): string {
   const b = v.bus
-  const busy = b.busy.filter((i) => v.present.has(b.riders[i].id))
+  const busy = playing(v)
   const who = said(v, busy)
   const left = count(
     Math.max(1, Math.ceil((b.holdUntil - v.now) / 60_000)),
@@ -391,6 +407,13 @@ function pickLine(v: View): Line {
   }
   const held = holdOn(b, v)
   if (b.stops.length >= b.len) {
+    /* ⚠️ THE FINALE WAITS FOR THE DWELL, AS A ROLL DOES: the host refuses `fin` before openAt, so a
+       Finale offered the moment the bus lands was a button that did nothing */
+    if (isGuide && v.now < b.openAt)
+      return {
+        text: `That was the last stop. You open the finale once everyone's had a moment at ${t}.`,
+        buttons: [],
+      }
     if (isGuide)
       return held
         ? { text: holdWords(v, 'finale'), buttons: [button('finAnyway', '🏁 Finale anyway')] }
@@ -411,7 +434,7 @@ function pickLine(v: View): Line {
       return { text: holdWords(v, 'bus'), buttons: [button('rollAnyway', '🎲 Roll anyway')] }
     if (b.busy.includes(i))
       return { text: 'The bus is waiting for your game. Take your time.', buttons: [] }
-    const busy = b.busy.filter((j) => v.present.has(b.riders[j].id))
+    const busy = playing(v)
     const finish = busy.length === 1 ? 'finishes' : 'finish'
     return {
       text: `The bus waits while ${said(v, busy)} ${finish} their game. ${rollsNext(v)}`,
@@ -606,4 +629,24 @@ export function offerWords(
       }
     }
   }
+}
+
+/** an offer this browser holds: the departure it is about (`tour:n`), its toy, and why */
+export type HeldOffer = { key: string; toy: string; why: Parameters<typeof offerWords>[2] }
+
+/**
+ * The line the panel draws: the phase line, or an offer made at my hop while it is about the stop
+ * just made and I am not on its toy.
+ *
+ * ⚠️ AN OFFER GIVES WAY TO A TURN. It stands until the next stop — somebody away for the whole
+ * dwell still comes back to it — but whoever it was made to may be the next guide, and an offer
+ * drawn over "Your turn to roll." left the tour with nobody able to roll: found on the dev call, a
+ * guide who stayed in a game, was offered, and was never shown the dice.
+ */
+export function lineWith(v: View, offer: HeldOffer | null): Line | null {
+  const b = v.bus
+  const phase = phaseLine(v)
+  const about = offer && b.phase === 'pick' && offer.key === `${b.tour}:${b.stops.length}`
+  const yours = !!phase?.buttons.some((x) => x.act !== 'off')
+  return about && v.myToy !== offer.toy && !yours ? offerWords(v, offer.toy, offer.why) : phase
 }

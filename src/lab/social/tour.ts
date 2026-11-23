@@ -1,7 +1,8 @@
 /**
  * The Lab tour: friends on the same call seeing each other on the Lab's toys, the way players see
  * each other on a board. Pure, so tour.test.ts can ask it without a call or a page —
- * docs/2026-11-22-lab-tour.md has the plan, and why none of it adds a message to the wire.
+ * docs/2026-11-22-lab-tour.md has the plan: everything here is a new reading of messages the call
+ * already carries, and only the party tour (bus.ts) adds a kind of its own, `bus`.
  */
 
 import type { PartyHere } from '../../party/party'

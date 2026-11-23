@@ -7,6 +7,7 @@ import {
   JUST_FOR_FUN,
   NO_STAR_NOT_ON_BUS,
   PENDING,
+  SHARING_OFF,
   arrivedWords,
   busLine,
   capReachedWords,
@@ -21,6 +22,7 @@ import {
   heading,
   hopWords,
   leavingWords,
+  lineWith,
   offerWords,
   phaseLine,
   podiumWords,
@@ -291,6 +293,11 @@ describe('the bus leaves (§1.2, 6–7)', () => {
       'Leaving for Four in a row in 3 seconds.',
     )
     expect(leavingWords(ann, 'fourrow', 3000)).toBe('Leaving for Four in a row in 3 seconds.')
+    /* a departure heard after its count ran out is not "leaving in 0 seconds" (seen on the dev
+       call): it has gone, and what is said is what the line shows */
+    expect(saidOf(prev, view(ANN, left({ leaveAt: NOW }), { consent }))).toBe(
+      'The bus already left for Four in a row.',
+    )
     expect(hopWords(ann, 'fourrow')).toBe('🚌 Off to Four in a row!')
     expect(arrivedWords(ann, 'fourrow', ['Ann', 'Bo'])).toBe(
       "You're at Four in a row, with Ann and Bo.",
@@ -321,6 +328,24 @@ describe('the bus leaves (§1.2, 6–7)', () => {
     expect(labels(dee)).toEqual(['Come too'])
     const counting = view(DEE, left({ stops: [stop('hex')] }), { ...stale, hopAt: NOW + 900 })
     expect(text(counting)).toBe('The bus is leaving for Hex with 3 riders.')
+  })
+  it('an offer stands until the next stop, and gives way to a turn', () => {
+    /* Bo stayed in his game at stop 1 and was offered; the turn then passed to him */
+    const offer = { key: 'tour0001:1', toy: 'fourrow', why: 'seat' as const }
+    const stayed = left({ leaveAt: NOW - 9000, openAt: NOW - 1, freeAt: NOW + KNOBS.IDLE_MS })
+    expect(lineWith(view(CY, stayed), offer)?.text).toBe(
+      "The bus went to Four in a row. You're in a game here, so you stayed.",
+    )
+    const bo = view(BO, stayed)
+    expect(lineWith(bo, offer)?.text).toBe('Your turn to roll.')
+    expect(lineWith(bo, offer)?.buttons.map((x) => x.label)).toEqual(['🎲 Roll'])
+    /* about another stop, or already there: the phase line */
+    expect(lineWith(view(CY, stayed), { ...offer, key: 'tour0001:2' })?.text).toBe(
+      text(view(CY, stayed)),
+    )
+    expect(lineWith(view(CY, stayed, { myToy: 'fourrow' }), offer)?.text).toBe(
+      text(view(CY, stayed, { myToy: 'fourrow' })),
+    )
   })
   it('offered, never moved', () => {
     const v = view(BO)
@@ -385,7 +410,7 @@ describe('at the stop (§1.2, 8–9)', () => {
     )
   })
   it('the hold: the guide may roll anyway, the players are told to take their time', () => {
-    const hold = at({ openAt: NOW - 1, holdUntil: NOW - 1 + KNOBS.HOLD_MAX_MS, busy: [0, 2] })
+    const hold = at({ openAt: NOW - 1, holdUntil: NOW - 1 + KNOBS.HOLD_MAX_MS, busy: [2, 0] })
     const bo = view(BO, hold, onIt)
     expect(text(bo)).toBe(
       'Ann and Cy are still playing Four in a row. The bus waits for their game, up to 5 more minutes.',
@@ -449,7 +474,8 @@ describe('the end (§1.2, 12–13)', () => {
     const bo = view(BO, last, { myToy: 'hex' })
     expect(text(bo)).toBe('That was the last stop.')
     expect(labels(bo)).toEqual(['🏁 Finale'])
-    const held = view(BO, { ...last, busy: [0, 2] }, { myToy: 'hex' })
+    /* busy in the order the sits reached the host; said in turn order (found on the dev call) */
+    const held = view(BO, { ...last, busy: [2, 0] }, { myToy: 'hex' })
     expect(text(held)).toBe(
       'Ann and Cy are still playing Hex. The finale waits for their game, up to 5 more minutes.',
     )
@@ -457,6 +483,18 @@ describe('the end (§1.2, 12–13)', () => {
     expect(text(view(CY, last, { myToy: 'hex' }))).toBe('Bo opens the finale.')
     expect(labels(view(CY, last, { myToy: 'hex' }))).toEqual([])
     expect(labels(view(CY, { ...last, freeAt: NOW - 1 }, { myToy: 'hex' }))).toEqual(['🏁 Finale'])
+  })
+  it('the last stop during its dwell: no Finale yet, because the host would refuse it', () => {
+    /* found on the dev call: the guide pressed 🏁 Finale the moment they landed and nothing
+       happened — the host refuses `fin` until the dwell is over, as it does a roll */
+    const dwell = view(BO, { ...last, openAt: NOW + 1000 }, { myToy: 'hex' })
+    expect(text(dwell)).toBe(
+      "That was the last stop. You open the finale once everyone's had a moment at Hex.",
+    )
+    expect(labels(dwell)).toEqual([])
+    expect(text(view(CY, { ...last, openAt: NOW + 1000 }, { myToy: 'hex' }))).toBe(
+      'Bo opens the finale.',
+    )
   })
   it('the finale: one winner, a tie, and no stars at all — never nothing', () => {
     const won = [
@@ -515,6 +553,9 @@ describe('leaving and pausing', () => {
     expect(saidOf(busFor(DEE), view(DEE, { riders: off.riders, phase: 'end' }))).toBe(ALL_OFF)
     expect(GATE_SHUT).toBe(
       'Toys are private in this call now, so the party tour is hidden. Your place on the bus is kept.',
+    )
+    expect(SHARING_OFF).toBe(
+      'You stopped sharing, so the party tour is hidden. Your place on the bus is kept.',
     )
     const quiet = { quietSince: NOW - 5000 }
     expect(text(view(DEE, quiet))).toBe('The bus is waiting for Ann.')

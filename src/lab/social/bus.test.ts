@@ -3,6 +3,7 @@ import {
   KNOBS,
   MAX_BODY_BYTES,
   ask,
+  askAgain,
   canStart,
   consentAfter,
   holdOn,
@@ -22,6 +23,7 @@ import {
   tick,
   wireOf,
   type Answer,
+  type Asked,
   type Bus,
   type Consent,
   type Ctx,
@@ -1197,6 +1199,130 @@ describe('the knobs', () => {
     expect(k.READY_SENDS).toBe(KNOBS.READY_SENDS)
     expect(knobs(4)).toEqual(KNOBS)
     expect(knobs(Number.NaN)).toEqual(KNOBS)
+  })
+  it('at any dev pace a window outlasts the wait for its state, so nobody misses the bus', () => {
+    for (const pace of [1, 0.5, 0.25, 0.1, 0.01]) {
+      const k = knobs(pace)
+      for (const w of [k.CHOOSE_MS, k.READY_MS, k.READY_MIN_MS, k.COUNT_MS])
+        expect(w).toBeGreaterThanOrEqual(2 * k.STATE_GAP_MS)
+      /* the window reaches the others up to a second after it opened, behind the roll's state:
+         they still have time to board before it may close without them */
+      const ids = ['p01', 'p03', 'p02']
+      const net = party(ids, { k, paced: true })
+      net.run(2000)
+      net.start('p02')
+      net.run(1500)
+      const { toy } = rollAndPick(net, seeded(3))
+      net.runUntil(() => ['p01', 'p03'].every((id) => net.bus(id).phase === 'ready'), 5000, 20)
+      net.ready('p01', true)
+      net.ready('p03', true)
+      net.runUntil(() => net.landings.length === 3, 20_000, 20)
+      expect([pace, net.landings.map((l) => l.id).sort()]).toEqual([pace, [...ids].sort()])
+      expect(new Set(net.landings.map((l) => l.toy))).toEqual(new Set([toy]))
+    }
+  })
+  it("at the dev call's pace, the last yes closing the window still lands everybody", () => {
+    /* found on the dev call at pace 0.25: the last rider's yes is published at once, the bus
+       leaves in the same moment, and its departure waits out the host's one state a second — a
+       750 ms count had run out by then, and every rider but the host got Catch up, not a hop */
+    const k = knobs(0.25)
+    const ids = ['p01', 'p03', 'p02']
+    const net = party(ids, { k, paced: true })
+    net.run(2000)
+    net.start('p02')
+    net.run(1500)
+    rollAndPick(net, seeded(3))
+    net.runUntil(() => ['p01', 'p03'].every((id) => net.bus(id).phase === 'ready'), 5000, 20)
+    for (const id of ['p01', 'p03']) net.ready(id, true)
+    net.runUntil(() => net.landings.length === 3, 20_000, 20)
+    /* the second stop: both riders now, so the bus waits for them, and they answer late */
+    const { toy } = rollAndPick(net, seeded(4))
+    const readyAt = net.bus(net.host()!).readyAt
+    net.runUntil(() => net.now >= readyAt + k.READY_MIN_MS + 100, 9000, 20)
+    const riders = ids.filter((id) => net.bus(id).phase === 'ready' && !yesFrom(net, id))
+    for (const id of riders) net.ready(id, true)
+    net.runUntil(() => net.landings.length === 6, 20_000, 20)
+    expect(net.clients().flatMap((c) => c.late)).toEqual([])
+    expect(
+      net.landings
+        .slice(3)
+        .map((l) => [l.id, l.toy])
+        .sort(),
+    ).toEqual(ids.map((id) => [id, toy]).sort())
+  })
+})
+
+/** whether this browser has said yes to the window it holds */
+const yesFrom = (net: Net, id: string) => {
+  const c = net.get(id).consent
+  const b = net.bus(id)
+  return !!c && c.n === b.stops.length + 1 && c.toy === b.toy
+}
+
+describe('a yes stands until a host has heard it (askAgain)', () => {
+  it('the host leaves with a yes it never published: the new host decides its own yes', () => {
+    /* measured on the dev call: the guide hosting the window closed its tab a moment after Ann's
+       yes reached it; Ann, host now, held a bus that had never heard her, and skipped the window */
+    const ids = ['p01', 'p02']
+    const net = party(ids, { paced: true })
+    const asked = new Map<string, Asked>()
+    /* what useBus does on every tick: ask again, once of each new host */
+    const again = () => {
+      for (const id of ids) {
+        const c = net.get(id)
+        if (!c.listening) continue
+        const a = askAgain(c.bus, net.ctx(id), c.consent, asked.get(id) ?? null)
+        if (!a || !c.consent) continue
+        asked.set(id, a)
+        net.press(id, { t: 'ready', on: true, n: c.consent.n, toy: c.consent.toy })
+      }
+    }
+    net.run(2000)
+    net.start('p01')
+    net.run(1500)
+    /* stops 1 and 2: p02 boards, then rolls; stop 3 is p01's turn again */
+    for (let s = 0; s < 2; s++) {
+      const { guide } = rollAndPick(net, seeded(s + 1))
+      const other = guide === 'p01' ? 'p02' : 'p01'
+      net.runUntil(() => net.bus(other).phase === 'ready', 5000, 20)
+      net.ready(other, true)
+      net.runUntil(() => net.bus('p01').stops.length === s + 1, 20_000, 20)
+      net.run(4000)
+    }
+    const { guide, toy } = rollAndPick(net, seeded(9))
+    expect(guide).toBe('p01')
+    net.runUntil(() => net.bus('p02').phase === 'ready', 5000, 20)
+    net.ready('p02', true)
+    net.flush()
+    /* p01 heard the yes, and closes its tab before its next state could say so */
+    expect(net.bus('p01').ready.length).toBe(2)
+    expect(net.bus('p02').ready.map((i) => net.bus('p02').riders[i].id)).toEqual(['p01'])
+    net.here.delete('p01')
+    net.roster.delete('p01')
+    net.get('p01').listening = false
+    for (let t = 0; t < 400 && net.bus('p02').stops.length < 3; t++) {
+      net.run(50, 50)
+      again()
+    }
+    expect(net.bus('p02').stops.map((x) => x.toy)[2]).toBe(toy)
+    net.run(3000)
+    expect(net.get('p02').sub).toBe(toy)
+    /* once each new host: asked of p02 itself, and not again while it holds the yes */
+    expect(asked.get('p02')?.host).toBe('p02')
+  })
+  it('asks nothing while the host it asked has yet to answer, nor for a window gone by', () => {
+    const net = boarded(3).net
+    const { guide } = rollAndPick(net, seeded(2))
+    const id = net.clients().find((c) => c.id !== guide && c.bus.phase === 'ready')!.id
+    net.ready(id, true)
+    const c = net.get(id)
+    const first = askAgain(c.bus, net.ctx(id), c.consent, null)
+    /* before the host's state lists the yes, the host it was asked of is the host now */
+    expect(first?.host).toBe(net.host())
+    expect(askAgain(c.bus, net.ctx(id), c.consent, first)).toBe(null)
+    expect(askAgain(c.bus, net.ctx(id), null, null)).toBe(null)
+    net.flush()
+    expect(askAgain(net.bus(id), net.ctx(id), net.get(id).consent, null)).toBe(null)
   })
 })
 

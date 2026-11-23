@@ -19,6 +19,9 @@ import { devFriends } from '../lab/social/friends'
  *   meter=1                          show the admin's Realtime meter in the roster (👥)
  *   id=<uuid>                        this tab stands in for that member, as a real call's peer id
  *                                    is the member's user id: what a rematch by turns challenges
+ *   pace=0.25                        the party tour's timers (bus.ts's †) run this fast: 0 < pace
+ *                                    <= 1, anything else is 1 (bus.ts's knobs says why only faster).
+ *                                    Give every tab the same pace — it is read by each, not sent
  * The tab remembers its identity in sessionStorage and goes on to the Lab; a reload keeps it.
  * Close the tab, or open `#dev-call?off=1`, to leave.
  *
@@ -45,6 +48,8 @@ type Cfg = {
   meter: boolean
   /** names of the tabs this one is not friends with */
   unfriend?: string[]
+  /** the party tour's pace, read by useBus's devPace */
+  pace?: number
 }
 type Msg =
   | { t: 'here'; id: string; name: string; stranger: boolean; unfriend?: string[] }
@@ -77,6 +82,8 @@ function readCfg(asked: string): Cfg | null {
         .map((n) => n.trim().slice(0, 20))
         .filter(Boolean),
     }
+    const pace = Number(q.get('pace'))
+    if (q.has('pace') && pace > 0 && pace <= 1) cfg.pace = pace
     sessionStorage.setItem(KEY, JSON.stringify(cfg))
     location.hash = '#lab'
     return cfg
