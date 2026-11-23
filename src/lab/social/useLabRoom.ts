@@ -6,15 +6,18 @@ import { labSocial } from './social'
 import type { Table } from './table'
 import { keepOnline } from './online'
 import { rosterNow, sharingNow } from './where'
+import { heldSeat } from './held'
 import {
   act,
   computerTurn,
+  idle,
   isHost,
   openRoom,
   outcomeFor,
   playComputer,
   present,
   receive,
+  seatOf,
   waitingFor,
   type Action,
   type Room,
@@ -127,6 +130,17 @@ export function useLabRoom<G, M>(sub: string, rules: Rules<G, M>): LabRoom<G, M>
     }, 700)
     return () => window.clearTimeout(t)
   }, [dueAt, take])
+
+  /* ⚠️ A SEAT IN A GAME STILL GOING IS SOMETHING A FOLLOW MUST NOT TAKE AWAY. Following a friend
+     round the Lab moves you by remounting the toy, which ends this room and the game in it — so
+     while you sit in an unfinished one, the tour offers instead of moving (held.ts, tour.ts). A
+     seat at a game that is over or not yet begun is not held: moving on from it costs nothing. */
+  const holding = live && !!room && seatOf(room) !== null && !idle(rules, room)
+  useEffect(() => {
+    if (!holding) return
+    heldSeat.set(sub)
+    return () => heldSeat.clear(sub)
+  }, [holding, sub])
 
   const doAct = useCallback(
     (a: Action<M>) => {

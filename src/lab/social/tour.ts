@@ -195,3 +195,151 @@ export function summaryOf(people: readonly Shadow[], toyName: (toy: string) => s
     })
     .join(' · ')
 }
+
+/**
+ * The 22 toys with a call table (useLabRoom): arriving on one opens its room, which sends more than
+ * a `where`. Kept true by tour.test.ts, which reads every toy's source and the Lab's registry — a
+ * list nobody checks would drift the first time a toy gained a table.
+ */
+export const ROOM_TOYS: ReadonlySet<string> = new Set([
+  'artillery',
+  'bowling',
+  'breakthrough',
+  'chess',
+  'cube',
+  'curling',
+  'darts',
+  'dots',
+  'draughts',
+  'fences',
+  'fourrow',
+  'fox',
+  'go',
+  'gomoku',
+  'halma',
+  'hex',
+  'lamps',
+  'mancala',
+  'morris',
+  'putt',
+  'reversi',
+  'ultimate',
+])
+/**
+ * What one move onto a toy puts on the call, in sends. A plain toy: the `where` any pick sends. A
+ * toy with a call table: that, the room's `hello`, and the host's `state` on seeing you arrive and
+ * again in answer to the hello — measured on the dev call on 23 Nov 2026 as one `where`, a `hello`
+ * and two `state`s (the dev build's StrictMode sends the hello twice, which production does not).
+ */
+export const sendsFor = (toy: string | undefined) => (toy && ROOM_TOYS.has(toy) ? 4 : 1)
+
+/**
+ * How long a leader's toy has to hold still before a follower is moved: one second for two people,
+ * 400 ms more per person, times what a move there costs. A leader clicking through five toys moves
+ * followers once.
+ *
+ * ⚠️ IT GROWS WITH THE CALL, AND WITH THE TOY, BECAUSE THE BILL DOES. Each send is delivered to
+ * everybody else, which Realtime meters as N messages for N people. With a follower moved at most
+ * once per settleMs(N, s) and a move costing s sends, each follower costs at most
+ * s·N / (0.4·N·s) = 2.5 messages a second, whatever the call size and whatever the toy. A flat
+ * second would cost 12 a second per follower at the call's cap of twelve, and 48 onto a call table.
+ * The first version scaled by people alone and claimed 2.5 for every toy; a review counted the
+ * room's handshake, and a measurement put it at four sends. tour.test.ts counts it from the rule.
+ */
+export const settleMs = (people: number, sends = 1) => Math.max(1000, 400 * people * sends)
+
+/** pressing or typing inside a toy this recently is playing it, and a follow will not pull you out */
+export const PLAY_HOLD_MS = 15_000
+
+export type FollowStep =
+  /** the follow ends */
+  | { do: 'stop'; why: 'left' | 'gate' | 'sharing' }
+  /** the follow holds and nothing moves; `at` is when to ask again */
+  | {
+      do: 'wait'
+      why: 'quiet' | 'away' | 'unsaid' | 'with' | 'unopenable' | 'hidden' | 'settling' | 'crossed'
+      at?: number
+    }
+  /** the leader moved and you stay, with a Go that keeps the follow */
+  | { do: 'offer'; toy: string; why: 'seat' | 'match' | 'playing' | 'offered' }
+  /** move to the leader's toy, keeping the follow */
+  | { do: 'go'; toy: string }
+
+/**
+ * What following somebody does now. A standing, local, opt-in choice: nobody is moved who did not
+ * press Follow, and the leader is never told (shared.ts and together.ts: sharing never makes anybody
+ * follow). Checked in this order, and the order is the design:
+ *
+ * 1. STOP when the follow can no longer mean anything: the leader left the call, your gate shut, or
+ *    you stopped sharing — the last two because the leader's toy is no longer yours to see.
+ * 2. WAIT, holding the follow, while there is nowhere to go: the leader is quiet (a hidden tab sends
+ *    `gone`, so a leader who alt-tabs would otherwise end every follower's tour), on another page,
+ *    on the Lab with no toy said, already with you, on a toy your Lab does not list — or your own
+ *    tab is hidden, where a move would be a surprise waiting for you.
+ * 3. OFFER, never move, when you are in something a move would throw away: a seat in an unfinished
+ *    call-table game, or a match you are viewing (the address would be rebuilt without it).
+ * 4. WAIT while the leader's toy settles (settleMs, scaled by what a move there costs).
+ * 5. KEEP OFFERING a toy already offered this move: an offer is made once per leader move and you
+ *    are never moved later for that toy — but its Go stays, so the choice is still yours.
+ * 6. WAIT on a crossing: two people who pressed Follow on each other at once would otherwise swap
+ *    toys for ever. If the leader has just arrived on the toy you just left for theirs, only the one
+ *    whose id sorts first goes; the other waits a moment, and they meet on one toy.
+ * 7. OFFER when you were playing the toy in the last 15 s — so a press is never answered by a jump.
+ * 8. GO.
+ *
+ * `first` is the press itself: following somebody moves you at once, without settling or the play
+ * rule (you pressed Follow; you are not mid-game in the sense that matters), but never out of a seat
+ * or a match. It is spent on the first ask, whatever that answers — a press made while the leader is
+ * away is not a standing pass for their arrival minutes later (useFollow).
+ */
+export function followStep(a: {
+  onRoster: boolean
+  gateOpen: boolean
+  sharing: boolean
+  leader: Pick<PartyHere, 'route' | 'sub'> | undefined
+  myToy: string | null
+  openable: (toy: string) => boolean
+  hidden: boolean
+  seated: boolean
+  inMatch: boolean
+  first: boolean
+  /** when the leader's toy last changed, and now, on one clock */
+  since: number
+  now: number
+  /** you and everybody else on the call */
+  people: number
+  /** when you last pressed or typed inside the toy */
+  lastPlay: number
+  /** the toy already offered for this leader move */
+  offered: string | null
+  /** the toy your last follow move took you away from, and when */
+  left?: { toy: string; at: number } | null
+  /** whether your id sorts before the leader's: on a crossing, the first one goes */
+  goesFirst?: boolean
+}): FollowStep {
+  if (!a.onRoster) return { do: 'stop', why: 'left' }
+  if (!a.gateOpen) return { do: 'stop', why: 'gate' }
+  if (!a.sharing) return { do: 'stop', why: 'sharing' }
+  const h = a.leader
+  if (!h) return { do: 'wait', why: 'quiet' }
+  if (h.route !== 'lab') return { do: 'wait', why: 'away' }
+  if (!h.sub) return { do: 'wait', why: 'unsaid' }
+  const toy = h.sub
+  if (toy === a.myToy) return { do: 'wait', why: 'with' }
+  if (!a.openable(toy)) return { do: 'wait', why: 'unopenable' }
+  if (a.hidden) return { do: 'wait', why: 'hidden' }
+  if (a.seated) return { do: 'offer', toy, why: 'seat' }
+  if (a.inMatch) return { do: 'offer', toy, why: 'match' }
+  const settle = settleMs(a.people, sendsFor(toy))
+  if (!a.first) {
+    const ready = a.since + settle
+    if (a.now < ready) return { do: 'wait', why: 'settling', at: ready }
+  }
+  if (a.offered === toy) return { do: 'offer', toy, why: 'offered' }
+  if (a.left && a.left.toy === toy && !a.goesFirst) {
+    const until = a.left.at + 2 * settle
+    if (a.now < until) return { do: 'wait', why: 'crossed', at: until }
+  }
+  if (!a.first && a.now - a.lastPlay < PLAY_HOLD_MS) return { do: 'offer', toy, why: 'playing' }
+  return { do: 'go', toy }
+}
