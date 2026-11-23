@@ -50,3 +50,28 @@ export function labShareAllowed(a: {
  */
 export const isToyId = (v: unknown): v is string =>
   typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(v)
+
+/**
+ * Who to draw on which toy: the people the party says are on a Lab toy, kept only while your own
+ * gate allows and only while they are still in the call.
+ *
+ * ⚠️ THE CALL'S ROSTER IS THE LIST, AND THE PARTY ONLY ADDS WHERE. Somebody who has left the call
+ * has left every toy, and a `where` from an id that never joined the call is never drawn at all.
+ * The roster drops a person on their `bye` — the Leave button, or a tab closed — and leaving
+ * tells the party nothing (leave() sends the call a `bye` and the party no `gone`), so without
+ * this a friend who hung up stayed on their toy until the party's 16 s sweep.
+ *
+ * ⚠️ A CRASH IS NOT FASTER, AND THIS USED TO SAY IT WAS. A crashed tab sends no `bye`, and WebRTC
+ * never reports it closed — voiceSession marks it reconnecting and keeps it on the roster for the
+ * rest of the call — so it still leaves a toy at the party's 16 s sweep, as before. The faster drop
+ * once measured for it belonged to the dev call, which expired silent tabs (labCall.ts says so).
+ * useLabRoom has always asked it this way; the picker dots and the roster link did not.
+ */
+export function onToysNow<T extends { id: string; sub?: string }>(
+  lab: readonly T[] | undefined,
+  roster: ReadonlySet<string>,
+  allowed: boolean,
+): T[] {
+  if (!allowed) return []
+  return (lab ?? []).filter((p) => !!p.sub && roster.has(p.id))
+}

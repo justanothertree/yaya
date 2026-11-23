@@ -4,6 +4,7 @@ import { isCursorSkin, myCursor, onCursorChange, type CursorSkin } from '../ui/c
 import { labSocial } from '../lab/social/social'
 import { isToyId } from '../lab/social/gate'
 import { TOY_EVENT, currentToy } from '../lab/links'
+import { TAP_MS } from './cursorPlace'
 
 /**
  * Seeing each other move around the site.
@@ -184,12 +185,9 @@ export type PartyState = {
   peers: Record<string, PartyPeer>
   /** who is in which room, keyed by user id — outlives their pointer, see PartyHere */
   here: Record<string, PartyHere>
-  /** recent taps on Lab toys, newest last; each lives TAP_MS */
+  /** recent taps on Lab toys, newest last; each lives TAP_MS (cursorPlace.ts) */
   taps: PartyTap[]
 }
-
-/** how long a tap's ring stays */
-export const TAP_MS = 700
 
 let state: PartyState = { sharing: false, peers: {}, here: {}, taps: [] }
 const listeners = new Set<() => void>()
