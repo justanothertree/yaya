@@ -311,12 +311,15 @@ export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
        *
        * ⚠️ It lives HERE rather than in Appearance with the other toggles, because it is not
        * a preference — it is a live broadcast, and the control for a broadcast belongs next to
-       * the indicator that you are on the air. It also resets every page load on purpose, which
-       * would be baffling behaviour for something filed under settings.
+       * the indicator that you are on the air. It also starts off on every page load and goes
+       * off when a call ends (together.ts), which would be baffling behaviour for something filed
+       * under settings.
        *
-       * Disabled rather than hidden on a private page, with the reason in the tooltip: a
+       * Neither hidden nor disabled on a private page: its title says the page is never shared,
+       * and party.ts refuses to say anything from a private route whatever the switch says. A
        * control that vanishes looks like a bug, and the fact that this page is excluded is
-       * exactly the thing worth telling you.
+       * exactly the thing worth telling you. (The Lab's tour names this button in words, so what
+       * this says about it has to be true.)
        */}
       {/**
        * ⚠️ ONE SWITCH FOR THREE MECHANISMS, and it belongs HERE rather than in any of them.

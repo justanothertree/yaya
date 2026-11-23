@@ -29,6 +29,7 @@ import { TOY_EVENT, hashParam, toyHash } from '../lab/links'
 import { YourGames } from '../lab/matches/YourGames'
 import { useFriendsOnToys, useLabMe } from '../lab/social/where'
 import { withWords } from '../lab/social/tour'
+import { TourStrip } from '../lab/social/TourStrip'
 import { hueFor } from '../party/party'
 
 /**
@@ -260,6 +261,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   /* you, on the board the way your friends see you: only while your toy is going out to them */
   const me = useLabMe()
   const withYou = withWords(friendsOn(current.id).map((p) => p.name))
+  /* every toy this Lab lists, by id — the only ones the tour's Go may open */
+  const toys = useMemo(() => new Map(shownDemos.map((d) => [d.id, d.name])), [shownDemos])
 
   const counts = useMemo(() => {
     const n = new Map<Category, number>()
@@ -272,6 +275,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   return (
     <div className="lab">
       {viewer.authed && <YourGames />}
+      {/* friends on your call, where each of them is on the board (src/lab/social/TourStrip.tsx) */}
+      <TourStrip current={current.id} toys={toys} onGo={pick} />
       <div className="lab-filter" role="group" aria-label="Show which kind">
         <button
           className="btn btn-ghost"
