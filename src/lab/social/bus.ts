@@ -24,9 +24,25 @@
  *
  * ⚠️ THE BUS WAITS ONLY FOR RIDERS WHO ARE HERE. Nobody who has not pressed is waited for — not a
  * friend who is busy, not a tab on an older build — so a silent non-rider can never hold it.
+ *
+ *
+ * NEWCOMERS, AND HOSTS COMING BACK
+ *
+ * Nothing is periodic: with no tour, the bus sends nothing at all. A browser that starts listening
+ * with somebody else on the Lab says `hello` (once more after HELLO_RETRY_MS), and the host as it
+ * was before it arrived, or whoever published the bus we hold, answers — room.ts's answersHello,
+ * asked of the riders. ⚠️ NOBODY LEADS BEFORE LISTENING: a browser may neither lead nor offer
+ * Start until it has heard the tour or listened for SYNC_MS, so somebody arriving finds a tour
+ * already going rather than starting a second, and a host back from a hidden tab does not lead
+ * from a bus everybody else has moved past. When one leads stale anyway, its deputy answers it.
+ *
+ * Two tours at once — two Starts in the same moment, or a call that split — settle on the one with
+ * more riders, then more stops, then the lower starter's id. An ended or abandoned tour gives way
+ * to anything; a live one never to an ended one.
  */
 
-import { newer, type Seats } from './room'
+import { answersHello, newer, readSeats, type Seats } from './room'
+import { isToyId } from './gate'
 import { ROOM_TOYS, sendsFor } from './tour'
 
 /* ── the knobs ─────────────────────────────────────────────────────────────────────────────── */
@@ -194,10 +210,19 @@ export type Bus = {
   freeAt: number
   leaveAt: number
   /* local only, never sent */
-  /** whether I may lead and offer Start: I have listened, or heard the tour */
+  /** whether I may lead and offer Start: I have listened for SYNC_MS, or heard the tour */
   heard: boolean
-  /** when I started listening for it */
+  /** when I started listening for it: on arriving, or on coming back as the one who would lead */
   syncAt: number
+  /** whether I am still asking for the tour, and the hellos sent since syncAt, the last when */
+  asking: boolean
+  hellos: number
+  lastHello: number
+  /** whether I was live at the last tick, so coming back is noticed */
+  live: boolean
+  /** the last repair hello, and the last answer to a host leading from a stale bus */
+  repairAt: number
+  answerAt: number
   /** requests counted per person and departure (`id:n`), and sits per person and stop */
   presses: Record<string, number>
   sits: Record<string, number>
@@ -303,6 +328,12 @@ export function listen(me: string, now: number): Bus {
     leaveAt: 0,
     heard: false,
     syncAt: now,
+    asking: true,
+    hellos: 0,
+    lastHello: Number.NEGATIVE_INFINITY,
+    live: false,
+    repairAt: Number.NEGATIVE_INFINITY,
+    answerAt: Number.NEGATIVE_INFINITY,
     presses: {},
     sits: {},
     guideAway: null,
@@ -328,9 +359,24 @@ export const hostSet = (bus: Bus, present: ReadonlySet<string>) =>
     .sort()
 export const hostOf = (bus: Bus, ctx: Pick<Ctx, 'present'>): string | null =>
   hostSet(bus, ctx.present)[0] ?? null
-/** whether I lead: host, live, and I have heard the tour rather than led from a stale copy */
-export const leads = (bus: Bus, ctx: Ctx) =>
-  holds(bus) && ctx.meLive && bus.heard && hostOf(bus, ctx) === bus.me
+/**
+ * Whether I decide: live, having heard the tour rather than leading from a stale copy, a rider
+ * here — and the host, or the one who published the bus we hold.
+ *
+ * ⚠️ THE PUBLISHER KEEPS DECIDING UNTIL THE NEW HOST HAS PUBLISHED. Somebody boarding with a lower
+ * id is host by everyone's reckoning the moment the host appends them — before their own browser
+ * has heard that they are on the bus at all. At the first stop everybody boards at once, and every
+ * other yes already on its way reached a host that did not yet know it was one, and was lost:
+ * measured in bus.test.ts, four of six riders left off a bus they had said yes to. So, as with a
+ * newcomer's hello (room.ts's answersHello), whoever published the bus we hold goes on deciding
+ * until the host publishes its own. Two deciding for a moment hold the same bus and hear the same
+ * requests, so they decide alike; where they differ, `newer` settles it as for two hosts.
+ */
+export function leads(bus: Bus, ctx: Ctx): boolean {
+  if (!holds(bus) || !ctx.meLive || !bus.heard) return false
+  const set = hostSet(bus, ctx.present)
+  return set[0] === bus.me || (set.includes(bus.me) && bus.from === bus.me)
+}
 
 /**
  * Whose turn it is next: the first rider after the guide, in boarding order and wrapping round,
@@ -575,13 +621,30 @@ export function decide(bus: Bus, ctx: Ctx, from: string, q: Req): Step {
 export function tick(bus: Bus, ctx: Ctx): Step {
   const { k, now } = ctx
   let b = bus
+  const said: Out[] = []
+  /* ⚠️ BACK LIVE, HOLDING A TOUR I WOULD LEAD: LISTEN BEFORE LEADING IT. A tab that was hidden or
+     paused kept listening, but anything lost while it was away would have it lead from an older
+     bus than everybody else's — so it asks, and leads once it has heard, or after SYNC_MS.
+     Coming back is noticed as `live` changing between ticks, so whoever drives this must tick
+     whenever meLive changes, not only on a timer. */
+  if (ctx.meLive && !b.live && holds(b) && b.phase !== 'end' && hostOf(b, ctx) === b.me)
+    b = { ...b, heard: false, asking: true, syncAt: now, hellos: 0 }
+  if (ctx.meLive !== b.live) b = { ...b, live: ctx.meLive }
+  /* ask whoever else is here for the tour: once, and once more after HELLO_RETRY_MS. Nobody else
+     here, nobody to ask — and with nobody else on the Lab, nothing is sent at all */
+  const others = [...ctx.present].some((id) => id !== b.me)
+  const due = b.hellos === 0 || (b.hellos === 1 && now - b.lastHello >= k.HELLO_RETRY_MS)
+  if (b.asking && ctx.meLive && others && due) {
+    b = { ...b, hellos: b.hellos + 1, lastHello: now }
+    said.push({ v: 1, t: 'hello' })
+  }
   if (holds(b)) {
     const anyone = b.riders.some((r) => r.on && ctx.present.has(r.id))
     const quietSince = anyone ? null : (b.quietSince ?? now)
     if (quietSince !== b.quietSince) b = { ...b, quietSince }
   }
   if (!b.heard && now - b.syncAt >= k.SYNC_MS) b = { ...b, heard: true }
-  if (!leads(b, ctx) || b.phase === 'end') return none(b)
+  if (!leads(b, ctx) || b.phase === 'end') return { bus: b, out: said }
 
   let w = b
   let changed = false
@@ -631,10 +694,11 @@ export function tick(bus: Bus, ctx: Ctx): Step {
   if (w.phase === 'pick' && now >= w.due) change({ phase: 'end', toy: null, faces: null })
   if (!changed) {
     const c = clocked(w, ctx)
-    if (c === w) return none(w)
+    if (c === w) return { bus: w, out: said }
     w = c
   }
-  return publish(w, ctx, {})
+  const p = publish(w, ctx, {})
+  return { bus: p.bus, out: [...said, ...p.out] }
 }
 
 /* ── presses here ──────────────────────────────────────────────────────────────────────────── */
@@ -730,6 +794,7 @@ export function startTour(bus: Bus, ctx: Ctx, tour: string): Step {
       holdUntil: 0,
       freeAt: now + k.IDLE_MS,
       leaveAt: 0,
+      asking: false,
       presses: {},
       sits: {},
       guideAway: null,
@@ -744,30 +809,232 @@ export function startTour(bus: Bus, ctx: Ctx, tour: string): Step {
 const remaining = (at: number, now: number) =>
   Math.min(MAX_TIMER_MS, Math.max(0, Math.round(at - now)))
 
-/** the bus as it goes out, serialised at send time so its clocks are current */
-export function stateOf(bus: Bus, now: number): State {
+/**
+ * The bus as it goes out, serialised at send time so its clocks are current.
+ *
+ * ⚠️ A FACT ABOUT A PERSON GOES OUT ONLY WHILE THAT PERSON IS LIVE IN THE SENDER'S VIEW. Their own
+ * `where` then names a toy, so their own gate is open and everybody present is their friend. For
+ * anybody else — paused, gone, or never sharing with whoever is here now — their answer this
+ * departure, whether they went, whether they are playing, their stars and games, and the stops
+ * they won are all left off. So once Ann has paused or left, a newcomer (or a patched client)
+ * never learns what Ann did; receivers who already knew keep it (mergeKnown). Tour-level facts —
+ * the faces, the stops, whose turn it is, the riders' ids, which are the call's own `from`s — go
+ * out under the sender's gate, as `where`'s toy does.
+ */
+export function wireOf(bus: Bus, present: ReadonlySet<string>, now: number): State {
+  const live = (i: number) => present.has(bus.riders[i]?.id)
+  const only = (xs: number[]) => xs.filter(live)
   return {
     v: 1,
     t: 'state',
     seq: bus.seq,
     tour: bus.tour,
     len: bus.len,
-    riders: bus.riders.map((r) => [r.id, r.on ? 1 : 0, r.stars, r.played]),
+    riders: bus.riders.map((r, i) => [
+      r.id,
+      r.on ? 1 : 0,
+      live(i) ? r.stars : null,
+      live(i) ? r.played : null,
+    ]),
     guide: bus.guide,
     phase: bus.phase,
     faces: bus.faces,
     toy: bus.toy,
-    ready: bus.ready,
-    no: bus.no,
-    went: bus.went,
-    busy: bus.busy,
-    stops: bus.stops.map((s) => ({ ...s, games: s.games.map((g) => [...g]), won: [...s.won] })),
+    ready: only(bus.ready),
+    no: only(bus.no),
+    went: only(bus.went),
+    busy: only(bus.busy),
+    stops: bus.stops.map((s) => ({
+      toy: s.toy,
+      cap: s.cap,
+      games: s.games.map(([g, i0, i1]) => [g, i0, i1]),
+      won: only(s.won),
+    })),
     left: remaining(bus.due, now),
     open: remaining(bus.openAt, now),
     free: remaining(bus.freeAt, now),
     hold: remaining(bus.holdUntil, now),
     leave: remaining(bus.leaveAt, now),
   }
+}
+
+/** the most a body may weigh: a state is about 1.5 kB at its largest, a request under 200 B */
+export const MAX_BODY_BYTES = 4096
+
+const PHASES: readonly Phase[] = ['pick', 'choose', 'ready', 'end']
+const HOWS = ['win', 'draw', 'cpu'] as const
+const int = (v: unknown, lo: number, hi: number): v is number =>
+  Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+/** distinct whole numbers, each an index into a list `n` long */
+const indexes = (v: unknown, n: number): v is number[] =>
+  Array.isArray(v) && v.every((i) => int(i, 0, n - 1)) && new Set(v).size === v.length
+const isFaces = (v: unknown): v is Faces =>
+  Array.isArray(v) && v.length === 3 && v.every(isToyId) && new Set(v).size === 3
+/** `anyway` is true or absent; anything else is a malformed body */
+const anywayOf = (v: unknown) =>
+  v === undefined ? {} : v === true ? { anyway: true as const } : null
+const bytes = (x: unknown) => {
+  try {
+    return new TextEncoder().encode(JSON.stringify(x)).length
+  } catch {
+    return Infinity
+  }
+}
+
+/**
+ * A `bus` body off the wire, every field checked, or null. ⚠️ ONE BAD FIELD REFUSES THE WHOLE
+ * MESSAGE: nothing is half-believed. This checks shape — what can be known from the body alone —
+ * and decide() checks it again against the bus (which departure, whose turn, which faces).
+ */
+export function readBus(x: unknown): Msg | null {
+  if (!isObj(x) || x.v !== 1 || typeof x.t !== 'string') return null
+  if (bytes(x) > MAX_BODY_BYTES) return null
+  if (x.t === 'hello') return { v: 1, t: 'hello' }
+  if (x.t === 'state') return readState(x)
+  const { tour, n } = x
+  if (typeof tour !== 'string' || !TOUR_ID.test(tour)) return null
+  if (x.t === 'off') return { v: 1, t: 'off', tour }
+  if (x.t === 'fin') {
+    const anyway = anywayOf(x.anyway)
+    return anyway && { v: 1, t: 'fin', tour, ...anyway }
+  }
+  /* every other request is about one departure: there are at most eight */
+  if (!int(n, 1, 8)) return null
+  if (x.t === 'roll') {
+    const anyway = anywayOf(x.anyway)
+    if (!isFaces(x.faces) || !anyway) return null
+    return { v: 1, t: 'roll', tour, n, faces: [...x.faces], ...anyway }
+  }
+  if (x.t === 'pick') return isToyId(x.toy) ? { v: 1, t: 'pick', tour, n, toy: x.toy } : null
+  if (x.t === 'go') return { v: 1, t: 'go', tour, n }
+  if (x.t === 'ready' || x.t === 'sit')
+    return typeof x.on === 'boolean' ? { v: 1, t: x.t, tour, n, on: x.on } : null
+  if (x.t === 'game') {
+    const seats = readSeats(x.seats)
+    const how = HOWS.find((h) => h === x.how)
+    const won = x.won
+    if (!isToyId(x.sub) || !int(x.g, 1, 1e6) || !seats || !how) return null
+    if (!Array.isArray(won) || !won.every((id) => typeof id === 'string')) return null
+    if (new Set(won).size !== won.length) return null
+    /* a win names one or two of the players seated; a draw or the computer's win names nobody */
+    if (
+      how === 'win'
+        ? !won.length || won.length > 2 || !won.every((id) => seats.includes(id))
+        : won.length
+    )
+      return null
+    return { v: 1, t: 'game', tour, n, sub: x.sub, g: x.g, seats, how, won: [...won] }
+  }
+  return null
+}
+
+function readState(x: Record<string, unknown>): State | null {
+  const { seq, tour, len, riders, guide, phase, faces, toy, ready, no, went, busy, stops } = x
+  if (!int(seq, 1, 1e9) || typeof tour !== 'string' || !TOUR_ID.test(tour)) return null
+  if (!int(len, 1, 8) || !Array.isArray(riders) || riders.length < 1 || riders.length > 16)
+    return null
+  /* a rider's stars or games: unknown here, or at most three games at each stop */
+  const tally = (v: unknown): v is number | null => v === null || int(v, 0, 3 * len)
+  const rs: State['riders'] = []
+  for (const r of riders) {
+    if (!Array.isArray(r) || r.length !== 4) return null
+    const [id, on, stars, played] = r as unknown[]
+    if (typeof id !== 'string' || id.length < 1 || id.length > 64) return null
+    if ((on !== 0 && on !== 1) || !tally(stars) || !tally(played)) return null
+    rs.push([id, on, stars, played])
+  }
+  if (new Set(rs.map((r) => r[0])).size !== rs.length) return null
+  const n = rs.length
+  if (!int(guide, 0, n - 1) || !PHASES.includes(phase as Phase)) return null
+  if (!Array.isArray(stops) || stops.length > len) return null
+  const ss: Stop[] = []
+  for (const s of stops) {
+    if (!isObj(s) || !isToyId(s.toy) || !int(s.cap, 1, 3)) return null
+    const cap = s.cap as Stop['cap']
+    if (!Array.isArray(s.games) || s.games.length > cap) return null
+    const games: Stop['games'] = []
+    for (const g of s.games) {
+      if (!Array.isArray(g) || g.length !== 3 || !int(g[0], 1, 1e6)) return null
+      if (!int(g[1], -1, n - 1) || !int(g[2], -1, n - 1)) return null
+      games.push([g[0], g[1], g[2]])
+    }
+    if (!indexes(s.won, n) || s.won.length > 2 * cap) return null
+    ss.push({ toy: s.toy, cap, games, won: [...s.won] })
+  }
+  const visited = new Set(ss.map((s) => s.toy))
+  if (visited.size !== ss.length) return null
+  /* the faces exactly while choosing, the toy exactly while boarding: neither already a stop */
+  if ((phase === 'choose') !== (faces !== null)) return null
+  if (faces !== null && (!isFaces(faces) || faces.some((f) => visited.has(f)))) return null
+  if ((phase === 'ready') !== (toy !== null)) return null
+  if (toy !== null && (!isToyId(toy) || visited.has(toy))) return null
+  if (!indexes(ready, n) || !indexes(no, n) || !indexes(went, n) || !indexes(busy, n)) return null
+  if (ready.some((i) => no.includes(i))) return null
+  const { left, open, free, hold, leave } = x
+  if (![left, open, free, hold, leave].every((t) => int(t, 0, MAX_TIMER_MS))) return null
+  /* a counted game stars at most its two players */
+  const stars = rs.reduce((a, r) => a + (r[2] ?? 0), 0)
+  if (stars > 2 * ss.reduce((a, s) => a + s.games.length, 0)) return null
+  return {
+    v: 1,
+    t: 'state',
+    seq,
+    tour,
+    len,
+    riders: rs,
+    guide,
+    phase: phase as Phase,
+    faces: faces === null ? null : [...(faces as Faces)],
+    toy: toy as string | null,
+    ready: [...ready],
+    no: [...no],
+    went: [...went],
+    busy: [...busy],
+    stops: ss,
+    left: left as number,
+    open: open as number,
+    free: free as number,
+    hold: hold as number,
+    leave: leave as number,
+  }
+}
+
+/**
+ * The incoming bus with everything `held` knew that it does not say. Stars and games only grow,
+ * and a stop's winners only gather, so each is kept as the most known — ⚠️ AND A NULL IS "NOT
+ * SAID", NEVER NOUGHT: a sender leaves out what it may not tell about somebody absent, and reading
+ * that as zero would erase a star its owner earned.
+ */
+export function mergeKnown(held: Bus, next: Bus): Bus {
+  if (held.tour !== next.tour) return next
+  const most = (a: number | null, b: number | null) =>
+    a === null ? b : b === null ? a : Math.max(a, b)
+  const knew = new Map(held.riders.map((r) => [r.id, r]))
+  const riders = next.riders.map((r) => {
+    const h = knew.get(r.id)
+    return h ? { ...r, stars: most(r.stars, h.stars), played: most(r.played, h.played) } : r
+  })
+  const wonAt = new Map(held.stops.map((s) => [s.toy, s.won]))
+  const stops = next.stops.map((s) => {
+    const more = (wonAt.get(s.toy) ?? []).filter((i) => !s.won.includes(i))
+    return more.length ? { ...s, won: [...s.won, ...more] } : s
+  })
+  return { ...next, riders, stops }
+}
+
+/**
+ * Whether another tour wins over the one I hold: more riders on it, then more stops made, then the
+ * lower starter's id. ⚠️ NOT THE LOWER TOUR ID, which is random: a tour started a moment ago would
+ * then wipe out one that has been going for an hour about half the time.
+ */
+function beats(s: State, bus: Bus) {
+  const theirs = s.riders.filter((r) => r[1] === 1).length
+  const mine = bus.riders.filter((r) => r.on).length
+  if (theirs !== mine) return theirs > mine
+  if (s.stops.length !== bus.stops.length) return s.stops.length > bus.stops.length
+  return s.riders[0][0] < (bus.riders[0]?.id ?? '')
 }
 
 /**
@@ -778,7 +1045,7 @@ export function stateOf(bus: Bus, now: number): State {
 function adopt(bus: Bus, s: State, from: string, ctx: Ctx): Bus {
   const { now } = ctx
   const same = s.tour === bus.tour
-  return {
+  const next: Bus = {
     ...bus,
     seq: s.seq,
     from,
@@ -801,26 +1068,137 @@ function adopt(bus: Bus, s: State, from: string, ctx: Ctx): Bus {
     holdUntil: now + s.hold,
     leaveAt: now + s.leave,
     heard: true,
+    asking: false,
     presses: same ? bus.presses : {},
     sits: same ? bus.sits : {},
     guideAway: same ? bus.guideAway : null,
     quietSince: same ? bus.quietSince : null,
   }
+  return mergeKnown(bus, next)
 }
 
-/** somebody else's message: a state is believed if it is newer, a request goes to the host */
+/** the second-lowest rider here: who repairs a host that came back leading from a stale bus */
+export const deputyOf = (bus: Bus, ctx: Pick<Ctx, 'present'>): string | null =>
+  hostSet(bus, ctx.present)[1] ?? null
+
+/**
+ * Whether I answer a newcomer's hello: room.ts's rule asked of the riders here. ⚠️ A WATCHER IS
+ * NEVER "HOST BEFORE THEY ARRIVED", whatever its id, so only the host as it was, or whoever
+ * published the bus we hold, answers — once, however many hold it. And only from a bus I have
+ * heard: one I may be leading from stale would hand a newcomer the wrong tour.
+ */
+function answers(bus: Bus, ctx: Ctx, from: string) {
+  if (!holds(bus) || !ctx.meLive || !bus.heard) return false
+  const set = hostSet(bus, ctx.present)
+  return set.includes(bus.me)
+    ? answersHello(bus.me, set, from, bus.seq, bus.from)
+    : bus.seq > 0 && bus.from === bus.me
+}
+
+/** a state off the wire: my tour if it is newer, another if it beats mine, or a stale host's repair */
+function onState(bus: Bus, ctx: Ctx, from: string, s: State): Step {
+  if (holds(bus) && s.tour === bus.tour) {
+    /* any state of my tour at a seq of mine or later is the tour as it is: I may lead from it */
+    const b = s.seq >= bus.seq ? { ...bus, heard: true, asking: false } : bus
+    if (newer(s.seq, from, bus.seq, bus.from)) return none(adopt(b, s, from, ctx))
+    /* ⚠️ A HOST LEADING FROM A STALE BUS IS ANSWERED BY ITS DEPUTY: a host back from a hidden tab
+       whose hello went unanswered publishes from what it last had, which everybody else ignores
+       as older — and it never hears the newer bus, because nobody sends one until something
+       changes. The deputy sends it, at most once every HELLO_REPAIR_MS. */
+    const stale = s.seq < bus.seq && from === hostOf(bus, ctx) && deputyOf(bus, ctx) === bus.me
+    if (stale && ctx.meLive && ctx.now - b.answerAt >= ctx.k.HELLO_REPAIR_MS)
+      return { bus: { ...b, answerAt: ctx.now }, out: [{ t: 'state' }] }
+    return none(b)
+  }
+  /* ⚠️ AN ENDED TOUR NEVER REPLACES A LIVE ONE, and a fresh one only by having more riders or
+     more stops — or the lower starter, when two were started at the same moment */
+  const live = holds(bus) && bus.phase !== 'end' && !abandoned(bus, ctx)
+  if (live && (s.phase === 'end' || !beats(s, bus))) return none(bus)
+  return none(adopt(bus, s, from, ctx))
+}
+
+/**
+ * Traffic for a tour I do not hold while I hold no live one: I missed it, so ask — at most once
+ * every HELLO_REPAIR_MS. While I hold a live tour, another's requests are followed by its states,
+ * which settle which tour wins without asking.
+ */
+function repair(bus: Bus, ctx: Ctx): Step {
+  const live = holds(bus) && bus.phase !== 'end' && !abandoned(bus, ctx)
+  if (live || !ctx.meLive || ctx.now - bus.repairAt < ctx.k.HELLO_REPAIR_MS) return none(bus)
+  return { bus: { ...bus, repairAt: ctx.now }, out: [{ v: 1, t: 'hello' }] }
+}
+
+/**
+ * Somebody else's message, read by readBus first. Only from somebody on the call's roster: the
+ * party's `from` is self-stated, and somebody the call does not have is nobody's to believe.
+ */
 export function receive(bus: Bus, ctx: Ctx, from: string, m: Msg): Step {
   if (from === bus.me || !ctx.roster.has(from)) return none(bus)
-  if (m.t === 'state') {
-    /* ⚠️ AN ENDED TOUR TAKES ANOTHER TOUR, NEVER AN OLDER COPY OF ITSELF: a late state from before
-       the end would otherwise start it again */
-    if (holds(bus) && m.tour === bus.tour) {
-      if (!newer(m.seq, from, bus.seq, bus.from)) return none(bus)
-    } else if (holds(bus) && bus.phase !== 'end') return none(bus)
-    return none(adopt(bus, m, from, ctx))
+  if (m.t === 'state') return onState(bus, ctx, from, m)
+  /* one state answers every hello in that second: the Outbox folds them into one publish */
+  if (m.t === 'hello') return answers(bus, ctx, from) ? { bus, out: [{ t: 'state' }] } : none(bus)
+  if (holds(bus) && m.tour === bus.tour)
+    return leads(bus, ctx) ? decide(bus, ctx, from, m) : none(bus)
+  return repair(bus, ctx)
+}
+
+/* ── what goes out, and how often ──────────────────────────────────────────────────────────── */
+
+export type Outbox = {
+  /** something to send: a request or a hello waits its turn, a state is folded into the next */
+  push(o: Out): void
+  /** when take() will next have something, or null when nothing waits */
+  dueAt(): number | null
+  /** what may go now */
+  take(now: number): Out[]
+}
+
+/**
+ * The gate everything this browser sends goes through.
+ *
+ * ⚠️ AT MOST ONE REQUEST A SECOND, WHATEVER WAS PRESSED. Requests wait in one queue, one of each
+ * kind, the latest press of a kind standing for every press before it — so ready, stay, ready in
+ * one breath is one `ready`, and it says ready. And the host's states at most one a second, leading
+ * and trailing: the first change goes at once, every change within the second after it goes as one
+ * state at its end, serialised then so its clocks are current. So any second of a call holds at
+ * most N requests and one state, N + 1 sends, metered (N + 1)·N; with no tour, it holds none.
+ */
+export function outbox(k: Pick<Knobs, 'STATE_GAP_MS' | 'ASK_GAP_MS'>): Outbox {
+  let asks: Exclude<Out, { t: 'state' }>[] = []
+  let state = false
+  let askAt = Number.NEGATIVE_INFINITY
+  let stateAt = Number.NEGATIVE_INFINITY
+  return {
+    push(o) {
+      if (o.t === 'state') {
+        state = true
+        return
+      }
+      const i = asks.findIndex((a) => a.t === o.t)
+      if (i >= 0) asks = asks.map((a, j) => (j === i ? o : a))
+      else asks = [...asks, o]
+    },
+    dueAt() {
+      const ask = asks.length ? askAt + k.ASK_GAP_MS : Infinity
+      const st = state ? stateAt + k.STATE_GAP_MS : Infinity
+      const at = Math.min(ask, st)
+      return at === Infinity ? null : at
+    },
+    take(now) {
+      const out: Out[] = []
+      if (state && now >= stateAt + k.STATE_GAP_MS) {
+        state = false
+        stateAt = now
+        out.push({ t: 'state' })
+      }
+      if (asks.length && now >= askAt + k.ASK_GAP_MS) {
+        out.push(asks[0])
+        asks = asks.slice(1)
+        askAt = now
+      }
+      return out
+    },
   }
-  if (m.t === 'hello' || !holds(bus) || m.tour !== bus.tour || !leads(bus, ctx)) return none(bus)
-  return decide(bus, ctx, from, m)
 }
 
 /* ── consent and the hop: this browser's alone ─────────────────────────────────────────────── */
@@ -871,7 +1249,8 @@ export type HopPlan =
  * ⚠️ CONSENT DECIDES, AND `went` ONLY ORDERS. A state listing me as going, from a host that is
  * wrong, late or lying, schedules nothing unless I pressed for that departure and that toy. My
  * place in the queue is my id's among those who went; a request of mine that never reached the
- * host puts me after them, and Come too after that.
+ * host puts me after them, and Come too after that. `receivedAt` is when the departure arrived —
+ * for Come too, when it was pressed, since that is when its hop was asked for.
  */
 export function hopPlan(
   bus: Bus,
@@ -892,8 +1271,13 @@ export function hopPlan(
     .sort()
   const gap = hopMs(people, toy)
   if (consent.come) {
-    /* Come too is pressed during the landing, so it is due after the last rider whatever arrived */
-    const rank = ids.length + 1
+    /* ⚠️ COME TOO TAKES THE SLOT THE HOST GAVE IT. Pressed during the landing, it is due after
+       the last rider; and the host appends each Come too to `went` in the order it hears them, so
+       once a state lists me, my place there is my slot — two friends pressing it together would
+       otherwise both land one slot after the riders, at the same instant. Ask again on each
+       state while the hop waits. */
+    const at = bus.went.findIndex((i) => bus.riders[i]?.id === bus.me)
+    const rank = (at >= 0 ? at : ids.length) + 1
     return { do: 'hop', key, rank, at: Math.max(receivedAt, bus.leaveAt + rank * gap) }
   }
   const leave = bus.leaveAt - receivedAt

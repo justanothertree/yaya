@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   KNOBS,
+  MAX_BODY_BYTES,
   ask,
   canStart,
   consentAfter,
@@ -9,23 +10,29 @@ import {
   knobs,
   leads,
   listen,
+  mergeKnown,
   nextGuide,
+  outbox,
+  readBus,
   receive,
   rideStep,
   rollFaces,
   startTour,
-  stateOf,
   tick,
+  wireOf,
   type Bus,
   type Consent,
   type Ctx,
   type Knobs,
   type Leaves,
   type Msg,
+  type Out,
+  type Outbox,
   type Press,
+  type State,
   type Step,
 } from './bus'
-import { ROOM_TOYS, sendsFor } from './tour'
+import { ROOM_TOYS } from './tour'
 
 /* toys to roll: every call-table toy, and plain ones; nobody starts on any of them */
 const PLAIN = ['swarm', 'paint', 'aurora', 'tides', 'boids', 'mandala', 'orbit', 'ripple']
@@ -56,15 +63,19 @@ type Client = {
   listening: boolean
   /** who this client sees on the Lab, when it is not everybody */
   view: Set<string> | null
+  /** what it sends goes through this, when the party is paced */
+  box: Outbox
 }
 
 /**
  * Several browsers on one call, and the wire between them — room.test.ts's `party`, with a clock,
  * who is on the Lab, each browser's own consent, and its hops. Every message crosses the wire as
- * JSON, so nothing shared by reference can pass for agreement.
+ * JSON and is read back by readBus, so nothing shared by reference can pass for agreement, and a
+ * message this code wrote that readBus refuses fails the test outright. `paced` sends everything
+ * through each browser's own Outbox, as useBus will; otherwise a send goes the moment it is made.
  */
-function party(ids: string[], o: { k?: Knobs; people?: number } = {}) {
-  const k = o.k ?? KNOBS
+function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean } = {}) {
+  const k = opt.k ?? KNOBS
   let now = 0
   let tours = 0
   const cs = new Map<string, Client>()
@@ -74,10 +85,12 @@ function party(ids: string[], o: { k?: Knobs; people?: number } = {}) {
   const wire: { from: string; m: Msg }[] = []
   const log: { at: number; from: string; m: Msg }[] = []
   const landings: { at: number; id: string; toy: string }[] = []
-  for (const id of ids)
+  /** messages lost on the way, asked of each delivery */
+  let drops: ((to: string, from: string, m: Msg) => boolean)[] = []
+  const join = (id: string) => {
     cs.set(id, {
       id,
-      bus: listen(id, 0),
+      bus: listen(id, now),
       sub: START,
       consent: null,
       moved: new Set(),
@@ -87,8 +100,11 @@ function party(ids: string[], o: { k?: Knobs; people?: number } = {}) {
       seat: null,
       listening: true,
       view: null,
+      box: outbox(k),
     })
-  const people = () => o.people ?? roster.size
+  }
+  for (const id of ids) join(id)
+  const people = () => opt.people ?? roster.size
   const ctx = (id: string): Ctx => {
     const c = cs.get(id)!
     const seen = c.view ?? here
@@ -102,19 +118,23 @@ function party(ids: string[], o: { k?: Knobs; people?: number } = {}) {
       k,
     }
   }
-  const send = (from: string, out: Step['out']) => {
-    for (const o of out) {
-      const m: Msg = o.t === 'state' ? stateOf(cs.get(from)!.bus, now) : o
-      const copy = JSON.parse(JSON.stringify(m)) as Msg
-      wire.push({ from, m: copy })
-      log.push({ at: now, from, m: copy })
-    }
+  /** onto the wire: a state is serialised now, as its sender sees who is here */
+  const post = (from: string, o: Out) => {
+    const m: Msg = o.t === 'state' ? wireOf(cs.get(from)!.bus, ctx(from).present, now) : o
+    const copy = JSON.parse(JSON.stringify(m)) as Msg
+    wire.push({ from, m: copy })
+    log.push({ at: now, from, m: copy })
   }
   /** a departure seen for the first time: when do I hop, if at all */
   const plan = (c: Client) => {
     const b = c.bus
     const n = b.stops.length
     const key = `${b.tour}:${n}`
+    /* a Come too still waiting takes the slot each state gives it */
+    if (c.hop?.key === key && c.consent?.come) {
+      const again = hopPlan(b, c.hop.at, c.consent, people(), c.moved)
+      if (again?.do === 'hop') c.hop = { ...c.hop, at: again.at }
+    }
     if (!n || c.planned.has(key)) return
     c.planned.add(key)
     const p = hopPlan(b, now, c.consent, people(), c.moved)
@@ -123,7 +143,9 @@ function party(ids: string[], o: { k?: Knobs; people?: number } = {}) {
   }
   const apply = (c: Client, s: Step) => {
     c.bus = s.bus
-    send(c.id, s.out)
+    for (const o of s.out)
+      if (opt.paced) c.box.push(o)
+      else post(c.id, o)
     plan(c)
   }
   const net = {
@@ -139,13 +161,33 @@ function party(ids: string[], o: { k?: Knobs; people?: number } = {}) {
     get: (id: string) => cs.get(id)!,
     bus: (id: string) => cs.get(id)!.bus,
     ctx,
+    join(id: string) {
+      roster.add(id)
+      here.add(id)
+      join(id)
+    },
     clients: () => [...cs.values()],
+    /** lose every message `pred` picks, until `lift()` */
+    drop(pred: (to: string, from: string, m: Msg) => boolean) {
+      drops = [...drops, pred]
+      return () => (drops = drops.filter((d) => d !== pred))
+    },
+    /** what each Outbox lets go now; nothing leaves a browser that is not live */
+    pump() {
+      for (const c of cs.values())
+        if (c.listening && ctx(c.id).meLive) for (const o of c.box.take(now)) post(c.id, o)
+    },
     /** deliver everything queued, to everybody listening but its sender, until the wire is quiet */
     flush() {
-      for (let guard = 0; wire.length && guard < 20_000; guard++) {
+      for (let guard = 0; guard < 20_000; guard++) {
+        net.pump()
+        if (!wire.length) return
         const { from, m } = wire.shift()!
+        const read = readBus(m)
+        if (!read) throw new Error(`readBus refused ${JSON.stringify(m)}`)
         for (const c of cs.values())
-          if (c.id !== from && c.listening) apply(c, receive(c.bus, ctx(c.id), from, m))
+          if (c.id !== from && c.listening && !drops.some((d) => d(c.id, from, read)))
+            apply(c, receive(c.bus, ctx(c.id), from, read))
       }
     },
     tickAll() {
@@ -215,7 +257,9 @@ function party(ids: string[], o: { k?: Knobs; people?: number } = {}) {
       apply(c, startTour(c.bus, ctx(id), `tour${String(tours).padStart(4, '0')}`))
     },
     /** whoever leads now, as they themselves reckon it */
-    host: () => [...cs.values()].find((c) => c.listening && leads(c.bus, ctx(c.id)))?.id ?? null,
+    host: () => net.leaders()[0] ?? null,
+    leaders: () =>
+      [...cs.values()].filter((c) => c.listening && leads(c.bus, ctx(c.id))).map((c) => c.id),
     /** everybody listening holds the same bus: seq, phase, stops, riders, the guide */
     agree(only?: string[]) {
       const shape = (b: Bus) =>
@@ -243,7 +287,13 @@ type Net = ReturnType<typeof party>
 /** ids that sort p01 < p02 < …, boarding in an order that is not that one */
 const named = (n: number) =>
   Array.from({ length: n }, (_, i) => `p${String(i + 1).padStart(2, '0')}`)
-const boardingOf = (ids: string[]) => ids.map((_, i) => ids[(i * 5 + 2) % ids.length])
+function boardingOf(ids: string[]) {
+  /* the ids reversed and turned by one: neither id order nor its reverse, for any size */
+  const back = [...ids].reverse()
+  const order = [...back.slice(1), back[0]]
+  if (new Set(order).size !== ids.length) throw new Error('not a boarding order')
+  return order
+}
 
 /** the guide rolls when the roll opens, and picks the SECOND face, so face 1 is never assumed */
 function rollAndPick(net: Net, rand: () => number, pickFace = 1) {
@@ -724,7 +774,7 @@ describe('consent (3.13, 3.14)', () => {
   it('a forged departure naming me schedules nothing without my own press for it', () => {
     const net = atTable(['p04'])
     const b = net.bus('p01')
-    const forged = stateOf(
+    const forged = wireOf(
       {
         ...b,
         seq: b.seq + 5,
@@ -734,6 +784,7 @@ describe('consent (3.13, 3.14)', () => {
         went: [0, 1, 2, 3],
         leaveAt: net.now + 3000,
       },
+      net.here,
       net.now,
     )
     net.wire.push({ from: 'p01', m: forged })
@@ -873,5 +924,724 @@ describe('the dice (rollFaces)', () => {
   })
 })
 
-/* sendsFor is the cost per hop the landing rule is built on; keep the import honest */
-void sendsFor
+/* ── step 4: newcomers, hosts coming back, two tours, the wire and its rate ─────────────────── */
+
+/**
+ * p01 — the host, the lowest id — goes away and hears nothing while the others carry on: the
+ * guide rolls, picks Hex, and the bus leaves. `during` says where p01's own bus is left: in
+ * `choose`, with its dice deadline long past (so leading from it would publish at once), or in
+ * `pick` with nothing due (so leading from it is silent).
+ */
+function hostAway(during: 'choose' | 'pick') {
+  const net = atTable()
+  net.runUntil(() => net.now >= net.bus('p01').openAt)
+  if (during === 'choose') {
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+  }
+  /* a hidden tab keeps listening (party.ts); what it misses is what is lost on the way */
+  net.here.delete('p01')
+  const deaf = net.drop((to) => to === 'p01')
+  if (during === 'pick') {
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+  }
+  net.press('p02', { t: 'pick', toy: 'hex' })
+  net.flush()
+  net.press('p03', { t: 'ready', on: true })
+  net.flush()
+  net.runUntil(() => net.bus('p02').stops.length === 2, 30_000)
+  net.run(net.k.CHOOSE_MS + 5000)
+  const held = net.bus('p02').seq
+  expect(net.bus('p01').seq).toBeLessThan(held)
+  /* every state p01 sends from here on, and whether any of it is the old bus */
+  const from = net.log.length
+  const stale = () =>
+    net.log.slice(from).filter((e) => e.from === 'p01' && e.m.t === 'state' && e.m.seq <= held)
+      .length
+  return { net, held, stale, from, back: deaf }
+}
+const hellos = (net: Net, id: string, from = 0) =>
+  net.log.slice(from).filter((e) => e.from === id && e.m.t === 'hello').length
+
+describe('a host coming back (3.8)', () => {
+  it('hello first: it asks, is handed the bus, and only then leads', () => {
+    const { net, stale, back } = hostAway('choose')
+    /* p01's `where` has not reached the others yet */
+    for (const id of ['p02', 'p03']) net.get(id).view = new Set(['p02', 'p03'])
+    back()
+    net.here.add('p01')
+    net.run(100)
+    expect(net.bus('p01').seq).toBe(net.bus('p02').seq)
+    for (const id of ['p02', 'p03']) net.get(id).view = null
+    net.run(3000)
+    expect(stale()).toBe(0)
+    expect(net.agree()).toBe(true)
+    expect(net.leaders()).toContain('p01')
+  })
+  it('where first: the others already count it host, and the one who was answers', () => {
+    const { net, stale, back } = hostAway('choose')
+    /* everybody else sees p01 on the Lab before p01's own tab has noticed it is back */
+    net.get('p01').view = new Set(['p02', 'p03'])
+    net.here.add('p01')
+    back()
+    net.run(300)
+    /* nobody is left leaderless: p02 published the bus we hold, and goes on deciding */
+    expect(net.leaders()).toEqual(['p02'])
+    net.get('p01').view = null
+    net.run(100)
+    expect(net.bus('p01').seq).toBe(net.bus('p02').seq)
+    net.run(3000)
+    expect(stale()).toBe(0)
+    expect(net.agree()).toBe(true)
+    expect(net.leaders()).toContain('p01')
+    /* and the first change p01 publishes hands it the bus outright */
+    net.press('p03', { t: 'sit', on: true })
+    net.flush()
+    expect(net.leaders()).toEqual(['p01'])
+    expect(net.agree()).toBe(true)
+  })
+  it('the answer lost: it asks once more, and is handed the bus then', () => {
+    const { net, stale, from, back } = hostAway('pick')
+    back()
+    const lift = net.drop((to, _from, m) => to === 'p01' && m.t === 'state')
+    net.here.add('p01')
+    net.run(200)
+    lift()
+    expect(net.bus('p01').seq).toBeLessThan(net.bus('p02').seq)
+    net.run(net.k.HELLO_RETRY_MS)
+    expect(hellos(net, 'p01', from)).toBe(2)
+    expect(stale()).toBe(0)
+    expect(net.agree()).toBe(true)
+    net.run(10_000)
+    expect(hellos(net, 'p01', from)).toBe(2)
+  })
+  it('leading from a stale bus anyway: the deputy hands it the real one', () => {
+    const { net, back } = hostAway('pick')
+    back()
+    const lift = net.drop((to, _from, m) => to === 'p01' && m.t === 'state')
+    net.here.add('p01')
+    net.run(net.k.HELLO_RETRY_MS + 500)
+    lift()
+    expect(net.bus('p01').heard).toBe(true)
+    expect(net.bus('p01').stops.length).toBe(1)
+    /* a request p01's old bus can take: p03 sits at the first stop's table */
+    const tour = net.bus('p01').tour
+    net.wire.push({ from: 'p03', m: { v: 1, t: 'sit', tour, n: 1, on: true } })
+    net.flush()
+    expect(net.agree()).toBe(true)
+    expect(net.bus('p01').stops.length).toBe(2)
+  })
+})
+
+describe('two tours at once (3.9)', () => {
+  const fresh = () => {
+    const net = party(['p01', 'p02', 'p03', 'p04'])
+    net.run(2000)
+    return net
+  }
+  it('two Starts in the same moment, in either order: everybody ends on the lower starter’s', () => {
+    for (const order of [
+      ['p02', 'p04'],
+      ['p04', 'p02'],
+    ]) {
+      const net = fresh()
+      for (const id of order) net.start(id)
+      net.flush()
+      expect(net.agree()).toBe(true)
+      expect(net.bus('p03').riders.map((r) => r.id)).toEqual(['p02'])
+    }
+  })
+  it('an ended tour, or one nobody on it has been here for, gives way to a new one', () => {
+    const net = fresh()
+    net.start('p03')
+    net.flush()
+    net.press('p03', { t: 'off' })
+    net.flush()
+    expect(net.bus('p01').phase).toBe('end')
+    net.start('p04')
+    net.flush()
+    expect(net.agree()).toBe(true)
+    expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p04'])
+    /* p04 leaves the Lab; after ABANDON_MS p02 may start again, and everybody follows */
+    net.here.delete('p04')
+    net.run(net.k.ABANDON_MS + 200)
+    net.start('p02')
+    net.flush()
+    expect(net.agree(['p01', 'p02', 'p03'])).toBe(true)
+    expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p02'])
+  })
+  it('a fresh tour never replaces a live one with as many riders, whatever its id', () => {
+    const net = atTable(['p00'])
+    /* everybody but p01 hops off: one rider, one stop made */
+    for (const id of ['p02', 'p03']) {
+      net.press(id, { t: 'off' })
+      net.flush()
+    }
+    const live = net.bus('p01')
+    expect(live.riders.filter((r) => r.on).length).toBe(1)
+    /* a tour started by a lower id, with a lower tour id: one rider, no stops */
+    const other: Bus = {
+      ...listen('p00', net.now),
+      seq: 1,
+      tour: 'aaaa0000',
+      len: 5,
+      riders: [{ id: 'p00', on: true, stars: 0, played: 0 }],
+      phase: 'pick',
+      openAt: net.now,
+      due: net.now + net.k.TOUR_IDLE_MS,
+    }
+    net.wire.push({ from: 'p00', m: wireOf(other, net.here, net.now) })
+    net.flush()
+    for (const id of ['p01', 'p02', 'p03']) expect(net.bus(id).tour).toBe(live.tour)
+    /* nor does an ended one, with more riders */
+    const ended = {
+      ...other,
+      riders: ['p00', 'p05', 'p06'].map((id) => ({ id, on: true, stars: 0, played: 0 })),
+      phase: 'end' as const,
+    }
+    net.roster.add('p05')
+    net.wire.push({ from: 'p00', m: wireOf(ended, net.here, net.now) })
+    net.flush()
+    for (const id of ['p01', 'p02', 'p03']) expect(net.bus(id).tour).toBe(live.tour)
+  })
+})
+
+/* a body of every kind, each valid, so every row below differs from a valid one in one field */
+const TOUR = 'k3x9q2m7'
+const VALID: Record<string, Record<string, unknown>> = {
+  hello: { v: 1, t: 'hello' },
+  roll: { v: 1, t: 'roll', tour: TOUR, n: 2, faces: ['go', 'hex', 'paint'], anyway: true },
+  pick: { v: 1, t: 'pick', tour: TOUR, n: 2, toy: 'hex' },
+  ready: { v: 1, t: 'ready', tour: TOUR, n: 2, on: false },
+  go: { v: 1, t: 'go', tour: TOUR, n: 2 },
+  off: { v: 1, t: 'off', tour: TOUR },
+  fin: { v: 1, t: 'fin', tour: TOUR, anyway: true },
+  sit: { v: 1, t: 'sit', tour: TOUR, n: 1, on: true },
+  game: {
+    v: 1,
+    t: 'game',
+    tour: TOUR,
+    n: 1,
+    sub: 'fourrow',
+    g: 41,
+    seats: ['p02', 'p01'],
+    how: 'win',
+    won: ['p01'],
+  },
+  state: {
+    v: 1,
+    t: 'state',
+    seq: 41,
+    tour: TOUR,
+    len: 7,
+    riders: [
+      ['p03', 1, 2, 3],
+      ['p01', 0, null, 1],
+      ['p02', 1, 0, null],
+    ],
+    guide: 2,
+    phase: 'choose',
+    faces: ['go', 'hex', 'paint'],
+    toy: null,
+    ready: [2],
+    no: [0],
+    went: [0, 2],
+    busy: [2],
+    stops: [
+      { toy: 'fourrow', cap: 2, games: [[17, 0, 2]], won: [0] },
+      { toy: 'swarm', cap: 1, games: [], won: [] },
+    ],
+    left: 12_000,
+    open: 1,
+    free: 45_000,
+    hold: 300_000,
+    leave: 0,
+  },
+}
+const st = VALID.state
+const rider = (i: number, r: unknown[]) =>
+  (st.riders as unknown[][]).map((x, j) => (j === i ? r : x))
+const stopWith = (s: Record<string, unknown>) => [
+  { ...(st.stops as Record<string, unknown>[])[0], ...s },
+  (st.stops as unknown[])[1],
+]
+/** [what is wrong, the body] */
+const MALFORMED: [string, unknown][] = [
+  ['not an object', 'state'],
+  ['an array', [1]],
+  ['version 2', { ...VALID.hello, v: 2 }],
+  ['an unknown kind', { v: 1, t: 'dance' }],
+  ['too big', { ...VALID.off, pad: 'x'.repeat(MAX_BODY_BYTES) }],
+  ['tour in capitals', { ...VALID.off, tour: 'K3X9Q2M7' }],
+  ['tour too short', { ...VALID.go, tour: 'k3x9' }],
+  ['tour missing', { v: 1, t: 'off' }],
+  ['n nought', { ...VALID.go, n: 0 }],
+  ['n nine', { ...VALID.pick, n: 9 }],
+  ['n a fraction', { ...VALID.ready, n: 1.5 }],
+  ['n missing', { v: 1, t: 'go', tour: TOUR }],
+  ['two faces', { ...VALID.roll, faces: ['go', 'hex'] }],
+  ['a face twice', { ...VALID.roll, faces: ['go', 'go', 'hex'] }],
+  ['a face not a toy id', { ...VALID.roll, faces: ['go', 'Hex!', 'paint'] }],
+  ['anyway not true', { ...VALID.roll, anyway: 'yes' }],
+  ['fin anyway a number', { ...VALID.fin, anyway: 1 }],
+  ['pick toy not a toy id', { ...VALID.pick, toy: '../x' }],
+  ['ready on a string', { ...VALID.ready, on: 'true' }],
+  ['sit on missing', { v: 1, t: 'sit', tour: TOUR, n: 1 }],
+  ['game sub not a toy id', { ...VALID.game, sub: 'Four in a row' }],
+  ['game g nought', { ...VALID.game, g: 0 }],
+  ['game g too big', { ...VALID.game, g: 1_000_001 }],
+  ['game seats one', { ...VALID.game, seats: ['p02'] }],
+  ['game how unknown', { ...VALID.game, how: 'lose' }],
+  ['game how unknown, naming nobody', { ...VALID.game, how: 'lose', won: [] }],
+  ['game won not seated', { ...VALID.game, won: ['p09'] }],
+  ['game won nobody', { ...VALID.game, won: [] }],
+  ['game won three', { ...VALID.game, seats: ['p01', 'p02'], won: ['p01', 'p02', 'p03'] }],
+  ['game won twice', { ...VALID.game, won: ['p01', 'p01'] }],
+  ['game draw naming somebody', { ...VALID.game, how: 'draw' }],
+  ['state seq nought', { ...st, seq: 0 }],
+  ['state seq a fraction', { ...st, seq: 1.5 }],
+  ['state seq too big', { ...st, seq: 1e9 + 1 }],
+  ['state tour bad', { ...st, tour: 'nope' }],
+  ['state len nought', { ...st, len: 0 }],
+  ['state len nine', { ...st, len: 9 }],
+  ['state no riders', { ...st, riders: [], guide: 0 }],
+  [
+    'state seventeen riders',
+    { ...st, riders: Array.from({ length: 17 }, (_, i) => [`r${i}`, 1, 0, 0]) },
+  ],
+  ['a rider id empty', { ...st, riders: rider(0, ['', 1, 2, 3]) }],
+  ['a rider id too long', { ...st, riders: rider(0, ['x'.repeat(65), 1, 2, 3]) }],
+  ['a rider twice', { ...st, riders: rider(1, ['p03', 0, null, 1]) }],
+  ['a rider on 2', { ...st, riders: rider(0, ['p03', 2, 2, 3]) }],
+  ['a rider of three fields', { ...st, riders: rider(0, ['p03', 1, 2]) }],
+  ['a rider of five fields', { ...st, riders: rider(0, ['p03', 1, 2, 3, 'more']) }],
+  ['stars below nought', { ...st, riders: rider(2, ['p02', 1, -1, null]) }],
+  ['stars past three a stop', { ...st, riders: rider(0, ['p03', 1, 22, 3]) }],
+  ['played a fraction', { ...st, riders: rider(0, ['p03', 1, 2, 1.5]) }],
+  ['guide past the riders', { ...st, guide: 3 }],
+  ['guide below nought', { ...st, guide: -1 }],
+  ['phase unknown', { ...st, phase: 'drive' }],
+  ['phase unknown, with nothing else wrong', { ...st, phase: 'drive', faces: null }],
+  ['faces outside choose', { ...st, phase: 'pick' }],
+  ['no faces in choose', { ...st, faces: null }],
+  ['a face already a stop', { ...st, faces: ['go', 'hex', 'swarm'] }],
+  ['a toy outside ready', { ...st, toy: 'hex' }],
+  ['no toy in ready', { ...st, phase: 'ready', faces: null }],
+  ['a toy already a stop', { ...st, phase: 'ready', faces: null, toy: 'swarm' }],
+  ['ready twice', { ...st, ready: [2, 2] }],
+  ['ready past the riders', { ...st, ready: [3] }],
+  ['ready and no at once', { ...st, no: [0, 2] }],
+  ['went a fraction', { ...st, went: [0.5] }],
+  ['busy not a list', { ...st, busy: 2 }],
+  ['busy past the riders', { ...st, busy: [3] }],
+  ['more stops than len', { ...st, len: 1 }],
+  ['a stop twice', { ...st, stops: stopWith({ toy: 'swarm' }) }],
+  ['a stop cap nought', { ...st, stops: stopWith({ cap: 0 }) }],
+  ['a stop cap four', { ...st, stops: stopWith({ cap: 4 }) }],
+  [
+    'more games than cap',
+    {
+      ...st,
+      stops: stopWith({
+        cap: 1,
+        games: [
+          [1, 0, 2],
+          [2, 0, 2],
+        ],
+      }),
+    },
+  ],
+  ['a game g nought', { ...st, stops: stopWith({ games: [[0, 0, 2]] }) }],
+  ['a game seat past the riders', { ...st, stops: stopWith({ games: [[17, 0, 3]] }) }],
+  ['won past the riders', { ...st, stops: stopWith({ won: [5] }) }],
+  ['won more than twice cap', { ...st, stops: stopWith({ cap: 1, won: [0, 1, 2] }) }],
+  ['a timer below nought', { ...st, left: -1 }],
+  ['a timer past ten minutes', { ...st, hold: 600_001 }],
+  ['a timer a fraction', { ...st, open: 0.5 }],
+  ['more stars than games', { ...st, riders: rider(2, ['p02', 1, 1, null]) }],
+]
+
+describe('nothing malformed is believed (3.10)', () => {
+  it('every valid body is read back as it was', () => {
+    for (const [t, body] of Object.entries(VALID)) expect([t, readBus(body)]).toEqual([t, body])
+  })
+  for (const [what, body] of MALFORMED)
+    it(`refuses ${what}`, () => {
+      expect(readBus(body)).toBeNull()
+    })
+  it('every field of a state is required', () => {
+    for (const key of Object.keys(st)) {
+      const less = { ...st }
+      delete less[key]
+      expect([key, readBus(less)]).toEqual([key, null])
+    }
+  })
+})
+
+describe('who may ask what (3.11)', () => {
+  it('nobody off the call’s roster is believed, about anything', () => {
+    const net = atTable(['zed'])
+    net.roster.delete('zed')
+    const b = net.bus('p01')
+    const forged = wireOf({ ...b, seq: b.seq + 9, phase: 'end' }, net.here, net.now)
+    net.wire.push({ from: 'zed', m: forged })
+    /* p03 has left the call, and an `off` in its name arrives */
+    net.roster.delete('p03')
+    net.wire.push({ from: 'p03', m: { v: 1, t: 'off', tour: b.tour } })
+    net.flush()
+    expect(net.bus('p01').seq).toBe(b.seq)
+    expect(net.bus('p02').phase).toBe('pick')
+    expect(net.bus('p01').riders[0].on).toBe(true)
+  })
+  it('somebody not on the Lab cannot board or sit, and nobody takes another’s turn', () => {
+    const net = atTable(['p04'])
+    net.here.delete('p04')
+    const b = net.bus('p01')
+    const tour = b.tour
+    net.wire.push({ from: 'p04', m: { v: 1, t: 'sit', tour, n: 1, on: true } })
+    net.runUntil(() => net.now >= net.bus('p01').openAt)
+    /* p03 is not the guide: no roll before freeAt, no pick, no go; p04 is no rider at all */
+    net.wire.push({
+      from: 'p03',
+      m: { v: 1, t: 'roll', tour, n: 2, faces: ['go', 'hex', 'paint'] },
+    })
+    net.flush()
+    expect(net.bus('p01').phase).toBe('pick')
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    net.wire.push({ from: 'p03', m: { v: 1, t: 'pick', tour, n: 2, toy: 'hex' } })
+    net.flush()
+    expect(net.bus('p01').phase).toBe('choose')
+    net.press('p02', { t: 'pick', toy: 'hex' })
+    net.flush()
+    net.wire.push({ from: 'p04', m: { v: 1, t: 'ready', tour, n: 2, on: true } })
+    net.wire.push({ from: 'p04', m: { v: 1, t: 'off', tour } })
+    net.flush()
+    expect(net.bus('p01').riders.map((r) => r.id)).toEqual(['p03', 'p02', 'p01'])
+    net.at(net.now + net.k.READY_MIN_MS)
+    net.wire.push({ from: 'p03', m: { v: 1, t: 'go', tour, n: 2 } })
+    net.flush()
+    expect(net.bus('p01').stops.length).toBe(1)
+    expect(net.bus('p01').seq).toBe(b.seq + 2)
+  })
+})
+
+describe('what the bus costs (3.16)', () => {
+  it('the outbox: the first at once, the rest a second later, the latest of each kind', () => {
+    const box = outbox(KNOBS)
+    expect(box.dueAt()).toBeNull()
+    box.push({ t: 'state' })
+    expect(box.take(0)).toEqual([{ t: 'state' }])
+    box.push({ t: 'state' })
+    box.push({ t: 'state' })
+    expect(box.dueAt()).toBe(1000)
+    expect(box.take(999)).toEqual([])
+    expect(box.take(1000)).toEqual([{ t: 'state' }])
+    const ready = (on: boolean) => ({ v: 1 as const, t: 'ready' as const, tour: TOUR, n: 2, on })
+    box.push(ready(true))
+    box.push({ v: 1, t: 'sit', tour: TOUR, n: 1, on: true })
+    box.push(ready(false))
+    box.push(ready(true))
+    expect(box.take(1000)).toEqual([ready(true)])
+    expect(box.take(1500)).toEqual([])
+    expect(box.take(2000)).toEqual([{ v: 1, t: 'sit', tour: TOUR, n: 1, on: true }])
+    expect(box.dueAt()).toBeNull()
+  })
+  it('two to twelve people, everybody pressing everything every stop: within N + 1 sends a second', () => {
+    const peaks: string[] = []
+    for (let N = 2; N <= 12; N++) {
+      const ids = named(N)
+      const net = party(ids, { paced: true })
+      const boarding = boardingOf(ids)
+      const rand = seeded(N)
+      net.run(2000)
+      net.start(boarding[0])
+      net.flush()
+      const started = net.now
+      const departures: number[] = []
+      for (let s = 0; s < 5; s++) {
+        const h = net.host()!
+        net.runUntil(() => net.now >= net.bus(h).openAt)
+        const b = net.bus(h)
+        const guide = b.riders[b.guide].id
+        const faces = rollFaces(TOYS, b, net.get(guide).sub, () => undefined, 'all', rand)!
+        /* each press once every browser shows what it answers, as a person's would be */
+        const all = (phase: Bus['phase']) => () => ids.every((id) => net.bus(id).phase === phase)
+        net.press(guide, { t: 'roll', faces })
+        expect(net.runUntil(all('choose'), 5000)).toBe(true)
+        /* face 1 is a call-table toy: the costliest landing there is */
+        net.press(guide, { t: 'pick', toy: faces[0] })
+        expect(net.runUntil(all('ready'), 5000)).toBe(true)
+        /* everybody else, in one breath: yes, no, yes */
+        for (const id of boarding)
+          if (id !== guide) for (const on of [true, false, true]) net.press(id, { t: 'ready', on })
+        net.flush()
+        const n = s + 1
+        expect(net.runUntil(() => net.bus(h).stops.length === n, 30_000)).toBe(true)
+        departures.push(net.now)
+        /* everybody went: the whole call is on the bus, and every one of them lands */
+        expect(net.bus(h).went.length).toBe(N)
+        const landed = () => net.landings.filter((l) => l.toy === faces[0]).length === N
+        expect(net.runUntil(landed, 30_000)).toBe(true)
+        /* everybody sits down and stands up again, in one breath */
+        for (const id of boarding) {
+          net.press(id, { t: 'sit', on: true })
+          net.press(id, { t: 'sit', on: false })
+        }
+        net.flush()
+      }
+      /* every bus send, each metered once per person on the call */
+      const sends = net.log.map((e) => e.at)
+      const most = (xs: number[], w = 1000) => {
+        let best = 0
+        for (let i = 0, j = 0; i < xs.length; i++) {
+          while (xs[i] - xs[j] >= w) j++
+          best = Math.max(best, i - j + 1)
+        }
+        return best
+      }
+      const peak = most(sends)
+      expect([N, peak]).toEqual([N, Math.min(peak, N + 1)])
+      expect(peak * N).toBeLessThanOrEqual((N + 1) * N)
+      /* and it is not a bound about nothing: the tour itself, start-up hellos aside, has a
+         second as busy as the yes-no-yes burst makes it */
+      expect(most(sends.filter((at) => at >= started))).toBeGreaterThan(N / 2)
+      for (let i = 1; i < departures.length; i++)
+        expect(departures[i] - departures[i - 1]).toBeGreaterThanOrEqual(28_000)
+      /* each landing: a hop onto a table is four sends (tour.ts measured a where, a hello and two
+         states), metered once per person — and Realtime's budget is about a hundred a second */
+      for (const toy of new Set(net.landings.map((l) => l.toy))) {
+        const at = net.landings.filter((l) => l.toy === toy).map((l) => l.at)
+        const cost = 4 * N
+        const span = at[at.length - 1] - at[0]
+        const gap = at.length > 1 ? span / (at.length - 1) : Infinity
+        /* sustained: the landing as a whole, each hop owning the gap after it */
+        const sustained = (at.length * cost * 1000) / (span + Math.min(gap, 1000))
+        expect([N, toy, sustained]).toEqual([N, toy, Math.min(sustained, 110)])
+        /* the busiest second can catch one hop more than that: never two */
+        const second = most(at) * cost
+        expect(second).toBeLessThanOrEqual(110 + cost)
+        if (toy === [...new Set(net.landings.map((l) => l.toy))][0])
+          peaks.push(`N=${N}: ${second}/s peak, ${Math.round(sustained)}/s sustained`)
+      }
+    }
+    expect(peaks.length).toBe(11)
+  })
+})
+
+describe('hello (3.18)', () => {
+  it('twelve holding the tour answer a newcomer once', () => {
+    const { net } = boarded(12)
+    net.run(5000)
+    const from = net.log.length
+    net.join('p13')
+    net.run(500)
+    const answers = net.log.slice(from).filter((e) => e.m.t === 'state')
+    expect(hellos(net, 'p13', from)).toBe(1)
+    expect(answers.length).toBe(1)
+    expect(net.bus('p13').tour).toBe(net.bus('p01').tour)
+    net.run(10_000)
+    expect(hellos(net, 'p13', from)).toBe(1)
+  })
+  it('nobody holding a tour: nobody answers, and the newcomer asks twice and stops', () => {
+    const net = party(['p01', 'p02', 'p03'])
+    net.run(10_000)
+    const from = net.log.length
+    net.join('p04')
+    net.run(20_000)
+    expect(hellos(net, 'p04', from)).toBe(2)
+    expect(net.log.slice(from).filter((e) => e.m.t === 'state')).toEqual([])
+    expect(net.log.length - from).toBe(2)
+  })
+  it('nobody else on the Lab: nothing is said at all', () => {
+    const net = party(['p01', 'p02', 'p03'])
+    net.here.clear()
+    net.join('p04')
+    net.run(20_000)
+    expect(net.log).toEqual([])
+  })
+})
+
+/* riders boarded p03, p01, p02, p04 — ids out of order — each with something to tell */
+const FULL: Bus = {
+  ...listen('p03', 0),
+  seq: 41,
+  from: 'p03',
+  tour: TOUR,
+  len: 7,
+  riders: [
+    { id: 'p03', on: true, stars: 2, played: 3 },
+    { id: 'p01', on: false, stars: 1, played: 1 },
+    { id: 'p02', on: true, stars: 0, played: 4 },
+    { id: 'p04', on: true, stars: 1, played: 2 },
+  ],
+  guide: 2,
+  phase: 'choose',
+  faces: ['go', 'hex', 'paint'],
+  ready: [2, 3],
+  no: [1],
+  went: [1, 0, 3],
+  busy: [3, 1],
+  stops: [
+    {
+      toy: 'fourrow',
+      cap: 2,
+      games: [
+        [17, 0, 3],
+        [23, 1, 0],
+      ],
+      won: [3, 1, 0],
+    },
+    { toy: 'swarm', cap: 1, games: [], won: [] },
+  ],
+  due: 12_345,
+  openAt: 1_001,
+  freeAt: 45_678,
+  holdUntil: 299_999,
+  leaveAt: 2_222,
+}
+
+describe('what a person’s facts reach (3.19)', () => {
+  it('a rider not live in the sender’s view is left out of everything said about people', () => {
+    const w = wireOf(FULL, new Set(['p03', 'p02']), 0)
+    expect(w.ready).toEqual([2])
+    expect(w.no).toEqual([])
+    expect(w.went).toEqual([0])
+    expect(w.busy).toEqual([])
+    expect(w.riders).toEqual([
+      ['p03', 1, 2, 3],
+      ['p01', 0, null, null],
+      ['p02', 1, 0, 4],
+      ['p04', 1, null, null],
+    ])
+    expect(w.stops[0].won).toEqual([0])
+    /* the tour's own facts are all there */
+    expect([w.guide, w.faces, w.stops.map((s) => s.toy)]).toEqual([
+      2,
+      ['go', 'hex', 'paint'],
+      ['fourrow', 'swarm'],
+    ])
+  })
+  it('somebody who knew keeps it; somebody who did not never learns it', () => {
+    const told = wireOf(FULL, new Set(['p03', 'p02']), 0)
+    const knew = mergeKnown(FULL, {
+      ...FULL,
+      seq: 42,
+      riders: told.riders.map(([id, on, s, p]) => ({ id, on: on === 1, stars: s, played: p })),
+      stops: told.stops,
+    })
+    expect(knew.riders.map((r) => [r.stars, r.played])).toEqual([
+      [2, 3],
+      [1, 1],
+      [0, 4],
+      [1, 2],
+    ])
+    expect(knew.stops[0].won.sort()).toEqual([0, 1, 3])
+    /* never down: a lower count is an older one */
+    const lower = mergeKnown(FULL, {
+      ...FULL,
+      riders: FULL.riders.map((r) => ({ ...r, stars: 0 })),
+    })
+    expect(lower.riders.map((r) => r.stars)).toEqual([2, 1, 0, 1])
+    /* a newcomer who held nothing of this tour learns only what was said */
+    const net = party(['p05', 'p03'])
+    net.run(2000)
+    net.wire.push({ from: 'p03', m: told })
+    net.flush()
+    expect(net.bus('p05').riders.map((r) => r.stars)).toEqual([2, null, 0, null])
+  })
+})
+
+describe('the state, there and back (3.20)', () => {
+  const asSent = (b: Bus) =>
+    JSON.stringify([
+      b.seq,
+      b.tour,
+      b.len,
+      b.riders,
+      b.guide,
+      b.phase,
+      b.faces,
+      b.toy,
+      b.ready,
+      b.no,
+      b.went,
+      b.busy,
+      b.stops,
+      b.due,
+      b.openAt,
+      b.freeAt,
+      b.holdUntil,
+      b.leaveAt,
+    ])
+  for (const [what, bus] of [
+    ['choosing', FULL],
+    ['boarding', { ...FULL, phase: 'ready' as const, faces: null, toy: 'hex' }],
+  ] as const)
+    it(`every field off its default comes back as it went, ${what}`, () => {
+      const everyone = new Set(FULL.riders.map((r) => r.id))
+      const wire = JSON.parse(JSON.stringify(wireOf(bus, everyone, 0))) as State
+      const read = readBus(wire)
+      expect(read).not.toBeNull()
+      const ctx: Ctx = {
+        now: 0,
+        present: everyone,
+        roster: everyone,
+        meLive: true,
+        subOf: () => null,
+        people: 4,
+        k: KNOBS,
+      }
+      const got = receive(listen('p02', 0), ctx, 'p03', read!).bus
+      expect(asSent(got)).toBe(asSent(bus))
+      if (bus.phase === 'ready') expect(got.readyAt).toBe(bus.due - KNOBS.READY_MS)
+    })
+})
+
+describe('boarding all at once', () => {
+  it('everybody who says yes in one breath is on the bus, though a lower id boards first', () => {
+    const ids = named(6)
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    /* p06 starts: every other id is lower, so each yes the host takes makes a new host */
+    net.start('p06')
+    net.flush()
+    net.press('p06', { t: 'roll', faces: ['chess', 'fourrow', 'swarm'] })
+    net.runUntil(() => ids.every((id) => net.bus(id).phase === 'choose'), 5000)
+    net.press('p06', { t: 'pick', toy: 'fourrow' })
+    net.runUntil(() => ids.every((id) => net.bus(id).phase === 'ready'), 5000)
+    for (const id of ['p01', 'p02', 'p03', 'p04', 'p05']) net.press(id, { t: 'ready', on: true })
+    net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)
+    expect(net.agree()).toBe(true)
+    const b = net.bus('p01')
+    expect(b.went.map((i) => b.riders[i].id).sort()).toEqual(ids)
+    net.run(10_000)
+    expect(net.landings.map((l) => l.id)).toEqual(ids)
+  })
+})
+
+describe('Come too, twice at once', () => {
+  it('two friends pressing it together land one after the other, not on top of each other', () => {
+    const net = party(['p01', 'p02', 'p03', 'p04'])
+    net.run(2000)
+    net.start('p01')
+    net.flush()
+    net.press('p01', { t: 'roll', faces: ['chess', 'fourrow', 'swarm'] })
+    net.flush()
+    net.press('p01', { t: 'pick', toy: 'fourrow' })
+    net.flush()
+    net.press('p02', { t: 'ready', on: true })
+    net.flush()
+    net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)
+    net.run(1000)
+    for (const id of ['p04', 'p03']) net.press(id, { t: 'ready', on: true })
+    net.flush()
+    net.runUntil(() => net.landings.length === 4, 10_000)
+    const at = net.landings.map((l) => l.at)
+    expect(net.landings.map((l) => l.id).slice(0, 2)).toEqual(['p01', 'p02'])
+    /* a hop onto a table is four sends, each to four people: 16 against ~100 a second */
+    for (let i = 1; i < at.length; i++)
+      expect(at[i] - at[i - 1]).toBeGreaterThanOrEqual(Math.max(250, (16 / 100) * 1000))
+  })
+})
