@@ -8,6 +8,7 @@ import {
   PLAY_HOLD_MS,
   settleMs,
   summaryOf,
+  surprise,
   tourOf,
   whyWords,
   withWords,
@@ -473,5 +474,53 @@ describe('two people following each other (a crossing)', () => {
     /* and without it they swap the whole time: the test is about the tie-break, not about luck */
     const broken = run(false)
     expect(broken.swaps).toBeGreaterThan(10)
+  })
+})
+
+describe('🎲 Surprise us (surprise)', () => {
+  const ids = ['chess', 'reversi', 'swarm', 'life', 'paint']
+  const kind: Record<string, string> = {
+    chess: 'board',
+    reversi: 'board',
+    swarm: 'patterns',
+    life: 'patterns',
+    paint: 'make',
+  }
+  const kindOf = (id: string) => kind[id]
+  /* a seeded generator, so a thousand rolls are the same thousand every run */
+  const seeded = (seed: number) => () => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648
+    return seed / 2_147_483_648
+  }
+  it('never lands on the toy you are on', () => {
+    const r = seeded(7)
+    for (let i = 0; i < 1000; i++)
+      expect(surprise(ids, 'chess', kindOf, 'all', r)).not.toBe('chess')
+  })
+  it('reaches every other toy', () => {
+    const r = seeded(11)
+    const seen = new Set<string | null>()
+    for (let i = 0; i < 1000; i++) seen.add(surprise(ids, 'chess', kindOf, 'all', r))
+    expect([...seen].sort()).toEqual(['life', 'paint', 'reversi', 'swarm'])
+  })
+  it('keeps to the kind brought forward', () => {
+    const r = seeded(3)
+    for (let i = 0; i < 200; i++)
+      expect(['swarm', 'life']).toContain(surprise(ids, 'paint', kindOf, 'patterns', r))
+    /* on a toy of that kind, the other one of it */
+    for (let i = 0; i < 50; i++) expect(surprise(ids, 'swarm', kindOf, 'patterns', r)).toBe('life')
+  })
+  it('falls back to every toy when the kind has nothing else', () => {
+    const r = seeded(5)
+    for (let i = 0; i < 100; i++) {
+      const got = surprise(ids, 'paint', kindOf, 'make', r)
+      expect(got).not.toBe('paint')
+      expect(ids).toContain(got)
+    }
+  })
+  it('nowhere else to go is nothing, and a roll of exactly 1 stays in the list', () => {
+    expect(surprise(['chess'], 'chess', kindOf, 'all', Math.random)).toBeNull()
+    expect(surprise(ids, 'chess', kindOf, 'all', () => 1)).toBe('paint')
+    expect(surprise(ids, 'chess', kindOf, 'all', () => 0)).toBe('reversi')
   })
 })

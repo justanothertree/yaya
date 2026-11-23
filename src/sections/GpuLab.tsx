@@ -273,6 +273,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   /* you, on the board the way your friends see you: only while your toy is going out to them */
   const me = useLabMe()
   const withYou = withWords(friendsOn(current.id).map((p) => p.name))
+  const kindOf = useCallback((id: string) => META[id]?.category, [])
   /* every toy this Lab lists, by id — the only ones the tour's Go may open */
   const toys = useMemo(() => new Map(shownDemos.map((d) => [d.id, d.name])), [shownDemos])
 
@@ -295,6 +296,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         following={following}
         onFollow={setFollowing}
         onLead={show}
+        filter={filter}
+        kindOf={kindOf}
       />
       <div className="lab-filter" role="group" aria-label="Show which kind">
         <button

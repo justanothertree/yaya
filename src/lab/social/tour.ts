@@ -343,3 +343,26 @@ export function followStep(a: {
   if (!a.first && a.now - a.lastPlay < PLAY_HOLD_MS) return { do: 'offer', toy, why: 'playing' }
   return { do: 'go', toy }
 }
+
+/**
+ * 🎲 Surprise us: a toy chosen at random for the call to go to — any toy your Lab lists except the
+ * one on screen, from the kind brought forward when a filter is set, or from all of them when that
+ * kind has nothing else. Null when there is nowhere else to go. `rand` is a parameter so a test can
+ * seed it; the button passes Math.random.
+ *
+ * It is a pick like any other, so it ends your own follow and anybody following you comes along —
+ * which is the point: the dice are how a leader takes the call somewhere nobody chose.
+ */
+export function surprise(
+  ids: readonly string[],
+  current: string,
+  kindOf: (id: string) => string | undefined,
+  filter: string,
+  rand: () => number,
+): string | null {
+  const others = ids.filter((id) => id !== current)
+  if (!others.length) return null
+  const kind = filter === 'all' ? others : others.filter((id) => kindOf(id) === filter)
+  const pool = kind.length ? kind : others
+  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))]
+}
