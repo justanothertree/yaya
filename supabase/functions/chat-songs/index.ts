@@ -159,8 +159,9 @@ Deno.serve(async (req) => {
 
   /**
    * ⚠️ AN UPLOAD'S BODY IS THE RECORDING, so its op travels in a header and its body is not read
-   * here — not as JSON, and not at all until the caller has been named below. Every other op is a
-   * small JSON body.
+   * here as JSON. It is not LOOKED AT until the caller has been named below — kept, checked or
+   * stored — though a refusal before that point reads it off and discards it (`refuse`). Every
+   * other op is a small JSON body.
    */
   const isUpload = req.headers.get('x-song-op') === 'upload'
 
@@ -168,8 +169,9 @@ Deno.serve(async (req) => {
    * ⚠️ AND AN UPLOAD REFUSED BEFORE ITS BODY IS READ IS READ OFF FIRST, or the answer never arrives:
    * measured on the live project, a stale token's 401 came back at 1 KB and not at all at 1 MB
    * (`drain` in verdict.ts has the figures). Every refusal that can come ahead of `readAtMost`
-   * goes through here; the bytes are thrown away unread, so nothing is looked at before its sender
-   * is named.
+   * goes through here. The bytes are read and thrown away a chunk at a time, never kept or
+   * inspected, so nothing is looked at before its sender is named — but an unnamed caller's upload
+   * IS read, up to 5 MB, which is the cost of answering it at all.
    */
   const refuse = async (body: unknown, status: number) => {
     if (isUpload && !req.bodyUsed) await drain(req.body, MAX_BYTES)
@@ -203,7 +205,7 @@ Deno.serve(async (req) => {
    * ⚠️ AN `Authorization` HEADER IS NOT A PERSON. The publishable anon key is a valid value for it
    * and ships in the bundle, so the header existing proves nothing. `getUser()` asks Auth to
    * verify the token and name who it belongs to; nothing below runs without that answer, and no
-   * byte of an upload is read before it.
+   * byte of an upload is kept or inspected before it (a refusal reads it off unseen — `refuse`).
    */
   const { data: whoData, error: whoErr } = await supabase.auth.getUser()
   const user = whoData?.user ?? null

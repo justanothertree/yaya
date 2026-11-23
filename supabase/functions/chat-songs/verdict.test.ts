@@ -132,19 +132,22 @@ describe('the first bytes', () => {
  * A body that hands out `chunks` one at a time and counts what it was asked for, so a test can
  * tell "stopped reading" from "read everything and then said no".
  */
-function streamOf(chunks: Uint8Array[]) {
+function streamOf(chunks: Uint8Array[], highWaterMark = 1) {
   const seen = { pulls: 0, cancelled: false }
   let i = 0
-  const stream = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      seen.pulls++
-      if (i < chunks.length) controller.enqueue(chunks[i++])
-      else controller.close()
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        seen.pulls++
+        if (i < chunks.length) controller.enqueue(chunks[i++])
+        else controller.close()
+      },
+      cancel() {
+        seen.cancelled = true
+      },
     },
-    cancel() {
-      seen.cancelled = true
-    },
-  })
+    { highWaterMark },
+  )
   return { stream, seen }
 }
 
@@ -209,9 +212,14 @@ describe('reading a refused body off', () => {
     expect(seen.cancelled).toBe(false)
   })
 
+  /* ⚠️ WITH NO READ-AHEAD (highWaterMark 0) a pull happens only when somebody reads, so the third
+     pull below is drain asking for more after the last byte — the read that hears "done". With the
+     default read-ahead the stream closes on its own, and a drain that returned at exactly 5 MB
+     without asking passed this test; an independent review found that. */
   it('reads exactly 5 MB to its end, the most an honest client sends', async () => {
-    const { stream, seen } = streamOf([new Uint8Array(MAX_BYTES - 1), new Uint8Array(1)])
+    const { stream, seen } = streamOf([new Uint8Array(MAX_BYTES - 1), new Uint8Array(1)], 0)
     expect(await drain(stream, MAX_BYTES)).toBe(MAX_BYTES)
+    expect(seen.pulls).toBe(3)
     expect(seen.cancelled).toBe(false)
   })
 
