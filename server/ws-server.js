@@ -25,6 +25,22 @@ import { sureOf } from './lib/supabaseAnswer.mjs'
 import { stampOfServer } from './lib/buildStamp.mjs'
 /* the largest frame read from a client, and why it is that size — see the header of that file */
 import { MAX_MSG_BYTES } from './lib/frameCap.mjs'
+/* every decision about a Lab table room — see the header of that file, and the note under isBout */
+import {
+  LAB,
+  SAY,
+  doorFor,
+  helloFrames,
+  isLabId,
+  kindAllowed,
+  leaveFrames,
+  listable,
+  looksLab,
+  rate,
+  readLab,
+  verdictOf,
+  vouchTimerCloses,
+} from './lib/labDoor.mjs'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
@@ -98,6 +114,31 @@ const isPark = (roomId) => roomId === PARK_PREFIX || roomId.startsWith(PARK_PREF
  * for a picture — so the door is on the thing being carried rather than on the game being played.
  */
 const isBout = (roomId) => roomId.startsWith('fight:')
+/**
+ * A Lab table: friends on a call playing one game together, live. The call carries who sits
+ * where; the game's own messages come through here, in a room whose id is a random code that only
+ * the people on that call were sent. Every decision about one is in ./lib/labDoor.mjs, which the
+ * stub relay imports too; what is here is the wiring.
+ *
+ * ⚠️ A LAB ROOM IS QUIET, WHICH NO OTHER ROOM HERE IS. Snake, the park and a bout all tell the room
+ * when somebody arrives or leaves, before anybody has asked who they are. A Lab room tells an
+ * arrival its own id and nothing else, tells the room nothing until the door has let them in, and
+ * tells nobody anything about a socket it refused. So it has its own hello, its own leave and its
+ * own two frames — `auth` and `lab` — and never reaches the shared switch below, every case of
+ * which broadcasts without asking who is listening.
+ *
+ * ⚠️ THE DOOR IS FRIENDS ONLY, ASKED OF SUPABASE PAIR BY PAIR: a verified token, good standing,
+ * and `are_friends` with every account already let in. That is stronger than the call's own gate,
+ * which only the sender enforces. Ids go to the people let in — each of them already sees that id
+ * on the call — and nowhere else, which is a deliberate exception to "peers learn names, never
+ * account ids" (see the `auth` case), confined to these rooms.
+ *
+ * Both timers can be shortened for a test, never lengthened past what the door allows.
+ */
+const LAB_VOUCH_MS = Math.min(LAB.vouchMs, Number(process.env.LAB_VOUCH_MS) || LAB.vouchMs)
+const LAB_DOOR_MS = Math.min(LAB.doorMs, Number(process.env.LAB_DOOR_MS) || LAB.doorMs)
+/** every `lab` frame forwarded in the last second, across all Lab rooms — see labDoor's rate() */
+let labTimes = []
 
 /**
  * Who owns a hosted park, if it is one.
@@ -309,14 +350,36 @@ const rooms = new Map()
 // })
 
 /**
- * Open rooms by kind, for /relay-config. Every room that is not a park or a bout is a Snake room
- * — that is how `hello` treats an id it has no special rule for.
+ * Open rooms by kind, for /relay-config. Every room that is not a park, a bout or a Lab table is
+ * a Snake room — that is how `hello` treats an id it has no special rule for. `labLive` counts
+ * the Lab rooms somebody has been let into, which are the ones LAB.rooms caps.
  */
 function roomCounts() {
-  const n = { snake: 0, park: 0, bout: 0 }
-  for (const roomId of rooms.keys())
-    n[isPark(roomId) ? 'park' : isBout(roomId) ? 'bout' : 'snake']++
+  const n = { snake: 0, park: 0, bout: 0, lab: 0, labLive: 0 }
+  for (const [roomId, room] of rooms) {
+    if (room.lab) {
+      n.lab++
+      if (labVouched(room).length) n.labLive++
+    } else n[isPark(roomId) ? 'park' : isBout(roomId) ? 'bout' : 'snake']++
+  }
   return n
+}
+
+/** The account id of every socket let into a Lab room, one per socket: a second tab twice. */
+function labVouched(room) {
+  const uids = []
+  for (const cid of room.clients.keys()) {
+    const st = room.state.get(cid)
+    if (st?.vouched) uids.push(st.uid)
+  }
+  return uids
+}
+
+/** How many sockets are let into each Lab room on this relay — what liveRoomsFull counts. */
+function labCounts() {
+  const counts = []
+  for (const room of rooms.values()) if (room.lab) counts.push(labVouched(room).length)
+  return counts
 }
 
 function uuid() {
@@ -1012,6 +1075,54 @@ async function inGoodStanding(token, userId) {
   return (await standingAnswer(token, userId)) === 'yes'
 }
 
+/**
+ * Are these two accounts friends? 'yes' | 'no' | 'unsure', asked as `me`, with my own token.
+ *
+ * The database's own rule, `are_friends`, rather than a copy of it here — the same reason
+ * `is_suspended` and `is_admin` are asked. It answers when the caller is one of the pair, and `me`
+ * is always the id Supabase gave for the token in hand, never one the client sent.
+ *
+ * ⚠️ ONLY A 2xx IS AN ANSWER ABOUT THE PAIR, so ONLY a 2xx can be a no. sureOf would call a 401
+ * 'no', and here that would be a refused TOKEN told to somebody as "not your friend" — the one
+ * sentence this door must never say wrongly. A NULL body (are_friends' "not your business") is
+ * unsure for the same reason.
+ *
+ * ⚠️ CACHED BY THE PAIR, SORTED, and only when definite. A friendship is a fact about two people
+ * whichever of them asks, so Ann asking about Bo answers Bo asking about Ann; an unsure is the one
+ * answer that asking again can change, so it is never kept. A friendship ended inside the minute
+ * is still believed for the rest of it — as a park's vouching is never re-checked at all.
+ */
+const friendCache = new Map()
+
+async function friendAnswer(token, me, other) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return sureOf(null)
+  const key = me < other ? `${me} ${other}` : `${other} ${me}`
+  const hit = friendCache.get(key)
+  if (hit && Date.now() - hit.at < LAB.friendTtl) return hit.answer
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/are_friends`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ u1: me, u2: other }),
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
+    })
+    if (sureOf(r.status) !== 'yes') return 'unsure'
+    const body = await r.json()
+    const answer = body === true ? 'yes' : body === false ? 'no' : 'unsure'
+    if (answer !== 'unsure') {
+      friendCache.set(key, { at: Date.now(), answer })
+      capMap(friendCache, LAB.friendMax)
+    }
+    return answer
+  } catch {
+    return 'unsure'
+  }
+}
+
 async function verifyUser(req) {
   return verifyToken(bearer(req))
 }
@@ -1411,10 +1522,12 @@ const server = createServer((req, res) => {
           },
           /**
            * How many rooms of each kind are open right now. A deploy restarts this process and
-           * ends every one of them — a park walk, a pet bout, a Snake round — so this is the
-           * reading to take before merging a relay change. Counts only, never an id: a bout's id
-           * is its invite (see `list`). And here rather than on /health, because how busy the
-           * relay is, and when, is the operator's business and not a stranger's.
+           * ends every one of them — a park walk, a pet bout, a Snake round, a Lab table — so
+           * this is the reading to take before merging a relay change. Counts only, never an id:
+           * a bout's id is its invite and a Lab table's is its key (see `list`). And here rather
+           * than on /health, because how busy the relay is, and when, is the operator's business
+           * and not a stranger's. `lab` is every Lab room, `labLive` the ones anybody has been
+           * let into; the difference is sockets that arrived and have not been checked yet.
            */
           rooms: roomCounts(),
           has: {
@@ -1775,12 +1888,237 @@ wss.on('connection', (ws, req) => {
    */
   let authInFlight = false
   let authTimes = []
+  /** Whether one more auth frame may be checked now; if so it is counted and marked in flight. */
+  const takeAuthSlot = () => {
+    if (authInFlight) return false
+    const nowMs = Date.now()
+    authTimes = authTimes.filter((t) => nowMs - t < 60_000)
+    if (authTimes.length >= 5) return false
+    authTimes.push(nowMs)
+    authInFlight = true
+    return true
+  }
+  /** see LAB_VOUCH_MS — the silent-socket timer of the Lab room this socket is in, if any */
+  let labTimer = null
   // see the heartbeat below — a half-open socket answers no pong and gets terminated,
   // which runs this connection's normal close handler and frees its room
   ws.isAlive = true
   ws.on('pong', () => {
     ws.isAlive = true
   })
+
+  /**
+   * Out of a Lab room: forgotten at once, and the room told only what leaveFrames says — which is
+   * nothing at all unless this socket had been let in, and then only to the others let in.
+   */
+  const leaveLab = (room, roomId) => {
+    if (labTimer) clearTimeout(labTimer)
+    labTimer = null
+    const st = room.state.get(id)
+    room.clients.delete(id)
+    room.state.delete(id)
+    if (room.clients.size === 0) {
+      if (rooms.get(roomId) === room) rooms.delete(roomId)
+      return
+    }
+    for (const frame of leaveFrames(id, !!st?.vouched)) broadcastVouched(room, frame)
+  }
+
+  /**
+   * A Lab room's refusal: its sentence, then out of the room and closed.
+   *
+   * ⚠️ OUT OF THE ROOM BEFORE THE CLOSE COMPLETES, not when it does. A close waits for the other
+   * end to answer, and a client that never answers would otherwise hold one of the room's sockets
+   * until `ws` gives up on it.
+   */
+  const refuseLab = (code) => {
+    send(ws, { type: 'error', code, message: SAY[code] })
+    const room = joinedRoomId ? rooms.get(joinedRoomId) : null
+    if (room?.lab) {
+      leaveLab(room, joinedRoomId)
+      joinedRoomId = null
+    }
+    try {
+      ws.close(1008)
+    } catch {
+      /* already gone */
+    }
+  }
+
+  /**
+   * A hello to a `lab:` id. It creates the room or joins it — never `room-not-found`, so a hello
+   * behaves the same whether or not the code is in use — and the arrival hears its own id and
+   * nothing else, while the room hears nothing at all.
+   */
+  const helloLab = (roomId) => {
+    if (!isLabId(roomId)) return refuseLab('bad-room')
+    if (joinedRoomId === roomId) return
+    let room = rooms.get(roomId)
+    if (room && !room.lab) return refuseLab('bad-room')
+    if (room && room.clients.size >= LAB.sockets) return refuseLab('lab-full')
+    if (!room) {
+      if (rooms.size >= MAX_ROOMS) {
+        send(ws, { type: 'error', code: 'too-many-rooms', message: 'The relay is full' })
+        try {
+          ws.close(1008)
+        } catch {
+          /* already gone */
+        }
+        return
+      }
+      room = { clients: new Map(), state: new Map(), lab: { door: doorFor(), times: [] } }
+      rooms.set(roomId, room)
+    }
+    leavePrevious(roomId)
+    room.clients.set(id, ws)
+    room.state.set(id, {
+      lastSeen: Date.now(),
+      sentAuth: false,
+      vouched: false,
+      uid: null,
+      times: [],
+    })
+    joinedRoomId = roomId
+    for (const frame of helloFrames(id)) send(ws, frame)
+    /* a socket that never says who it is goes at LAB_VOUCH_MS; one whose check is running or
+       queued does not — see vouchTimerCloses, and the door's own deadline in labAuth */
+    labTimer = setTimeout(() => {
+      labTimer = null
+      if (joinedRoomId !== roomId || rooms.get(roomId) !== room) return
+      if (vouchTimerCloses(room.state.get(id))) refuseLab('members-only')
+    }, LAB_VOUCH_MS)
+  }
+
+  /**
+   * An `auth` frame in a Lab room: the whole door, once per socket.
+   *
+   * The token, then the standing, then — inside the room's one-at-a-time chain — `are_friends`
+   * with everybody let in, all in parallel (labDoor's doorFor). Let in, the socket is told who is
+   * here (`labin`) and they are told about it (`lab-here`). Refused, it hears the reason and is
+   * closed.
+   *
+   * ⚠️ A DEADLINE OF ITS OWN, FROM THIS FRAME. The silent-socket timer does not close a socket
+   * whose check is still running, so this is what bounds one: a check that has not finished by
+   * LAB_DOOR_MS ends in `door-unavailable`, never in silence and never in `not-friends`.
+   */
+  const labAuth = (room, roomId, st, token) => {
+    if (typeof token !== 'string' || !token || token.length > 4096) return
+    /* one check per socket: a refused one is closed, and a socket let in has nothing to prove */
+    if (st.sentAuth || st.vouched) return
+    if (!takeAuthSlot()) return
+    st.sentAuth = true
+    let settled = false
+    const here = () =>
+      !settled &&
+      joinedRoomId === roomId &&
+      rooms.get(roomId) === room &&
+      room.clients.get(id) === ws &&
+      ws.readyState === ws.OPEN
+    const refuse = (code) => {
+      if (!here()) return
+      settled = true
+      refuseLab(code)
+    }
+    const deadline = setTimeout(() => refuse('door-unavailable'), LAB_DOOR_MS)
+    void (async () => {
+      const t = await tokenAnswer(token)
+      if (!here()) return
+      const uid = t.user?.id ?? null
+      const standing = t.sure === 'yes' ? await standingAnswer(token, uid) : undefined
+      if (!here()) return
+      const early = verdictOf({ token: t.sure, standing })
+      if (early) return refuse(early)
+      const verdict = await room.lab.door.check({
+        uid,
+        vouched: () => labVouched(room),
+        ask: (other) => friendAnswer(token, uid, other),
+        counts: labCounts,
+        gone: () => !here(),
+        enter: () => {
+          settled = true
+          st.vouched = true
+          st.uid = uid
+          if (labTimer) clearTimeout(labTimer)
+          labTimer = null
+          const who = []
+          for (const cid of room.clients.keys()) {
+            const cs = room.state.get(cid)
+            if (cid !== id && cs?.vouched) who.push({ from: cid, uid: cs.uid })
+          }
+          send(ws, { type: 'labin', who })
+          broadcastVouched(room, { type: 'lab-here', from: id, uid }, id)
+        },
+      })
+      if (verdict && verdict !== 'admit') refuse(verdict)
+    })()
+      .catch(() => refuse('door-unavailable'))
+      .finally(() => {
+        clearTimeout(deadline)
+        authInFlight = false
+      })
+  }
+
+  /**
+   * A game's message, forwarded as it came: opaque, from somebody let in, to everybody let in or
+   * — with `to` — to one person's sockets only. `from` and `uid` are written here, never taken
+   * from the frame, so nobody can speak as somebody else.
+   *
+   * Over any of the three windows it is dropped without a word, as a walk is: telling a flooder
+   * they were limited only tells them how fast to go.
+   */
+  const labForward = (room, st, msg) => {
+    if (!st.vouched) return
+    const m = readLab(msg, labVouched(room))
+    if (!m) return
+    const now = Date.now()
+    const w = [
+      rate(st.times, now, LAB.socketHz),
+      rate(room.lab.times, now, LAB.roomHz),
+      rate(labTimes, now, LAB.globalHz),
+    ]
+    st.times = w[0].times
+    room.lab.times = w[1].times
+    labTimes = w[2].times
+    if (!w.every((x) => x.ok)) return
+    st.times.push(now)
+    room.lab.times.push(now)
+    labTimes.push(now)
+    const out = JSON.stringify({ type: 'lab', from: id, uid: st.uid, d: m.d })
+    for (const [cid, cws] of room.clients) {
+      if (cid === id || cws.readyState !== cws.OPEN) continue
+      const cs = room.state.get(cid)
+      if (!cs?.vouched || (m.to && cs.uid !== m.to)) continue
+      try {
+        cws.send(out)
+      } catch {
+        /* gone */
+      }
+    }
+  }
+
+  /**
+   * Out of whatever room this socket was in, on its way into `roomId`.
+   *
+   * ⚠️ A LAB ROOM IS LEFT THROUGH ITS OWN DOOR. The path below broadcasts `host` and `presence` to
+   * the whole room unconditionally, which is right for the rooms it was written for and would be
+   * a socket announcing itself to a room it may never have been let into.
+   */
+  function leavePrevious(roomId) {
+    if (!joinedRoomId || joinedRoomId === roomId) return
+    const prev = rooms.get(joinedRoomId)
+    if (!prev) return
+    if (prev.lab) return leaveLab(prev, joinedRoomId)
+    prev.clients.delete(id)
+    prev.state.delete(id)
+    if (prev.hostId === id) {
+      prev.hostId = null
+      pickHost(prev)
+      if (prev.hostId) broadcast(prev, { type: 'host', hostId: prev.hostId })
+    }
+    if (prev.clients.size === 0) rooms.delete(joinedRoomId)
+    else broadcast(prev, { type: 'presence', count: prev.clients.size })
+  }
+
   const handleMessage = (data) => {
     // Never true while `maxPayload` is MAX_MSG_BYTES — see the note on `wss`.
     if (data.length > MAX_MSG_BYTES) {
@@ -1818,10 +2156,11 @@ wss.on('connection', (ws, req) => {
        * arrive to find the room full.
        *
        * Snake's lobby is what this exists for and is untouched. Nothing that carries a drawing is
-       * a room you find by browsing — you are told about it or you are in it.
+       * a room you find by browsing — you are told about it or you are in it. A Lab table's code
+       * is the same kind of thing, and is left out for the same reason.
        */
       const items = Array.from(rooms.entries())
-        .filter(([rid]) => !carriesArt(rid))
+        .filter(([rid]) => !carriesArt(rid) && listable(rid))
         .map(([rid, r]) => {
           const meta = r.meta || { name: rid, public: true }
           return {
@@ -1839,6 +2178,8 @@ wss.on('connection', (ws, req) => {
         String(msg.room || '')
           .trim()
           .slice(0, MAX_ROOM_ID_LEN) || 'default'
+      /* before anything below: none of it may run for a Lab id, well-formed or not */
+      if (looksLab(roomId)) return helloLab(roomId)
       let room = rooms.get(roomId)
       // If room doesn't exist and client is not creating, return an error
       if (!room && !msg.create) {
@@ -1923,20 +2264,7 @@ wss.on('connection', (ws, req) => {
        * a 15-byte request into a 7.2MB response stringified on the event loop. The shipped
        * client never hit it because it opens a fresh socket per room.
        */
-      if (joinedRoomId && joinedRoomId !== roomId) {
-        const prev = rooms.get(joinedRoomId)
-        if (prev) {
-          prev.clients.delete(id)
-          prev.state.delete(id)
-          if (prev.hostId === id) {
-            prev.hostId = null
-            pickHost(prev)
-            if (prev.hostId) broadcast(prev, { type: 'host', hostId: prev.hostId })
-          }
-          if (prev.clients.size === 0) rooms.delete(joinedRoomId)
-          else broadcast(prev, { type: 'presence', count: prev.clients.size })
-        }
-      }
+      leavePrevious(roomId)
       room.clients.set(id, ws)
       room.state.set(id, {
         ready: false,
@@ -2000,6 +2328,27 @@ wss.on('connection', (ws, req) => {
     if (!joinedRoomId) return
     const room = rooms.get(joinedRoomId)
     if (!room) return
+
+    /**
+     * A Lab room takes `auth` and `lab` and nothing else, and never reaches the switch below (or
+     * the debug log, which would print the room's id — its key).
+     *
+     * ⚠️ ITS OWN TRY/CATCH, WHICH DROPS ONLY THE MESSAGE. The handler's backstop answers a throw
+     * with an error frame; here a throw says nothing, because a socket nobody has let in must
+     * hear nothing but its welcome and the door's answer.
+     */
+    if (room.lab) {
+      if (!kindAllowed(msg.type)) return
+      try {
+        const st = room.state.get(id)
+        if (!st) return
+        if (msg.type === 'auth') labAuth(room, joinedRoomId, st, msg.token)
+        else labForward(room, st, msg)
+      } catch (err) {
+        console.error('[lab] a message was dropped:', err?.name || 'error')
+      }
+      return
+    }
 
     // Optional debug logging for message routing
     if (WS_DEBUG && msg.type !== 'preview' && msg.type !== 'tick' && msg.type !== 'input') {
@@ -2467,14 +2816,7 @@ wss.on('connection', (ws, req) => {
         if (typeof msg.token !== 'string' || msg.token.length > 4096) break
         /* see authInFlight above: cheap frames with an expensive tail, counted here because
            nothing else counts them — the only general ceiling is a frame's size */
-        if (authInFlight) break
-        {
-          const nowMs = Date.now()
-          authTimes = authTimes.filter((t) => nowMs - t < 60_000)
-          if (authTimes.length >= 5) break
-          authTimes.push(nowMs)
-        }
-        authInFlight = true
+        if (!takeAuthSlot()) break
         const token = msg.token
         void verifyToken(token)
           .then(async (user) => {
@@ -2820,9 +3162,12 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     if (parkVouchTimer) clearTimeout(parkVouchTimer)
+    if (labTimer) clearTimeout(labTimer)
     if (!joinedRoomId) return
     const room = rooms.get(joinedRoomId)
     if (!room) return
+    /* no host, no `over`, no presence: a Lab room hears only that somebody it let in has gone */
+    if (room.lab) return leaveLab(room, joinedRoomId)
     room.clients.delete(id)
     /* ⚠️ A BOSS IS RUN BY THE MACHINE THAT CALLED IT, so when that machine goes the boss goes —
        otherwise the park keeps a boss nobody is stepping and nobody else is allowed to replace.

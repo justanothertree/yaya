@@ -217,3 +217,184 @@ Measured, 26 Nov 2026:
 - **Then Evan reads `/relay-config` once, as admin.** It shows whether `has.SUPABASE_URL` and
   `has.SUPABASE_ANON_KEY` are true. Its new `rooms` counts show whether anybody is mid-game before
   the next relay merge.
+
+## Step 3: a Lab table room — friends only, opaque, and silent to anyone not let in
+
+The relay gains one kind of room, `lab:` and 22 base64url characters: a random code that only the
+people on one call are sent. Friends at a live table will send their game's messages through it.
+**It ships dark.** No client opens one yet, so nothing a member does changes.
+
+### The door, in one file
+
+Every decision about a Lab room is in `server/lib/labDoor.mjs`, which is pure: what an id looks
+like, which frames a room takes, how big and how fast they may be, what the door answers, and what
+anyone hears. `ws-server.js` does the wiring, and so does the stub relay. Neither keeps a copy of
+any rule.
+
+The door asks three questions in order: is the token good, is the account in good standing, and is
+the joiner friends with every account already let in. Each answer is `'yes'`, `'no'` or `'unsure'`
+(step 2's `sureOf`). The verdict:
+
+- a refused token, or a suspended account: `members-only` (never "suspended": the check exists to
+  keep a suspended account out, not to announce a suspension to whoever holds the code);
+- a definite `false` from `are_friends` with anybody present: `not-friends`;
+- anything Supabase did not answer (a 5xx, a timeout, a NULL, a 401 on the friends call, no
+  config): `door-unavailable`. The client will retry that one. It is the only way the door can
+  avoid telling two friends they are not friends.
+
+`are_friends` is asked pair by pair, as the joiner, with the joiner's own token, in parallel, for
+every account let in except their own. `are_friends(me, me)` is false, so a person's second tab
+would otherwise be refused from their own table. Definite answers are cached for a minute, keyed by
+the pair.
+
+### Two strangers arriving together
+
+"A friend of everyone already in" can let in two people who are not friends with each other, if
+both are checked against a room that does not yet hold the other. Two locks:
+
+1. **A chain per room.** Admissions in one room run one at a time, so the second arrival is checked
+   against a room the first is already in.
+2. **The room is read when the answers arrive.** Anybody let in while the questions were on their
+   way is asked about too, and the admission happens in the same turn as that last read.
+
+Either lock alone keeps the race safe. Each has its own test that goes red without it, and the race
+itself goes red only when both are removed.
+
+### Silence
+
+- An arrival hears `welcome {id}` and nothing else. The room hears nothing about it. A hello
+  behaves the same whether or not the code is in use; it never answers `room-not-found`.
+- A Lab room accepts `auth` and `lab` and drops everything else before the relay's switch, every
+  case of which broadcasts without asking who is listening (Snake's chat, `name`, `preview`…).
+- Let in: the newcomer gets `labin {who: [{from, uid}]}` and the others get `lab-here {from, uid}`.
+  Leaving: `lab-gone {from}`, to those let in, and only if the leaver had been let in. Account ids go
+  only to people let in, who already see them on the call.
+- A refusal is `error {code, message}` and a close. The socket is taken out of the room at once,
+  not when the close completes.
+- `list` never shows a Lab room. The debug log never prints one, and nothing logs an account id.
+- A malformed `lab:` id is `bad-room` and becomes no room at all. Before this, it would have become
+  a Snake room, listed in the lobby.
+
+### Timers and limits
+
+- **The silent-socket timer (12 s)** closes only a socket that never sent `auth`. A socket whose
+  check is running, or queued behind somebody else's, is never closed by it: Supabase can be slow,
+  and the chain means a friend can still be waiting when the timer fires.
+- **The door's own deadline (40 s from the `auth` frame)** bounds such a socket instead, and ends
+  in `door-unavailable`.
+- **Per table:** 16 sockets (`lab-full` at hello) and 8 let in (`lab-full` at the door).
+- **Live tables:** at most 6 rooms with anybody let in. A seventh gets `lab-busy`, given at the
+  door, never at hello, so a full relay cannot be used to test whether a code exists. Rooms nobody
+  was let into do not count, so strangers cannot fill the cap.
+- **`lab` frames:** a non-empty string of at most 4,096 UTF-8 bytes (measured in bytes, not
+  `.length`). A `to` must name somebody let into this room, or the whole frame is refused rather
+  than sent to everybody. Windows of 50 a second per socket, 100 per room and 150 across all Lab
+  rooms; anything over is dropped without a word. `from` and `uid` are written by the relay.
+- `LAB_VOUCH_MS` and `LAB_DOOR_MS` can shorten the two timers for a test, never lengthen them.
+
+`/relay-config` (admin only) gains `rooms.lab` and `rooms.labLive`: counts, never an id.
+
+### The stub
+
+`scripts/park-stub-relay.mjs` gains Lab rooms that import `labDoor.mjs` and stub only Supabase's
+three answers. A dev tab sends `stub-who {uid, friends}` in place of the session it has no token
+for. Token and standing are then yes, and two people are friends only when each one's list names
+the other. The real relay never hears `stub-who`: `kindAllowed` refuses it. `STUB_WAKE=ms` holds
+every socket opened that long after start, as a free relay asleep does. `STUB_KILL_AT=ms` exits once,
+as a deploy does. The stale comment about scenes is corrected: the real relay does drop a scene
+from anybody but the park's owner.
+
+### Tests
+
+| File                               | Asks                                                                                                                                                                                         | Runs in              |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `server/lib/labDoor.test.mjs`      | every rule directly; tests 2.6–2.14, the race in 8 resolution orders                                                                                                                         | `npm run test`       |
+| `scripts/relay-frames.test.mjs`    | the real relay, no Supabase: a Lab arrival hears `welcome` alone, the room hears nothing, the timer's sentence and close; `bad-room`; `list`. The Snake, park and bout goldens are unchanged | `npm run test`       |
+| `scripts/relay-lab.test.mjs`       | the real relay against a loopback stand-in for Supabase: the wiring, case by case                                                                                                            | `npm run test`       |
+| `scripts/park-stub-relay.test.mjs` | the stub imports the door and keeps no copy; it refuses to start unasked; `STUB_WAKE`; friends meet, one-sided lists do not                                                                  | `npm run test`       |
+| `scripts/lab-door-probe.mjs`       | the real relay against a **real local Supabase**                                                                                                                                             | by hand, below       |
+| `scripts/relay-smoke.mjs`          | after a deploy: a token-less knock on a fresh table                                                                                                                                          | by hand, after merge |
+
+### The real door without production, 23 Nov 2026
+
+`dockerd`, then the pinned CLI (2.122.0) on a scratch copy of `supabase/` with storage, realtime,
+studio, analytics and edge_runtime disabled. GoTrue issued every session and PostgREST ran
+`is_suspended` and `are_friends`. The cast: Ann–Bo and Ann–Cy friends, Bo–Cy not, Dee suspended,
+Eve nobody's friend. The relay was this commit's, run with the local URL and anon key.
+
+`scripts/lab-door-probe.mjs --then-stopped`: **28 of 28**. This commit's `server/` stamped as
+`1bfe5ce9dd58` then; a local relay on it answered `/health` with that build, and `relay-smoke.mjs`
+against it said ok, the Lab knock included (welcome alone, not listed, the sentence and a close at
+12 s). Rebased on 26 Nov onto the frame cap (step 2's section 4), it stamps as `e880fa06a1e7`, and
+the same smoke against a local relay on it said ok, the Lab knock included.
+
+- Bo and Cy sent together against Ann alone: exactly one let in, the other `not-friends`.
+- Ann and Bo met, each told of the other by account id, and each got the other's `lab`.
+- Cy was refused `not-friends` while Bo was in, and Ann and Bo heard nothing.
+- Second tabs for Ann and Bo, each on a second session, were let in.
+- `to: Bo` reached both of Bo's sockets and neither of Ann's.
+- Dee got `members-only` and never the word "suspended".
+- A silent socket was closed at 12.0 s. A socket whose token and standing were each held 7 s by a
+  forwarding proxy was not closed at 12 s, and was let in at 14.1 s. A friends call could not be
+  held past 12 s, because the relay gives up on any fetch at 8 s. So the plan's "15 s delay on the
+  friends call" became a hold on the two questions before it.
+- With the stack stopped (`supabase stop`), Eve, who is not Ann's friend, joined Ann's table 1–2 s
+  after her token and standing were checked, so the question that failed was the friends one. She
+  was told `door-unavailable`. A session the relay had never seen got the same. Ann heard nothing.
+
+Made red:
+
+- With the friends check removed, 4 of 22 failed, the race letting both in ("in, in").
+- With the friends call's failure read as a no, Eve was told `not-friends` with Supabase down (27 of
+  28).
+
+### Mutations, each made once and put back
+
+| Mutation                                                            | Red                                                               |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `isLabId` without anchors                                           | 1 (2.6)                                                           |
+| `readLab` measuring `d.length`                                      | 1 (2.7)                                                           |
+| the windows off by one (`<=`)                                       | 3 (2.8)                                                           |
+| `unsure` read as a refusal of the person                            | 3 (2.10)                                                          |
+| the timer closing every unvouched socket                            | 1 (2.11)                                                          |
+| asking `are_friends(me, me)`                                        | 2 (2.12)                                                          |
+| every Lab room counted toward the cap                               | 1 (2.13)                                                          |
+| `chat` allowed                                                      | 1 (2.14)                                                          |
+| no chain                                                            | 1, the chain's test                                               |
+| the room read once, before the answers                              | 1, the re-read's test                                             |
+| both of those                                                       | 10, the 8 race orders among them                                  |
+| Lab hellos routed through today's path (the plan's mutation)        | 4 relay-frames cases                                              |
+| `chat` let through to the shared switch                             | 1 relay-frames case                                               |
+| relay: the timer closing a socket being checked                     | 2 relay-lab cases                                                 |
+| relay: `to` ignored                                                 | 1                                                                 |
+| relay: a 401 on `are_friends` read as no                            | 1                                                                 |
+| relay: an unsure friends answer cached                              | 1                                                                 |
+| relay: liveRoomsFull given nothing to count                         | 1                                                                 |
+| relay: no 16-socket cap                                             | 1                                                                 |
+| relay: no windows                                                   | 1                                                                 |
+| relay: no deadline                                                  | 1                                                                 |
+| relay: `pairsToAsk` keeping the joiner (asks `are_friends(me, me)`) | 4: every case with a second tab                                   |
+| relay: a door (chain) per socket instead of per room                | 1, the race                                                       |
+| relay: `from` taken from the frame                                  | 1                                                                 |
+| relay: a socket not let in forwarding                               | 1                                                                 |
+| stub: its own copy of the id rule                                   | 1                                                                 |
+| stub: friends always yes / a one-sided list as friends              | 1 each                                                            |
+| stub: `STUB_WAKE` ignored                                           | 1                                                                 |
+| stub: no `PARK_STUB_RELAY` guard                                    | 1                                                                 |
+| smoke: a relay without the Lab hello                                | exit 1, "heard welcome, host, host, presence, presence, settings" |
+
+### Left
+
+- **After merging, once Render's metrics show no live connections (Evan's rule, above):** run
+  `RELAY_URL=<the relay> node scripts/relay-smoke.mjs --ref origin/main`. It now also knocks on a
+  fresh table without a token: it expects `welcome` alone, no listing, then at 12 s "A Lab table is
+  for friends on a call, signed in on the site." and a close. That sentence is in no older relay.
+  It is skipped automatically for a ref whose `server/` has no `labDoor.mjs`.
+- **Then Evan reads `/relay-config` himself (his answer, above).** If `has.SUPABASE_URL` or
+  `has.SUPABASE_ANON_KEY` is false on Render, every Lab table answers `door-unavailable`, which is
+  safe and useless (P2).
+- **The probe runs by hand, not in CI.** It needs Docker and the local stack. The stand-in test
+  (`relay-lab.test.mjs`) is the CI copy of the wiring, and it is only as faithful as its stand-in.
+- **A friendship ended inside the minute** is still believed for the rest of it (the cache), and a
+  friendship ended mid-game is never re-checked, as a park's vouching is not.
+- **`lab-full` counts sockets, not people.** One person's eight tabs fill a table.
