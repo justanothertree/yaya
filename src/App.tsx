@@ -172,6 +172,13 @@ const AgeNoticePreview = import.meta.env.DEV
       (m) => m.AgeNoticePreview,
     )
   : null
+/** Claiming a Circuit person, both halves, on the same bench and for the same reason (§19e). */
+const CircuitClaimsPreview = import.meta.env.DEV
+  ? lazyRetry(
+      () => import('./dev/CircuitClaimsPreview'),
+      (m) => m.CircuitClaimsPreview,
+    )
+  : null
 const AcceptInvite = lazyRetry(
   () => import('./sections/AcceptInvite'),
   (m) => m.AcceptInvite,
@@ -2145,6 +2152,7 @@ export default function App() {
               </p>
               <Suspense fallback={<div aria-busy>Loading…</div>}>
                 {AgeNoticePreview && <AgeNoticePreview />}
+                {CircuitClaimsPreview && <CircuitClaimsPreview />}
                 <AdminPanel />
               </Suspense>
             </section>
