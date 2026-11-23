@@ -1,8 +1,9 @@
 // "Circuits" — manage the groups you own/belong to (Phase D of data ownership).
-// Create a circuit, share its join code, join someone else's, and claim your own
+// Create a circuit, share its join code, join someone else's, and ask for your own
 // person. Talks to the security-definer RPCs (create_circuit / join_circuit /
-// my_circuits / leave_circuit / claim_person). Members-only; the tab is hidden when
-// signed out, so this assumes an authenticated Supabase session.
+// my_circuits / leave_circuit / claim_person / my_person_claims / withdraw_person_claim).
+// Members-only; the tab is hidden when signed out, so this assumes an authenticated
+// Supabase session.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getSupabaseClient } from '../../finance/client'
 import { useCircuit } from '../store'
@@ -12,6 +13,9 @@ import { TIER_LABEL } from '../../components/visibilityLabels'
 import type { VisibilityTier } from '../types'
 import { InviteFriends } from '../../components/InviteFriends'
 import { circuitInviteMessage, takeJoinCode } from '../inviteLink'
+import { addMeToast, readMyClaims, waitingIn, type MyClaim } from '../claims'
+import { ClaimableList } from './ClaimableList'
+import { personRow } from './personRow'
 
 type CircuitRow = {
   id: string
@@ -40,11 +44,18 @@ export function CircuitsPanel() {
   const [renameFor, setRenameFor] = useState<string | null>(null)
   const [renameVal, setRenameVal] = useState('')
   const [confirmDelFor, setConfirmDelFor] = useState<string | null>(null)
+  /** the caller's own requests for a person, so the list can say where each one stands */
+  const [mine, setMine] = useState<MyClaim[]>([])
 
   const refresh = useCallback(async () => {
-    const { data, error } = await sb.rpc('my_circuits')
-    if (error) setErr(error.message)
-    else setRows((data as CircuitRow[]) ?? [])
+    const [circuits, claims] = await Promise.all([
+      sb.rpc('my_circuits'),
+      sb.rpc('my_person_claims'),
+    ])
+    if (circuits.error) setErr(circuits.error.message)
+    else setRows((circuits.data as CircuitRow[]) ?? [])
+    // Not fatal: without it the list still offers This is me, and the server still answers it.
+    setMine(claims.error ? [] : readMyClaims(claims.data))
   }, [sb])
 
   useEffect(() => {
@@ -110,28 +121,38 @@ export function CircuitsPanel() {
       return r
     }, 'Circuit deleted')
 
+  /* ⚠️ A REQUEST, NOT A CLAIM (§19e). This used to say "this is now your Circuit", which was true
+     at once and was the problem: whoever pressed first got the person's whole log. An admin
+     answers it now, and until then nothing about the person changes. */
   const claim = (personId: string) =>
-    run(
-      () => sb.rpc('claim_person', { p_person_id: personId }),
-      'Claimed — this is now your Circuit',
-    )
+    run(() => sb.rpc('claim_person', { p_person_id: personId }), 'Asked. An admin will confirm it')
+
+  const withdraw = (claimId: string) =>
+    run(() => sb.rpc('withdraw_person_claim', { p_claim: claimId }), 'Request withdrawn')
 
   // Put yourself into a circuit: creates a person you own, shared into that circuit, so a
   // joined-but-empty circuit (like one a friend invited you to) actually gets your data.
-  const addMe = (groupId: string) =>
-    run(async () => {
-      const r = await sb.rpc('add_self_to_circuit', {
-        p_group: groupId,
-        p_name: addName,
-        p_color: addColor,
-      })
-      if (!r.error) {
-        setAddFor(null)
-        setAddName('')
-        setAddColor(ADD_PALETTE[0])
-      }
-      return r
-    }, 'Added you to the circuit')
+  // Not through `run()`, because what to say depends on the answer: the server ASKS for an
+  // unclaimed person of the typed name rather than making a second board beside it.
+  const addMe = async (groupId: string) => {
+    setBusy(true)
+    setErr(null)
+    const { data, error } = await sb.rpc('add_self_to_circuit', {
+      p_group: groupId,
+      p_name: addName,
+      p_color: addColor,
+    })
+    setBusy(false)
+    if (error) {
+      setErr(error.message)
+      return
+    }
+    setAddFor(null)
+    setAddName('')
+    setAddColor(ADD_PALETTE[0])
+    showToast(addMeToast(data, state.people))
+    await refresh()
+  }
 
   const rename = (groupId: string) =>
     run(async () => {
@@ -179,19 +200,9 @@ export function CircuitsPanel() {
   }
 
   const input: React.CSSProperties = { padding: '0.45rem 0.6rem', flex: 1, minWidth: 0 }
-  const personRow = (color: string): React.CSSProperties => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    flexWrap: 'wrap',
-    padding: '0.45rem 0.6rem',
-    background: 'var(--b1, rgba(127,127,127,0.06))',
-    borderRadius: 8,
-    borderLeft: `3px solid ${color}`,
-  })
-
   const myPeople = state.people.filter((p) => uid && p.ownerUserId === uid)
   const claimable = state.people.filter((p) => !p.ownerUserId)
+  const waiting = (groupId: string) => waitingIn(groupId, state.people, mine)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.4rem', maxWidth: 620 }}>
@@ -250,6 +261,11 @@ export function CircuitsPanel() {
                     {myPeople.some((p) => p.groupIds?.includes(c.id)) ? (
                       <span className="muted" style={{ fontSize: '0.76rem' }}>
                         ✓ you’re on this board
+                      </span>
+                    ) : waiting(c.id) ? (
+                      /* the same reason as above: Add me beside a request makes a second board */
+                      <span className="muted" style={{ fontSize: '0.76rem' }}>
+                        Waiting for an admin to confirm you are {waiting(c.id)?.personName}
                       </span>
                     ) : (
                       <button
@@ -537,32 +553,13 @@ export function CircuitsPanel() {
             )}
           </button>
           {claimOpen && (
-            <div
-              style={{
-                marginTop: '0.55rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.4rem',
-              }}
-            >
-              <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
-                If one of these is you, claim it to own your logs. Otherwise leave it.
-              </p>
-              {claimable.map((p) => (
-                <div key={p.id} style={personRow(p.color)}>
-                  <strong style={{ color: p.color }}>{p.name}</strong>
-                  <button
-                    className="btn btn-ghost"
-                    onClick={() => claim(p.id)}
-                    disabled={busy}
-                    style={{ fontSize: '0.78rem', marginLeft: 'auto' }}
-                    title="Claim this Circuit as yours"
-                  >
-                    This is me
-                  </button>
-                </div>
-              ))}
-            </div>
+            <ClaimableList
+              people={claimable}
+              mine={mine}
+              busy={busy}
+              onClaim={(id) => void claim(id)}
+              onWithdraw={(id) => void withdraw(id)}
+            />
           )}
         </section>
       )}

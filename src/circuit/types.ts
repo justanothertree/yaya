@@ -33,7 +33,8 @@ export interface Person {
   /** Column header labels for this person's grid. */
   colLabels: string[]
   /** Auth user who owns this Circuit (server-set; null/undefined = unclaimed). Read-only
-   *  on the client — changed only via the claim_person RPC, never written by savePerson. */
+   *  on the client — set only when an admin approves a claim (admin_decide_person_claim);
+   *  claim_person only asks. savePerson sends it back unchanged and never changes it. */
   ownerUserId?: string | null
   /** Who can see this Circuit — replaced the old is_public boolean. Server-set; changed
    *  only via set_person_visibility, never written by savePerson (same as ownerUserId). */
