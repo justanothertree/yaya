@@ -15,6 +15,7 @@ import {
   type Shadow,
 } from './tour'
 import type { Refusal } from './gate'
+import { entries, listed as listedFor } from '../catalog'
 
 describe('who is on your toy, in words (withWords)', () => {
   it('says nothing about nobody', () => {
@@ -522,5 +523,31 @@ describe('🎲 Surprise us (surprise)', () => {
     expect(surprise(['chess'], 'chess', kindOf, 'all', Math.random)).toBeNull()
     expect(surprise(ids, 'chess', kindOf, 'all', () => 1)).toBe('paint')
     expect(surprise(ids, 'chess', kindOf, 'all', () => 0)).toBe('reversi')
+  })
+})
+
+describe('what the dice may land on', () => {
+  it('never a toy the owner hid, even when an admin rolls', () => {
+    const demos = ['chess', 'reversi', 'secret', 'swarm'].map((id) => ({ id, name: id, line: '' }))
+    const flags = new Map([['secret', { featured: false, experiment: false, hidden: true }]])
+    const all = entries(demos, flags)
+    /* the admin's picker lists it; the dice must not */
+    const adminList = all.filter((e) => listedFor(e, true)).map((e) => e.id)
+    const rollable = all.filter((e) => listedFor(e, false)).map((e) => e.id)
+    expect(adminList).toContain('secret')
+    let seed = 1
+    const r = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648
+      return seed / 2_147_483_648
+    }
+    const rolled = new Set<string | null>()
+    for (let i = 0; i < 1000; i++) rolled.add(surprise(rollable, 'chess', () => 'board', 'all', r))
+    expect(rolled.has('secret')).toBe(false)
+    expect([...rolled].sort()).toEqual(['reversi', 'swarm'])
+    /* and rolling from the admin's list, which is what the strip did, can land there */
+    const fromAdmin = new Set<string | null>()
+    for (let i = 0; i < 1000; i++)
+      fromAdmin.add(surprise(adminList, 'chess', () => 'board', 'all', r))
+    expect(fromAdmin.has('secret')).toBe(true)
   })
 })
