@@ -274,6 +274,10 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const me = useLabMe()
   const withYou = withWords(friendsOn(current.id).map((p) => p.name))
   const kindOf = useCallback((id: string) => META[id]?.category, [])
+  /* ⚠️ WHAT THE DICE MAY LAND ON IS WHAT EVERYBODY CAN OPEN. An admin's picker lists the toys the
+     owner hid, and a roll is a pick the whole call is taken to: landing on a hidden one would send
+     anybody following to "a toy that isn't in your Lab", and leave them behind. */
+  const rollable = useMemo(() => all.filter((e) => listed(e, false)).map((e) => e.id), [all])
   /* every toy this Lab lists, by id — the only ones the tour's Go may open */
   const toys = useMemo(() => new Map(shownDemos.map((d) => [d.id, d.name])), [shownDemos])
 
@@ -298,6 +302,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         onLead={show}
         filter={filter}
         kindOf={kindOf}
+        rollable={rollable}
       />
       <div className="lab-filter" role="group" aria-label="Show which kind">
         <button

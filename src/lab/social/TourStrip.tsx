@@ -74,6 +74,7 @@ export function TourStrip({
   onLead,
   filter,
   kindOf,
+  rollable,
 }: {
   /** the toy on your screen */
   current: string
@@ -89,6 +90,8 @@ export function TourStrip({
   /** the kind the Lab's filter brings forward, or 'all', and each toy's kind: for 🎲 */
   filter: string
   kindOf: (toy: string) => string | undefined
+  /** the toys listed for everybody — never one the owner hid, even on an admin's screen */
+  rollable: readonly string[]
 }) {
   const byRoute = usePartyHere()
   const verdict = useSyncExternalStore(labSocial.subscribe, labSocial.get, labSocial.get)
@@ -207,7 +210,7 @@ export function TourStrip({
     <button
       className="btn btn-ghost lab-tour-dice"
       onClick={() => {
-        const toy = surprise([...toys.keys()], current, kindOf, filter, Math.random)
+        const toy = surprise(rollable, current, kindOf, filter, Math.random)
         if (toy) onGo(toy)
       }}
     >
