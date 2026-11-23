@@ -107,6 +107,42 @@ export async function readAtMost(
   return { bytes }
 }
 
+/**
+ * A request body read to its end and thrown away, as far as `cap` bytes: how many arrived.
+ *
+ * ⚠️ AN UPLOAD REFUSED BEFORE ITS BODY IS READ IS NEVER ANSWERED. Measured on the live project on
+ * 22 Nov 2026: an upload with a stale token, refused by `getUser` before a byte of it was read,
+ * came back in half a second at 1 KB and NOT AT ALL at 1 MB or 5 MB — the whole body went up and
+ * then nothing, for 90 seconds, until the client gave up. The platform takes those sizes fine:
+ * `push`, which reads its whole body before answering, answered a 5 MB one in 1.4 seconds. So a
+ * refusal that comes before the body has been read is held until the body is, and a member whose
+ * session went stale, or a suspended one, watched "Sending…" that never ended.
+ *
+ * Draining keeps the rule that the recording is not LOOKED AT before its sender is named: nothing
+ * here is kept, inspected or stored, and memory stays one chunk deep. Past `cap` the rest is
+ * cancelled, because only a client that ignored its own 5 MB limit sends more, and reading for it
+ * without end would be the function paying for somebody else's upload.
+ */
+export async function drain(body: ReadableStream<Uint8Array> | null, cap: number): Promise<number> {
+  if (!body) return 0
+  const reader = body.getReader()
+  let n = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) return n
+      n += value?.length ?? 0
+      if (n > cap) {
+        await reader.cancel().catch(() => {})
+        return n
+      }
+    }
+  } catch {
+    /* a body that broke off part way has nothing left to wait for */
+    return n
+  }
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** what an upload says about itself; each part null when it is missing or cannot be read */

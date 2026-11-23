@@ -29,7 +29,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { AwsClient } from 'npm:aws4fetch@1.0.20'
 /* what an upload may be, in its own file so vitest can ask it — see that file's header */
-import { MAX_BYTES, readAtMost, songId, uploadFrom, verdictFor } from './verdict.ts'
+import { MAX_BYTES, drain, readAtMost, songId, uploadFrom, verdictFor } from './verdict.ts'
 
 /* named origins rather than `*`: the JWT is the lock, but an endpoint that writes to the bucket
    is not one to leave answering every origin. localhost reaches the same production database. */
@@ -157,23 +157,36 @@ Deno.serve(async (req) => {
   }
   if (req.method !== 'POST') return json({ error: 'post something' }, 405, origin)
 
-  const auth = req.headers.get('Authorization')
-  if (!auth) return json({ error: 'not authenticated' }, 401, origin)
-
-  const kit = r2()
-  /* said plainly rather than as a 500: until the four secrets are set this can do nothing */
-  if (!kit) return json({ error: 'R2 is not configured on this project yet' }, 503, origin)
-
-  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-    global: { headers: { Authorization: auth } },
-  })
-
   /**
    * ⚠️ AN UPLOAD'S BODY IS THE RECORDING, so its op travels in a header and its body is not read
    * here — not as JSON, and not at all until the caller has been named below. Every other op is a
    * small JSON body.
    */
   const isUpload = req.headers.get('x-song-op') === 'upload'
+
+  /**
+   * ⚠️ AND AN UPLOAD REFUSED BEFORE ITS BODY IS READ IS READ OFF FIRST, or the answer never arrives:
+   * measured on the live project, a stale token's 401 came back at 1 KB and not at all at 1 MB
+   * (`drain` in verdict.ts has the figures). Every refusal that can come ahead of `readAtMost`
+   * goes through here; the bytes are thrown away unread, so nothing is looked at before its sender
+   * is named.
+   */
+  const refuse = async (body: unknown, status: number) => {
+    if (isUpload && !req.bodyUsed) await drain(req.body, MAX_BYTES)
+    return json(body, status, origin)
+  }
+
+  const auth = req.headers.get('Authorization')
+  if (!auth) return await refuse({ error: 'not authenticated' }, 401)
+
+  const kit = r2()
+  /* said plainly rather than as a 500: until the four secrets are set this can do nothing */
+  if (!kit) return await refuse({ error: 'R2 is not configured on this project yet' }, 503)
+
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+    global: { headers: { Authorization: auth } },
+  })
+
   let body: Record<string, unknown> = {}
   if (!isUpload) {
     try {
@@ -194,7 +207,7 @@ Deno.serve(async (req) => {
    */
   const { data: whoData, error: whoErr } = await supabase.auth.getUser()
   const user = whoData?.user ?? null
-  if (whoErr || !user) return json({ error: 'not authenticated' }, 401, origin)
+  if (whoErr || !user) return await refuse({ error: 'not authenticated' }, 401)
 
   /**
    * ⚠️ A SUSPENDED MEMBER MAY ONLY `play` AND `remove`, the decision made for pictures: suspension
@@ -204,7 +217,7 @@ Deno.serve(async (req) => {
    */
   const { data: suspended } = await supabase.rpc('is_suspended', { p_user_id: user.id })
   if (suspended === true && op !== 'play' && op !== 'remove') {
-    return json({ error: 'your account is suspended' }, 403, origin)
+    return await refuse({ error: 'your account is suspended' }, 403)
   }
 
   /**
@@ -285,7 +298,7 @@ Deno.serve(async (req) => {
    * are written.
    */
   if (op === 'upload') {
-    if (!service) return json({ error: 'this project cannot finish songs yet' }, 503, origin)
+    if (!service) return await refuse({ error: 'this project cannot finish songs yet' }, 503)
     await tidy()
 
     const said = uploadFrom(req.headers)

@@ -258,6 +258,17 @@ x-client-info, content-type, x-song-op, x-song-room, x-song-mime, x-song-seconds
   service, on a schedule, reading every owner's rows with `deleted_at` set and `object_gone_at`
   null, deleting each object and marking it gone. Not built: it needs a cron and a function that
   answers to nobody, which is a decision for Evan.
-- **The platform's request size.** The upload is now a 5 MB request body to an edge function. The
-  function reads at most that much, but whether the Supabase gateway accepts a body that size has
-  not been tried; the first real upload after the deploy answers it.
+- **The platform's request size — answered, 22 Nov 2026: it takes 5 MB.** Sent through the gateway
+  to `push`, which reads its whole body before answering, a 1 MB body was answered in 0.7 s and a
+  5 MB one in 1.4 s (with its own "that was not json", so the bytes reached the function).
+- **⚠️ BUT AN UPLOAD REFUSED BEFORE ITS BODY WAS READ WAS NEVER ANSWERED.** The same measurement on
+  `chat-songs` v1, as an anonymous caller (refused by `getUser`, before `readAtMost`): 1 KB came
+  back in 0.5 s with the function's own 401; 1 MB, 2, 3, 4 and 5 MB uploaded in full and then got
+  nothing for 60–90 s, until the client gave up. So a member whose session had gone stale, or a
+  suspended one, watched "Sending…" that never ended — and `functions.invoke` has no timeout. The
+  fix is `drain` in `verdict.ts`, called by every refusal that can come before `readAtMost`: the
+  body is read off and thrown away, unlooked-at, then the answer goes. Its four tests were each
+  made to fail by a broken drain. **It needs a redeploy of `chat-songs` to take effect**, and
+  after it the same anonymous 1 MB and 5 MB probes must come back with the function's own 401.
+  Not covered: a body OVER 5 MB is still cut off at `readAtMost` and may hang the same way; only a
+  client ignoring its own 5 MB check sends one.

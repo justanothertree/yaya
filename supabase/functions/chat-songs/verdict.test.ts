@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { KINDS, MAX_BYTES, looksLike, readAtMost, songId, uploadFrom, verdictFor } from './verdict'
+import {
+  KINDS,
+  MAX_BYTES,
+  drain,
+  looksLike,
+  readAtMost,
+  songId,
+  uploadFrom,
+  verdictFor,
+} from './verdict'
 
 /**
  * ⚠️ THE EDGE FUNCTION ITSELF CANNOT BE ASKED ANYTHING FROM HERE — it needs a deployed runtime, a
@@ -181,6 +190,49 @@ describe('reading the body', () => {
     expect('bytes' in got && why(verdictFor('audio/ogg', got.bytes))).toBe(
       'that recording came to nothing',
     )
+  })
+})
+
+/**
+ * ⚠️ A REFUSAL OF AN UPLOAD WAITS FOR ITS BODY TO BE READ OFF, or the platform never sends it
+ * (measured, see `drain`). So what matters is that an honest body is read to its very END — the
+ * stream reports done — while one past the cap is cut off rather than read for ever.
+ */
+describe('reading a refused body off', () => {
+  /* every byte consumed, counted by what drain says it read — not by the stream's pulls, which its
+     own read-ahead makes whether or not anybody finished reading (that assertion was tried first,
+     and a drain that stopped at the last byte passed it) */
+  it('reads an honest upload to its end, keeping nothing, and does not cancel it', async () => {
+    const sizes = [MiB, 3, MiB, 65_537, MiB - 7]
+    const { stream, seen } = streamOf(sizes.map((n) => new Uint8Array(n)))
+    expect(await drain(stream, MAX_BYTES)).toBe(sizes.reduce((a, b) => a + b, 0))
+    expect(seen.cancelled).toBe(false)
+  })
+
+  it('reads exactly 5 MB to its end, the most an honest client sends', async () => {
+    const { stream, seen } = streamOf([new Uint8Array(MAX_BYTES - 1), new Uint8Array(1)])
+    expect(await drain(stream, MAX_BYTES)).toBe(MAX_BYTES)
+    expect(seen.cancelled).toBe(false)
+  })
+
+  it('cuts off a body past the cap instead of reading it for ever', async () => {
+    const { stream, seen } = streamOf(Array.from({ length: 50 }, () => new Uint8Array(MiB)))
+    const n = await drain(stream, MAX_BYTES)
+    expect(n).toBeGreaterThan(MAX_BYTES)
+    expect(n).toBeLessThanOrEqual(MAX_BYTES + MiB)
+    expect(seen.cancelled).toBe(true)
+  })
+
+  it('answers for no body, and for one that breaks off, without throwing', async () => {
+    expect(await drain(null, MAX_BYTES)).toBe(0)
+    let sent = 0
+    const broken = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ === 0) controller.enqueue(new Uint8Array(10))
+        else controller.error(new Error('the connection dropped'))
+      },
+    })
+    expect(await drain(broken, MAX_BYTES)).toBe(10)
   })
 })
 
