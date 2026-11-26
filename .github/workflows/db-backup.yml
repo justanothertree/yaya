@@ -55,16 +55,10 @@ jobs:
     timeout-minutes: 30
     # ⚠️ the boundary: its secrets are released only to jobs running on main
     environment: db-backup
-    services:
-      # a throwaway Postgres the real backup is restored into and checked against, before it is
-      # sealed: the only place a restore of production's own rows is ever exercised
-      scratch:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
-        ports: ['55443:5432']
+    # ⚠️ THE LOG IS PUBLIC: db-backup.sh prints no count or size, and keeps the database's own error
+    # messages (which quote rows) inside the sealed bundle instead of here
+    env:
+      DB_BACKUP_PUBLIC_LOG: '1'
     steps:
       - uses: actions/checkout@v7
 
@@ -116,11 +110,15 @@ jobs:
 
       # ⚠️ A BACKUP NOBODY HAS RESTORED IS A HOPE. This one is restored every week, here, and
       # compared with production's own account of itself line for line — every table's rows, every
-      # definition, every grant — before it is allowed to become the artifact. The plaintext never
-      # leaves this runner; the log names a table that differs and nothing about its contents.
+      # definition, every grant — before it is sealed. The plaintext never leaves this runner.
+      # The scratch Postgres is started HERE rather than as a service container, for two reasons:
+      # GitHub prints a service container's whole server log at the end of the job, and Postgres
+      # logs every error with the row that caused it; and a service that fails to start fails the
+      # job before the dump, where a step that fails is followed by the -unverified upload below.
       - name: Restore it into a scratch Postgres and compare it with production
         id: verify
         if: steps.gate.outputs.ready == 'yes'
+        timeout-minutes: 15
         env:
           PGHOST: 127.0.0.1
           PGPORT: '55443'
@@ -129,14 +127,21 @@ jobs:
           PGPASSWORD: postgres
           PGSSLMODE: disable
         run: |
+          docker run -d --name yaya-scratch -e POSTGRES_PASSWORD=postgres -p 55443:5432 postgres:17 \
+            -c log_min_messages=panic -c log_min_error_statement=panic > /dev/null
+          for i in $(seq 1 60); do
+            /usr/lib/postgresql/17/bin/pg_isready -q && break
+            sleep 1
+          done
           bash scripts/db-backup.sh prepare-plain-target "$RUNNER_TEMP/bundle"
           bash scripts/db-backup.sh restore "$RUNNER_TEMP/bundle"
 
       # ⚠️ KEPT EVEN WHEN THE RESTORE CHECK FAILED, AND SAID SO IN ITS NAME. A dump that did not
       # restore cleanly here is still the newest copy there is, and losing it would make a bad week
       # worse; the run is red either way, and the artifact is called -unverified so that nobody
-      # restores it trusting it.
+      # restores it trusting it. seal removes a half-written file, and the upload waits for it.
       - name: Encrypt to the recipient, prove it is ciphertext, and drop the plaintext
+        id: seal
         if: ${{ !cancelled() && steps.dump.outcome == 'success' }}
         env:
           DB_BACKUP_AGE_RECIPIENT: ${{ secrets.DB_BACKUP_AGE_RECIPIENT }}
@@ -144,11 +149,13 @@ jobs:
           bash scripts/db-backup.sh seal "$RUNNER_TEMP/bundle" "$DB_BACKUP_AGE_RECIPIENT" "$RUNNER_TEMP/yaya-db.tar.age"
           rm -rf "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/supabase-ca.crt"
 
+      # one name per attempt: an artifact name cannot be uploaded twice in a run, and a re-run of a
+      # failed job keeps the run id, so without the attempt the fresher dump would be refused
       - name: Keep it
-        if: ${{ !cancelled() && steps.dump.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.seal.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: yaya-db-${{ github.run_id }}${{ steps.verify.outcome != 'success' && '-unverified' || '' }}
+          name: yaya-db-${{ github.run_id }}-${{ github.run_attempt }}${{ steps.verify.outcome != 'success' && '-unverified' || '' }}
           path: ${{ runner.temp }}/yaya-db.tar.age
           retention-days: 90
           if-no-files-found: error
@@ -156,7 +163,9 @@ jobs:
       # the runner is thrown away anyway; this is for the step that failed halfway
       - name: Leave no plaintext behind
         if: always()
-        run: rm -rf "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/supabase-ca.crt"
+        run: |
+          rm -rf "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/supabase-ca.crt"
+          docker rm -f yaya-scratch > /dev/null 2>&1 || true
 
   # The whole procedure — dump, seal, open, restore, compare — on a database built from the
   # repository's own schema with member data in it, restored into a target shaped like a fresh
@@ -181,6 +190,19 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
         ports: ['55442:5432']
     steps:
+      # ⚠️ THE CANARY. This job names no environment, so it can only see REPOSITORY secrets — and a
+      # backup secret saved there, rather than in the main-only db-backup environment, is readable
+      # by any branch's workflow, a same-repository pull request's included. The value is never
+      # printed: only whether there is one.
+      - name: Refuse backup secrets kept where any branch can read them
+        env:
+          CANARY_PASSWORD: ${{ secrets.DB_BACKUP_PGPASSWORD }}
+          CANARY_HOST: ${{ secrets.DB_BACKUP_PGHOST }}
+        run: |
+          if [ -n "$CANARY_PASSWORD$CANARY_HOST" ]; then
+            echo "::error title=Backup secrets at repository level::A DB_BACKUP_* secret is a REPOSITORY secret, which any branch can read. Delete it there and keep it only in the db-backup environment."
+            exit 1
+          fi
       - uses: actions/checkout@v7
       - name: Install the Postgres 17 client and age
         run: |

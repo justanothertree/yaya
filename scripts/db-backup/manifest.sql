@@ -16,12 +16,16 @@
 --   - `order by` on text depends on the database's collation, and production and a scratch
 --     server need not share one — every sort here is COLLATE "C";
 --   - an object restored with --no-owner belongs to whoever restored it, and a GRANT run during a
---     restore is GRANTED BY that role, so neither owner nor grantor is compared; who RECEIVES a
---     privilege, which privilege, and whether it can be passed on, is;
+--     restore is GRANTED BY that role, so neither owner nor grantor is compared: the owner's own
+--     privileges are written OWNER, whoever that is, and the grantor is left out; who else
+--     RECEIVES a privilege, which privilege, and whether it can be passed on, is compared;
 --   - a NULL ACL means "the built-in default" — compared as that default, so a NULL here and the
 --     same grants spelt out there agree;
 --   - attnum has gaps where a column was dropped, and a restore renumbers; columns are compared
---     in order, never by number.
+--     in order and a column's comment by the column's NAME, never by number. ⚠️ This is not
+--     hypothetical: production's circuit_people has a dropped column with a commented one after
+--     it (measured 26 Nov 2026), so the first version, which keyed comments by number, would
+--     have failed every Sunday on a perfect backup.
 -- ⚠️ supabase_admin's default privileges are left out on purpose: Supabase manages them on every
 -- project and a restore cannot set them (db-backup.sh leaves those entries out of the restore).
 
@@ -78,7 +82,7 @@ lines(kind, name, val) as (
          concat_ws('|', r.relkind, r.relpersistence, r.relrowsecurity, r.relforcerowsecurity, r.relreplident,
                    coalesce(array_to_string(r.reloptions, ','), '-'),
                    (select coalesce(string_agg(g, ',' order by g collate "C"), '-')
-                      from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end,
+                      from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' when x.grantee = r.relowner then 'OWNER' else pg_get_userbyid(x.grantee) end,
                                           x.privilege_type, x.is_grantable) as g
                               from aclexplode(coalesce(r.relacl, acldefault((case when r.relkind = 'S' then 's' else 'r' end)::"char", r.relowner))) x) a))
     from rel r
@@ -89,7 +93,7 @@ lines(kind, name, val) as (
                               coalesce(pg_get_expr(d.adbin, d.adrelid), '-'), a.attidentity, a.attgenerated,
                               coalesce(co.collname, '-'),
                               (select coalesce(string_agg(g, ',' order by g collate "C"), '-')
-                                 from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end,
+                                 from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' when x.grantee = r.relowner then 'OWNER' else pg_get_userbyid(x.grantee) end,
                                                      x.privilege_type, x.is_grantable) as g
                                          from aclexplode(a.attacl) x) ca)),
                     E'\n' order by a.attnum)
@@ -132,7 +136,7 @@ lines(kind, name, val) as (
   select 'function', f.name,
          case when f.prokind in ('f', 'p') then pg_get_functiondef(f.oid) else f.prokind::text end || '|' ||
          (select coalesce(string_agg(g, ',' order by g collate "C"), '-')
-            from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end,
+            from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' when x.grantee = f.proowner then 'OWNER' else pg_get_userbyid(x.grantee) end,
                                 x.privilege_type, x.is_grantable) as g
                     from aclexplode(coalesce(f.proacl, acldefault('f', f.proowner))) x) a)
     from fn f
@@ -146,7 +150,7 @@ lines(kind, name, val) as (
                    case when t.typtype = 'c' then (select string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod), ',' order by a.attnum)
                                                      from pg_attribute a where a.attrelid = t.typrelid and a.attnum > 0 and not a.attisdropped) end,
                    (select coalesce(string_agg(g, ',' order by g collate "C"), '-')
-                      from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end,
+                      from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' when x.grantee = t.typowner then 'OWNER' else pg_get_userbyid(x.grantee) end,
                                           x.privilege_type, x.is_grantable) as g
                               from aclexplode(coalesce(t.typacl, acldefault('T', t.typowner))) x) a))
     from typ t
@@ -154,7 +158,7 @@ lines(kind, name, val) as (
   -- who may use the two schemas themselves
   select 'schema', n.nspname::text,
          (select coalesce(string_agg(g, ',' order by g collate "C"), '-')
-            from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end,
+            from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' when x.grantee = n.nspowner then 'OWNER' else pg_get_userbyid(x.grantee) end,
                                 x.privilege_type, x.is_grantable) as g
                     from aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) x) a)
     from pg_namespace n where n.nspname in ('public', 'finance')
@@ -168,10 +172,13 @@ lines(kind, name, val) as (
     from pg_default_acl d join pg_namespace n on n.oid = d.defaclnamespace
    where n.nspname in ('public', 'finance') and pg_get_userbyid(d.defaclrole) <> 'supabase_admin'
   union all
-  select 'comment', coalesce(r.name, f.name, t.name, s.nspname::text) || coalesce('.' || nullif(dsc.objsubid, 0)::text, ''),
+  -- a column's comment by the column's NAME (see the header: a restore renumbers columns)
+  select 'comment', coalesce(r.name, f.name, t.name, s.nspname::text) || coalesce('.' || ca.attname::text, ''),
          dsc.description
     from pg_description dsc
     left join rel r on dsc.classoid = 'pg_class'::regclass and r.oid = dsc.objoid
+    left join pg_attribute ca on dsc.classoid = 'pg_class'::regclass and dsc.objsubid > 0
+                             and ca.attrelid = dsc.objoid and ca.attnum = dsc.objsubid
     left join fn f on dsc.classoid = 'pg_proc'::regclass and f.oid = dsc.objoid
     left join typ t on dsc.classoid = 'pg_type'::regclass and t.oid = dsc.objoid
     left join pg_namespace s on dsc.classoid = 'pg_namespace'::regclass and s.oid = dsc.objoid and s.nspname in ('public', 'finance')

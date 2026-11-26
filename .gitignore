@@ -61,3 +61,12 @@ supabase/.temp/
 *.age
 *.key
 yaya-db-*/
+# and the rest of an opened bundle, by name, wherever it was opened
+auth-user-ids.txt
+auth-user-ids.before.txt
+extras.tsv
+manifest.tsv
+manifest.before.tsv
+moved.txt
+restore-errors.txt
+after-restore.sql

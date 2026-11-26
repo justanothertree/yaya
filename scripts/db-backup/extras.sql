@@ -13,8 +13,11 @@
 --   trigger      <schema.table.trigger>  base64(create trigger …)
 --       a trigger on a table outside these schemas that calls a function inside them (an
 --       auth.users trigger that makes a profile is the usual one; on 26 Nov there were none)
---   cron         <jobname>               <schedule>   base64(command)
---       pg_cron's jobs, if this role may read cron.job; otherwise one line `cron - not captured`
+--   cron         base64(jobname) or -    base64(schedule)   base64(command)   t|f (active)
+--       pg_cron's jobs, if this role may read cron.job; otherwise one line `cron-not-captured`.
+--       Every field is base64 or a fixed word, so none is ever empty: an empty field between two
+--       tabs is one a shell's `read` silently drops, and a NULL jobname is how pg_cron names an
+--       unnamed job.
 -- ⚠️ base64 because each of these is free text with newlines and tabs in it — and a cron command
 -- can carry a key, which is one more reason this file only ever exists inside the ciphertext.
 
@@ -57,9 +60,13 @@ select case when to_regnamespace('cron') is null then false
             else has_table_privilege('cron.job', 'select') end as can_read_cron
 \gset
 \if :can_read_cron
-select 'cron', jobname, schedule, translate(encode(convert_to(command, 'UTF8'), 'base64'), E'\n', '')
+select 'cron',
+       coalesce(nullif(translate(encode(convert_to(jobname, 'UTF8'), 'base64'), E'\n', ''), ''), '-'),
+       translate(encode(convert_to(schedule, 'UTF8'), 'base64'), E'\n', ''),
+       translate(encode(convert_to(command, 'UTF8'), 'base64'), E'\n', ''),
+       active::text
   from cron.job
- order by jobname collate "C";
+ order by jobid;
 \else
-select 'cron', '-', 'not captured';
+select 'cron-not-captured', '-', '-';
 \endif

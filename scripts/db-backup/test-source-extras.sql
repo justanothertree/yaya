@@ -12,6 +12,7 @@
 
 -- ── the probe ──────────────────────────────────────────────────────────────────────────────────
 create table public.zz_restore_probe (
+  gone text,
   id bigint generated always as identity primary key,
   note text not null check (length(note) > 0),
   made timestamptz not null,
@@ -29,6 +30,9 @@ insert into public.zz_restore_probe (note, made, payload, blob, amounts, tier, o
   ('the far future', '9999-12-31 23:59:59.999999+00', '{"n": 1e300}', '', '{}', 'private',
    '00000000-0000-4000-a000-000000000004');
 
+-- ⚠️ a column dropped BEFORE a commented one, as production's circuit_people has: a restore
+-- renumbers the columns, and a manifest that named comments by number failed on exactly this
+alter table public.zz_restore_probe drop column gone;
 alter table public.zz_restore_probe enable row level security;
 create policy zz_restore_probe_own on public.zz_restore_probe for select to authenticated
   using (owner = (select auth.uid()));
@@ -71,24 +75,21 @@ create table if not exists cron.job (
   jobname text,
   active boolean not null default true
 );
-insert into cron.job (schedule, command, jobname) values
-  ('17 4 * * *', E'delete from cron.job_run_details\n where end_time < now() - interval ''7 days''', 'cron-log-trim');
+insert into cron.job (schedule, command, jobname, active) values
+  ('17 4 * * *', E'delete from cron.job_run_details\n where end_time < now() - interval ''7 days''', 'cron-log-trim', true),
+  -- unnamed, paused, and a command that ends in a newline: each one a field a careless round trip
+  -- drops
+  ('*/5 * * * *', E'select 1;\n', null, false);
 
--- the backup's own role, granted what the doc tells Evan to grant it — so, as in production once
--- it exists, every table's grants name a role a fresh target does not have
+-- a role named ONLY by a default-privilege line's FOR ROLE, and in no grant: a restore target
+-- needs it all the same, and the first version's role list could not see it
 do $$
 begin
-  if not exists (select 1 from pg_roles where rolname = 'yaya_backup') then
-    create role yaya_backup nologin bypassrls;
+  if not exists (select 1 from pg_roles where rolname = 'zz_restore_owner') then
+    create role zz_restore_owner nologin;
   end if;
 end $$;
-grant usage on schema public, finance to yaya_backup;
-grant select on all tables in schema public, finance to yaya_backup;
-grant select on all sequences in schema public, finance to yaya_backup;
-alter default privileges for role postgres in schema public grant select on tables to yaya_backup;
-alter default privileges for role postgres in schema public grant select on sequences to yaya_backup;
-alter default privileges for role postgres in schema finance grant select on tables to yaya_backup;
-alter default privileges for role postgres in schema finance grant select on sequences to yaya_backup;
+alter default privileges for role zz_restore_owner in schema public grant select on tables to authenticated;
 
 -- and the two things a dump of public and finance leaves behind on Supabase's own tables: a policy
 -- the app wrote there (production has eleven on realtime.messages, Realtime's channel
@@ -102,6 +103,10 @@ create table if not exists realtime.messages (
 alter table realtime.messages enable row level security;
 create policy "members hear their own room" on realtime.messages for select to authenticated
   using (topic = 'room:' || (select auth.uid())::text and private);
+-- and one unlike it in every way the capture has to spell out: restrictive, insert, two roles,
+-- WITH CHECK and no USING
+create policy "nobody sends to a public topic" on realtime.messages as restrictive for insert
+  to anon, authenticated with check (private);
 create function public.zz_restore_probe_noticed() returns trigger
 language plpgsql as $$ begin return new; end $$;
 create trigger zz_restore_probe_noticed after insert on auth.users
