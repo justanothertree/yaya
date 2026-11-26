@@ -44,13 +44,15 @@ import { MAX_MSG_BYTES } from '../server/lib/frameCap.mjs'
 import {
   LAB,
   SAY,
+  charge,
+  crowdedOut,
   doorFor,
+  helloAgain,
   helloFrames,
   isLabId,
   kindAllowed,
   leaveFrames,
   looksLab,
-  rate,
   readLab,
   vouchTimerCloses,
 } from '../server/lib/labDoor.mjs'
@@ -123,15 +125,18 @@ const send = (ws, o) => {
 const closeAfter = (ws) => setTimeout(() => ws.close(1008), LAG)
 
 /**
- * Lab tables: roomId -> { clients: Map<id, { ws, uid, sentAuth, vouched, times }>, door, times }.
- * Every decision is labDoor's; this is only the bookkeeping the relay keeps in its own rooms map.
+ * Lab tables: roomId -> { clients: Map<id, { ws, uid, at, sentAuth, vouched, times, timer, kick }>,
+ * door, times }. Every decision is labDoor's; this is only the bookkeeping the relay keeps in its
+ * own rooms map.
  */
 const labs = new Map()
 /** uid -> the friends its tab said it has, from `stub-who` — the stub's whole Supabase */
 const said = new Map()
 let labTimes = []
+/** uid -> that account's window, as the relay keeps one (LAB.personHz) */
+const personTimes = new Map()
 const labVouched = (room) => [...room.clients.values()].filter((c) => c.vouched).map((c) => c.uid)
-const labCounts = () => [...labs.values()].map(labVouched).map((v) => v.length)
+const labElsewhere = (room) => [...labs.values()].filter((r) => r !== room).map(labVouched)
 const mutual = (a, b) => (said.get(a)?.has(b) && said.get(b)?.has(a) ? 'yes' : 'no')
 
 function labLeave(roomId, id) {
@@ -140,6 +145,8 @@ function labLeave(roomId, id) {
   if (!me) return
   clearTimeout(me.timer)
   room.clients.delete(id)
+  if (me.vouched && !labElsewhere(null).some((uids) => uids.includes(me.uid)))
+    personTimes.delete(me.uid)
   if (room.clients.size === 0) labs.delete(roomId)
   else
     for (const frame of leaveFrames(id, me.vouched))
@@ -149,6 +156,8 @@ function labLeave(roomId, id) {
 wss.on('connection', (ws) => {
   const id = 'p' + next++
   let roomId = null
+  /** the Lab id this socket first knocked with: it knocks nowhere else, as at the relay */
+  let labTable = null
 
   const labRefuse = (code) => {
     send(ws, { type: 'error', code, message: SAY[code] })
@@ -159,12 +168,23 @@ wss.on('connection', (ws) => {
 
   function labHello(want) {
     if (!isLabId(want)) return labRefuse('bad-room')
-    if (roomId === want) return
-    if (roomId && labs.has(roomId)) labLeave(roomId, id)
     let room = labs.get(want)
-    if (room && room.clients.size >= LAB.sockets) return labRefuse('lab-full')
+    if (room && room.clients.size >= LAB.sockets) {
+      const out = crowdedOut([...room.clients].map(([cid, c]) => ({ id: cid, ...c })))
+      if (!out) return labRefuse('lab-full')
+      room.clients.get(out).kick('lab-full')
+    }
     if (!room) labs.set(want, (room = { clients: new Map(), door: doorFor(), times: [] }))
-    const me = { ws, uid: null, sentAuth: false, vouched: false, times: [], timer: null }
+    const me = {
+      ws,
+      uid: null,
+      at: Date.now(),
+      sentAuth: false,
+      vouched: false,
+      times: [],
+      timer: null,
+      kick: labRefuse,
+    }
     room.clients.set(id, me)
     roomId = want
     for (const frame of helloFrames(id)) send(ws, frame)
@@ -187,8 +207,8 @@ wss.on('connection', (ws) => {
       .check({
         uid,
         vouched: () => labVouched(room),
+        elsewhere: () => labElsewhere(room),
         ask: (other) => mutual(uid, other),
-        counts: labCounts,
         gone: () => !here(),
         enter: () => {
           me.vouched = true
@@ -219,18 +239,25 @@ wss.on('connection', (ws) => {
     if (msg.type === 'auth' || !me.vouched) return
     const m = readLab(msg, labVouched(room))
     if (!m) return
-    const now = Date.now()
-    const w = [
-      rate(me.times, now, LAB.socketHz),
-      rate(room.times, now, LAB.roomHz),
-      rate(labTimes, now, LAB.globalHz),
-    ]
-    ;[me.times, room.times, labTimes] = w.map((x) => x.times)
-    if (!w.every((x) => x.ok)) return
-    for (const t of [me.times, room.times, labTimes]) t.push(now)
-    for (const [cid, c] of room.clients)
-      if (cid !== id && c.vouched && (!m.to || c.uid === m.to))
-        send(c.ws, { type: 'lab', from: id, uid: me.uid, d: m.d })
+    /* reaching nobody, it is charged nothing — as at the relay */
+    const to = [...room.clients].filter(
+      ([cid, c]) => cid !== id && c.vouched && (!m.to || c.uid === m.to),
+    )
+    if (!to.length) return
+    const c = charge(
+      [
+        [me.times, LAB.socketHz],
+        [personTimes.get(me.uid) ?? [], LAB.personHz],
+        [room.times, LAB.roomHz],
+        [labTimes, LAB.globalHz],
+      ],
+      Date.now(),
+    )
+    let mine
+    ;[me.times, mine, room.times, labTimes] = c.times
+    personTimes.set(me.uid, mine)
+    if (!c.ok) return
+    for (const [, o] of to) send(o.ws, { type: 'lab', from: id, uid: me.uid, d: m.d })
   }
 
   ws.on('message', (raw) => {
@@ -242,13 +269,17 @@ wss.on('connection', (ws) => {
     }
     if (!msg || typeof msg !== 'object') return
 
-    if (msg.type === 'hello' && looksLab(String(msg.room || '').trim())) {
-      return labHello(String(msg.room).trim())
+    if (msg.type === 'hello') {
+      const want = String(msg.room || '').trim()
+      const again = helloAgain(labTable, want)
+      if (again === 'same') return
+      if (again) return labRefuse(again)
+      if (looksLab(want)) {
+        labTable = want
+        return labHello(want)
+      }
     }
-    if (roomId && labs.has(roomId)) {
-      if (msg.type === 'hello') labLeave(roomId, id)
-      else return labMessage(msg)
-    }
+    if (roomId && labs.has(roomId)) return labMessage(msg)
 
     if (msg.type === 'hello') {
       roomId = String(msg.room || '')

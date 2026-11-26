@@ -27,7 +27,10 @@
  * socket whose check is still running. A friends answer cannot be held past the timer — the
  * relay gives up on any fetch at eight seconds, which would make the case a door-unavailable
  * one — so the hold is on the token and the standing instead, seven seconds each, by a proxy that
- * forwards every byte to the real stack and only waits first. That case has its own relay.
+ * forwards every byte to the real stack and only waits first. That case has its own relay. The
+ * same hold is what lets a socket leave while its check is still running, so a third socket
+ * there knocks on another table mid-check: it must be told one-table, and its answers, when they
+ * come, must let nobody in.
  */
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -291,6 +294,21 @@ try {
   )
   ok("and nobody else — not Ann's other tab", a2.inbox.length === 0 && a1.inbox.length === 0)
 
+  console.log('one account holds two tables at most')
+  {
+    const [t1, t2, t3] = [table(), table(), table()]
+    const one = await arrive(relay, t1, cy.token)
+    await answered(one)
+    const two = await arrive(relay, t2, await cy.again())
+    await answered(two)
+    ok('Cy, alone, is let in at two tables', verdict(one) === 'in' && verdict(two) === 'in')
+    const three = await arrive(relay, t3, await cy.again())
+    await answered(three)
+    await until(() => isClosed(three), 5000)
+    ok('and at a third is told too-many-places, and closed', words(three, 'too-many-places'))
+    for (const s of [one, two]) s.close()
+  }
+
   console.log('a suspended member')
   {
     const d = await arrive(relay, table(), dee.token)
@@ -308,7 +326,23 @@ try {
     const a = await arrive(slowRelay, r, ann.token)
     await answered(a)
     const t0 = Date.now()
-    const [silent, held] = await Promise.all([arrive(slowRelay, r), arrive(slowRelay, r, slow)])
+    const [silent, held, hopper] = await Promise.all([
+      arrive(slowRelay, r),
+      arrive(slowRelay, r, slow),
+      arrive(slowRelay, r, slow),
+    ])
+    /* while its own check is held: away to another table, and straight back. Late enough that
+       its answers would arrive before a fresh entry's own timer closed it, so a door that let a
+       stale check finish would be seen letting somebody in */
+    await sleep(HOLD_MS - 1000)
+    hopper.send({ type: 'hello', room: table() })
+    hopper.send({ type: 'hello', room: r })
+    await until(() => isClosed(hopper), 5000)
+    ok(
+      'a socket that knocks on a second table while being checked is told one-table, and closed',
+      words(hopper, 'one-table') && isClosed(hopper),
+      JSON.stringify(hopper.inbox),
+    )
     await until(() => isClosed(silent), LAB.vouchMs + 3000)
     const closedAt = Date.now() - t0
     ok(
@@ -326,9 +360,12 @@ try {
       `and is let in when the answers arrive (${(inAt / 1000).toFixed(1)} s)`,
       verdict(held) === 'in' && inAt > LAB.vouchMs,
     )
+    /* the hopper's check was still running when it left; when its answers came, nobody came in */
+    await sleep(500)
     ok(
-      'Ann heard about Bo, and nothing about the silent socket',
+      'Ann heard about Bo once, and nothing about the silent socket or the one that hopped',
       JSON.stringify(a.inbox.map((f) => f.type)) === '["labin","lab-here"]',
+      JSON.stringify(a.inbox.map((f) => f.type)),
     )
     slowToken = null
     for (const s of [a, held]) s.close()

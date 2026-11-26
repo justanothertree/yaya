@@ -108,10 +108,17 @@ afterAll(async () => {
 
 const table = () => `lab:${randomBytes(16).toString('base64url')}`
 const open = []
+/** floods still running, and whether the relay's windows need a second to empty — see flood() */
+const floods = []
+let flooded = false
 /* ⚠️ EVERY CASE LEAVES AN EMPTY RELAY, pass or fail. The table cap is a count across the whole
    relay, so a case that failed halfway and left a table standing would otherwise turn the cap's
-   own case red for a reason that has nothing to do with it. */
+   own case red for a reason that has nothing to do with it. The windows are relay-wide too: a
+   flood that failed before it stopped would starve the next case of its moves. */
 afterEach(async () => {
+  for (const stop of floods.splice(0)) stop()
+  if (flooded) await sleep(1100)
+  flooded = false
   for (const s of open.splice(0)) s.close()
   for (let end = Date.now() + 3000; Date.now() < end; await sleep(50))
     if ((await config()).lab === 0) break
@@ -352,22 +359,207 @@ describe('inside a Lab table', () => {
     await shut(ann, bo, lurker)
   })
 
-  it('a table holds eight let in and sixteen sockets; past that, lab-full', async () => {
+  it('a table lets eight in; a ninth, friend of all of them, is lab-full', async () => {
+    /* eight people, not one person's eight tabs: an account holds four sockets at most */
+    const people = Array.from({ length: LAB.vouched + 1 }, (_, i) => `f-${i}`)
+    befriend(...people)
     const room = table()
-    const tabs = []
-    for (let i = 0; i < LAB.vouched; i++) tabs.push(await letIn(room, 'f-ann'))
-    const ninth = await arrive(room, 'f-ann')
+    const inside = []
+    for (const who of people.slice(0, LAB.vouched)) inside.push(await letIn(room, who))
+    const ninth = await arrive(room, people[LAB.vouched])
     expect(await closed(ninth)).toBe(true)
     expect(ninth.inbox).toEqual([refused('lab-full')])
-    const waiting = []
-    for (let i = LAB.vouched; i < LAB.sockets; i++) waiting.push(await arrive(room))
-    const over = openSocket(relay.url)
-    open.push(over)
-    await over.opened
-    over.send({ type: 'hello', room })
-    expect(await closed(over)).toBe(true)
-    expect(over.inbox).toEqual([refused('lab-full')])
-    await shut(...tabs, ...waiting)
+    await shut(...inside)
+  })
+})
+
+/**
+ * Every lab frame these sockets are allowed, and more, until the returned function is called:
+ * sixty a socket every tenth of a second, far past any window, so whatever a window lets through
+ * is taken. The relay's windows are relay-wide, so after a case that floods, afterEach stops it
+ * if the case did not and waits for them to empty.
+ */
+function flood(socks) {
+  let on = true
+  flooded = true
+  void (async () => {
+    while (on) {
+      for (const s of socks)
+        for (let i = 0; i < 60; i++)
+          if (s.ws.readyState === WebSocket.OPEN) s.send({ type: 'lab', d: 'x' })
+      await sleep(100)
+    }
+  })()
+  const stop = () => (on = false)
+  floods.push(stop)
+  return stop
+}
+/** twenty moves from one socket, spread over most of a second, while something else may flood */
+async function moves(from) {
+  const sent = Array.from({ length: 20 }, (_, k) => `move ${k}`)
+  for (const d of sent) {
+    from.send({ type: 'lab', d })
+    await sleep(40)
+  }
+  return sent
+}
+
+describe('a socket that never says who it is, and the friends it must not keep out', () => {
+  it('goes on its first hello’s clock: a hello anywhere else is refused, and the room hears nothing', async () => {
+    const room = table()
+    const ann = await letIn(room, 'h-ann')
+    await sleep(50)
+    ann.inbox.length = 0
+    for (const away of [
+      () => ({ type: 'hello', room: table() }),
+      () => ({ type: 'hello', room: `h-snake-${randomBytes(4).toString('hex')}`, create: true }),
+    ]) {
+      const s = await arrive(room)
+      const t0 = Date.now()
+      /* away and straight back, three times a timer — which used to start the timer again */
+      const hop = setInterval(() => {
+        if (s.ws.readyState !== WebSocket.OPEN) return
+        s.send(away())
+        s.send({ type: 'hello', room })
+      }, VOUCH_MS / 3)
+      const gone = await closed(s, 3 * VOUCH_MS)
+      clearInterval(hop)
+      expect(gone).toBe(true)
+      expect(Date.now() - t0).toBeLessThan(VOUCH_MS + 300)
+      expect(s.inbox).toEqual([refused('one-table')])
+    }
+    await sleep(150)
+    expect(ann.inbox).toEqual([])
+    await shut(ann)
+  })
+
+  it('a table full of sockets that have said nothing still lets a friend in: one makes way', async () => {
+    befriend('e-ann', 'e-bo')
+    const room = table()
+    const ann = await letIn(room, 'e-ann')
+    ann.inbox.length = 0
+    /* together, so all fifteen are well inside the timer when Bo knocks */
+    const silent = await Promise.all(Array.from({ length: LAB.sockets - 1 }, () => arrive(room)))
+    const bo = await letIn(room, 'e-bo')
+    expect(await until(() => silent.some((s) => s.ws.readyState === WebSocket.CLOSED), 3000)).toBe(
+      true,
+    )
+    const out = silent.filter((s) => s.ws.readyState !== WebSocket.OPEN)
+    expect(out).toHaveLength(1)
+    expect(out[0].inbox).toEqual([refused('lab-full')])
+    /* and Ann heard Bo arrive, and nothing about anybody who made way */
+    expect(await has(ann, 'lab-here')).toBe(true)
+    await sleep(100)
+    expect(heard(ann, 'lab-here')).toEqual([{ type: 'lab-here', from: bo.id, uid: 'e-bo' }])
+    expect(ann.inbox.filter((f) => f.type !== 'lab-here')).toEqual([])
+    await shut(ann, bo, ...silent)
+  })
+
+  it('a socket whose check is running never makes way: a table of them is lab-full', async () => {
+    const who = Array.from({ length: LAB.sockets }, (_, i) => `c-${i}`)
+    for (const u of who) delay.set(`user ${u}`, 1500)
+    const room = table()
+    const checking = await Promise.all(who.map((u) => arrive(room, u)))
+    await sleep(100)
+    const late = openSocket(relay.url)
+    open.push(late)
+    await late.opened
+    late.send({ type: 'hello', room })
+    expect(await closed(late)).toBe(true)
+    expect(late.inbox).toEqual([refused('lab-full')])
+    expect(checking.every((s) => s.ws.readyState === WebSocket.OPEN)).toBe(true)
+    await shut(...checking)
+  })
+})
+
+describe('one account, and what it may take from everybody else', () => {
+  it('a member alone at a table holds no live table: six of them, and two friends still get one', async () => {
+    const lone = []
+    for (let i = 0; i < LAB.rooms; i++) lone.push(await letIn(table(), `k-${i}`))
+    expect(await config()).toMatchObject({ lab: LAB.rooms, labLive: 0 })
+    befriend('k-ann', 'k-bo')
+    const room = table()
+    const ann = await letIn(room, 'k-ann')
+    const bo = await letIn(room, 'k-bo')
+    expect(await config()).toMatchObject({ lab: LAB.rooms + 1, labLive: 1 })
+    await shut(...lone, ann, bo)
+  })
+
+  it('one account is let into two tables and four sockets at most; past that, too-many-places', async () => {
+    const [t1, t2, t3] = [table(), table(), table()]
+    const a = await letIn(t1, 'p-mal')
+    const b = await letIn(t2, 'p-mal')
+    const third = await arrive(t3, 'p-mal')
+    expect(await closed(third)).toBe(true)
+    expect(third.inbox).toEqual([refused('too-many-places')])
+    /* another tab at a table she is already at is no new table, up to four sockets in all */
+    const c = await letIn(t1, 'p-mal')
+    const d = await letIn(t2, 'p-mal')
+    const fifth = await arrive(t1, 'p-mal')
+    expect(await closed(fifth)).toBe(true)
+    expect(fifth.inbox).toEqual([refused('too-many-places')])
+    /* and a place given back can be used again */
+    await shut(d)
+    const again = await letIn(t1, 'p-mal')
+    await shut(a, b, c, again)
+  })
+
+  it('a frame that reaches nobody costs nothing: three members flooding empty tables cost a real one no move', async () => {
+    befriend('z-ann', 'z-bo')
+    const room = table()
+    const ann = await letIn(room, 'z-ann')
+    const bo = await letIn(room, 'z-bo')
+    const lone = []
+    for (let i = 0; i < 3; i++) lone.push(await letIn(table(), `z-lone-${i}`))
+    const stop = flood(lone)
+    await sleep(300)
+    bo.inbox.length = 0
+    const sent = await moves(ann)
+    await sleep(200)
+    stop()
+    expect(heard(bo, 'lab').map((f) => f.d)).toEqual(sent)
+    await shut(ann, bo, ...lone)
+  })
+
+  it('one account cannot take the relay’s window, however many sockets and tables it floods from', async () => {
+    befriend('y-ann', 'y-bo')
+    const room = table()
+    const ann = await letIn(room, 'y-ann')
+    const bo = await letIn(room, 'y-bo')
+    /* two tabs at each of two tables, so every frame she sends has somebody to reach: her own */
+    const [t1, t2] = [table(), table()]
+    const mal = []
+    for (const t of [t1, t1, t2, t2]) mal.push(await letIn(t, 'y-mal'))
+    const stop = flood(mal)
+    await sleep(300)
+    bo.inbox.length = 0
+    const sent = await moves(ann)
+    await sleep(200)
+    stop()
+    expect(heard(bo, 'lab').map((f) => f.d)).toEqual(sent)
+    await shut(ann, bo, ...mal)
+  })
+})
+
+describe('a door check that outlives its socket’s place in the room', () => {
+  it('lets nobody in, tells the room nothing, and leaves no socket unbounded', async () => {
+    befriend('g-ann', 'g-bo')
+    delay.set(`friends ${pair('g-ann', 'g-bo')}`, 600)
+    const room = table()
+    const bo = await letIn(room, 'g-bo')
+    await sleep(50)
+    bo.inbox.length = 0
+    const ann = await arrive(room, 'g-ann')
+    /* while her friends question is on its way: away, and straight back */
+    expect(await until(() => asked.includes('g-ann g-bo'), 3000)).toBe(true)
+    ann.send({ type: 'hello', room: table() })
+    ann.send({ type: 'hello', room })
+    expect(await closed(ann, VOUCH_MS + 1000)).toBe(true)
+    /* past the moment the answer arrives */
+    await sleep(800)
+    expect(heard(ann, 'labin')).toEqual([])
+    expect(bo.inbox).toEqual([])
+    await shut(bo)
   })
 })
 
@@ -375,25 +567,35 @@ describe('how many tables the relay holds, and what it says about them', () => {
   it('six live tables; a seventh is lab-busy, and rooms nobody was let into do not count', async () => {
     expect(await config()).toMatchObject({ lab: 0, labLive: 0 })
 
-    const strangers = []
-    for (let i = 0; i < 10; i++) strangers.push(await arrive(table()))
+    /* a member alone at a table before the cap fills, waiting for a friend */
+    befriend('l-lone', 'l-lone-friend')
+    const lone = table()
+    const waiting = await letIn(lone, 'l-lone')
     const rooms = Array.from({ length: LAB.rooms }, table)
     const live = []
-    for (const [i, room] of rooms.entries()) live.push(await letIn(room, `l-${i}`))
-    expect(await config()).toMatchObject({ lab: 16, labLive: 6 })
+    for (const [i, room] of rooms.entries()) {
+      befriend(`l-${i}-a`, `l-${i}-b`, `l-${i}-c`)
+      live.push(await letIn(room, `l-${i}-a`), await letIn(room, `l-${i}-b`))
+    }
+    const strangers = await Promise.all(Array.from({ length: 10 }, () => arrive(table())))
+    expect(await config()).toMatchObject({ lab: 1 + LAB.rooms + 10, labLive: LAB.rooms })
+    /* a seventh table is refused as it opens, and a lone one as it would become the seventh */
     const seventh = await arrive(table(), 'l-7')
     expect(await closed(seventh)).toBe(true)
     expect(seventh.inbox).toEqual([refused('lab-busy')])
+    const friend = await arrive(lone, 'l-lone-friend')
+    expect(await closed(friend)).toBe(true)
+    expect(friend.inbox).toEqual([refused('lab-busy')])
     /* a table already live still takes its own: the cap is on tables, not on people */
-    const again = await letIn(rooms[0], 'l-0')
-    await shut(...strangers, ...live, again)
+    const third = await letIn(rooms[0], 'l-0-c')
+    await shut(...strangers, waiting, ...live, third)
   })
 
   it('nothing it logs names a table or a person', () => {
     const log = relay.log()
     expect(log).toMatch(/listening on/)
     expect(log).not.toMatch(/lab:/)
-    for (const who of ['m-ann', 'm-bo', 'n-cy', 'r-bo', 'x-eve', 'f-ann', 'l-7'])
+    for (const who of ['m-ann', 'm-bo', 'n-cy', 'r-bo', 'x-eve', 'f-8', 'l-7', 'p-mal', 'g-ann'])
       expect(log).not.toContain(who)
   })
 })

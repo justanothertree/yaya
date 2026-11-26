@@ -29,14 +29,17 @@ import { MAX_MSG_BYTES } from './lib/frameCap.mjs'
 import {
   LAB,
   SAY,
+  charge,
+  crowdedOut,
   doorFor,
+  helloAgain,
   helloFrames,
   isLabId,
+  isLive,
   kindAllowed,
   leaveFrames,
   listable,
   looksLab,
-  rate,
   readLab,
   verdictOf,
   vouchTimerCloses,
@@ -137,8 +140,14 @@ const isBout = (roomId) => roomId.startsWith('fight:')
  */
 const LAB_VOUCH_MS = Math.min(LAB.vouchMs, Number(process.env.LAB_VOUCH_MS) || LAB.vouchMs)
 const LAB_DOOR_MS = Math.min(LAB.doorMs, Number(process.env.LAB_DOOR_MS) || LAB.doorMs)
-/** every `lab` frame forwarded in the last second, across all Lab rooms — see labDoor's rate() */
+/** every `lab` frame forwarded in the last second, across all Lab rooms — see labDoor's charge() */
 let labTimes = []
+/**
+ * The same, per account: uid -> times, whatever socket or table each came from — LAB.personHz,
+ * so one account's share of `labTimes` is a share. Forgotten when the account's last let-in
+ * socket goes (leaveLab), so it holds only people at a table now.
+ */
+const labPersonTimes = new Map()
 
 /**
  * Who owns a hosted park, if it is one.
@@ -352,14 +361,14 @@ const rooms = new Map()
 /**
  * Open rooms by kind, for /relay-config. Every room that is not a park, a bout or a Lab table is
  * a Snake room — that is how `hello` treats an id it has no special rule for. `labLive` counts
- * the Lab rooms somebody has been let into, which are the ones LAB.rooms caps.
+ * the Lab rooms two different people have been let into, which are the ones LAB.rooms caps.
  */
 function roomCounts() {
   const n = { snake: 0, park: 0, bout: 0, lab: 0, labLive: 0 }
   for (const [roomId, room] of rooms) {
     if (room.lab) {
       n.lab++
-      if (labVouched(room).length) n.labLive++
+      if (isLive(labVouched(room))) n.labLive++
     } else n[isPark(roomId) ? 'park' : isBout(roomId) ? 'bout' : 'snake']++
   }
   return n
@@ -375,11 +384,11 @@ function labVouched(room) {
   return uids
 }
 
-/** How many sockets are let into each Lab room on this relay — what liveRoomsFull counts. */
-function labCounts() {
-  const counts = []
-  for (const room of rooms.values()) if (room.lab) counts.push(labVouched(room).length)
-  return counts
+/** labVouched for every Lab room on the relay but `room`: what the door's relay-wide limits read. */
+function labElsewhere(room) {
+  const out = []
+  for (const r of rooms.values()) if (r.lab && r !== room) out.push(labVouched(r))
+  return out
 }
 
 function uuid() {
@@ -1526,8 +1535,9 @@ const server = createServer((req, res) => {
            * this is the reading to take before merging a relay change. Counts only, never an id:
            * a bout's id is its invite and a Lab table's is its key (see `list`). And here rather
            * than on /health, because how busy the relay is, and when, is the operator's business
-           * and not a stranger's. `lab` is every Lab room, `labLive` the ones anybody has been
-           * let into; the difference is sockets that arrived and have not been checked yet.
+           * and not a stranger's. `lab` is every Lab room, `labLive` the ones two different
+           * people have been let into; the difference is tables waiting for somebody — a member
+           * alone, or sockets that arrived and have not been checked yet.
            */
           rooms: roomCounts(),
           has: {
@@ -1898,8 +1908,8 @@ wss.on('connection', (ws, req) => {
     authInFlight = true
     return true
   }
-  /** see LAB_VOUCH_MS — the silent-socket timer of the Lab room this socket is in, if any */
-  let labTimer = null
+  /** the Lab id this socket first knocked with, if any — it knocks nowhere else (helloAgain) */
+  let labTable = null
   // see the heartbeat below — a half-open socket answers no pong and gets terminated,
   // which runs this connection's normal close handler and frees its room
   ws.isAlive = true
@@ -1912,11 +1922,13 @@ wss.on('connection', (ws, req) => {
    * nothing at all unless this socket had been let in, and then only to the others let in.
    */
   const leaveLab = (room, roomId) => {
-    if (labTimer) clearTimeout(labTimer)
-    labTimer = null
     const st = room.state.get(id)
+    if (st?.timer) clearTimeout(st.timer)
     room.clients.delete(id)
     room.state.delete(id)
+    /* the account's window goes with its last place, so the map holds only people at a table */
+    if (st?.vouched && ![...rooms.values()].some((r) => r.lab && labVouched(r).includes(st.uid)))
+      labPersonTimes.delete(st.uid)
     if (room.clients.size === 0) {
       if (rooms.get(roomId) === room) rooms.delete(roomId)
       return
@@ -1952,10 +1964,14 @@ wss.on('connection', (ws, req) => {
    */
   const helloLab = (roomId) => {
     if (!isLabId(roomId)) return refuseLab('bad-room')
-    if (joinedRoomId === roomId) return
     let room = rooms.get(roomId)
     if (room && !room.lab) return refuseLab('bad-room')
-    if (room && room.clients.size >= LAB.sockets) return refuseLab('lab-full')
+    if (room && room.clients.size >= LAB.sockets) {
+      /* a socket that has said nothing makes way, if there is one — see crowdedOut */
+      const out = crowdedOut([...room.state].map(([cid, cs]) => ({ id: cid, ...cs })))
+      if (!out) return refuseLab('lab-full')
+      room.state.get(out).kick('lab-full')
+    }
     if (!room) {
       if (rooms.size >= MAX_ROOMS) {
         send(ws, { type: 'error', code: 'too-many-rooms', message: 'The relay is full' })
@@ -1971,21 +1987,27 @@ wss.on('connection', (ws, req) => {
     }
     leavePrevious(roomId)
     room.clients.set(id, ws)
-    room.state.set(id, {
+    /* `kick` is this socket's own refusal, for another socket's knock to call — see crowdedOut */
+    const st = {
       lastSeen: Date.now(),
+      at: Date.now(),
       sentAuth: false,
       vouched: false,
       uid: null,
       times: [],
-    })
+      timer: null,
+      kick: refuseLab,
+    }
+    room.state.set(id, st)
     joinedRoomId = roomId
     for (const frame of helloFrames(id)) send(ws, frame)
-    /* a socket that never says who it is goes at LAB_VOUCH_MS; one whose check is running or
-       queued does not — see vouchTimerCloses, and the door's own deadline in labAuth */
-    labTimer = setTimeout(() => {
-      labTimer = null
-      if (joinedRoomId !== roomId || rooms.get(roomId) !== room) return
-      if (vouchTimerCloses(room.state.get(id))) refuseLab('members-only')
+    /* a socket that never says who it is goes at LAB_VOUCH_MS from this, its one Lab hello; one
+       whose check is running or queued does not — see vouchTimerCloses, and labAuth's deadline.
+       ⚠️ THE TIMER BELONGS TO THIS ENTRY, so nothing done for any other entry can clear it. */
+    st.timer = setTimeout(() => {
+      st.timer = null
+      if (room.state.get(id) !== st) return
+      if (vouchTimerCloses(st)) refuseLab('members-only')
     }, LAB_VOUCH_MS)
   }
 
@@ -2008,11 +2030,17 @@ wss.on('connection', (ws, req) => {
     if (!takeAuthSlot()) return
     st.sentAuth = true
     let settled = false
+    /* ⚠️ THE SAME ENTRY, NOT ONLY THE SAME ROOM. Every await below can outlive the place this
+       check is for: a socket that left and came back is in the room again with a NEW entry, and
+       an answer about the old one let a detached entry in — the room told lab-here about somebody
+       who could neither speak nor hear, whose timer the answer cleared and whose leaving nobody
+       was told about. helloAgain stops a socket coming back at all; this holds without it. */
     const here = () =>
       !settled &&
       joinedRoomId === roomId &&
       rooms.get(roomId) === room &&
       room.clients.get(id) === ws &&
+      room.state.get(id) === st &&
       ws.readyState === ws.OPEN
     const refuse = (code) => {
       if (!here()) return
@@ -2031,15 +2059,15 @@ wss.on('connection', (ws, req) => {
       const verdict = await room.lab.door.check({
         uid,
         vouched: () => labVouched(room),
+        elsewhere: () => labElsewhere(room),
         ask: (other) => friendAnswer(token, uid, other),
-        counts: labCounts,
         gone: () => !here(),
         enter: () => {
           settled = true
           st.vouched = true
           st.uid = uid
-          if (labTimer) clearTimeout(labTimer)
-          labTimer = null
+          if (st.timer) clearTimeout(st.timer)
+          st.timer = null
           const who = []
           for (const cid of room.clients.keys()) {
             const cs = room.state.get(cid)
@@ -2063,31 +2091,43 @@ wss.on('connection', (ws, req) => {
    * — with `to` — to one person's sockets only. `from` and `uid` are written here, never taken
    * from the frame, so nobody can speak as somebody else.
    *
-   * Over any of the three windows it is dropped without a word, as a walk is: telling a flooder
-   * they were limited only tells them how fast to go.
+   * Over any of the four windows — the socket's, the account's, the room's and the relay's — it
+   * is dropped without a word, as a walk is: telling a flooder they were limited only tells them
+   * how fast to go.
+   *
+   * ⚠️ A FRAME THAT REACHES NOBODY IS DROPPED BEFORE IT IS CHARGED. The windows exist to bound
+   * what the relay sends, and the relay-wide one is shared by every table — so a member alone at
+   * a table, sending to nobody, used to spend it as fast as anybody could, and a real table's
+   * moves were the ones dropped. Alone, a member now costs the relay a parse and nothing else.
    */
   const labForward = (room, st, msg) => {
     if (!st.vouched) return
     const m = readLab(msg, labVouched(room))
     if (!m) return
-    const now = Date.now()
-    const w = [
-      rate(st.times, now, LAB.socketHz),
-      rate(room.lab.times, now, LAB.roomHz),
-      rate(labTimes, now, LAB.globalHz),
-    ]
-    st.times = w[0].times
-    room.lab.times = w[1].times
-    labTimes = w[2].times
-    if (!w.every((x) => x.ok)) return
-    st.times.push(now)
-    room.lab.times.push(now)
-    labTimes.push(now)
-    const out = JSON.stringify({ type: 'lab', from: id, uid: st.uid, d: m.d })
+    const to = []
     for (const [cid, cws] of room.clients) {
       if (cid === id || cws.readyState !== cws.OPEN) continue
       const cs = room.state.get(cid)
-      if (!cs?.vouched || (m.to && cs.uid !== m.to)) continue
+      if (cs?.vouched && (!m.to || cs.uid === m.to)) to.push(cws)
+    }
+    if (!to.length) return
+    const now = Date.now()
+    const c = charge(
+      [
+        [st.times, LAB.socketHz],
+        [labPersonTimes.get(st.uid) ?? [], LAB.personHz],
+        [room.lab.times, LAB.roomHz],
+        [labTimes, LAB.globalHz],
+      ],
+      now,
+    )
+    st.times = c.times[0]
+    labPersonTimes.set(st.uid, c.times[1])
+    room.lab.times = c.times[2]
+    labTimes = c.times[3]
+    if (!c.ok) return
+    const out = JSON.stringify({ type: 'lab', from: id, uid: st.uid, d: m.d })
+    for (const cws of to) {
       try {
         cws.send(out)
       } catch {
@@ -2178,8 +2218,15 @@ wss.on('connection', (ws, req) => {
         String(msg.room || '')
           .trim()
           .slice(0, MAX_ROOM_ID_LEN) || 'default'
+      /* a socket that has knocked on a Lab table goes nowhere else, and knocks there once */
+      const again = helloAgain(labTable, roomId)
+      if (again === 'same') return
+      if (again) return refuseLab(again)
       /* before anything below: none of it may run for a Lab id, well-formed or not */
-      if (looksLab(roomId)) return helloLab(roomId)
+      if (looksLab(roomId)) {
+        labTable = roomId
+        return helloLab(roomId)
+      }
       let room = rooms.get(roomId)
       // If room doesn't exist and client is not creating, return an error
       if (!room && !msg.create) {
@@ -3162,7 +3209,6 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     if (parkVouchTimer) clearTimeout(parkVouchTimer)
-    if (labTimer) clearTimeout(labTimer)
     if (!joinedRoomId) return
     const room = rooms.get(joinedRoomId)
     if (!room) return

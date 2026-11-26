@@ -3,16 +3,21 @@ import {
   LAB,
   SAY,
   admitAfter,
+  charge,
+  crowdedOut,
   doorFor,
   friendsAt,
+  helloAgain,
   helloFrames,
   isLabId,
+  isLive,
   kindAllowed,
   leaveFrames,
   listable,
   liveRoomsFull,
   looksLab,
   pairsToAsk,
+  placesFull,
   rate,
   readLab,
   verdictOf,
@@ -125,6 +130,54 @@ describe('the windows (2.8)', () => {
   it('the limits are the plan’s: 50 a socket, 100 a room, 150 across the relay', () => {
     expect([LAB.socketHz, LAB.roomHz, LAB.globalHz]).toEqual([50, 100, 150])
   })
+
+  it('and one account’s share of the relay’s is a third of it, whatever it sends from', () => {
+    expect(LAB.personHz).toBe(LAB.socketHz)
+    expect(LAB.personHz * 3).toBe(LAB.globalHz)
+  })
+
+  it('a frame is charged to every window it fits, or to none of them', () => {
+    const t0 = 1_000_000
+    const full = Array.from({ length: 3 }, (_, i) => t0 - 10 * i)
+    const fits = charge(
+      [
+        [[], 3],
+        [[t0 - 2000], 3],
+      ],
+      t0,
+    )
+    expect(fits).toEqual({ ok: true, times: [[t0], [t0]] })
+    /* the second window is full: nothing is added to the first, which the frame never used */
+    const over = charge(
+      [
+        [[t0 - 5], 3],
+        [full, 3],
+      ],
+      t0,
+    )
+    expect(over).toEqual({ ok: false, times: [[t0 - 5], full] })
+    /* and a full window is the whole answer, whichever it is */
+    expect(
+      charge(
+        [
+          [full, 3],
+          [[], 3],
+          [[], 3],
+        ],
+        t0,
+      ).ok,
+    ).toBe(false)
+    expect(
+      charge(
+        [
+          [[], 3],
+          [[], 3],
+          [full, 3],
+        ],
+        t0,
+      ).ok,
+    ).toBe(false)
+  })
 })
 
 /**
@@ -153,8 +206,8 @@ async function arrive({ who, order, door = doorFor(), room = ['bo'] }) {
         /* a fresh list each time, as the relay builds one: a live array would let a stale read
            see the room change underneath it, and hide the very mistake under test */
         vouched: () => [...room],
+        elsewhere: () => [],
         ask: ask(uid),
-        counts: () => [room.length],
         enter: () => room.push(uid),
       })
       .then((v) => {
@@ -299,7 +352,7 @@ describe('one person, two tabs (2.12)', () => {
       vouched: () => room,
       /* are_friends(me, me) is false — a friendship is a row between two accounts */
       ask: async (u) => (asked.push(u), u === 'ann' ? 'no' : 'yes'),
-      counts: () => [room.length],
+      elsewhere: () => [],
       enter: () => room.push('ann'),
     })
     expect(v).toBe('admit')
@@ -309,29 +362,66 @@ describe('one person, two tabs (2.12)', () => {
 })
 
 describe('how many live rooms the relay holds (2.13)', () => {
-  it('rooms nobody has been let into do not count, however many there are', () => {
-    expect(liveRoomsFull(Array(20).fill(0), 0)).toBe(false)
-    expect(liveRoomsFull([...Array(20).fill(0), 1, 2, 3, 1, 1], 0)).toBe(false)
+  const lone = (i) => [`lone-${i}`]
+  const pairOf = (i) => [`a-${i}`, `b-${i}`]
+
+  it('a room is live with two different people in it, and one person’s tabs are not two', () => {
+    expect(isLive([])).toBe(false)
+    expect(isLive(['ann'])).toBe(false)
+    expect(isLive(['ann', 'ann', 'ann'])).toBe(false)
+    expect(isLive(['ann', 'bo'])).toBe(true)
   })
 
-  it('a seventh live room is refused, and a room already live never is', () => {
+  it('rooms nobody has been let into do not count, and nor do rooms holding one person', () => {
+    expect(liveRoomsFull(Array(20).fill([]), [], 'ann')).toBe(false)
+    const lonely = Array.from({ length: 20 }, (_, i) => (i % 2 ? lone(i) : ['x', 'x', 'x']))
+    expect(liveRoomsFull(lonely, [], 'ann')).toBe(false)
+    expect(
+      liveRoomsFull([...lonely, ...Array.from({ length: 5 }, (_, i) => pairOf(i))], [], 'ann'),
+    ).toBe(false)
+  })
+
+  it('at six live rooms, a room may not open, nor become the seventh', () => {
     expect(LAB.rooms).toBe(6)
-    const six = [1, 2, 8, 1, 1, 3]
-    expect(liveRoomsFull([...six, 0, 0], 0)).toBe(true)
-    expect(liveRoomsFull(six, 2)).toBe(false)
+    const six = Array.from({ length: LAB.rooms }, (_, i) => pairOf(i))
+    expect(liveRoomsFull([...six, [], lone(9)], [], 'ann')).toBe(true)
+    /* Ann alone, and Bo arriving: this would be the seventh */
+    expect(liveRoomsFull(six, ['ann'], 'bo')).toBe(true)
   })
 
-  it('the door says lab-busy at the moment of letting somebody in, not before', async () => {
-    const room = []
+  it('and a room already live never is refused by it, nor another tab of a lone room’s person', () => {
+    const six = Array.from({ length: LAB.rooms }, (_, i) => pairOf(i))
+    expect(liveRoomsFull(six, ['ann', 'bo'], 'cy')).toBe(false)
+    expect(liveRoomsFull(six, ['ann', 'bo'], 'ann')).toBe(false)
+    expect(liveRoomsFull(six, ['ann'], 'ann')).toBe(false)
+  })
+
+  it('the door says lab-busy before asking anybody anything, and again at the moment of letting in', async () => {
+    const six = Array.from({ length: LAB.rooms }, (_, i) => pairOf(i))
+    let asked = 0
+    const room = ['bo']
     const v = await doorFor().check({
       uid: 'ann',
       vouched: () => room,
-      ask: async () => 'yes',
-      counts: () => [1, 1, 1, 1, 1, 1, 0],
+      elsewhere: () => six,
+      ask: async () => (asked++, 'yes'),
       enter: () => room.push('ann'),
     })
     expect(v).toBe('lab-busy')
-    expect(room).toEqual([])
+    expect(asked).toBe(0)
+    /* the sixth went live while Ann's answers were on their way */
+    const five = six.slice(1)
+    const later = ['bo']
+    let calls = 0
+    const late = await doorFor().check({
+      uid: 'ann',
+      vouched: () => later,
+      elsewhere: () => (calls++ ? six : five),
+      ask: async () => 'yes',
+      enter: () => later.push('ann'),
+    })
+    expect(late).toBe('lab-busy')
+    expect(later).toEqual(['bo'])
   })
 
   it('and lab-full when eight sockets are in already, before anybody is asked anything', async () => {
@@ -340,8 +430,8 @@ describe('how many live rooms the relay holds (2.13)', () => {
     const v = await doorFor().check({
       uid: 'ann',
       vouched: () => room,
+      elsewhere: () => [],
       ask: async () => (asked++, 'yes'),
-      counts: () => [room.length],
       enter: () => room.push('ann'),
     })
     expect(v).toBe('lab-full')
@@ -354,13 +444,86 @@ describe('how many live rooms the relay holds (2.13)', () => {
     const v = await doorFor().check({
       uid: 'ann',
       vouched: () => room,
+      elsewhere: () => [],
       ask: async () => ((left = true), 'yes'),
-      counts: () => [room.length],
       gone: () => left,
       enter: () => room.push('ann'),
     })
     expect(v).toBeNull()
     expect(room).toEqual(['bo'])
+  })
+})
+
+describe('one account’s places on the relay', () => {
+  it('two tables and four sockets at most', () => {
+    expect([LAB.tables, LAB.tabs]).toEqual([2, 4])
+  })
+
+  it('a third table is refused, and another tab at a table already held is not a new table', () => {
+    const elsewhere = [['mal'], ['bo', 'mal'], ['cy']]
+    expect(placesFull('mal', elsewhere, [])).toBe(true)
+    expect(placesFull('mal', elsewhere, ['ann'])).toBe(true)
+    /* with a tab here already, this table is one of her two */
+    expect(placesFull('mal', [['mal']], ['mal'])).toBe(false)
+    expect(placesFull('mal', [['mal']], [])).toBe(false)
+    /* somebody else's tables are nothing to her */
+    expect(placesFull('ann', elsewhere, [])).toBe(false)
+  })
+
+  it('a fifth socket is refused, counted across every table, wherever it would go', () => {
+    expect(placesFull('mal', [['mal', 'mal']], ['mal'])).toBe(false)
+    expect(placesFull('mal', [['mal', 'mal']], ['mal', 'mal'])).toBe(true)
+    expect(placesFull('mal', [], ['mal', 'mal', 'mal', 'mal'])).toBe(true)
+    expect(placesFull('mal', [['mal', 'bo', 'mal', 'mal']], ['mal'])).toBe(true)
+  })
+
+  it('the door refuses too-many-places before asking anything, and again at the end', async () => {
+    let asked = 0
+    const room = ['bo']
+    const v = await doorFor().check({
+      uid: 'mal',
+      vouched: () => room,
+      elsewhere: () => [['mal'], ['mal']],
+      ask: async () => (asked++, 'yes'),
+      enter: () => room.push('mal'),
+    })
+    expect(v).toBe('too-many-places')
+    expect(asked).toBe(0)
+    /* let into a second table by that table's own door while this one's answers were out */
+    let calls = 0
+    const late = await doorFor().check({
+      uid: 'mal',
+      vouched: () => room,
+      elsewhere: () => (calls++ ? [['mal'], ['mal']] : [['mal']]),
+      ask: async () => 'yes',
+      enter: () => room.push('mal'),
+    })
+    expect(late).toBe('too-many-places')
+    expect(room).toEqual(['bo'])
+  })
+})
+
+describe('a socket that never says who it is', () => {
+  it('knocks on one table for life: the same id again is nothing, anything else is one-table', () => {
+    const t = `lab:${B22}`
+    expect(helloAgain(null, t)).toBeNull()
+    expect(helloAgain(undefined, 'default')).toBeNull()
+    expect(helloAgain(t, t)).toBe('same')
+    for (const want of [`lab:${B22.slice(1)}x`, 'default', 'park:abc', 'lab:x', '', 'lab:'])
+      expect(helloAgain(t, want), want).toBe('one-table')
+    /* a malformed first knock binds too: it was refused, and the close is still completing */
+    expect(helloAgain('lab:x', `lab:${B22}`)).toBe('one-table')
+  })
+
+  it('is the one to make way at a full table, the longest-silent first, and never one being checked', () => {
+    const s = (id, at, sentAuth = false, vouched = false) => ({ id, at, sentAuth, vouched })
+    expect(crowdedOut([s('in', 1, true, true), s('new', 30), s('old', 20), s('newer', 40)])).toBe(
+      'old',
+    )
+    expect(crowdedOut([s('checking', 1, true), s('in', 2, true, true)])).toBeNull()
+    expect(crowdedOut([])).toBeNull()
+    /* oldest by its hello, not by where it sits in the map */
+    expect(crowdedOut([s('b', 9), s('a', 3)])).toBe('a')
   })
 })
 
@@ -401,6 +564,8 @@ describe('what a Lab room accepts and says (2.14)', () => {
       'lab-full': 'This table already has eight people connected.',
       'lab-busy': 'The game server is full right now.',
       'bad-room': 'That is not a Lab table.',
+      'one-table': 'Each table needs a link of its own.',
+      'too-many-places': 'You are connected to the game server in too many places already.',
     })
   })
 })

@@ -280,16 +280,27 @@ itself goes red only when both are removed.
 - **The silent-socket timer (12 s)** closes only a socket that never sent `auth`. A socket whose
   check is running, or queued behind somebody else's, is never closed by it: Supabase can be slow,
   and the chain means a friend can still be waiting when the timer fires.
+- **One table per socket, for life.** The timer runs from a socket's one Lab hello. Any later
+  hello to anywhere else is `one-table` and a close, so no hop can start the timer again (added 26
+  Nov, below).
 - **The door's own deadline (40 s from the `auth` frame)** bounds such a socket instead, and ends
   in `door-unavailable`.
-- **Per table:** 16 sockets (`lab-full` at hello) and 8 let in (`lab-full` at the door).
-- **Live tables:** at most 6 rooms with anybody let in. A seventh gets `lab-busy`, given at the
-  door, never at hello, so a full relay cannot be used to test whether a code exists. Rooms nobody
-  was let into do not count, so strangers cannot fill the cap.
+- **Per table:** 16 sockets and 8 let in (`lab-full` at the door). At 16, a knock takes the place
+  of the socket that has been silent longest, which is told `lab-full`; only a table whose every
+  socket is let in or being checked turns the knock away with `lab-full`.
+- **Live tables:** at most 6 rooms with two different people let in. A seventh, opening or
+  becoming live, gets `lab-busy`, given at the door, never at hello, so a full relay cannot be used
+  to test whether a code exists. Rooms nobody was let into do not count, and nor do rooms holding
+  one person, so neither strangers nor a member alone can fill the cap.
+- **Per account:** let into 2 tables and 4 sockets at most, across the relay (`too-many-places`).
+  A tab moving tables while its old link closes, and a phone beside a laptop, fit with room to
+  spare.
 - **`lab` frames:** a non-empty string of at most 4,096 UTF-8 bytes (measured in bytes, not
   `.length`). A `to` must name somebody let into this room, or the whole frame is refused rather
-  than sent to everybody. Windows of 50 a second per socket, 100 per room and 150 across all Lab
-  rooms; anything over is dropped without a word. `from` and `uid` are written by the relay.
+  than sent to everybody. Windows of 50 a second per socket, 50 per account wherever it sends
+  from, 100 per room and 150 across all Lab rooms; anything over is dropped without a word. A
+  frame that would reach nobody is dropped before any window is charged. `from` and `uid` are
+  written by the relay.
 - `LAB_VOUCH_MS` and `LAB_DOOR_MS` can shorten the two timers for a test, never lengthen them.
 
 `/relay-config` (admin only) gains `rooms.lab` and `rooms.labLive`: counts, never an id.
@@ -383,6 +394,78 @@ Made red:
 | stub: no `PARK_STUB_RELAY` guard                                    | 1                                                                 |
 | smoke: a relay without the Lab hello                                | exit 1, "heard welcome, host, host, presence, presence, settings" |
 
+### The review's findings, each with a test that failed first (26 Nov 2026)
+
+A security review of this step found three ways round the door's limits. Each was reproduced on
+the step's tip (7bea327a) by a new case in `scripts/relay-lab.test.mjs`, against the real relay and
+the stand-in, before anything was changed. All seven new cases were red there.
+
+**1. A socket that never signed in could stay at a table forever.** Each hello made a new entry and
+a new 12 s timer, and leaving cleared the old one. So a socket that hopped to any other id and back
+inside the timer was never closed, and sixteen of them kept a table's friends out with `lab-full`.
+On the tip the hopping socket was still open after three times the timer, and a friend knocking on
+a table full of silent sockets was refused.
+
+- A socket that has knocked on a Lab table goes nowhere else (`helloAgain`): the same id again is
+  ignored, and anything else is `one-table` and a close. The timer belongs to the entry, and a
+  socket has only one entry.
+- At 16 sockets, a knock takes the place of the longest-silent socket (`crowdedOut`), so sockets
+  nobody has let in can never shut out the people the table is for. A socket being checked never
+  makes way: a slow Supabase must not turn into a refusal.
+
+**2. One member with no friends could take the relay-wide limits.** A member alone at a table had
+nobody to be checked against, so the friends question was trivially yes, and a room with anybody
+let in counted as live. Six lone tables made every new table on the relay `lab-busy`. A frame was
+charged to every window before the relay looked for anyone to send it to, so three lone members
+sending to nobody filled the relay's 150 a second. On the tip, six lone members read as six live
+tables, a third lone table was let in, and a real table's other player heard 0 of 20 moves
+during the flood (1 of 20 when one account flooded from four tabs).
+
+- A room is live only with two different people in it (`isLive`). The cap is asked when a room
+  opens and again when it would become live.
+- One account is let into 2 tables and 4 sockets at most (`placesFull`), asked before any friends
+  question and again just before letting in, since other tables' doors do not queue behind this
+  one's.
+- A frame that reaches nobody is dropped before it is charged. One account has its own window of
+  50 a second, a third of the relay's, wherever it sends from (`charge`).
+
+**3. A door check could finish for an entry that no longer existed.** Ann's check was running when
+she hopped away and back. The check still found the same socket in the same room, so it let in her
+OLD entry: the room was told `lab-here` about somebody who could neither send nor receive, the new
+entry's timer was cleared, and when she left, nobody was told. Every await in the check now also
+asks whether the room's entry is still the one it is answering for. The one-table rule stops the
+hop as well, so either lock alone holds.
+
+The reviewer's own scripts, re-run on the fixed relay with the production 12 s timer: 0 of 16
+hopping sockets were still open after 40 s (it had been 16 of 16), and a friend at that table
+heard `welcome` (it had been `lab-full`). The ghost was refused `one-table`, and the room heard
+nothing. A lone member's third table was refused. During a flood the real table heard 20 of 20
+moves (it had been 4 of 20), and a new table opened (it had been `lab-busy`).
+
+Mutations, each made once and put back:
+
+| Mutation                                           | Red                                                  |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| a hello elsewhere allowed again                    | 1, the hop case                                      |
+| no making way: a full table is `lab-full`          | 1, the silent-table case                             |
+| a socket being checked may make way                | 2: the checking-table case and the pure rule         |
+| the newest silent makes way, not the oldest        | 1, the pure rule                                     |
+| a lone room counts as live                         | 6: the lone-tables case, the six-tables case, 4 pure |
+| no per-account limit                               | 5: relay, stub, 3 pure                               |
+| the table limit one too loose                      | 4: relay, stub, 2 pure                               |
+| a frame to nobody charged                          | 1, the lone-flood case                               |
+| no per-account window                              | 1, the one-account flood case                        |
+| a refused frame charged anyway                     | 2: the one-account flood case and the pure rule      |
+| no same-entry check                                | nothing: the one-table rule holds                    |
+| no same-entry check, and a hello elsewhere allowed | 2: the hop case and the ghost case                   |
+
+The real door (`dockerd`, the pinned CLI on the scratch copy, as above) gained three checks: a lone
+member let in at two tables and told `too-many-places` at a third, and a socket that knocks on
+another table while its token is held is told `one-table`, with its answers, when they arrive,
+letting nobody in. `lab-door-probe.mjs --then-stopped`: **31 of 31**. With the one-table rule, the
+same-entry check and the per-account limit all taken out, 22 of 25, the three new checks red: no
+`too-many-places`, two welcomes where `one-table` was due, and Ann hearing `lab-here` twice.
+
 ### Left
 
 - **After merging, once Render's metrics show no live connections (Evan's rule, above):** run
@@ -397,4 +480,10 @@ Made red:
   (`relay-lab.test.mjs`) is the CI copy of the wiring, and it is only as faithful as its stand-in.
 - **A friendship ended inside the minute** is still believed for the rest of it (the cache), and a
   friendship ended mid-game is never re-checked, as a park's vouching is not.
-- **`lab-full` counts sockets, not people.** One person's eight tabs fill a table.
+- **The client (step 5) has two more codes to word:** `too-many-places`, and `one-table`, which an
+  honest client never meets because it opens a link per table visit.
+- **No per-address cap.** Sockets that never sign in are bounded by the connection gate (30 a
+  minute per address), a clock nothing can restart, and making way at a full table. A signed-in
+  person is bounded by their account, which a stranger cannot multiply by opening sockets. An
+  address is shared by a household, and a cap on it would refuse the people at one house on one
+  call while bounding nothing the account's limits do not.

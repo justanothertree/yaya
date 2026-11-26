@@ -114,6 +114,20 @@ describe('the stub relay', () => {
     expect(await until(() => bo.ws.readyState === WebSocket.CLOSED, 5000)).toBe(true)
   })
 
+  it('a socket knocks on one table for life there too, and one person holds two tables at most', async () => {
+    const hop = await tab(table(), 'hop', [])
+    hop.inbox.length = 0
+    hop.send({ type: 'hello', room: table() })
+    await until(() => hop.inbox.length > 0, 5000)
+    expect(hop.inbox).toEqual([{ type: 'error', code: 'one-table', message: SAY['one-table'] }])
+    await tab(table(), 'mal', [])
+    await tab(table(), 'mal', [])
+    const third = await tab(table(), 'mal', [])
+    expect(third.inbox.filter((f) => f.type === 'error')).toEqual([
+      { type: 'error', code: 'too-many-places', message: SAY['too-many-places'] },
+    ])
+  })
+
   it('a badly shaped lab: id is bad-room there too', async () => {
     const s = openSocket(stub.url)
     socks.push(s)

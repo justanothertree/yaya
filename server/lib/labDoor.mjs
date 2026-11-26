@@ -25,8 +25,15 @@
  * table never meets and a console does.
  *
  * `vouched` and `sockets` count SOCKETS, not people: a second tab is a second socket, and the
- * relay's cost is per socket. `rooms` counts only rooms somebody has been let into — see
- * liveRoomsFull.
+ * relay's cost is per socket. `rooms` counts only rooms two different people have been let into
+ * — see liveRoomsFull.
+ *
+ * ⚠️ AND SOME OF THEM ARE PER PERSON, because the relay-wide ones are shared by everybody and a
+ * limit one account can fill is a limit that account can take from everybody else. `tables` and
+ * `tabs` are how many tables and sockets one account may be let into at once, across the relay
+ * (a tab moving tables, and a phone beside a laptop, with room to spare); `personHz` is that
+ * account's share of `globalHz`, whatever it sends from — a person plays one seat, so their tabs
+ * together send what one client does. See placesFull and charge.
  */
 export const LAB = Object.freeze({
   vouchMs: 12_000,
@@ -34,8 +41,11 @@ export const LAB = Object.freeze({
   vouched: 8,
   sockets: 16,
   rooms: 6,
+  tables: 2,
+  tabs: 4,
   bytes: 4096,
   socketHz: 50,
+  personHz: 50,
   roomHz: 100,
   globalHz: 150,
   friendTtl: 60_000,
@@ -56,6 +66,23 @@ export const looksLab = (id) => typeof id === 'string' && id.startsWith('lab:')
 
 /** Whether a room may appear in `list`. A Lab table is found by being told, never by browsing. */
 export const listable = (id) => !looksLab(id)
+
+/**
+ * A hello from a socket that has already said hello to a Lab table: null if it never has, 'same'
+ * if it names that table again (nothing to do), and otherwise the refusal `one-table`.
+ *
+ * ⚠️ A SOCKET THAT KNOCKS ON A LAB TABLE BELONGS TO THAT TABLE FOR LIFE. The silent-socket timer
+ * starts at the hello, and a hello is how a socket moves — so while a socket could go somewhere
+ * else and come back, every return started the clock again, and one that never said who it was
+ * could hold its place for as long as it kept hopping. A client opens a link per table visit, so
+ * an honest one never sends a second hello and loses nothing. `table` is whatever id the socket
+ * first knocked with, well-formed or not: a refusal closes the socket, and nothing it says while
+ * the close completes may put it in a room.
+ */
+export function helloAgain(table, want) {
+  if (table === null || table === undefined) return null
+  return want === table ? 'same' : 'one-table'
+}
 
 /**
  * The only frames a Lab room accepts from a client. Everything else — Snake's chat, a name, a
@@ -98,6 +125,18 @@ export function readLab(msg, vouchedUids) {
 export function rate(times, now, perSec) {
   const kept = times.filter((t) => now - t < 1000)
   return { ok: kept.length < perSec, times: kept }
+}
+
+/**
+ * Every window a frame must fit, at once: `windows` is `[times, perSec]` pairs, and the answer is
+ * whether it fits all of them and each window's times afterwards — with `now` added to every one
+ * if it fits, and to none if it does not (see rate). The relay and the stub both charge through
+ * here, so neither can forget a window or push into one a refused frame never used.
+ */
+export function charge(windows, now) {
+  const kept = windows.map(([times, perSec]) => rate(times, now, perSec))
+  const ok = kept.every((k) => k.ok)
+  return { ok, times: kept.map((k) => (ok ? [...k.times, now] : k.times)) }
 }
 
 /**
@@ -196,20 +235,72 @@ export async function friendsAt(joinerUid, vouched, ask) {
   return 'unsure'
 }
 
+/** Whether a room is live: two or more different accounts let in. One person's tabs are no game. */
+export const isLive = (uids) => new Set(uids).size >= 2
+
 /**
- * Whether the relay already has as many LIVE Lab rooms as it will hold, so that this one may not
- * become another. `counts` is how many sockets are let into each Lab room; `mine` is this room's.
+ * Whether letting `uid` into a room whose let-in accounts are `here` would open or make live a
+ * room while the relay already holds as many live rooms as it will. `elsewhere` is the let-in
+ * accounts of every OTHER Lab room, one list per room.
  *
- * ⚠️ ONLY ROOMS SOMEBODY HAS BEEN LET INTO COUNT. A room exists from its first hello, before
+ * ⚠️ ONLY ROOMS TWO PEOPLE HAVE BEEN LET INTO COUNT. A room exists from its first hello, before
  * anybody is checked — so counting every room would let anyone who can open sockets fill the cap
- * with codes nobody was sent, and friends would be told the server is full. A room already live
- * is never refused by this: its people are let in or not by the room's own limits.
+ * with codes nobody was sent. And counting every room with ANYBODY let in had the same hole one
+ * step further in: a lone member has nobody to be checked against, so the friends question is
+ * trivially yes, and one account with six empty tables told every friend on the relay that the
+ * server was full. A lone room costs the relay a socket, so it costs this cap nothing.
+ *
+ * Asked when a room opens as well as when it becomes live, so the first friend at a table learns
+ * the relay is full before the others arrive to be told it. A room already live is never refused
+ * by this, and nor is another tab of the one person a lone room holds.
  */
-export function liveRoomsFull(counts, mine) {
-  if (mine > 0) return false
+export function liveRoomsFull(elsewhere, here, uid) {
+  if (isLive(here) || here.includes(uid)) return false
   let live = 0
-  for (const n of counts) if (n > 0) live++
+  for (const uids of elsewhere) if (isLive(uids)) live++
   return live >= LAB.rooms
+}
+
+/**
+ * Whether `uid` already holds as many places as one account may: LAB.tabs sockets let in across
+ * the relay, or — for a table they are not already at — LAB.tables tables. `here` and
+ * `elsewhere` are as in liveRoomsFull.
+ *
+ * ⚠️ PER ACCOUNT, BECAUSE EVERY OTHER LIMIT HERE IS SHARED. A table's eight and the relay's six
+ * are counted in sockets and rooms, and an account that can open sockets can fill both: eight
+ * tabs of one person filled a table, and one person alone at six tables filled the relay. An
+ * account is the one thing here that a stranger cannot make more of by opening another socket.
+ */
+export function placesFull(uid, elsewhere, here) {
+  let tabs = here.filter((u) => u === uid).length
+  let tables = 0
+  for (const uids of elsewhere) {
+    const mine = uids.filter((u) => u === uid).length
+    if (mine) tables++
+    tabs += mine
+  }
+  if (tabs >= LAB.tabs) return true
+  return !here.includes(uid) && tables >= LAB.tables
+}
+
+/**
+ * Who makes way when a table already holds LAB.sockets and somebody else knocks: the socket that
+ * has waited longest without sending `auth`, or null when every one has — let in, or being
+ * checked — and the knock is then `lab-full`. `entries` are `{id, at, sentAuth, vouched}`, `at`
+ * being when each said hello.
+ *
+ * ⚠️ SOCKETS NOBODY HAS LET IN MUST NEVER SHUT OUT THE PEOPLE THE TABLE IS FOR. Counting every
+ * socket at the knock let sixteen that never said who they were keep a table's friends out for
+ * as long as they could be renewed, which a handful of addresses can do. An honest client sends
+ * `auth` as soon as it has its welcome, so the socket silent longest is the least likely to be
+ * anybody's friend, and one that is had said nothing for longer than a client ever does. A socket
+ * being checked never makes way: Supabase can be slow, and a slow answer must not become a
+ * refusal.
+ */
+export function crowdedOut(entries) {
+  let out = null
+  for (const e of entries) if (!e.sentAuth && !e.vouched && (out === null || e.at < out.at)) out = e
+  return out ? out.id : null
 }
 
 /**
@@ -236,20 +327,27 @@ export const SAY = Object.freeze({
   'lab-full': 'This table already has eight people connected.',
   'lab-busy': 'The game server is full right now.',
   'bad-room': 'That is not a Lab table.',
+  'one-table': 'Each table needs a link of its own.',
+  'too-many-places': 'You are connected to the game server in too many places already.',
 })
 
 /**
  * One room's door: the friends check for an arrival whose token and standing are already good,
  * run one arrival at a time.
  *
- *   check({ uid, vouched, ask, counts, gone, enter }) -> 'admit' | a refusal | null (gone)
+ *   check({ uid, vouched, elsewhere, ask, gone, enter }) -> 'admit' | a refusal | null (gone)
  *
  * - `vouched()` the account ids of the sockets let in, one per socket (a second tab twice)
+ * - `elsewhere()` the same for every OTHER Lab room on the relay, one list per room (for
+ *   liveRoomsFull and placesFull)
  * - `ask(u)` the friends answer for (uid, u)
- * - `counts()` let-in sockets per Lab room on the relay, this one included (for liveRoomsFull)
  * - `gone()` whether the arrival has left, been refused or timed out meanwhile
  * - `enter()` lets them in; called in the same turn as the last read of the room, so nothing can
  *   come between "everyone here is a friend" and "and now so are you"
+ *
+ * The limits are asked twice: before any question, because a round trip saved is worth having
+ * and an arrival with no room has no question worth asking; and again at the end, because the
+ * answers took time and other rooms' doors do not queue behind this one's.
  *
  * ⚠️ ONE AT A TIME, PER ROOM. Two arrivals checked side by side are each checked against a room
  * without the other; one after the other, the second is checked against a room the first is in.
@@ -258,18 +356,25 @@ export const SAY = Object.freeze({
 export function doorFor() {
   const queue = serial()
   return {
-    check: ({ uid, vouched, ask, counts, gone = () => false, enter }) =>
+    check: ({ uid, vouched, elsewhere, ask, gone = () => false, enter }) =>
       queue.run(async () => {
         if (gone()) return null
-        /* full is full before anybody is asked anything, and asking costs a round trip each */
-        if (vouched().length >= LAB.vouched) return 'lab-full'
+        const limits = () => {
+          const here = vouched()
+          if (here.length >= LAB.vouched) return 'lab-full'
+          const others = elsewhere()
+          if (placesFull(uid, others, here)) return 'too-many-places'
+          if (liveRoomsFull(others, here, uid)) return 'lab-busy'
+          return null
+        }
+        const early = limits()
+        if (early) return early
         const friends = await friendsAt(uid, vouched, ask)
         if (gone()) return null
         const verdict = verdictOf({ token: 'yes', standing: 'yes', friends })
         if (verdict !== 'admit') return verdict
-        const here = vouched().length
-        if (here >= LAB.vouched) return 'lab-full'
-        if (liveRoomsFull(counts(), here)) return 'lab-busy'
+        const late = limits()
+        if (late) return late
         enter()
         return 'admit'
       }),
