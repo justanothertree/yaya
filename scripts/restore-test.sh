@@ -175,8 +175,9 @@ fresh_project restored "$WORK/opened"
 DB_BACKUP_SHOW_DIFF=1 dst restored bash "$BK" restore "$WORK/opened" | tee "$WORK/restore.log" || fail "the restore itself failed"
 grep -q 'left out CREATE SCHEMA public and 3 supabase_admin default-privilege entries' "$WORK/restore.log" ||
   fail "the restore did not leave out exactly the three supabase_admin default-privilege entries the source has"
-grep -q 'alter publication supabase_realtime add table public.zz_restore_probe;' "$WORK/restore.log" ||
-  fail "the restore did not say which tables to put back in the realtime publication"
+grep -q 'kept beside it: 2 realtime publication entries, 1 policies on Supabase.s own tables, 1 triggers elsewhere, 1 cron jobs' "$WORK/restore.log" ||
+  fail "the restore did not count what the bundle keeps beside the dump"
+grep -q 'alter publication' "$WORK/restore.log" && fail "the restore printed after-restore's statements into its own log"
 
 # ⚠️ AND AGAIN THROUGH A PATH THAT SHARES NO CODE WITH THE MANIFEST. verify compares aclexplode()
 # text; this asks has_*_privilege() of every table, column-less, sequence and function, for every
@@ -184,7 +185,7 @@ grep -q 'alter publication supabase_realtime add table public.zz_restore_probe;'
 # got the same answer.
 read -r -d '' ASK <<'SQL' || true
 select md5(string_agg(line, E'\n' order by line collate "C")), count(*),
-       count(*) filter (where line like 'f|%|anon|t'), count(*) filter (where line like 'r|%|anon|TRUNCATE|t')
+       count(*) filter (where line like 'f|%|anon|true'), count(*) filter (where line like 'r|%|anon|TRUNCATE|true')
   from (
     select 'r|' || c.oid::regclass || '|' || r || '|' || p || '|' || has_table_privilege(r, c.oid, p) as line
       from pg_class c join pg_namespace n on n.oid = c.relnamespace,
@@ -225,6 +226,41 @@ ids_file="$(grep -c . "$WORK/opened/auth-user-ids.txt")"
 ids_db="$(dst restored "$PSQL" -X -At -c 'select count(*) from auth.users')"
 [ "$ids_file" = "$ids_db" ] || fail "auth.users holds $ids_db ids after the restore and the bundle carries $ids_file"
 
+# ── what no dump carries, put back ─────────────────────────────────────────────────────────────
+# after-restore's SQL is RUN against the restored target here, with the same stand-ins for
+# Realtime's table and pg_cron a plain server needs, and the result is compared with the source:
+# the policy, the trigger, the publication's tables and every cron command byte for byte (the
+# probe's command has a newline and a quoted string in it, which is the point).
+say "putting back what no dump carries"
+bash "$BK" after-restore "$WORK/opened" >"$WORK/after.sql"
+dq restored <<'SQL'
+create schema if not exists realtime;
+create table realtime.messages (id bigserial primary key, topic text not null, private boolean not null default true);
+alter table realtime.messages enable row level security;
+create publication supabase_realtime;
+create table cron.job (jobid bigserial primary key, schedule text not null, command text not null, jobname text,
+                       active boolean not null default true);
+create function cron.schedule(job_name text, schedule text, command text) returns bigint
+language sql as $$ insert into cron.job (jobname, schedule, command) values (job_name, schedule, command) returning jobid $$;
+SQL
+dq restored -1 -f "$WORK/after.sql" >/dev/null || fail "after-restore's SQL did not run"
+read -r -d '' ELSEWHERE <<'SQL' || true
+select count(*) || '|' || md5(string_agg(x, E'\n' order by x collate "C")) from (
+  select 'policy|' || polname || '|' || polcmd || '|' || pg_get_expr(polqual, polrelid) from pg_policy
+   where polrelid = 'realtime.messages'::regclass
+  union all
+  select 'trigger|' || pg_get_triggerdef(oid) from pg_trigger where tgrelid = 'auth.users'::regclass and not tgisinternal
+  union all
+  select 'publication|' || pubname || '|' || schemaname || '.' || tablename from pg_publication_tables
+  union all
+  select 'cron|' || jobname || '|' || schedule || '|' || md5(command) from cron.job) s(x)
+SQL
+put_back_src="$(src "$PSQL" -X -At -c "$ELSEWHERE")"
+put_back_dst="$(dst restored "$PSQL" -X -At -c "$ELSEWHERE")"
+echo "    what no dump carries, source $put_back_src, restored $put_back_dst"
+[ "$put_back_src" = "$put_back_dst" ] || fail "after-restore did not put back exactly what the source had"
+[ "${put_back_src%%|*}" = 5 ] || fail "expected a policy, a trigger, two publication entries and a cron job, found ${put_back_src%%|*}"
+
 # ── the faults: every one must be refused ──────────────────────────────────────────────────────
 
 say "breaking it on purpose"
@@ -239,12 +275,19 @@ dst no_grants bash "$BK" load-auth-ids "$WORK/opened" >/dev/null
 dst no_grants "$PGRESTORE" --dbname=no_grants --no-owner --no-privileges --exit-on-error \
   --single-transaction --use-list="$WORK/toc.keep" "$WORK/opened/yaya.dump"
 refused "restored with --no-privileges" 'relation|function|schema' -- dst no_grants bash "$BK" verify "$WORK/opened"
+# and the independent question has to see it too, or it is not so much independent as idle
+nogrants="$(dst no_grants "$PSQL" -X -At -c "$ASK")"
+[ "$nogrants" != "$asked_src" ] || fail "asked directly, a restore without its grants looks the same as the source"
+echo "    asked directly, the restore without its grants: $nogrants"
 
 fresh_project kept_defaults
 dst kept_defaults bash "$BK" preflight >/dev/null
 dst kept_defaults bash "$BK" load-auth-ids "$WORK/opened" >/dev/null
 dst kept_defaults bash "$BK" pg-restore "$WORK/opened" >/dev/null
 refused "restored into a project's default grants" 'relation\tpublic\.zz_restore_probe|function\tpublic\.zz_restore_probe_count' -- dst kept_defaults bash "$BK" verify "$WORK/opened"
+kept="$(dst kept_defaults "$PSQL" -X -At -c "$ASK")"
+[ "$kept" != "$asked_src" ] || fail "asked directly, a restore into the default grants looks the same as the source"
+echo "    asked directly, the restore into the default grants: $kept"
 
 fresh_project no_ids
 dst no_ids bash "$BK" preflight >/dev/null

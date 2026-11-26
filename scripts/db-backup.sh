@@ -22,6 +22,7 @@
 #                                              and every role the bundle in DIR grants to
 #   db-backup.sh restore DIR                   preflight, neutralise-defaults, load-auth-ids,
 #                                              pg-restore and verify, in that order
+#   db-backup.sh after-restore DIR             print the SQL that puts back what no dump carries
 #   db-backup.sh preflight [DIR] | neutralise-defaults | load-auth-ids DIR | pg-restore DIR | verify DIR
 #                                              the same steps one at a time
 set -euo pipefail
@@ -381,11 +382,41 @@ verify() {
   fi
   rm -f "$mine" "$want" "$got"
   echo "    the restore matches the source in all $items items: rows of $tables tables, and every definition and grant"
-  # what a dump of two schemas cannot carry, said every time so nobody has to remember it
-  if grep -qP '^publication\t' "$dir/extras.tsv"; then
-    echo "    on a real project, put these tables back in their realtime publications:"
-    grep -P '^publication\t' "$dir/extras.tsv" | awk -F'\t' '{ printf "      alter publication %s add table %s;\n", $2, $3 }'
-  fi
+  # what a dump of two schemas cannot carry, said every time so nobody has to remember it — as
+  # counts: the statements themselves come from after-restore, which this log never prints
+  local pubs pols trigs crons
+  pubs="$(grep -cP '^publication\t' "$dir/extras.tsv" || true)"
+  pols="$(grep -cP '^policy\t' "$dir/extras.tsv" || true)"
+  trigs="$(grep -cP '^trigger\t' "$dir/extras.tsv" || true)"
+  crons="$(grep -cP '^cron\t[^-]' "$dir/extras.tsv" || true)"
+  echo "    not in any dump of public and finance, and kept beside it: $pubs realtime publication entries, $pols policies on Supabase's own tables, $trigs triggers elsewhere, $crons cron jobs"
+  echo "    on a real project, run what \`db-backup.sh after-restore DIR\` prints, after the restore"
+}
+
+# The SQL that puts back what a dump of public and finance cannot: realtime publication
+# membership, the app's policies on Supabase's own tables, triggers elsewhere that call into
+# ours, and pg_cron's jobs. PRINTED, NOT RUN — it goes to a real project after a restore, and a
+# person should read a cron command before scheduling it. ⚠️ It can contain whatever a cron
+# command contains, so run it at a terminal, never in a workflow whose log is public.
+after_restore() {
+  local dir="${1:?after-restore DIR}" kind name a b
+  # a SQL string literal: standard_conforming_strings is on, so doubling the quote is the whole rule
+  literal() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+  echo "-- after restoring $dir into a real project; read it before running it"
+  while IFS=$'\t' read -r kind name a b; do
+    case "$kind" in
+      publication) printf 'alter publication %s add table %s;\n' "$name" "$a" ;;
+      policy | trigger) printf '%s\n' "$(printf '%s' "$a" | base64 -d)" ;;
+      cron)
+        if [ "$name" = "-" ]; then
+          echo "-- pg_cron's jobs were not captured: the backup role could not read cron.job"
+        else
+          printf 'select cron.schedule(%s, %s, %s);\n' "$(literal "$name")" "$(literal "$a")" \
+            "$(literal "$(printf '%s' "$b" | base64 -d)")"
+        fi
+        ;;
+    esac
+  done <"$dir/extras.tsv"
 }
 
 restore() {
@@ -416,6 +447,7 @@ case "$cmd" in
   load-auth-ids) load_auth_ids "$@" ;;
   pg-restore) pg_restore_step "$@" ;;
   verify) verify "$@" ;;
+  after-restore) after_restore "$@" ;;
   restore) restore "$@" ;;
   *)
     sed -n '2,/^set -euo/p' "$0" | sed '$d' >&2

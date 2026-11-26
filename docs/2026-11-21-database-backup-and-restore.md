@@ -39,13 +39,13 @@ and so is the workflow's log**. Three rules follow, and each one is enforced in 
 
 One `yaya-db-<run id>` artifact per week, kept 90 days. It is one age file holding a tar of:
 
-| file                | what                                                                                                                                                                                           |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yaya.dump`         | `pg_dump` of `public` and `finance`: custom format, `--no-owner`, **privileges kept**, `--strict-names`                                                                                        |
-| `auth-user-ids.txt` | the id of every row in `auth.users`, **and nothing else**: no email, no password hash, no token                                                                                                |
-| `manifest.tsv`      | the source's account of itself (`scripts/db-backup/manifest.sql`): every table's rows (count and md5), and every definition and grant. `manifest.before.tsv` is the same, read before the dump |
-| `moved.txt`         | tables whose rows changed while `pg_dump` ran, so their rows are not compared                                                                                                                  |
-| `extras.tsv`        | what the dump cannot carry: realtime publication membership, and pg_cron's jobs (if the role may read them)                                                                                    |
+| file                | what                                                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `yaya.dump`         | `pg_dump` of `public` and `finance`: custom format, `--no-owner`, **privileges kept**, `--strict-names`                                                                                                                  |
+| `auth-user-ids.txt` | the id of every row in `auth.users`, **and nothing else**: no email, no password hash, no token                                                                                                                          |
+| `manifest.tsv`      | the source's account of itself (`scripts/db-backup/manifest.sql`): every table's rows (count and md5), and every definition and grant. `manifest.before.tsv` is the same, read before the dump                           |
+| `moved.txt`         | tables whose rows changed while `pg_dump` ran, so their rows are not compared                                                                                                                                            |
+| `extras.tsv`        | what the dump cannot carry, for `after-restore` to put back: realtime publication membership, the app's policies on Supabase's own tables, triggers there that call ours, and pg_cron's jobs (if the role may read them) |
 
 As of 26 Nov 2026 the two schemas held **82 tables, 1 view, 366 functions and 7 sequences**, and
 the database was **38 MB**. Those are dated figures. Ask rather than trust them:
@@ -58,17 +58,18 @@ select pg_size_pretty(pg_database_size(current_database()));
 
 ## What it does not carry, and where each piece lives instead
 
-| not in the bundle                                                     | where it is, and what a recovery does about it                                                                                                                                    |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **auth accounts**: emails, password hashes, identities, sessions, MFA | Supabase's own backups. A restore makes a bare `auth.users` row per id, so member data still lines up, but nobody can sign in to those rows. See **Bringing members back** below. |
-| **pg_cron's jobs** (6 on 26 Nov)                                      | captured in `extras.tsv` (base64) if the backup role may read `cron.job`. Their commands are also in this repository's migrations.                                                |
-| **realtime publication membership** (12 tables)                       | captured in `extras.tsv`; `restore` prints the `alter publication … add table` lines to run                                                                                       |
-| **Vault** (1 secret)                                                  | not captured, on purpose. Regenerate it from where it came from.                                                                                                                  |
-| **edge-function secrets** (VAPID, R2 credentials)                     | the Supabase dashboard. They aren't in the database.                                                                                                                              |
-| **R2 objects**: pictures, chat songs                                  | Cloudflare R2. The rows that name them are backed up; the files are not.                                                                                                          |
-| **Supabase Storage** objects                                          | the `storage` schema and its bucket; not dumped                                                                                                                                   |
-| **dashboard configuration**: auth URLs, SMTP, providers               | the dashboard                                                                                                                                                                     |
-| **extensions** (pg_net, http, pg_cron, citext, pgcrypto, …)           | present on every Supabase project. A plain Postgres gets stand-ins for the only two the schema depends on.                                                                        |
+| not in the bundle                                                                                            | where it is, and what a recovery does about it                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **auth accounts**: emails, password hashes, identities, sessions, MFA                                        | Supabase's own backups. A restore makes a bare `auth.users` row per id, so member data still lines up, but nobody can sign in to those rows. See **Bringing members back** below. |
+| **pg_cron's jobs** (6 on 26 Nov)                                                                             | captured in `extras.tsv` if the backup role may read `cron.job`; `after-restore` prints the `cron.schedule` calls                                                                 |
+| **realtime publication membership** (12 tables)                                                              | captured in `extras.tsv`; `after-restore` prints the `alter publication` lines                                                                                                    |
+| **the app's policies on Supabase's own tables**: 11 on `realtime.messages`, Realtime's channel authorization | captured in `extras.tsv`; `after-restore` prints the `create policy` statements. Without them, private channels refuse everybody.                                                 |
+| **Vault** (1 secret)                                                                                         | not captured, on purpose. Regenerate it from where it came from.                                                                                                                  |
+| **edge-function secrets** (VAPID, R2 credentials)                                                            | the Supabase dashboard. They aren't in the database.                                                                                                                              |
+| **R2 objects**: pictures, chat songs                                                                         | Cloudflare R2. The rows that name them are backed up; the files are not.                                                                                                          |
+| **Supabase Storage** objects                                                                                 | the `storage` schema and its bucket; not dumped                                                                                                                                   |
+| **dashboard configuration**: auth URLs, SMTP, providers                                                      | the dashboard                                                                                                                                                                     |
+| **extensions** (pg_net, http, pg_cron, citext, pgcrypto, …)                                                  | present on every Supabase project. A plain Postgres gets stand-ins for the only two the schema depends on.                                                                        |
 
 ## The weekly run
 
@@ -207,9 +208,21 @@ tables.
    bash scripts/db-backup.sh restore "$WORK/bundle"
    ```
 
-   It prints the `alter publication` lines to run afterwards.
+4. Print the SQL that puts back what no dump carries. **Read it, then run it in the SQL editor:**
 
-4. Re-create the cron jobs from `extras.tsv` (each command is base64).
+   ```bash
+   bash scripts/db-backup.sh after-restore "$WORK/bundle" > "$WORK/after-restore.sql"
+   ```
+
+   It covers:
+   - realtime publication membership;
+   - the app's policies on `realtime.messages`;
+   - any trigger elsewhere that calls a function of ours;
+   - pg_cron's jobs.
+
+   A cron command can carry a key, so this belongs at a terminal and never in a workflow. The
+   restore test runs this same output against a restored copy and checks that it comes back
+   byte for byte.
 
 **Into a scratch Postgres 17**, to look at a backup or to check one:
 

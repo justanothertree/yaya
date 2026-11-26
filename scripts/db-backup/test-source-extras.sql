@@ -89,3 +89,20 @@ alter default privileges for role postgres in schema public grant select on tabl
 alter default privileges for role postgres in schema public grant select on sequences to yaya_backup;
 alter default privileges for role postgres in schema finance grant select on tables to yaya_backup;
 alter default privileges for role postgres in schema finance grant select on sequences to yaya_backup;
+
+-- and the two things a dump of public and finance leaves behind on Supabase's own tables: a policy
+-- the app wrote there (production has eleven on realtime.messages, Realtime's channel
+-- authorization), and a trigger there that calls into public
+create schema if not exists realtime;
+create table if not exists realtime.messages (
+  id bigserial primary key,
+  topic text not null,
+  private boolean not null default true
+);
+alter table realtime.messages enable row level security;
+create policy "members hear their own room" on realtime.messages for select to authenticated
+  using (topic = 'room:' || (select auth.uid())::text and private);
+create function public.zz_restore_probe_noticed() returns trigger
+language plpgsql as $$ begin return new; end $$;
+create trigger zz_restore_probe_noticed after insert on auth.users
+  for each row execute function public.zz_restore_probe_noticed();
