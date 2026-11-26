@@ -255,13 +255,20 @@ export function setLookahead(seconds: number) {
 }
 const TICK_MS = 25
 
+/**
+ * The tempo and length a song starts at, here and when ✚ New song starts one (instrument/newSong.ts).
+ * Named, so the two can never disagree about what "a new song" is.
+ */
+export const FRESH_BPM = 96
+export const FRESH_BARS = 2
+
 let state: State = {
   playing: false,
   recording: false,
   made: null,
   waiting: false,
-  bpm: 96,
-  bars: 2,
+  bpm: FRESH_BPM,
+  bars: FRESH_BARS,
   metronome: true,
   /**
    * ⚠️ OFF, AND IT USED TO BE EIGHTHS. The old default was argued for on the grounds that
