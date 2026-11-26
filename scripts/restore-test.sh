@@ -275,6 +275,18 @@ grep -q 'kept beside it: 2 realtime publication entries, 2 policies on Supabase.
   fail "the restore did not count what the bundle keeps beside the dump"
 grep -q 'alter publication' "$WORK/restore.log" && fail "the restore printed after-restore's statements into its own log"
 
+# ⚠️ AND RESTORED BY A ROLE THAT IS NOT `postgres`, as a scratch Postgres from Homebrew or
+# Postgres.app would be (its superuser is named after whoever installed it). Everything restored
+# with --no-owner belongs to that role, so a manifest that compared the owner by name would fail a
+# perfect restore hundreds of times over; the owner is compared as OWNER, whoever it is.
+say "restoring as a superuser that is not postgres"
+dq postgres -c "do \$\$ begin if not exists (select 1 from pg_roles where rolname = 'zz_restorer') then create role zz_restorer superuser login password 'restore-test-only'; end if; end \$\$"
+fresh_project restored_other "$WORK/opened"
+PGUSER=zz_restorer PGPASSWORD=restore-test-only dst restored_other bash "$BK" restore "$WORK/opened" >"$WORK/other.log" 2>&1 || {
+  sed 's/^/      /' "$WORK/other.log" | tail -12 >&2
+  fail "a restore run by a role other than postgres did not match its source"
+}
+
 # ⚠️ AND THE SAME RESTORE WITH THE WEEKLY JOB'S PUBLIC LOG: no count of anything, and it still
 # succeeds. (The moved-table checks below reuse this copy.)
 say "restoring again, as the weekly job's public log does"
