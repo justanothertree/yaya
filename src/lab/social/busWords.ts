@@ -51,6 +51,8 @@ export type View = {
   people: number
   /** step 7 of the plan: a star for each game won at a stop */
   stars?: boolean
+  /** the faces on the bus are the ones this browser rolled: its own 🎲 Roll, or Roll for */
+  rolled?: boolean
 }
 
 export type BusAct =
@@ -110,6 +112,17 @@ const guideId = (bus: Bus) => bus.riders[bus.guide]?.id ?? ''
 const rollsNext = (v: View) =>
   guideId(v.bus) === v.bus.me ? 'You roll next.' : `${nameOf(v, guideId(v.bus))} rolls next.`
 const lastStop = (bus: Bus) => bus.stops[bus.stops.length - 1]
+/**
+ * Who rolled the faces being chosen from: this browser, or the guide — or null, not known here.
+ *
+ * ⚠️ ROLL FOR BO IS NOT BO'S ROLL. Said as the guide's own, Bo was told "You rolled." for a roll he
+ * never pressed, and everybody read "Bo rolled …" — the one who did roll among them. A roll is the
+ * guide's only where it is known to be (bus.ts's guideRolled); otherwise nobody is named.
+ */
+const roller = (v: View): 'me' | 'guide' | null =>
+  v.rolled ? 'me' : v.bus.guideRolled ? 'guide' : null
+const PICK_NEXT = 'You rolled. Pick the next stop:'
+const ROLLED_FOR_YOU = 'Somebody rolled for you. Pick the next stop:'
 const myIndex = (bus: Bus) => bus.riders.findIndex((r) => r.id === bus.me)
 const onRider = (bus: Bus) => bus.riders[myIndex(bus)]?.on === true
 const said = (v: View, ids: readonly number[]) =>
@@ -200,6 +213,8 @@ export const GATE_SHUT =
  */
 export const SHARING_OFF =
   'You stopped sharing, so the party tour is hidden. Your place on the bus is kept.'
+/** the pause over and the tour on screen again: said, because the pause was */
+export const TOUR_BACK = 'The party tour is back.'
 export const twoStartsWords = (v: View, starter: string) =>
   `Two tours started at once; this one is ${nameOf(v, starter)}'s. Press Take me there at the first stop to ride.`
 /** a button whose request is in flight: at most 3 s, then the button comes back */
@@ -227,7 +242,7 @@ export function saidOf(prev: Bus, v: View): string | null {
   }
   if (b.phase === 'end' && prev.phase !== 'end' && !b.riders.some((r) => r.on)) return ALL_OFF
   if (prev.phase === 'pick' && b.phase === 'choose' && guideId(b) === b.me)
-    return 'You rolled. Pick the next stop:'
+    return roller(v) ? PICK_NEXT : ROLLED_FOR_YOU
   if (prev.phase === 'choose' && b.phase === 'ready' && b.toy && !b.ready.length)
     return diceChoseWords(v, guideId(prev), b.toy)
   if (prev.phase === 'ready' && b.phase === 'pick') {
@@ -373,9 +388,14 @@ function pickLine(v: View): Line {
   const stop = lastStop(b)
   const free = onRider(b) && v.present.has(me) && v.now >= b.freeAt
   if (!stop) {
-    /* the turn can pass before the first roll, if the one who started it is away */
-    if (isGuide && b.guide !== 0)
-      return { text: 'Your turn to roll.', buttons: [button('roll', '🎲 Roll')] }
+    /* ⚠️ THE TURN CAN PASS BEFORE THE FIRST STOP — the one who started it away, or the first
+       window skipped — and then nobody rolls first any more: the starter was still told "You roll
+       first" with no Roll to press, and everybody else that the starter rolls first, while the
+       scoreboard's 🎲 sat beside somebody else */
+    if (b.guide !== 0)
+      return isGuide
+        ? { text: 'Your turn to roll.', buttons: [button('roll', '🎲 Roll')] }
+        : { text: `The party tour hasn't made a stop yet. ${rollsNext(v)}`, buttons: [] }
     return {
       text: startedWords(v),
       buttons: isGuide ? [button('roll', '🎲 Roll'), button('off', 'Hop off')] : [],
@@ -467,13 +487,19 @@ export function phaseLine(v: View): Line | null {
   }
   if (b.phase === 'choose') {
     const faces = b.faces!
+    const by = roller(v)
     if (guideId(b) === b.me)
       return {
-        text: 'You rolled. Pick the next stop:',
+        text: by ? PICK_NEXT : ROLLED_FOR_YOU,
         buttons: faces.map((f) => button('face', faceCard(v, f).label, f)),
       }
+    const g = nameOf(v, guideId(b))
+    const rolled = listWords(faces.map((f) => toyOf(v, f)))
     return {
-      text: `${nameOf(v, guideId(b))} rolled ${listWords(faces.map((f) => toyOf(v, f)))} and is choosing…`,
+      text:
+        by === 'guide'
+          ? `${g} rolled ${rolled} and is choosing…`
+          : `${by === 'me' ? 'You' : 'Somebody'} rolled ${rolled} for ${g}, and ${g} is choosing…`,
       buttons: [],
     }
   }

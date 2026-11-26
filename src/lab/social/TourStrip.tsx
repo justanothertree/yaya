@@ -31,7 +31,7 @@ import {
 } from './tour'
 import { Token } from './Token'
 import { useBus } from './useBus'
-import { BusPanel } from './BusPanel'
+import { BusPanel, FOCUS_NEXT } from './BusPanel'
 import { followOffWords } from './busWords'
 
 /**
@@ -63,6 +63,7 @@ const onVisible = (fn: () => void) => {
   return () => document.removeEventListener('visibilitychange', fn)
 }
 const tabHidden = () => document.visibilityState !== 'visible'
+const roomNow = () => voiceSession.getState().roomId
 /* the strip's own two bus buttons, pressed through the same path as the panel's */
 const START = { act: 'start', label: '🚌 Start a party tour' } as const
 const OFF = { act: 'off', label: 'Hop off' } as const
@@ -104,6 +105,7 @@ export function TourStrip({
   const verdict = useSyncExternalStore(labSocial.subscribe, labSocial.get, labSocial.get)
   const sharing = useSyncExternalStore(party.subscribe, sharingNow, sharingNow)
   const call = useSyncExternalStore(voiceSession.subscribe, callNow, callNow)
+  const room = useSyncExternalStore(voiceSession.subscribe, roomNow, roomNow)
   const route = useSyncExternalStore(onHash, currentRoute, currentRoute)
   const wide = useMediaQuery('(min-width: 700px)')
   const [open, setOpen] = useState(false)
@@ -186,6 +188,7 @@ export function TourStrip({
   })
   const bus = useBus({
     inCall: call !== '',
+    room,
     onLabPage: route === 'lab',
     gateOpen: verdict.allowed,
     sharing,
@@ -208,8 +211,12 @@ export function TourStrip({
   const riding = !!bus.model?.riding
 
   /* what a screen reader hears: the follow starting, moving, offering and stopping — never the
-     waits, which change as the leader wanders and would talk over the call. Rendered with the
-     sentence as well as the strip, because the gate shutting is one of the things it announces. */
+     waits, which change as the leader wanders and would talk over the call.
+     ⚠️ THE FIRST CHILD OF THE WRAP IN EVERY BRANCH, SO IT IS ONE ELEMENT FOR AS LONG AS THE STRIP IS
+     ON SCREEN. It was inside each branch, so the gate shutting — one of the things it announces —
+     unmounted it and mounted a new one already holding the sentence: no live region changed,
+     which is the change a screen reader reliably reads, and the stale sentence came back in yet
+     another new region when the tour did. */
   const live = (
     <p className="sr-only" role="status">
       {said}
@@ -228,12 +235,12 @@ export function TourStrip({
     const words = whyWords(tour.why, tour.names)
     return (
       <div className="lab-tour-wrap" ref={wrapRef}>
+        {live}
         {words && (
           <p className="lab-tour-note" tabIndex={-1} ref={noteRef}>
             {words}
           </p>
         )}
-        {live}
       </div>
     )
   }
@@ -257,12 +264,20 @@ export function TourStrip({
      going — before that the button is absent, not disabled, so nobody starts a second by accident */
   const noTour = !bus.model || (bus.model.view.bus.phase === 'end' && bus.model.closed)
   const startTour = bus.canStart && noTour && (
-    <button className="btn btn-ghost lab-tour-dice lab-bus-start" onClick={() => bus.act(START)}>
+    <button
+      className="btn btn-ghost lab-tour-dice lab-bus-start"
+      data-focus-next={FOCUS_NEXT}
+      onClick={() => bus.act(START)}
+    >
       🚌 Start a party tour
     </button>
   )
   const hopOff = riding && (
-    <button className="btn btn-ghost lab-tour-dice" onClick={() => bus.act(OFF)}>
+    <button
+      className="btn btn-ghost lab-tour-dice"
+      data-focus-next={FOCUS_NEXT}
+      onClick={() => bus.act(OFF)}
+    >
       Hop off
     </button>
   )
@@ -321,6 +336,7 @@ export function TourStrip({
   if (wide)
     return (
       <div className="lab-tour-wrap" ref={wrapRef}>
+        {live}
         <section className="lab-tour" aria-labelledby={headId} ref={watch}>
           <div className="lab-tour-head">
             <h3 className="fw-h lab-tour-title" id={headId}>
@@ -341,7 +357,6 @@ export function TourStrip({
           {panel}
           {row}
           {list}
-          {live}
         </section>
       </div>
     )
@@ -352,6 +367,7 @@ export function TourStrip({
      because a closed fold hides its contents where no computed style can see it (CLAUDE.md §2). */
   return (
     <div className="lab-tour-wrap" ref={wrapRef}>
+      {live}
       <section className="lab-tour is-phone" aria-labelledby={headId} ref={watch}>
         <h3 className="sr-only" id={headId}>
           In the Lab with the call
@@ -375,6 +391,7 @@ export function TourStrip({
               <button
                 className="btn btn-ghost lab-tour-toggle lab-bus-start"
                 aria-label="Tour: start a party tour"
+                data-focus-next={FOCUS_NEXT}
                 onClick={() => bus.act(START)}
               >
                 🚌 Tour
@@ -403,7 +420,6 @@ export function TourStrip({
           </div>
         )}
         {list}
-        {live}
       </section>
     </div>
   )

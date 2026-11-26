@@ -21,7 +21,11 @@ import {
   rollFaces,
   startTour,
   tick,
+  windowGone,
   wireOf,
+  keepAside,
+  keptFor,
+  sitNow,
   type Answer,
   type Asked,
   type Bus,
@@ -33,6 +37,7 @@ import {
   type Out,
   type Outbox,
   type Press,
+  type Sat,
   type State,
   type Step,
 } from './bus'
@@ -147,7 +152,10 @@ function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean
     if (p?.do === 'late') c.late.push(key)
   }
   const apply = (c: Client, s: Step) => {
+    const prev = c.bus
     c.bus = s.bus
+    /* a yes goes with its window, as useBus's apply lets it go */
+    if (prev !== c.bus && windowGone(prev, c.bus, c.consent)) c.consent = null
     for (const o of s.out)
       if (opt.paced) c.box.push(o)
       else post(c.id, o)
@@ -2137,6 +2145,11 @@ describe('what a person’s facts reach (3.19)', () => {
       ['p04', 1, null, null],
     ])
     expect(w.stops[0].won).toEqual([0])
+    /* who sat in each counted game, by rider: a seat of somebody not live is not said */
+    expect(w.stops[0].games).toEqual([
+      [17, 0, -1],
+      [23, -1, 0],
+    ])
     /* the tour's own facts are all there */
     expect([w.guide, w.faces, w.stops.map((s) => s.toy)]).toEqual([
       2,
@@ -2159,6 +2172,10 @@ describe('what a person’s facts reach (3.19)', () => {
       [1, 2],
     ])
     expect(knew.stops[0].won.sort()).toEqual([0, 1, 3])
+    expect(knew.stops[0].games).toEqual([
+      [17, 0, 3],
+      [23, 1, 0],
+    ])
     /* never down: a lower count is an older one */
     const lower = mergeKnown(FULL, {
       ...FULL,
@@ -2171,6 +2188,10 @@ describe('what a person’s facts reach (3.19)', () => {
     net.wire.push({ from: 'p03', m: told })
     net.flush()
     expect(net.bus('p05').riders.map((r) => r.stars)).toEqual([2, null, 0, null])
+    expect(net.bus('p05').stops[0].games).toEqual([
+      [17, 0, -1],
+      [23, -1, 0],
+    ])
   })
 })
 
@@ -2288,5 +2309,377 @@ describe('Come too, twice at once', () => {
     /* a hop onto a table is four sends, each to four people: 16 against ~100 a second */
     for (let i = 1; i < at.length; i++)
       expect(at[i] - at[i - 1]).toBeGreaterThanOrEqual(Math.max(250, (16 / 100) * 1000))
+  })
+})
+
+/* ── the step-5 review, 26 Nov 2026: each of these failed on 3b058b71 ─────────────────────────── */
+
+/** what useBus's chores does for a yes, on every run: ask again, of each new host or publisher */
+function askingAgain(net: Net) {
+  const asked = new Map<string, Asked>()
+  return () => {
+    for (const c of net.clients()) {
+      if (!c.listening) continue
+      const a = askAgain(c.bus, net.ctx(c.id), c.consent, asked.get(c.id) ?? null)
+      if (!a || !c.consent) continue
+      asked.set(c.id, a)
+      net.press(c.id, { t: 'ready', on: true, n: c.consent.n, toy: c.consent.toy })
+    }
+  }
+}
+
+describe('a yes goes with its window', () => {
+  /* the stop after atTable's: p02's turn, Hex picked and p02 itself staying, p03 saying yes and
+     switching tabs, p01 saying no — so nobody here is going, and the window is skipped */
+  function skipped(net: Net) {
+    net.at(net.bus('p01').openAt)
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    net.press('p02', { t: 'pick', toy: 'hex' })
+    net.flush()
+    net.ready('p02', false)
+    net.flush()
+  }
+  it('a skipped window, then the same toy rolled again at the same departure: nothing pressed, nobody moved', () => {
+    const net = atTable()
+    const again = askingAgain(net)
+    skipped(net)
+    net.ready('p03', true)
+    net.flush()
+    expect(net.get('p03').consent?.toy).toBe('hex')
+    net.here.delete('p03')
+    net.ready('p01', false)
+    net.flush()
+    net.runUntil(() => phase(net) === 'pick', 30_000)
+    expect(net.bus('p01').stops.length).toBe(1)
+    net.here.add('p03')
+    net.flush()
+    /* the yes went with the window it answered, though the departure's number did not move */
+    expect(net.get('p03').consent).toBeNull()
+    /* the turn passed to p01, whose dice land on Hex again: p01 picks it */
+    const b0 = net.bus('p01')
+    expect(b0.riders[b0.guide].id).toBe('p01')
+    net.press('p01', { t: 'roll', faces: ['hex', 'go', 'paint'] })
+    net.flush()
+    net.press('p01', { t: 'pick', toy: 'hex' })
+    net.flush()
+    expect([net.bus('p03').phase, net.bus('p03').toy]).toEqual(['ready', 'hex'])
+    const from = net.log.length
+    for (let t = 0; t < 600 && net.bus('p01').stops.length < 2; t++) {
+      net.run(50, 50)
+      again()
+    }
+    expect(net.bus('p01').stops.map((x) => x.toy)).toEqual(['fourrow', 'hex'])
+    net.run(10_000)
+    /* p03 pressed nothing for this window: no request, not among those who went, not moved */
+    expect(net.log.slice(from).filter((e) => e.from === 'p03' && e.m.t === 'ready')).toEqual([])
+    const b = net.bus('p01')
+    expect(b.went.map((i) => b.riders[i].id)).toEqual(['p01'])
+    expect([net.get('p01').sub, net.get('p03').sub]).toEqual(['hex', 'fourrow'])
+  })
+  it('and the same toy rolled again has three requests of its own, as another toy does', () => {
+    const net = atTable()
+    skipped(net)
+    const sent = () => net.log.filter((e) => e.from === 'p03' && e.m.t === 'ready').length
+    for (const on of [false, true, false]) {
+      net.ready('p03', on)
+      net.flush()
+    }
+    expect(sent()).toBe(3)
+    net.ready('p01', false)
+    net.flush()
+    net.runUntil(() => phase(net) === 'pick', 30_000)
+    net.press('p01', { t: 'roll', faces: ['hex', 'go', 'paint'] })
+    net.flush()
+    net.press('p01', { t: 'pick', toy: 'hex' })
+    net.flush()
+    net.ready('p03', true)
+    net.flush()
+    expect(sent()).toBe(4)
+    expect(net.bus('p01').ready).toEqual([2, 0])
+    net.runUntil(() => net.bus('p01').stops.length === 2, 30_000)
+    expect(net.bus('p01').went).toEqual([2, 0])
+  })
+  it('windowGone: a departure keeps it, a skip or another roll ends it, the guide’s own pick in flight does not', () => {
+    const at = { ...listen('p02', 0), tour: TOUR, riders: FULL.riders, stops: [FULL.stops[0]] }
+    const c: Consent = { tour: TOUR, n: 2, toy: 'hex', leaves: null }
+    const ready = { ...at, phase: 'ready' as const, toy: 'hex' }
+    const choose = { ...at, phase: 'choose' as const }
+    const faces: [string, string, string] = ['go', 'hex', 'paint']
+    const pick = { ...at, phase: 'pick' as const }
+    const left = { ...pick, stops: [FULL.stops[0], { ...FULL.stops[1], toy: 'hex' }] }
+    expect(windowGone(ready, { ...ready, seq: 9 }, c)).toBe(false)
+    expect(windowGone(ready, left, c)).toBe(false)
+    expect(windowGone(ready, pick, c)).toBe(true)
+    expect(windowGone(ready, { ...choose, faces }, c)).toBe(true)
+    expect(windowGone(ready, { ...ready, toy: 'go' }, c)).toBe(true)
+    expect(windowGone(ready, { ...ready, phase: 'end', toy: null }, c)).toBe(true)
+    expect(windowGone(ready, { ...ready, tour: 'zzzz9999' }, c)).toBe(true)
+    /* the guide picked Hex, and a state of the same roll came before the host had decided it */
+    expect(windowGone({ ...choose, faces }, { ...choose, faces, seq: 9 }, c)).toBe(false)
+    expect(windowGone({ ...choose, faces }, ready, c)).toBe(false)
+    /* the dice chose another face before the pick arrived */
+    expect(windowGone({ ...choose, faces }, { ...ready, toy: 'go' }, c)).toBe(true)
+    /* Come too is about the stop, never a window */
+    expect(windowGone(ready, pick, { ...c, n: 1, toy: 'fourrow', come: true })).toBe(false)
+    expect(windowGone(ready, pick, null)).toBe(false)
+  })
+})
+
+describe('whose roll it was', () => {
+  it('the host knows who sent it; anybody else, only from a state sent while freeAt was ahead', () => {
+    const net = atTable()
+    const ids = ['p01', 'p02', 'p03']
+    /* p02's own roll, inside its turn: everybody knows it was p02's */
+    net.at(net.bus('p01').openAt)
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    expect(ids.map((id) => net.bus(id).guideRolled)).toEqual([true, true, true])
+    /* nobody picks; the dice choose; the window is skipped and the turn passes to p01, who idles
+       past freeAt — and p03 rolls for p01 */
+    net.runUntil(() => phase(net) === 'pick', 60_000)
+    net.runUntil(() => net.now >= net.bus('p01').freeAt, 120_000)
+    net.run(1000)
+    const b = net.bus('p03')
+    expect(b.riders[b.guide].id).toBe('p01')
+    net.press('p03', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    expect(phase(net)).toBe('choose')
+    expect(ids.map((id) => net.bus(id).guideRolled)).toEqual([false, false, false])
+    /* and the guide's own roll after idling is not known to be theirs by anybody but the host */
+    const late = atTable()
+    late.at(late.bus('p01').freeAt + 1000)
+    late.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    late.flush()
+    expect(ids.map((id) => late.bus(id).guideRolled)).toEqual([true, false, false])
+  })
+})
+
+describe('a host gone silent in a window', () => {
+  it('the next host takes the overdue window over, hears every yes again, and leaves with them', () => {
+    const net = atTable()
+    const again = askingAgain(net)
+    net.at(net.bus('p01').openAt)
+    /* p02 rolls and does not choose, so the dice choose and nobody has said yes */
+    net.press('p02', { t: 'roll', faces: ['hex', 'go', 'paint'] })
+    net.flush()
+    net.runUntil(() => phase(net) === 'ready', 60_000)
+    expect([net.bus('p02').phase, net.bus('p02').ready]).toEqual(['ready', []])
+    const due = net.bus('p01').due
+    /* p01, the host, goes silent: still on everybody's Lab until the party's sweep, and nothing it
+       says arrives — so the two yeses below reach only a host that will never publish them */
+    net.drop((_to, from) => from === 'p01')
+    net.ready('p02', true)
+    net.ready('p03', true)
+    net.flush()
+    expect(net.bus('p01').ready.length).toBe(2)
+    for (let t = 0; t < 400 && net.now < due + 2000; t++) {
+      net.run(50, 50)
+      again()
+    }
+    /* p02's sweep drops p01 first; p03's, three seconds later */
+    net.get('p02').view = new Set(['p02', 'p03'])
+    for (let t = 0; t < 60; t++) {
+      net.run(50, 50)
+      again()
+    }
+    net.get('p01').listening = false
+    net.here.delete('p01')
+    net.get('p02').view = null
+    for (let t = 0; t < 400 && net.bus('p02').stops.length < 2; t++) {
+      net.run(50, 50)
+      again()
+    }
+    const b = net.bus('p02')
+    expect(b.stops.map((x) => x.toy)).toEqual(['fourrow', 'hex'])
+    expect(b.went.map((i) => b.riders[i].id).sort()).toEqual(['p02', 'p03'])
+    net.run(10_000)
+    expect([net.get('p02').sub, net.get('p03').sub]).toEqual(['hex', 'hex'])
+  })
+  it('a yes that reaches the new host before its first tick takes the window over too', () => {
+    /* p02 holds p01's window, two seconds past its end, and p01 is gone from its Lab */
+    const now = 50_000
+    const held: Bus = {
+      ...listen('p02', 0),
+      seq: 12,
+      from: 'p01',
+      tour: TOUR,
+      len: 5,
+      riders: [
+        { id: 'p01', on: true, stars: 0, played: 0 },
+        { id: 'p02', on: true, stars: 0, played: 0 },
+        { id: 'p03', on: true, stars: 0, played: 0 },
+      ],
+      phase: 'ready',
+      toy: 'hex',
+      stops: [{ toy: 'fourrow', cap: 2, games: [], won: [] }],
+      readyAt: now - 17_000,
+      due: now - 2000,
+      heard: true,
+      live: true,
+    }
+    const ctx: Ctx = {
+      now,
+      present: new Set(['p02', 'p03']),
+      roster: new Set(['p01', 'p02', 'p03']),
+      meLive: true,
+      subOf: () => 'fourrow',
+      people: 3,
+      k: KNOBS,
+    }
+    const req: Msg = { v: 1, t: 'ready', tour: TOUR, n: 2, toy: 'hex', on: true }
+    const s = receive(held, ctx, 'p03', req)
+    expect(s.out).toEqual([{ t: 'state' }])
+    expect([s.bus.from, s.bus.ready, s.bus.due]).toEqual(['p02', [2], now + 2 * KNOBS.STATE_GAP_MS])
+    /* and its own first tick does not close the window it has just claimed */
+    expect(tick(s.bus, ctx).bus.phase).toBe('ready')
+    /* a refused request claims it all the same: the claim is what everybody is to hear */
+    const refused = receive(held, ctx, 'p03', { ...req, toy: 'go' })
+    expect([refused.out, refused.bus.from]).toEqual([[{ t: 'state' }], 'p02'])
+  })
+})
+
+describe('a rider who reloads during a window', () => {
+  it('leaves the window with the page: not counted as going, though back before it closes', () => {
+    const net = atTable()
+    net.at(net.bus('p01').openAt)
+    net.press('p02', { t: 'roll', faces: ['go', 'hex', 'paint'] })
+    net.flush()
+    net.press('p02', { t: 'pick', toy: 'hex' })
+    net.flush()
+    net.ready('p03', true)
+    net.flush()
+    expect(net.bus('p01').ready).toEqual([1, 0])
+    /* p03 reloads: a bye, a page holding nothing, and back on the call a moment later */
+    net.roster.delete('p03')
+    net.here.delete('p03')
+    net.get('p03').listening = false
+    net.run(500)
+    net.join('p03')
+    net.run(2000)
+    expect(net.get('p03').consent).toBeNull()
+    net.runUntil(() => net.bus('p01').stops.length === 2, 30_000)
+    const b = net.bus('p01')
+    expect(b.went.map((i) => b.riders[i].id)).toEqual(['p02'])
+    net.run(10_000)
+    expect(net.get('p03').sub).toBe(START)
+  })
+})
+
+describe('a seat kept through a pause', () => {
+  it('back from a pause, a rider still seated asks nothing, and standing up still lets the bus go', () => {
+    const net = atTable()
+    const sat = new Map<string, Sat>()
+    /* what useBus's chores does with a seat at the stop's table */
+    const seat = (id: string, toy: string | null, settling = false) => {
+      const c = net.get(id)
+      c.seat = toy
+      const s = sitNow(c.bus, sat.get(id) ?? null, toy, c.sub, settling)
+      if (!s) return
+      sat.set(id, s.sat)
+      net.press(id, { t: 'sit', on: s.on })
+      net.flush()
+    }
+    seat('p02', 'fourrow')
+    seat('p03', 'fourrow')
+    expect([...net.bus('p01').busy].sort()).toEqual([0, 1])
+    /* p03 switches 🫱 off and on: listening starts again from nothing, the seat still taken */
+    const c = net.get('p03')
+    c.listening = false
+    net.here.delete('p03')
+    net.run(1000)
+    c.bus = listen('p03', net.now)
+    sat.delete('p03')
+    c.listening = true
+    net.here.add('p03')
+    net.run(3000)
+    expect(net.bus('p03').busy).toContain(0)
+    const from = net.log.length
+    /* the table comes back a moment after the bus: its seat reads as given up, then held again */
+    seat('p03', null, true)
+    seat('p03', 'fourrow', true)
+    seat('p03', 'fourrow')
+    expect(net.log.slice(from).filter((e) => e.from === 'p03' && e.m.t === 'sit')).toEqual([])
+    /* the game ends: both stand up, and nothing holds the roll */
+    seat('p02', null)
+    seat('p03', null)
+    expect(net.bus('p01').busy).toEqual([])
+  })
+  it('the host counts a sit that changes nothing as nothing', () => {
+    const net = atTable()
+    const tour = net.bus('p01').tour
+    for (const on of [true, true, false]) {
+      net.wire.push({ from: 'p03', m: { v: 1, t: 'sit', tour, n: 1, on } })
+      net.flush()
+    }
+    expect(net.bus('p01').busy).toEqual([])
+  })
+})
+
+describe('the tour kept aside through a pause', () => {
+  it('is kept only for the call it came from, and never outlives that call', () => {
+    const kept = keepAside(null, FULL, 'call-a', 1000)
+    expect(keptFor(kept, 'call-a', 2000, KNOBS)).toBe(FULL)
+    /* listening already off when the call ends: the end of the call clears it */
+    expect(keepAside(kept, null, null, 3000)).toBeNull()
+    expect(keepAside(null, FULL, null, 3000)).toBeNull()
+    /* and nothing kept from one call is taken up in another */
+    expect(keptFor(kept, 'call-b', 2000, KNOBS)).toBeNull()
+    expect(keepAside(kept, null, 'call-b', 3000)).toBeNull()
+    expect(keptFor(kept, 'call-a', 1000 + KNOBS.TOUR_IDLE_MS + 1, KNOBS)).toBeNull()
+  })
+  it('a pause that finds nothing to keep leaves the copy not yet put back, with its own clock', () => {
+    const kept = keepAside(null, FULL, 'call-a', 1000)
+    /* a stranger reloading: the gate shuts again before the tour was heard on the way back */
+    const again = keepAside(kept, listen('p03', 2000), 'call-a', 4600)
+    expect(again).toBe(kept)
+    /* an ended tour is not worth keeping, and does not replace one that is */
+    expect(keepAside(kept, { ...FULL, phase: 'end' }, 'call-a', 4600)).toBe(kept)
+    const fresh = keepAside(kept, { ...FULL, seq: 50 }, 'call-a', 4600)
+    expect([fresh?.bus.seq, fresh?.at]).toEqual([50, 4600])
+  })
+})
+
+describe('hosts handing over within a second (3.16)', () => {
+  it('everybody hops off as soon as they host, with a sit each: N requests and a state per host', () => {
+    for (const N of [4, 6, 8]) {
+      const ids = named(N)
+      const net = party(ids, { paced: true })
+      net.run(2000)
+      /* the highest id starts, so every boarder is a lower id: each one a new host */
+      net.start(ids[N - 1])
+      net.flush()
+      net.press(ids[N - 1], { t: 'roll', faces: ['chess', 'fourrow', 'swarm'] })
+      net.runUntil(() => ids.every((id) => net.bus(id).phase === 'choose'), 5000)
+      net.press(ids[N - 1], { t: 'pick', toy: 'fourrow' })
+      net.runUntil(() => ids.every((id) => net.bus(id).phase === 'ready'), 5000)
+      for (const id of ids.slice(0, -1)) net.ready(id, true)
+      net.runUntil(() => net.landings.length === N, 60_000)
+      net.run(3000)
+      const from = net.log.length
+      /* the host hops off, and so does each next host the moment its own browser says it hosts;
+         everybody else sits down meanwhile, a request each */
+      for (const id of ids) {
+        net.runUntil(() => leads(net.bus(id), net.ctx(id)), 3000, 10)
+        net.press(id, { t: 'off' })
+        for (const other of ids) if (other !== id) net.press(other, { t: 'sit', on: true })
+      }
+      net.run(5000)
+      expect(ids.every((id) => net.bus(id).phase === 'end')).toBe(true)
+      const sends = net.log.slice(from)
+      let changes = 0
+      for (let i = 0; i < sends.length; i++) {
+        const win = sends.filter((e) => e.at >= sends[i].at && e.at < sends[i].at + 1000)
+        const senders = new Set(win.filter((e) => e.m.t === 'state').map((e) => e.from))
+        changes = Math.max(changes, senders.size)
+        /* one request a person and one state from each browser that hosted in that second */
+        expect([N, win.length]).toEqual([N, Math.min(win.length, N + senders.size)])
+        /* and never two states a second from any one browser */
+        for (const s of senders)
+          expect(win.filter((e) => e.m.t === 'state' && e.from === s).length).toBe(1)
+      }
+      /* the case is exercised: several hosts published inside one second */
+      expect(changes).toBeGreaterThan(2)
+    }
   })
 })

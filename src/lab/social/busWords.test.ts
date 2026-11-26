@@ -139,8 +139,10 @@ describe('the tour starts (§1.2, 1–2)', () => {
 
 describe('the roll (§1.2, 3)', () => {
   const faces = ['fourrow', 'swarm', 'paint'] as [string, string, string]
+  /* the guide's own roll, as the state that carried it showed (bus.ts's guideRolled) */
+  const rolled = { phase: 'choose' as const, faces, guideRolled: true }
   it('the guide picks from three cards; everybody else is told what was rolled', () => {
-    const ann = view(ANN, { phase: 'choose', faces })
+    const ann = view(ANN, rolled)
     expect(text(ann)).toBe('You rolled. Pick the next stop:')
     expect(labels(ann)).toEqual(['Go to Four in a row', 'Go to Swarm', 'Go to Paint'])
     expect(faceCard(ann, 'fourrow').kind).toBe('a game for two at a table')
@@ -149,15 +151,33 @@ describe('the roll (§1.2, 3)', () => {
       '⭐ win a game here for a star',
     )
     expect(faceCard(view(ANN, {}, { stars: true }), 'paint').star).toBe('no star here')
-    expect(text(view(BO, { phase: 'choose', faces }))).toBe(
+    expect(text(view(BO, rolled))).toBe(
       'Ann rolled Four in a row, Swarm and Paint and is choosing…',
     )
-    expect(text(view(BO, { phase: 'choose', faces: ['secret', 'swarm', 'paint'] }))).toBe(
+    expect(text(view(BO, { ...rolled, faces: ['secret', 'swarm', 'paint'] }))).toBe(
       "Ann rolled a toy that isn't in your Lab, Swarm and Paint and is choosing…",
     )
-    expect(saidOf(busFor(ANN), view(ANN, { phase: 'choose', faces }))).toBe(
-      'You rolled. Pick the next stop:',
+    expect(saidOf(busFor(ANN), view(ANN, rolled))).toBe('You rolled. Pick the next stop:')
+  })
+  it('a roll somebody made for an idle guide is never said to be the guide’s own', () => {
+    /* Bo idled past freeAt; the roll came after it, so anybody on the bus may have made it */
+    const late = { ...rolled, guide: 1, guideRolled: false }
+    expect(text(view(BO, late))).toBe('Somebody rolled for you. Pick the next stop:')
+    expect(saidOf(busFor(BO, { guide: 1 }), view(BO, late))).toBe(
+      'Somebody rolled for you. Pick the next stop:',
     )
+    expect(text(view(ANN, late, { rolled: true }))).toBe(
+      'You rolled Four in a row, Swarm and Paint for Bo, and Bo is choosing…',
+    )
+    expect(text(view(DEE, late))).toBe(
+      'Somebody rolled Four in a row, Swarm and Paint for Bo, and Bo is choosing…',
+    )
+    /* Bo's own roll after idling is still his, said so by his own browser */
+    expect(text(view(BO, late, { rolled: true }))).toBe('You rolled. Pick the next stop:')
+    /* known to be the guide's own: the plan's sentences */
+    const own = { ...rolled, guide: 1 }
+    expect(text(view(BO, own))).toBe('You rolled. Pick the next stop:')
+    expect(text(view(DEE, own))).toBe('Bo rolled Four in a row, Swarm and Paint and is choosing…')
   })
   it('the dice choose for a guide who does not', () => {
     const v = view(BO, { phase: 'ready', toy: 'fourrow', ready: [] })
@@ -346,6 +366,20 @@ describe('the bus leaves (§1.2, 6–7)', () => {
     expect(lineWith(view(CY, stayed, { myToy: 'fourrow' }), offer)?.text).toBe(
       text(view(CY, stayed, { myToy: 'fourrow' })),
     )
+    /* past the stop's own phase the offer is done: the next roll, the next window, the end */
+    const choosing = view(CY, {
+      ...stayed,
+      phase: 'choose',
+      faces: ['hex', 'swarm', 'paint'],
+      guideRolled: true,
+    })
+    expect(lineWith(choosing, offer)?.text).toBe('Bo rolled Hex, Swarm and Paint and is choosing…')
+    const unlisted = view(CY, { ...stayed, phase: 'ready', toy: 'secret', due: NOW + 9000 })
+    expect(lineWith(unlisted, offer)?.text).toBe(
+      "Next stop: a toy that isn't in your Lab, so you'll sit this one out.",
+    )
+    const ended = view(CY, { ...stayed, phase: 'end' })
+    expect(lineWith(ended, offer)?.text).toBe(text(ended))
   })
   it('offered, never moved', () => {
     const v = view(BO)
@@ -430,6 +464,14 @@ describe('at the stop (§1.2, 8–9)', () => {
     const v = view(CY, at({ openAt: NOW - 50_000, freeAt: NOW - 1 }), onIt)
     expect(labels(v)).toEqual(['🎲 Roll for Bo'])
     expect(labels(view(DEE, at({ openAt: NOW - 50_000, freeAt: NOW - 1 }), onIt))).toEqual([])
+  })
+  it('the first window skipped: the turn has passed before any stop, and every line says whose', () => {
+    const passed = { guide: 1 }
+    expect(text(view(BO, passed))).toBe('Your turn to roll.')
+    expect(labels(view(BO, passed))).toEqual(['🎲 Roll'])
+    /* Ann started it, and is told whose turn it is now rather than that she rolls first */
+    expect(text(view(ANN, passed))).toBe("The party tour hasn't made a stop yet. Bo rolls next.")
+    expect(text(view(DEE, passed))).toBe("The party tour hasn't made a stop yet. Bo rolls next.")
   })
   it('the turn passing, and nobody taking the bus', () => {
     const v = view(DEE, at({ guide: 2 }))

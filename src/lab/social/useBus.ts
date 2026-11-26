@@ -24,6 +24,8 @@ import {
   holds,
   hopPlan,
   hostOf,
+  keepAside,
+  keptFor,
   knobs,
   landedAt,
   leads,
@@ -35,24 +37,30 @@ import {
   receive,
   rideStep,
   rollFaces,
+  sitNow,
   startTour,
   tick,
   tourIdFrom,
+  windowGone,
   wireOf,
   type Asked,
   type Bus,
   type Consent,
   type Ctx,
+  type Faces,
+  type Kept,
   type Knobs,
   type Leaves,
   type Outbox,
   type Press,
+  type Sat,
   type Step,
 } from './bus'
 import {
   GATE_SHUT,
   HOPPED_OFF,
   SHARING_OFF,
+  TOUR_BACK,
   arrivedWords,
   faceCard,
   followEndedWords,
@@ -133,6 +141,8 @@ function release(me: object) {
 /** what the hook reads from the strip; every field is about now */
 export type BusInputs = {
   inCall: boolean
+  /** the call's room: a tour kept aside through a pause belongs to it (bus.ts's keepAside) */
+  room: string | null
   /** the Lab is the page: a Lab in a canvas window over another page is not on the tour */
   onLabPage: boolean
   gateOpen: boolean
@@ -202,16 +212,27 @@ type Local = {
   flash: { text: string; until: number } | null
   closedSeq: number | null
   /** the last sit asked for, per stop */
-  sat: { key: string; on: boolean } | null
+  sat: Sat
   /** windows already answered no for a toy this Lab does not list */
   autoNo: Set<string>
   /** my yes to a window, and the host it was last asked of (bus.ts's askAgain) */
   asked: Asked
-  focusFaces: boolean
+  /**
+   * My own Roll, and until when its faces take the focus: the roll it was (`tour:n`), never
+   * Roll for somebody — whose faces are theirs — and never a roll that was refused or lost, which
+   * would otherwise take the focus from wherever it was when somebody later rolled for me
+   */
+  focusFaces: { key: string; until: number } | null
+  /** the faces of the last roll pressed here, so the words can say whose roll it was */
+  rolled: Faces | null
   /** my own no to the window open now (`tour:n:toy`), drawn at once (engine.shown) */
   noTo: string | null
-  /** the tour as it was when listening last stopped, and when (engine.restore) */
-  kept: { bus: Bus; at: number } | null
+  /** the tour as it was when listening last stopped, when, and in which call (engine.restore) */
+  kept: Kept
+  /** a pause said so (GATE_SHUT, SHARING_OFF): what comes back says so too */
+  paused: boolean
+  /** when listening last started: a seat is not given up while the table is still coming back */
+  listenAt: number
 }
 
 export function useBus(a: BusInputs): BusApi {
@@ -264,9 +285,12 @@ export function useBus(a: BusInputs): BusApi {
     sat: null,
     autoNo: new Set(),
     asked: null,
-    focusFaces: false,
+    focusFaces: null,
+    rolled: null,
     noTo: null,
     kept: null,
+    paused: false,
+    listenAt: 0,
   }).current
   const timer = useRef(0)
   const sayRef = useRef<HTMLParagraphElement | null>(null)
@@ -320,6 +344,10 @@ export function useBus(a: BusInputs): BusApi {
         consent: L.consent,
         hopAt: L.hop?.at ?? null,
         people: c.people,
+        rolled:
+          L.bus!.phase === 'choose' &&
+          !!L.rolled &&
+          !!L.bus!.faces?.every((f, j) => f === L.rolled![j]),
       }
     }
     /**
@@ -335,7 +363,31 @@ export function useBus(a: BusInputs): BusApi {
       if (b.phase !== 'ready' || L.noTo !== key || me < 0 || b.no.includes(me)) return v
       return { ...v, bus: { ...b, no: [...b.no, me], ready: b.ready.filter((x) => x !== me) } }
     }
-    const say = (text: string) => inp().say(text)
+    /**
+     * ⚠️ ONE PRESS, ONE SENTENCE. The status region keeps only the latest, and a press that ends a
+     * follow usually says something of its own in the same breath — Start says the tour started,
+     * Take me there may close the window — so the follow's "you've stopped following" was written
+     * and overwritten before anything read it. Within a press its sentences are gathered, the
+     * latest winning as ever, and the follow ending is added to it.
+     */
+    let saying: { text: string | null; follow: string | null } | null = null
+    const say = (text: string) => {
+      if (saying) saying.text = text
+      else inp().say(text)
+    }
+    const pressing = (fn: () => void) => {
+      if (saying) return fn()
+      const s: { text: string | null; follow: string | null } = { text: null, follow: null }
+      saying = s
+      try {
+        fn()
+      } finally {
+        saying = null
+        const i = inp()
+        if (s.follow) i.endFollow(s.text ? `${s.text} ${s.follow}` : s.follow)
+        else if (s.text !== null) i.say(s.text)
+      }
+    }
 
     /** a departure seen for the first time: when do I hop, if at all (bus.ts's hopPlan) */
     const plan = (c: Ctx) => {
@@ -368,6 +420,16 @@ export function useBus(a: BusInputs): BusApi {
         L.kept = null
       }
       if (L.bus === prev) return
+      /* a yes, a no and an automatic no each go with the window they answered (bus.ts's windowGone):
+         a skip keeps the departure's number, and the same toy can be rolled there again */
+      if (windowGone(prev, L.bus, L.consent)) {
+        L.consent = null
+        L.asked = null
+      }
+      if (L.bus.phase !== 'ready') {
+        L.noTo = null
+        L.autoNo.clear()
+      }
       plan(c)
       if (L.closedSeq !== null && L.bus.seq !== L.closedSeq) L.closedSeq = null
       if (L.pending && L.bus.seq !== L.pending.seq) L.pending = null
@@ -394,9 +456,9 @@ export function useBus(a: BusInputs): BusApi {
       const kept = L.kept
       if (!kept || !L.bus || !L.bus.heard || holds(L.bus)) return
       L.kept = null
-      if (c.now - kept.at > k.TOUR_IDLE_MS) return
+      const b = keptFor(kept, inp().room, c.now, k)
+      if (!b) return
       const by = c.now - kept.at
-      const b = kept.bus
       L.bus = {
         ...b,
         due: b.due + by,
@@ -478,7 +540,11 @@ export function useBus(a: BusInputs): BusApi {
       if (p.t === 'ready')
         L.noTo = !p.on && meant(b, c, p) === 'window' ? `${b.tour}:${p.n}:${p.toy}` : null
       if (p.t === 'ready' && p.on && meant(b, c, p) === 'window')
-        L.asked = { key: `${b.tour}:${p.n}:${p.toy}`, host: leads(b, c) ? b.me : hostOf(b, c) }
+        L.asked = {
+          key: `${b.tour}:${p.n}:${p.toy}`,
+          host: leads(b, c) ? b.me : hostOf(b, c),
+          from: b.from,
+        }
       if (p.t === 'ready' && L.consent?.come) {
         const plan2 = hopPlan(L.bus!, c.now, L.consent, c.people, L.moved)
         if (plan2?.do === 'hop')
@@ -522,16 +588,11 @@ export function useBus(a: BusInputs): BusApi {
         }
       }
       /* sitting at the stop's table in a game going on holds the roll for it (bus.ts's holdOn):
-         a seat taken or given up is said once each way, as it happens */
-      const stop = b.stops[b.stops.length - 1]
-      if (stop) {
-        const key = `${b.tour}:${b.stops.length}`
-        const on = i.held === stop.toy && i.current === stop.toy
-        const was = L.sat?.key === key ? L.sat.on : false
-        if (on !== was) {
-          L.sat = { key, on }
-          apply(ask(L.bus!, c, { t: 'sit', on }), c)
-        }
+         a seat taken or given up is said once each way, as it happens (bus.ts's sitNow) */
+      const sit = sitNow(L.bus!, L.sat, i.held, i.current, c.now - L.listenAt < k.SYNC_MS)
+      if (sit) {
+        L.sat = sit.sat
+        apply(ask(L.bus!, c, { t: 'sit', on: sit.on }), c)
       }
     }
 
@@ -552,6 +613,7 @@ export function useBus(a: BusInputs): BusApi {
         if (t > now) add(t - (Math.ceil((t - now) / unit) - 1) * unit)
       }
       if (!b.heard) add(b.syncAt + k.SYNC_MS)
+      add(L.listenAt + k.SYNC_MS)
       if (b.asking && b.hellos === 1) add(b.lastHello + k.HELLO_RETRY_MS)
       if (holds(b) && b.phase !== 'end') {
         add(b.due)
@@ -585,6 +647,12 @@ export function useBus(a: BusInputs): BusApi {
       const c = ctx()
       apply(tick(L.bus, c), c)
       restore(c)
+      /* back from a pause that was said: the tour is back, or there is none to come back to — never
+         "the party tour is hidden" left standing over a strip that shows it */
+      if (L.paused && L.bus.heard) {
+        L.paused = false
+        say(holds(L.bus) ? TOUR_BACK : '')
+      }
       hops(c)
       chores(c)
       pump(c.now)
@@ -607,7 +675,10 @@ export function useBus(a: BusInputs): BusApi {
 
     const stopFollowing = () => {
       const i = inp()
-      if (i.following) i.endFollow(followEndedWords(i.leaderName))
+      if (!i.following) return
+      const words = followEndedWords(i.leaderName)
+      if (saying) saying.follow = words
+      else i.endFollow(words)
     }
 
     const start = () => {
@@ -632,7 +703,8 @@ export function useBus(a: BusInputs): BusApi {
       return i.inMatch ? { match: true } : null
     }
 
-    const act = (btn: BusButton) => {
+    const act = (btn: BusButton) => pressing(() => acting(btn))
+    const acting = (btn: BusButton) => {
       const b = L.bus
       const i = inp()
       if (!b) return
@@ -646,7 +718,11 @@ export function useBus(a: BusInputs): BusApi {
           if (L.pending?.key === 'roll') return
           const faces = rollFaces(i.rollable, b, i.current, i.kindOf, i.filter, Math.random)
           if (!faces) return
-          L.focusFaces = true
+          L.rolled = faces
+          L.focusFaces =
+            btn.act === 'rollFor'
+              ? null
+              : { key: `${b.tour}:${b.stops.length + 1}`, until: performance.now() + 3000 }
           press(
             { t: 'roll', faces, ...(btn.act === 'rollAnyway' && { anyway: true }) },
             null,
@@ -695,13 +771,20 @@ export function useBus(a: BusInputs): BusApi {
       run()
     }
 
-    return { ctx, view, shown, run, onMsg, act, start, press, rearm }
+    /** off the bus for a reason the caller says itself (Follow pressed while riding), at once */
+    const hopOff = () => {
+      press({ t: 'off' })
+      run()
+    }
+
+    return { ctx, view, shown, run, onMsg, act, hopOff, rearm }
   }, [k, L, changed])
 
   /* ── listening: start from nothing, and leave nothing behind ── */
   useEffect(() => {
     if (!listening || !driving || !me) return
-    L.bus = listen(me, performance.now())
+    L.listenAt = performance.now()
+    L.bus = listen(me, L.listenAt)
     L.box = outbox(k)
     L.gate = senderGate({ burst: 8, refillMs: 500 })
     const off = onParty(engine.onMsg)
@@ -714,8 +797,7 @@ export function useBus(a: BusInputs): BusApi {
       const rider =
         !!b && holds(b) && b.phase !== 'end' && b.riders.some((r) => r.id === me && r.on)
       /* the call over, nothing to come back to; otherwise the tour is kept aside (engine.restore) */
-      L.kept =
-        b && holds(b) && b.phase !== 'end' && i.inCall ? { bus: b, at: performance.now() } : null
+      L.kept = keepAside(L.kept, b, i.inCall ? i.room : null, performance.now())
       L.bus = null
       L.consent = null
       L.hop = null
@@ -728,29 +810,40 @@ export function useBus(a: BusInputs): BusApi {
       L.autoNo.clear()
       L.asked = null
       L.noTo = null
-      L.focusFaces = false
+      L.focusFaces = null
+      L.rolled = null
       busNow.clear()
       /* ⚠️ SAID, NOT LEFT TO VANISH: the panel goes with the gate, and a screen reader is told why,
          and that the place is kept — in the host's state, or aside here if every copy paused */
-      if (rider && i.inCall && i.onLabPage) {
-        if (!i.gateOpen) i.say(GATE_SHUT)
-        else if (!i.sharing) i.say(SHARING_OFF)
+      if (rider && i.inCall && i.onLabPage && (!i.gateOpen || !i.sharing)) {
+        i.say(i.gateOpen ? SHARING_OFF : GATE_SHUT)
+        L.paused = true
       }
       changed()
     }
   }, [listening, driving, me, k, L, engine, changed])
+
+  /* ⚠️ A CALL THAT ENDS TAKES ITS KEPT TOUR WITH IT, though listening had already stopped: switched
+     off with 🫱, the tour was kept aside, and nothing else would clear it before the next call */
+  const room = a.inCall ? a.room : null
+  useEffect(() => {
+    L.kept = keepAside(L.kept, null, room, performance.now())
+    if (!room) L.paused = false
+  }, [room, L])
 
   /* the bus is asked again whenever whether I am live, who is here, or where I am changes */
   useEffect(() => {
     if (L.bus) engine.run()
   }, [meLive, present, roster, current, held, inMatch, L, engine])
 
-  /* Roll moves the focus to the first face once the faces arrive */
+  /* my own Roll moves the focus to the first face once its faces arrive, and only then */
   useLayoutEffect(() => {
-    if (L.focusFaces && firstFaceRef.current) {
+    const f = L.focusFaces
+    const b = L.bus
+    if (!f || !firstFaceRef.current || !b) return
+    L.focusFaces = null
+    if (performance.now() < f.until && f.key === `${b.tour}:${b.stops.length + 1}`)
       firstFaceRef.current.focus()
-      L.focusFaces = false
-    }
   })
 
   /* ── what to draw: built when the bus or what it reads changes, never on a render of its own ── */
@@ -782,7 +875,7 @@ export function useBus(a: BusInputs): BusApi {
     ...drawn,
     act,
     driving,
-    hopOff: () => engine.press({ t: 'off' }),
+    hopOff: engine.hopOff,
     sayRef,
     firstFaceRef,
   }

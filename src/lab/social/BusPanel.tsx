@@ -38,6 +38,16 @@ const SLOT: Record<BusAct, string> = {
   face: 'face',
 }
 
+/**
+ * ⚠️ A BUS BUTTON THAT GOES HANDS THE FOCUS TO THE BUS, NEVER TO THE CONTROL BESIDE IT. The strip's
+ * focus rescue (focusRescue.ts) moves a lost focus forward by default, and forward from a bus
+ * button is Hop off, a Follow or a Go: a face picked left the focus on "Go to Life, where Bo is",
+ * Not this one on Hop off, Go now on the count's Stay here, and a Stay here that vanished at the
+ * hop on Hop off — each a second Enter away from undoing what was just done, or from leaving the
+ * bus. The phase line says what changed; after Close there is none, and Start is what is left.
+ */
+export const FOCUS_NEXT = '.lab-bus-say || .lab-bus-start'
+
 /** a button's words, or "Rolling…" / "Going…" while its request is in flight (at most 3 s) */
 function labelOf(b: BusButton, pending: BusModel['pending']) {
   if (pending === 'roll' && SLOT[b.act] === 'roll') return PENDING.roll
@@ -86,7 +96,12 @@ export function BusPanel({
       {buttons.length > 0 && (
         <span className="lab-bus-acts">
           {buttons.map((b) => (
-            <button key={SLOT[b.act]} className="btn btn-ghost lab-bus-btn" onClick={() => act(b)}>
+            <button
+              key={SLOT[b.act]}
+              className="btn btn-ghost lab-bus-btn"
+              data-focus-next={FOCUS_NEXT}
+              onClick={() => act(b)}
+            >
               {labelOf(b, pending)}
             </button>
           ))}
@@ -102,6 +117,7 @@ export function BusPanel({
             <button
               className="btn btn-ghost lab-bus-face"
               ref={i === 0 ? firstFaceRef : undefined}
+              data-focus-next={FOCUS_NEXT}
               onClick={() => act(f.press!)}
             >
               <b className="lab-bus-face-name">{f.press.label}</b>
