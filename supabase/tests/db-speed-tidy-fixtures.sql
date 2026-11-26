@@ -1,5 +1,5 @@
 -- Rows for the database speed tidy-up's before/after test, in every one of the 25 tables whose
--- policies docs/2026-11-25-db-speed-tidy.DRAFT.sql rewrites.
+-- policies docs/applied/2026-11-25-db-speed-tidy.DRAFT.sql rewrites.
 --
 -- HOW TO RUN: db-guards.yml, on its throwaway database, after seed.sql and before the look. It
 -- COMMITS, because the draft is loaded between two looks and each runs in its own session.

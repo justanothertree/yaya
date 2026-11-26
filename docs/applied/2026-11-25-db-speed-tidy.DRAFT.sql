@@ -1,4 +1,8 @@
--- ⏳ DRAFT, NOT APPLIED. The database speed tidy-up from the weekly review: an index under every
+-- ✅ APPLIED to production 26 Nov 2026 as migration `db_speed_tidy`, version 20261126161949:
+-- md5(statements[1]) = acb001909c394f034cd6df49eaf0106c, this file's body. The record is
+-- supabase/migrations/20261126161949_db_speed_tidy.sql; the checks either side are docs/2026-11-25-db-speed-tidy.checks.sql.
+--
+-- (as drafted) The database speed tidy-up from the weekly review: an index under every
 -- foreign key the advisors list as unindexed, and the per-row `auth.uid()` in the policies they
 -- list as slow, made once per query. Evan, 25 Nov 2026: "Add indexes for the 47 unindexed foreign
 -- keys and fix the 54 policies the advisors flag as slow (the auth.uid() wrapped in select

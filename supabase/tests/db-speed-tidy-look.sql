@@ -1,5 +1,5 @@
 -- One look at what the 25 tables' policies let each kind of caller do, for the database speed
--- tidy-up (docs/2026-11-25-db-speed-tidy.DRAFT.sql), recorded under a phase name.
+-- tidy-up (docs/applied/2026-11-25-db-speed-tidy.DRAFT.sql), recorded under a phase name.
 --
 -- HOW TO RUN: db-guards.yml, three times — before the draft, after it, and after its rollback:
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -v phase=before -f supabase/tests/db-speed-tidy-look.sql
