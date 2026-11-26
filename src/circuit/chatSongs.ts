@@ -42,6 +42,23 @@ export type ChatSong = {
 
 export const SONGS_OFF = 'Songs in chat aren’t switched on yet.'
 const NO_REACH = 'Couldn’t reach the server. Try again.'
+/**
+ * Said for any 401, whoever sent it. ⚠️ TWO DIFFERENT DOORS ANSWER IT, and neither says it to a
+ * person: the gateway refuses a token that has expired or is not valid ({"code":
+ * "UNAUTHORIZED_LEGACY_JWT"}, no sentence of its own), and the function refuses a token Auth no
+ * longer names a person for ("not authenticated"). Both mean the same thing to whoever pressed
+ * Send — their sign-in has lapsed — so both get the same sentence.
+ */
+export const SIGNED_OUT = 'You’re signed out. Sign in and try again.'
+/** said when the upload gave up waiting, rather than "couldn't reach the server" */
+export const TOO_SLOW = 'That took too long. Try again.'
+/**
+ * How long a song's upload may take before it is given up on. ⚠️ A BACKSTOP, NOT THE FIX: a
+ * refusal that never arrived was the function's to fix (it reads a refused body off first now).
+ * This is for a network that stalls part way, so "Sending…" always ends. Two minutes carries the
+ * largest song, 5 MB, over a connection sending about 350 kbit/s.
+ */
+export const SEND_TIMEOUT_MS = 120_000
 
 /**
  * A file's ceiling, in BYTES, as `chat_song_claim` measures it, and its sentence for one over.
@@ -171,6 +188,8 @@ export function sayFunctionFailure(
   fallback: string,
   deployed: boolean | null = null,
 ): string {
+  if (f.status === 401) return SIGNED_OUT
+  if (f.aborted) return TOO_SLOW
   if (f.said) return songsSqlMissing({ message: f.said }) ? SONGS_OFF : f.said
   if (f.status === 404) return SONGS_OFF
   if (f.status === null) return deployed === false ? SONGS_OFF : NO_REACH
@@ -331,8 +350,15 @@ export async function sendSong(
     return { msg: sent.msg }
   }
   const sb = getSupabaseClient()
+  /* ⚠️ NO SESSION, NO UPLOAD. When a sign-in has lapsed for good, supabase-js quietly sends the
+     public anon key instead of a token, the gateway lets that through, and the function refuses it —
+     after up to 5 MB has gone up for nothing. Asked first, it costs nothing and says the right
+     thing straight away. (getSession refreshes a token that has merely expired.) */
+  const { data: had } = await sb.auth.getSession()
+  if (!had.session) return { why: SIGNED_OUT }
   const { data, error } = await sb.functions.invoke('chat-songs', {
     body: blob,
+    timeout: SEND_TIMEOUT_MS,
     headers: {
       'x-song-op': 'upload',
       'x-song-room': room,
