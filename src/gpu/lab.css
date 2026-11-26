@@ -290,6 +290,212 @@ html:has(.lab) {
   }
 }
 
+/* ── the tour: who on your call is where in the Lab (src/lab/social/TourStrip.tsx) ────────────
+   Sizes in px where they are a target or a floor: the root font-size is fluid (CLAUDE.md §6). */
+.lab-tour {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+}
+.lab-tour-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.lab-tour-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lab-tour-quiet,
+.lab-tour-note {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.lab-tour-people {
+  display: grid;
+  /* 280px holds a chip at its widest — token, a 64px name, Go and "Following" — so a person with
+     somewhere to go and somebody following them never spills or cuts their place short */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lab-tour-people[hidden] {
+  display: none;
+}
+/* a chip never moves when somebody changes toy (tour.ts keeps the roster's order), so a focused Go
+   stays where it was; the name keeps a 64px floor so a long one ellipses instead of vanishing */
+.lab-tour-one {
+  display: grid;
+  grid-template-columns: 28px minmax(64px, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 40px;
+  padding: 0.25rem 0.4rem;
+  border-radius: 8px;
+  background: var(--panel);
+}
+.lab-tour-who {
+  display: grid;
+  min-width: 64px;
+}
+.lab-tour-name,
+.lab-tour-place,
+.lab-tour-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lab-tour-at {
+  display: flex;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.lab-tour-place {
+  min-width: 0;
+}
+.lab-tour-talking {
+  flex: none;
+  white-space: pre;
+}
+.lab-tour-go,
+.lab-tour-follow,
+.lab-tour-dice,
+.lab-tour-toggle {
+  min-height: 36px;
+  padding: 0.3rem 0.8rem;
+}
+/* the Go of a chip whose person is with you is absent, so Follow keeps its own column */
+.lab-tour-follow {
+  grid-column: 4;
+}
+.lab-tour-wrap {
+  display: contents;
+}
+.lab-tour-follow.is-on {
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  border-color: var(--accent);
+}
+/* following somebody: one row saying whom, what is happening, and Stop — kept visible on a phone
+   while the list is folded away, so the follow and its way out are never hidden */
+.lab-tour-follow-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  background: var(--panel);
+}
+.lab-tour-follow-say {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+/* Go and Stop stay side by side, so on a phone the words take a line and the two choices the next */
+.lab-tour-follow-acts {
+  display: flex;
+  gap: 0.4rem;
+}
+.lab-tour-follow-say:focus {
+  outline: none;
+}
+.lab-tour-follow-say:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* the token: their colour, their initial, their cursor's shape in the corner */
+.lab-tour-token {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+.lab-tour-token.is-with {
+  color: #fff;
+  background: hsl(var(--h) 70% 40%);
+}
+.lab-tour-token.is-away {
+  color: var(--text);
+  background: hsl(var(--h) 70% 40% / 0.25);
+  box-shadow: inset 0 0 0 2px hsl(var(--h) 70% 45%);
+}
+.lab-tour-token.is-quiet {
+  color: var(--muted);
+  border: 2px dashed var(--muted);
+  opacity: 0.6;
+}
+.lab-tour-token.is-me {
+  box-shadow: inset 0 0 0 2px hsl(var(--h) 70% 45%);
+}
+/* talking: a still ring outside the token, and the word in the chip — never colour alone */
+.lab-tour-token.is-talking {
+  outline: 2px solid hsl(var(--h) 70% 50%);
+  outline-offset: 2px;
+}
+.lab-tour-skin {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
+}
+/* a phone's one row: up to four tokens, a line saying where everybody is, and Show */
+.lab-tour-sum {
+  display: grid;
+  grid-template-columns: auto minmax(64px, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lab-tour-stack {
+  display: inline-flex;
+  align-items: center;
+}
+.lab-tour-stack .lab-tour-token {
+  width: 24px;
+  height: 24px;
+  margin-left: -5px;
+  font-size: 11px;
+}
+.lab-tour-stack .lab-tour-token:first-child {
+  margin-left: 0;
+}
+.lab-tour-more {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.lab-tour-line {
+  font-size: 0.85rem;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .lab-tour-go,
+  .lab-tour-follow,
+  .lab-tour-dice,
+  .lab-tour-toggle {
+    min-height: 44px;
+  }
+  .lab-tour-one {
+    min-height: 48px;
+  }
+}
+
 /* ── bike trials ─────────────────────────────────────────────────── */
 .trials-wrap {
   position: relative;

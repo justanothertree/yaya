@@ -14,8 +14,9 @@ import {
 /**
  * ── DEV-ONLY stand-in for 📱 Phone alerts ──────────────────────────────────────
  *
- * The card renders nothing while `VAPID_PUBLIC_KEY` is empty, which is every build until the
- * secret step — so without this the pane could never draw it, and its phone layout would ship on
+ * The card renders nothing while `VAPID_PUBLIC_KEY` is empty, which every build was until the
+ * secret step — and with it filled in, the real card needs a session and a push service the pane
+ * does not have. So without this the pane could never draw it, and its phone layout would ship on
  * reasoning alone. Under the previewMember harness the card takes this instead: the REAL
  * `makeAlerts`, handed a fake key, a fake browser (no worker is registered, no push service is
  * asked) and a fake server that keeps prefs and devices in memory.
