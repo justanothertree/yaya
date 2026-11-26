@@ -1,5 +1,5 @@
 -- Do two looks at the 25 tables agree? For the database speed tidy-up
--- (docs/2026-11-25-db-speed-tidy.DRAFT.sql) — see db-speed-tidy-look.sql for what a look holds.
+-- (docs/applied/2026-11-25-db-speed-tidy.DRAFT.sql) — see db-speed-tidy-look.sql for what a look holds.
 --
 -- HOW TO RUN: db-guards.yml, after each look but the first:
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -v want=after -f supabase/tests/db-speed-tidy-compare.sql
