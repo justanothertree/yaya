@@ -156,13 +156,13 @@ insert into public.bug_report (reporter, body) values ('00000000-0000-4000-a000-
 insert into public.chat_rooms (id, kind) values ('00000000-0000-4000-d000-000000000001', 'lounge')
 on conflict do nothing;
 insert into public.chat_reads (user_id, room_id)
-select '00000000-0000-4000-a000-000000000001', r.id from public.chat_rooms r
+select '00000000-0000-4000-a000-000000000001'::uuid, r.id from public.chat_rooms r
  where r.group_id = '00000000-0000-4000-b000-000000000001'
 union all
-select '00000000-0000-4000-a000-000000000002', r.id from public.chat_rooms r
+select '00000000-0000-4000-a000-000000000002'::uuid, r.id from public.chat_rooms r
  where r.group_id = '00000000-0000-4000-b000-000000000001'
 union all
-select '00000000-0000-4000-a000-000000000003', '00000000-0000-4000-d000-000000000001'::uuid
+select '00000000-0000-4000-a000-000000000003'::uuid, '00000000-0000-4000-d000-000000000001'::uuid
 on conflict do nothing;
 
 -- ── finance ───────────────────────────────────────────────────────────────────────────────────
