@@ -25,6 +25,102 @@ two paddles) and the Night crossing race (it belongs with the ghost race). The a
 alone, so those two stay as the plan has them, cut. Two answers in the same message are about the
 party bus, not live tables, and are not recorded here.
 
+## Step 1: who hosts a table is a question about ids
+
+The four-chair table of step 4 needs the same answer as a call's two-seat room to "who hosts", and
+the plan's rule is that it imports that answer from `src/lab/social/room.ts` rather than copying it.
+room.ts asked it twice, with a sort each time: `hostOf` as `[room.me, ...room.present].sort()[0]`,
+which takes a whole room, and the host-before half of `answersHello` again, of plain values. Now
+`lowest(me, present)` answers it once, from ids alone, and both read it: `hostOf` is
+`lowest(room.me, room.present)` and `answersHello` asks whether I am `lowest` among everybody but the
+newcomer. Nothing that goes on the wire changes, and the rest of this section is how that is known
+rather than believed. No client, relay or edge function behaves differently.
+
+### The golden, recorded before the change
+
+`src/lab/social/roomWire.test.ts` plays one Four in a row game in a call over room.test.ts's
+in-memory network, with fourrow.ts's own rules on the classic board and the dev call's ids (Bo
+…0001, Ann …0002, Cy …0003). Ann and Cy join and sit, and three discs drop. Bo arrives to watch and,
+as the lowest id, becomes host mid-game. Three more discs drop, decided by Bo. Bo leaves and Ann
+hosts again; Bo comes back; Cy leaves, and a minute later the host frees Cy's seat. Every body the
+rooms hand to `sendParty('lab', …)` is captured with its step and sender, along with who each tab
+believes is host at the end of each step. The capture is
+`src/lab/social/__fixtures__/fourrow-wire.json`: 25 messages and 9 step headings, one to a line,
+36 lines and 8,370 bytes. It was written from 8b4d87ea's room.ts, before `lowest` existed. The test
+compares the file byte for byte, line by line first, so a failure names the messages that changed.
+
+- **The fixture is in `.prettierignore`.** lint-staged runs `prettier --write` on every committed
+  `.json`, and prettier re-flows the 42 numbers of each `cells` array, so the bytes compared would
+  have been the formatter's rather than the wire's. Measured: without the entry `prettier --check`
+  flags the file, and with it `prettier --write` leaves the file's md5 unchanged.
+- **Bo comes back because his first arrival cannot tell answersHello's two halves apart.** The first
+  recording, with one arrival, stayed green when the hello rule was changed to count the newcomer,
+  which is the old "am I host" rule that broke games in progress. Ann was both the host before Bo
+  and the publisher of the room everybody held, so she answered either way, and only room.test.ts
+  went red. When Bo comes back, Ann hosts a room Bo himself published, so only the host-before half
+  answers him. The recording was taken again, on the unchanged room.ts, with that step in it.
+- A second test reads the recording itself, so that a fixture of a game where nothing happened
+  cannot pass. It checks that six discs landed, three decided by Ann and three by Bo. It checks the
+  host Ann's tab saw at each step (Ann four times, Bo twice, Ann, Bo twice) and that every tab agreed
+  at the end of every step. It checks that the last state is Bo freeing Cy's seat.
+
+`src/lab/social/roomLowest.test.ts` asks `lowest` itself, from the shape of a Supabase id rather
+than from a sort. Each id is a uuid built from a BigInt, and the expected host is the smallest
+BigInt, so the expectation shares no arithmetic with the string comparison in the code. The test
+sweeps every group of seven ids, with each member as `me` and the others in three orders: 1,344
+questions. It checks that `me` counts and that an absent id is ignored however low it is. It checks
+that every member of a group works out the same host from their own seat and exactly one of them is
+it. The ids differ in the first digit, the last and the middle, and use the letters.
+
+### Measured, 26 Nov 2026
+
+- Mutations of room.ts, each made once and put back (room.ts's md5 back to the same value each
+  time), counted over `src/lab/social`:
+
+  | Mutation                                                     | Red                                                                                                                                        |
+  | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `lowest` sorted descending                                   | 16: the golden (28 of its lines gone, 27 new: Cy hosts), all 4 `lowest` tests, 5 in room.test.ts, 5 in roomModes.test.ts, 1 in bus.test.ts |
+  | `lowest` leaving me out                                      | 28: the golden, 3 of the 4 `lowest` tests (the absent-id case rightly passes), 15 in room.test.ts, 9 in roomModes.test.ts                  |
+  | ids compared by their first group only (`parseInt(id, 16)`)  | 4: the golden, 2 `lowest` tests, 1 in bus.test.ts. room.test.ts stays green: its ids `ann`, `bo` and `cy` parse in the right order too     |
+  | the hello counting the newcomer, against the first recording | room.test.ts alone, 1                                                                                                                      |
+  | the hello counting the newcomer, against the recording kept  | 2: the golden (2 lines gone: Ann's answer and Bo's freeing of the seat) and room.test.ts                                                   |
+
+- room.test.ts and roomModes.test.ts are unchanged (same md5 as 8b4d87ea) and green: 35 tests.
+- Every one of the 39 `src/gpu/*Room.ts` files and lab-move's `core.ts` imports room.ts with
+  `import type` only, checked by parsing every import of it.
+  `node scripts/lab-move-bundle.mjs --check` passed without a rebuild, the committed bundle's md5 is
+  unchanged, and the bundle names neither `hostOf` nor `answersHello`.
+- The full suite: 408 files, 6,180 tests passed, 6 skipped, with the two new files' 6 tests in it.
+- **The dev call**, 12:47–12:55 EST: Playwright's headless Chromium against the dev server on :5400,
+  with placeholder Supabase values, one browser with a tab each for Bo, Cy and Ann. Readings came
+  from the DOM (the status line, the seat cards and the canvas's own label) and from the colour
+  painted at every cell's centre on each tab. A page outside the call, listening on the dev call's
+  channel, read the wire. rAF fired in every tab (17–31 frames in 500 ms across the runs), so the
+  canvases were painting.
+  - Bo sat first and Cy second, and they played seven discs to Bo's four across the bottom. Bo
+    played by keyboard. Cy played by mouse presses, and once by a synthetic pointer with
+    `pointerId: 1`. Both tabs read "🏆 You win!" and "🏆 Bo wins!", with the same painted board,
+    cell for cell. Every state of the game was published by Bo.
+  - Ann arrived and was handed the finished board: 7 discs, "🏆 Bo wins!", the same pixels, and Bo
+    first and Cy second on her cards. Bo alone answered her hello.
+  - Cy asked for a new game and Bo and Cy dropped a disc each. All of it landed on all three tabs,
+    in the same colours as the first game. Every state after Ann's arrival (seq 10–12) was Bo's, so
+    the host was who it had been. 21 of 21 checks, three runs.
+  - The same dev call with `lowest` sorted descending passed 16 of 21. Every tab still showed the
+    same board, because the host was consistently the wrong person (Cy); only the wire said so.
+  - **Seen in one run of three:** when Cy's presence reaches Ann before Bo's, Ann is for a moment the
+    lowest id she can see, and announces the empty room she holds, at seq 0. Every tab ignores it as
+    older. `present()` is untouched here, so this is how the code behaved before too; it costs one
+    message.
+  - **The first run read "Cy's drops do nothing", and the probe was wrong.** At 1280 × 900 the
+    canvas's centre sits under the fixed call dock, so a press there lands on the dock. The probe
+    now scrolls the grid into view and refuses to press unless the canvas is what is under the point.
+
+### Left
+
+- After the Pages deploy, Evan plays one move of Four in a row on a call (the plan's §8). Nothing in
+  this step reaches the relay or lab-move.
+
 ## Step 2: a Supabase outage is not a refusal, and /health says which build is running
 
 The relay changes coming next (a `lab:` room with a friends-only door) need three things that the

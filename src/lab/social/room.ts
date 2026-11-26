@@ -172,7 +172,19 @@ export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string): Ste
   return { room, out: [{ sub, t: 'hello' }] }
 }
 
-export const hostOf = (room: Room<unknown>) => [room.me, ...room.present].sort()[0]
+/**
+ * Who hosts, from ids alone: the lowest of mine and everybody present's, seated or not. Everyone
+ * works it out from the same presence, so there is no election and nothing to agree on, and ids
+ * are unique, so it is always exactly one person.
+ *
+ * In plain values rather than a room, like answersHello below, because more than a two-seat room
+ * asks it: answersHello asks it of everybody but a newcomer, and a live table of four chairs
+ * (docs/2026-11-23-lab-live-tables.md) will ask it of everybody on its toy. One answer, written
+ * once, so two of them can never pick different hosts from the same people.
+ */
+export const lowest = (me: string, present: readonly string[]) => [me, ...present].sort()[0]
+
+export const hostOf = (room: Room<unknown>) => lowest(room.me, room.present)
 
 /**
  * Whether I hand a newcomer the room: I was host before they arrived, or I published the room we
@@ -199,7 +211,11 @@ export const answersHello = (
   from: string,
   seq: number,
   lastFrom: string,
-) => [me, ...present.filter((id) => id !== from)].sort()[0] === me || (seq > 0 && lastFrom === me)
+) => {
+  /* me and everybody here but the newcomer: the host among us is who hosted before they came */
+  const before = present.filter((id) => id !== from)
+  return lowest(me, before) === me || (seq > 0 && lastFrom === me)
+}
 
 /** a newer state wins; at an equal seq (two hosts for a moment), the lower sender's */
 export const newer = (seq: number, from: string, heldSeq: number, heldFrom: string) =>
