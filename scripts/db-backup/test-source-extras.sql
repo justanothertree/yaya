@@ -73,3 +73,19 @@ create table if not exists cron.job (
 );
 insert into cron.job (schedule, command, jobname) values
   ('17 4 * * *', E'delete from cron.job_run_details\n where end_time < now() - interval ''7 days''', 'cron-log-trim');
+
+-- the backup's own role, granted what the doc tells Evan to grant it — so, as in production once
+-- it exists, every table's grants name a role a fresh target does not have
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'yaya_backup') then
+    create role yaya_backup nologin bypassrls;
+  end if;
+end $$;
+grant usage on schema public, finance to yaya_backup;
+grant select on all tables in schema public, finance to yaya_backup;
+grant select on all sequences in schema public, finance to yaya_backup;
+alter default privileges for role postgres in schema public grant select on tables to yaya_backup;
+alter default privileges for role postgres in schema public grant select on sequences to yaya_backup;
+alter default privileges for role postgres in schema finance grant select on tables to yaya_backup;
+alter default privileges for role postgres in schema finance grant select on sequences to yaya_backup;

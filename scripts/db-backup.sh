@@ -18,10 +18,11 @@
 #   db-backup.sh seal DIR RECIPIENT OUT        tar DIR and encrypt it to an age recipient
 #   db-backup.sh check-ciphertext FILE         refuse FILE unless it is age ciphertext
 #   db-backup.sh open IN IDENTITY DIR          decrypt and unpack a bundle into an empty DIR
-#   db-backup.sh prepare-plain-target          give a PLAIN Postgres what a Supabase project has
+#   db-backup.sh prepare-plain-target [DIR]    give a PLAIN Postgres what a Supabase project has,
+#                                              and every role the bundle in DIR grants to
 #   db-backup.sh restore DIR                   preflight, neutralise-defaults, load-auth-ids,
 #                                              pg-restore and verify, in that order
-#   db-backup.sh preflight | neutralise-defaults | load-auth-ids DIR | pg-restore DIR | verify DIR
+#   db-backup.sh preflight [DIR] | neutralise-defaults | load-auth-ids DIR | pg-restore DIR | verify DIR
 #                                              the same steps one at a time
 set -euo pipefail
 umask 077
@@ -215,17 +216,43 @@ open_bundle() {
 # (51 foreign keys), auth.uid() (77 defaults and policies), and citext and gen_random_bytes from
 # the extensions schema. The stand-ins below provide those and nothing else.
 prepare_plain_target() {
+  local dir="${1:-}" r
   # ⚠️ NEVER ON A REAL PROJECT: GoTrue's auth.users has is_sso_user, the stand-in does not
   if [ "$(one "select count(*) from pg_attribute where attrelid = to_regclass('auth.users') and attname = 'is_sso_user'")" != "0" ]; then
     die "this target already has Supabase's own auth.users; it is a real project and needs no stand-ins"
   fi
   q -f "$ROOT/supabase/tests/plain-postgres/00-platform.sql"
   q -f "$ROOT/supabase/baseline/01-extensions.sql"
+  # and, given a bundle, every role its grants name — as NOLOGIN, because here a role only has to
+  # exist for a GRANT to it to succeed
+  if [ -n "$dir" ]; then
+    while read -r r; do
+      [ -n "$r" ] || continue
+      printf '%s\n' "select format('create role %I nologin', :'r') where not exists (select 1 from pg_roles where rolname = :'r') \\gexec" |
+        q -v r="$r"
+    done < <(dump_roles "$dir")
+  fi
   echo "    a plain target, given auth, the API roles and the extensions schema"
 }
 
+# The roles a bundle's GRANT, REVOKE and DEFAULT PRIVILEGES lines name, one per line. Each must
+# exist on the target or the restore stops at the first grant to it — and the backup's own role
+# is one of them, since it is granted SELECT on every table it reads.
+dump_roles() {
+  local dir="${1:?dump_roles DIR}" acl
+  acl="$(mktemp)"
+  pgtool pg_restore --list "$dir/yaya.dump" | grep -E '^[0-9]+; [0-9]+ [0-9]+ (DEFAULT )?ACL ' >"$acl" || true
+  if [ -s "$acl" ]; then
+    pgtool pg_restore --file=- --use-list="$acl" "$dir/yaya.dump" |
+      sed -nE -e 's/^(GRANT|REVOKE|ALTER DEFAULT PRIVILEGES) .* (TO|FROM) ("[^"]+"|[^ ;]+)( WITH GRANT OPTION)?;$/\3/p' \
+        -e 's/^ALTER DEFAULT PRIVILEGES FOR ROLE ("[^"]+"|[^ ]+) .*/\1/p' |
+      sed -E 's/^"(.*)"$/\1/' | grep -vx 'PUBLIC' | sort -u || true
+  fi
+  rm -f "$acl"
+}
+
 preflight() {
-  local n
+  local dir="${1:-}" n r
   n="$(one "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where $OURS and c.relkind in ('r', 'p')")"
   # ⚠️ AN EMPTY TARGET OR NOTHING. This is also the guard against restoring over production.
   [ "$n" = "0" ] || die "the target already has $n tables in public or finance; a restore goes into an empty database"
@@ -236,6 +263,14 @@ preflight() {
     "to_regrole('anon')" "to_regrole('authenticated')" "to_regrole('service_role')"; do
     [ "$(one "select $need is not null")" = "t" ] || die "the target has no $need; on a plain Postgres run prepare-plain-target first"
   done
+  if [ -n "$dir" ]; then
+    local missing=()
+    while read -r r; do
+      [ -n "$r" ] || continue
+      [ "$(printf '%s\n' "select exists (select 1 from pg_roles where rolname = :'r')" | q -At -v r="$r")" = t ] || missing+=("$r")
+    done < <(dump_roles "$dir")
+    [ ${#missing[@]} -eq 0 ] || die "the bundle grants to roles this target does not have: ${missing[*]}. Create each (create role NAME nologin) first; on a plain Postgres, prepare-plain-target DIR does it"
+  fi
   echo "    the target is empty and has what the dump refers to"
 }
 
@@ -356,7 +391,7 @@ verify() {
 restore() {
   local dir="${1:?restore DIR}"
   say "checking the target"
-  preflight
+  preflight "$dir"
   say "turning off the target's default grants"
   neutralise_defaults
   say "loading the auth user ids"

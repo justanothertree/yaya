@@ -127,7 +127,7 @@ jobs:
           PGPASSWORD: postgres
           PGSSLMODE: disable
         run: |
-          bash scripts/db-backup.sh prepare-plain-target
+          bash scripts/db-backup.sh prepare-plain-target "$RUNNER_TEMP/bundle"
           bash scripts/db-backup.sh restore "$RUNNER_TEMP/bundle"
 
       - name: Encrypt to the recipient, prove it is ciphertext, and drop the plaintext

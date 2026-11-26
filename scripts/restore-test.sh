@@ -136,19 +136,42 @@ bash "$BK" seal "$WORK/bundle" "$RECIPIENT" "$WORK/yaya-db.tar.age"
 bash "$BK" open "$WORK/yaya-db.tar.age" "$WORK/throwaway.key" "$WORK/opened"
 diff -r "$WORK/bundle" "$WORK/opened" >/dev/null || fail "the bundle that came out of the ciphertext is not the one that went in"
 
-# a target shaped like a fresh Supabase project: the stand-ins, and Supabase's default grants
+# a target shaped like a fresh Supabase project: the stand-ins, and Supabase's default grants;
+# given the bundle, also every role its grants name
 fresh_project() {
-  local db="$1"
+  local db="$1" bundle="${2:-}"
   dq postgres -c "drop database if exists $db with (force)" -c "create database $db"
-  dst "$db" bash "$BK" prepare-plain-target >/dev/null
+  dst "$db" bash "$BK" prepare-plain-target ${bundle:+"$bundle"} >/dev/null
   dq "$db" -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role" \
     -c "alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role" \
     -c "alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role"
 }
 
+refused() {
+  # refused NAME PATTERN -- command...   the command must FAIL, and say PATTERN while doing it
+  local name="$1" pattern="$2"
+  shift 3
+  if "$@" >"$WORK/fault.log" 2>&1; then
+    fail "fault '$name' was NOT refused"
+  elif ! grep -qP "$pattern" "$WORK/fault.log"; then
+    fail "fault '$name' failed, but not for the reason it is there for (no /$pattern/):"
+    sed 's/^/      /' "$WORK/fault.log" | tail -8 >&2
+  else
+    echo "    refused, as it must be: $name"
+  fi
+}
+
+# ⚠️ FIRST, BECAUSE ROLES BELONG TO THE SERVER AND NOT TO A DATABASE: once any database here has
+# been given the bundle's roles, every database has them. The source grants SELECT on every table
+# to yaya_backup, as production will once the backup's role exists, and a target without it must
+# be told so by name rather than failing at the first GRANT.
+say "a target without a role the grants name"
+fresh_project no_roles
+refused "a target missing a role the bundle grants to" 'roles this target does not have: .*yaya_backup' -- dst no_roles bash "$BK" preflight "$WORK/opened"
+
 # ── the restore, done right ────────────────────────────────────────────────────────────────────
 say "restoring into a fresh project"
-fresh_project restored
+fresh_project restored "$WORK/opened"
 DB_BACKUP_SHOW_DIFF=1 dst restored bash "$BK" restore "$WORK/opened" | tee "$WORK/restore.log" || fail "the restore itself failed"
 grep -q 'left out CREATE SCHEMA public and 3 supabase_admin default-privilege entries' "$WORK/restore.log" ||
   fail "the restore did not leave out exactly the three supabase_admin default-privilege entries the source has"
@@ -203,19 +226,6 @@ ids_db="$(dst restored "$PSQL" -X -At -c 'select count(*) from auth.users')"
 [ "$ids_file" = "$ids_db" ] || fail "auth.users holds $ids_db ids after the restore and the bundle carries $ids_file"
 
 # ── the faults: every one must be refused ──────────────────────────────────────────────────────
-refused() {
-  # refused NAME PATTERN -- command...   the command must FAIL, and say PATTERN while doing it
-  local name="$1" pattern="$2"
-  shift 3
-  if "$@" >"$WORK/fault.log" 2>&1; then
-    fail "fault '$name' was NOT refused"
-  elif ! grep -qP "$pattern" "$WORK/fault.log"; then
-    fail "fault '$name' failed, but not for the reason it is there for (no /$pattern/):"
-    sed 's/^/      /' "$WORK/fault.log" | tail -8 >&2
-  else
-    echo "    refused, as it must be: $name"
-  fi
-}
 
 say "breaking it on purpose"
 
