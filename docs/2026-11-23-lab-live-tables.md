@@ -313,3 +313,151 @@ Measured, 26 Nov 2026:
 - **Then Evan reads `/relay-config` once, as admin.** It shows whether `has.SUPABASE_URL` and
   `has.SUPABASE_ANON_KEY` are true. Its new `rooms` counts show whether anybody is mid-game before
   the next relay merge.
+
+## Step 4: four chairs at a call table, a captain and teams
+
+The pure half of a live table: who sits where, who sets the table and who writes it, and every
+sentence the table will say. `src/lab/live/chairs.ts` is the table and `src/lab/live/liveWords.ts`
+its words, each with a test file. Nothing imports either yet, so nothing goes on the wire or on
+screen: step 6 wires the table to the call's `live` party kind and lays the words out. There is
+nothing to see on a dev call.
+
+### The table, as the plan has it
+
+`chairs.ts` is built the way room.ts is, a value that every input turns into the next value and
+the messages to send, so `chairs.test.ts` can play whole tables over room.test.ts's in-memory
+network with a call roster beside it.
+
+- **Three roles, never one election.** The host writes the table and is `lowest(me, present)`,
+  imported from room.ts with `newer` and `answersHello`, so a two-seat room and a four-chair table
+  can never pick different hosts from the same people. The host may be watching. The captain sets
+  the table and starts each round, and is derived: of the seated people here, whoever sat
+  earliest. That is Evan's answer above, whoever sat down first. The referee is step 5's.
+- **Requests:** `sit {chair}` and `stand` from anyone; `cpu`, `swap`, `mode`, `opts` and
+  `start {n}` from the captain only; `over {n, result}` from a starter of round `n`, the first
+  report counting. Mid-round nothing is taken but `over` and, where the toy says so (Spades), a
+  watcher sitting in a computer's chair.
+- **Host rules:** a change goes out at most once a second; a hello is answered as room.ts answers
+  it; the code is minted on the first state, as a state of its own; it is re-minted between rounds
+  when anybody who heard it has left the call; a chair whose person has been gone `HOLD_MS` is
+  freed while no round is on.
+- **The code** is 16 bytes from `crypto.getRandomValues` as 22 base64url characters, checked
+  against Node's own `Buffer.toString('base64url')` on four byte patterns.
+
+### Where it differs from the plan, and why
+
+1. **`since` is a seq, not a clock.** The captain is whoever sat first, and the host that seated
+   somebody is rarely the host that compares them later. Each tab's clock starts at its own zero,
+   while the seq is the one counter every host carries on from the last.
+2. **`knew` is everyone who has heard the code, not who was on the call when it was minted.** The
+   plan's rule lets somebody who joins the call after the mint hear the code in the next state and
+   leave holding it, with no re-mint. So the host folds its call roster into `knew` whenever a
+   state carrying the code goes out. The draft of this step folded only states the host itself
+   sent, which left one way through: a newcomer with the lowest id is host the moment they arrive
+   and is handed the table by the host before them, so the state that told them the code was not
+   the host's. They now fold it on hearing it, at once rather than after the pace, because a
+   newcomer who hangs up within the second would otherwise take the code with them unrecorded.
+   That costs a lower-id arrival who has just joined the call one state more than room.ts (4.9).
+3. **A chair's id is not checked against the reader's roster**, which §3.1 asked for. A seated
+   friend who leaves the call keeps their chair for `HOLD_MS`, or to the end of a round that is on,
+   and §1.2 step 13 says the table shows it. Refusing every state that names somebody off my call
+   would refuse every state in exactly that window, the round's end included. Who is listened to
+   is still checked: only `from` on my roster.
+4. **`swap` names who is moved.** `swap {a, b}` alone is undone by its own repeat, and moves the
+   wrong person when it lands after the table has changed. It carries `id`, the person the captain
+   chose ("Choose who to move"), and is refused unless that person is still in chair `a`. It is
+   room.ts's `at` on a move, said about the one person the request is about.
+5. **`rules.team` reads the table.** Stackfall together is its people against one computer, which
+   a chair number alone cannot say. `teamOf`'s default is every chair its own in versus, 0 and 2
+   against 1 and 3 together at four, and one side together at two.
+6. **Only changes wait for the pace.** An arrival is two states in the plan's own count (§3.6),
+   the announcement and the hello's answer, and a newcomer handed nothing cannot sit.
+7. **The words use "their" and "they're"** where the plan wrote "his" and "he's" about Bo. Nobody's
+   pronouns are known here.
+8. **A name this browser never had is "a friend"**, not busWords' "a friend who left": at a table
+   it can also be somebody whose `where` has not reached this browser yet, named in a state that
+   has. "A friend" is true either way.
+9. **A chair's ● or ◌ is apart from its name**, so the table can hide the mark from a screen reader
+   (which reads "black circle") and say "connecting" instead. **The Move button carries both
+   forms** the plan gives, "Move Bo here" on its face and "Move Bo to North" for a screen reader.
+
+### Measured, 26 Nov 2026
+
+- **Tests:** `chairs.test.ts` holds 151 over room.test.ts's in-memory network with a call roster;
+  `liveWords.test.ts` holds 25, each of them an exact text. Expectations come from the world's
+  shape, never from the code's sums: 4.6 asserts three roles held by three different people on
+  every tab; 4.8's fixture has every field away from its default (seq 41, four chairs mixed, `since`
+  out of chair order, `cpu` 2, together, target 500, round 3 over with a result), checked against a
+  fresh table field by field before it is used; the code is checked against Node's `Buffer`.
+- **Mutations of chairs.ts and liveWords.ts, 104 in all**, each made once and put back, with both
+  files' md5 checked after every one, red counted over `src/lab/live`. Every one went red. The
+  plan's rows, with the mutation each names:
+
+  | Row | Mutation                                      | Red                                                |
+  | --- | --------------------------------------------- | -------------------------------------------------- |
+  | 4.1 | `receive` accepts an older seq                | 3: 4.1, and 4.5's two lower-newcomer tests         |
+  | 4.2 | each of readChairs' 27 checks dropped in turn | each turns its own row red (1–5 tests apiece)      |
+  | 4.3 | skip the captain check                        | 6: 5 in 4.3, 1 in 4.6                              |
+  | 4.4 | reset `since` on a swap                       | 1: 4.4's swaps (the captain changes)               |
+  | 4.5 | compare by code                               | 2: both two-host tests in 4.5                      |
+  | 4.6 | captain = `lowest` of the seated              | 44, across ten of chairs.test.ts's describe blocks |
+  | 4.7 | re-mint mid-round                             | 2 in 4.7                                           |
+  | 4.8 | each of wireOf's 12 fields dropped in turn    | 46 each (58 for `chairs`)                          |
+  | 4.8 | each of readChairs' 13 fields defaulted       | 2 to 42 each, 4.8's round trip among them          |
+  | 4.9 | every tab answers every hello                 | 4: 3 in 4.9, 1 in 4.2                              |
+  | 4.9 | only the host answers a hello                 | 4: 4.5's two lower-newcomer tests, 4.7's Bo, 4.9   |
+
+  And the mutations beyond the plan's, for the rules this file adds or the plan left untested:
+
+  | Mutation                                                    | Red                             |
+  | ----------------------------------------------------------- | ------------------------------- |
+  | `swap` without who is moved                                 | 3: 4.1's repeat, 4.2, 4.4       |
+  | the first mint folded into the first change                 | 1: 4.5                          |
+  | `knew` only those on the call at the mint (the plan's rule) | 2 in 4.7                        |
+  | no fold on hearing a state                                  | 2: 4.7's Bo and 4.9             |
+  | the fold on hearing waits for the pace                      | 2: 4.7's Bo and 4.9             |
+  | never re-mint                                               | 5 in 4.7                        |
+  | the captain counts somebody gone from the toy               | 1: 4.6                          |
+  | start from anybody seated                                   | 6: 5 in 4.3, 1 in 4.6           |
+  | the captain may change the table mid-round                  | 4 in 4.3                        |
+  | a player stands mid-round; anybody sits mid-round           | 2 each in 4.3                   |
+  | a computer's chair taken mid-round on every toy             | 1 in 4.3                        |
+  | over from anybody; over while the round is not on           | 1 each in 4.3                   |
+  | wireOf writes a chair's `since` as 0                        | 25, 4.8's round trip among them |
+  | the request reader, field by field (15 mutations)           | 1 to 3 each, in 4.2 (and 4.6)   |
+  | no pacing; a hello waits for the pace                       | 3; 5                            |
+  | a chair freed at once / mid-round / never                   | 5; 1; 2                         |
+  | an 8-byte code; base64 rather than base64url                | 45; 34                          |
+  | teams by chair together; a toy's own teams ignored          | 2; 1                            |
+  | five changes to the words                                   | 1 each, the sentence's test     |
+
+- **Four checks survived the first passes, and each was a gap in the fixtures, not the code.**
+  Each now has a row and goes red:
+  - `isId` on a swap's `id`, and `n >= 1` on a start, are also refused by the host's rules, so no
+    host-side test could see them go. They are what stops this tab _sending_ a malformed request
+    through `act`, and now every 4.2 request row asks that too, plus a swap naming nobody (`null`)
+    from an empty chair.
+  - A chair's shape (`[id, since, cpu]`): a two-field chair was already refused by the `cpu`
+    check, so dropping the shape check changed nothing the fixtures held. A chair that is an
+    object would make the destructuring throw, and one of four fields would be read. Both are rows
+    now.
+  - An unknown phase was refused only because the fixture's round carries a result, and the
+    result check refused it first. A row with an unknown phase and no result now fails without
+    the phase check.
+- **Arrivals, counted on the test's wire:** a higher id joining is 3 sends, and four people filling
+  a fresh table lowest first is 10, both as room.ts. A lower id who has just joined the call is 4,
+  one more than room.ts, for the fold.
+- **Gates on the final tree, 26 Nov 2026, 18:20–18:26 EST:** `npm run typecheck`, `npm run lint` and
+  `npm run build` passed. `npm run test` passed 410 files, 6,356 tests, 6 skipped: step 1's 408 and
+  6,180, plus these 2 files and 176 tests. `node scripts/lab-move-bundle.mjs --check` passed with no
+  rebuild, and the committed bundle's md5 is unchanged (3d2b8570…). `prettier --check` passed on
+  every changed file.
+- **The built bundle holds nothing from `src/lab/live`.** None of the 72 chunks in `dist/assets`
+  contains the code's pattern (`A-Za-z0-9_-]{22}`) or any of six sentences found only in
+  liveWords.ts, while two of busWords' sentences, as a control, are found. Nothing imports either
+  file yet, so both tree-shake out entirely.
+
+### Left
+
+- Nothing to check on a call until step 6 wires the table. The plan's §8 checks for live tables
+  start there.
