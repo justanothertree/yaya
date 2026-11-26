@@ -43,6 +43,17 @@
  * (a tab moving tables, and a phone beside a laptop, with room to spare); `personHz` is that
  * account's share of `globalHz`, whatever it sends from — a person plays one seat, so their tabs
  * together send what one client does. See placesFull and charge.
+ *
+ * ⚠️ BUT `globalHz` IS AN OPEN QUESTION, NOT PART OF THAT SIZING. It is the one window every table
+ * shares, so whoever fills it decides whose moves are dropped, and at three accounts' `personHz`
+ * it is filled by any three accounts that each reach somebody else — or by four honest players
+ * near the client's forty — while a table none of them is at loses its moves. Sharing the same
+ * window out more fairly only moves that loss: a share kept back for a quiet table is one a busy
+ * honest table cannot have, and an account sending at the client's own rate looks exactly like
+ * an honest player. At `rooms * roomHz` it never binds before a room's own window does, and the
+ * relay may then forward as much as every live table at its own cap. That is a question of what
+ * the relay may cost, and it waits for the client, the first thing to send at real rates
+ * (docs/2026-11-23-lab-live-tables.md, Left).
  */
 export const LAB = Object.freeze({
   vouchMs: 12_000,

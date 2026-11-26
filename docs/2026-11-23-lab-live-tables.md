@@ -517,6 +517,9 @@ heard 2 of 20 moves (0 of 20 on the first run).
   tabs, so this fix would have left it testing nothing. The verifier showed it staying green with
   the per-account window removed. It now floods to two friends at two live tables, and goes red
   without the window.
+- This closes the route, not what it led to. Three accounts that each reach somebody else are
+  charged, as they should be, and still fill the 150. The verification below measured it, and it
+  stays open (Left).
 
 **3. An account's window was forgotten while it was still full (SEC-4).** It went with the account's
 last socket. So fifty frames, a close, a new socket (let in at once, from the caches) and fifty
@@ -574,6 +577,53 @@ prompt and its volume kept. The probe sends only Lab hellos, and none of these f
 it asks, so it shows that nothing else moved. The new cases are the stand-in's. This tree's
 `server/` stamps as `84892a068aac`; 8c97511d's was `fa9497ce5d8d`.
 
+**What the verification of this fix found (26 Nov 2026).** An independent verification of this fix
+on 96a85568 (main merged into 4c7904b4; the merge left `server/` alone) confirmed one defect. It is
+minor, and it is not new: it is the Left item "150 a second across the relay is three accounts'
+worth". `reachesAnother` closes the own-tabs route. An account that reaches a friend let in at its
+table, silent or not, is charged honestly, so three such accounts fill the window as before. The
+verifier's probe, copied and run again here on 96a85568's `server/` at 17:59–18:00 EST, agrees:
+
+| While this floods, Ann sends Bo 20 moves at another live table    | Bo heard                |
+| ----------------------------------------------------------------- | ----------------------- |
+| nothing                                                           | 20                      |
+| one account, then two, each with a silent friend at its own table | 20, 20                  |
+| three such accounts, three again, and four                        | 1, 1, 1                 |
+| three accounts friends with each other, at two live tables        | 1                       |
+| SEC-3's own shape: three lone accounts, two tabs each             | 20, none of theirs sent |
+| three accounts with silent friends, at an honest 40 a second      | 20                      |
+| four honest players at 40 a second, at two live tables            | 16                      |
+
+Bo heard all 20 again within 1.2 s of every flood stopping. The verifier also found a Snake room's
+chat untouched during a three-account flood (5 of 5), since only `labForward` charges this window,
+and 8c97511d giving the same 1 of 20: the fix made nothing worse.
+
+**No code is changed for it, because everything that closes it is a choice about cost.** Three
+copies of the relay, identical but for `LAB.globalHz`, run side by side at 17:58–17:59 EST:
+
+| Bo heard, of Ann's 20, while…                              | 150 (now) | 300 | 600 (`rooms × roomHz`) |
+| ---------------------------------------------------------- | --------- | --- | ---------------------- |
+| three accounts flood, each with a silent friend            | 1         | 20  | 20                     |
+| four such accounts                                         | 1         | 20  | 20                     |
+| three accounts friends with each other, at two tables      | 1         | 20  | 20                     |
+| two tables of two friends both flooding (four accounts)    | 1         | 20  | 20                     |
+| three such tables (six accounts)                           | 1         | 1   | 20                     |
+| five such tables (ten accounts: with Ann's, the relay's 6) | 0         | 1   | 20                     |
+| four honest players at 40 a second, at two tables          | 16        | 20  | 20                     |
+| ten honest players at 40 a second, at five tables          | 4         | 13  | 20                     |
+
+Raising it to 300 only raises how many accounts it takes. At `rooms × roomHz` it never binds
+before a room's own window does, so no table's moves depend on another's (the five flooding tables
+got 469 a second through, and Ann's table all of hers), and the relay may forward four times what
+it may now. Sharing the same 150 out more fairly was reasoned through, not built: a relay that drops
+rather than queues can keep a quiet table's moves only by holding room back for them before they
+arrive, which is room a busy honest table could otherwise have had. And four accounts at the
+client's own forty a second look exactly like the four honest players above. Waiting costs nobody
+anything: no client opens a Lab table until step 5, and step 5's client is the first thing that
+sends at real rates, which is what the number should be set against. The comment beside
+`globalHz` says this now, so the 150 is no longer unexplained. That comment is the commit's only
+change to `server/`, which now stamps as `10b53e746d25` (it was `84892a068aac`).
+
 ### Left
 
 - **After merging, once Render's metrics show no live connections (Evan's rule, above):** run
@@ -597,10 +647,14 @@ it asks, so it shows that nothing else moved. The new cases are the stand-in's. 
   person is bounded by their account, which a stranger cannot multiply by opening sockets. An
   address is shared by a household, and a cap on it would refuse the people at one house on one
   call while bounding nothing the account's limits do not.
-- **150 a second across the relay is three accounts' worth.** Any three accounts at live tables
-  fill it, and so do four honest players near the forty a second the client's outbox stays under. A
-  verifier measured four of them on two other live tables costing a fifth table's player 7 of 20
-  moves. Nothing written beside the 150 says why it is 150, so whether to raise it is Evan's call.
+- **150 a second across the relay is three accounts' worth, and it is still open.** Any three
+  accounts that each reach somebody else at a live table fill it, and so do four honest players
+  near the forty a second the client's outbox stays under. A table none of them is at loses its
+  moves while they do: 0 to 2 of 20 heard against three accounts, and 4 to 7 of 20 lost to four
+  honest players, in every run so far. The second review's verification (above) has the
+  measurements, with what 300 and 600 change, and why splitting the same 150 more fairly only moves
+  the loss. What the relay may cost is Evan's call, best asked with step 5's client, the first thing
+  that sends at real rates. Nothing is at stake before then, because no client opens a Lab table.
 - **At the relay's 500 rooms, a hello is an existence test.** A new code gets `too-many-rooms`
   and a used one gets `welcome` (measured with `MAX_ROOMS=3`). Getting there means holding 500
   rooms open, which locks Snake and the park out as well. This is older than the Lab and is not
