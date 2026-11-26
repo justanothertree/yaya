@@ -1,82 +1,86 @@
 name: db backup
 
-# A weekly `pg_dump` of the Supabase database, encrypted, kept as a build artifact.
+# A weekly backup of the Supabase database: dumped, RESTORED AND CHECKED inside the job, then
+# encrypted and kept as a build artifact. Every step is a subcommand of scripts/db-backup.sh, and
+# the restore test below runs the same subcommands on every pull request.
 #
-# ⚠️⚠️ THIS REPOSITORY IS PUBLIC, SO A GITHUB ARTIFACT IS PUBLIC. That is the single fact this
-# whole file is shaped around, and it is easy to get wrong: Actions artifacts inherit the
-# repository's read access, and read access to a public repo is everybody on the internet. An
-# unencrypted `pg_dump` uploaded here would publish every member's rows — chat messages, profile
-# notes, the finance tables — to anyone who clicked the run. "Private artifact" is not a thing
-# GitHub offers a public repo.
-#
-# So the dump is encrypted to an age recipient BEFORE it is uploaded, and the artifact is
-# ciphertext. The public key is in a repository VARIABLE because a public key is not a secret and
-# publishing it costs nothing; the private key never comes near CI and lives wherever Evan keeps
-# it. An attacker who downloads the artifact gets 36 MB of noise.
+# ⚠️⚠️ THIS REPOSITORY IS PUBLIC, SO A GITHUB ARTIFACT IS PUBLIC, AND SO IS THIS WORKFLOW'S LOG.
+# That is the single fact this file is shaped around. An unencrypted `pg_dump` uploaded here
+# would publish every member's rows to anyone who clicked the run. So:
+#   - the bundle is encrypted to an age recipient BEFORE it is uploaded, and the upload is refused
+#     unless the file is ciphertext; the private key never comes near CI;
+#   - nothing printed names a value: not a row count, not a hash of a member's rows, not an
+#     input. A mismatch says WHICH table, never what it holds;
+#   - every input is a SECRET of the `db-backup` environment, which only `main` may use. A
+#     variable is printed in the log; a secret is masked, so even a private key pasted where the
+#     public one belongs never reaches the page.
 #
 # ⚠️ IT CANNOT TOUCH PRODUCTION UNTIL EVAN SAYS SO, AND SAYING SO IS AN ACTION RATHER THAN A
-# REVIEW. Both inputs are absent today: the `SUPABASE_DB_URL` secret and the `AGE_RECIPIENT`
-# variable. The first step checks for them and exits 0 without connecting to anything, so the
-# schedule is a no-op from the moment this merges until the day he adds them. ADDING THEM IS THE
-# APPROVAL — there is no flag in here to flip and no way for this to run against the live
-# database on its own.
+# REVIEW. Until the environment's five inputs exist, the gate stops the job before it connects
+# to anything — green, with a notice. ADDING THEM IS THE APPROVAL. Adding only some of them is
+# a red run, every week, until it is finished.
 #
-# What this does NOT replace: Supabase's own backups. This is a second copy in a second place,
-# which is the point (§5's "one home per thing" is about where a thing LIVES, not about refusing
-# to back it up). It also does not dump `auth` — see the doc.
-#
-# Reasoning, the restore procedure, and what is not covered:
+# What this does NOT replace: Supabase's own backups. This is a second copy in a second place.
+# What it does not carry is listed in the doc:
 #   docs/2026-11-21-database-backup-and-restore.md
 
-# ⚠️ `pull_request` IS HERE FOR THE RESTORE TEST, NOT FOR THE DUMP. The restore job uses no
-# secret and no production data, so it is worth running on every change; the dump job is pinned
-# off for pull requests below, because once the secret exists a PR must never be able to reach
-# the live database. Without this trigger the restore test would only ever have run on a Sunday,
-# which is the shape of a check nobody finds out about.
+# ⚠️ `pull_request` IS HERE FOR THE RESTORE TEST, NOT FOR THE DUMP. The restore test uses no
+# secret and no production data; the dump job never runs on a pull request — and if a pull
+# request edited that `if:` away, the environment's branch rule would still keep its secrets on
+# `main`, which is why the secrets live there and not on the repository.
 on:
   schedule:
     - cron: '23 9 * * 0' # 09:23 UTC Sunday: 4:23 AM Eastern in winter, 5:23 in summer
   pull_request:
     branches: [main]
+    paths:
+      - scripts/db-backup.sh
+      - scripts/db-backup/**
+      - scripts/restore-test.sh
+      - supabase/**
+      - .github/workflows/db-backup.yml
   workflow_dispatch:
 
-# read-only: this job reads the database and writes an artifact, nothing else
 permissions:
   contents: read
 
+concurrency:
+  group: db-backup-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   dump:
-    # never on a pull request: a PR must not be able to reach the live database, today (when the
-    # gate below stops it) or after the secret exists (when only this line would)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    # ⚠️ the boundary: its secrets are released only to jobs running on main
+    environment: db-backup
+    services:
+      # a throwaway Postgres the real backup is restored into and checked against, before it is
+      # sealed: the only place a restore of production's own rows is ever exercised
+      scratch:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+        ports: ['55443:5432']
     steps:
       - uses: actions/checkout@v7
 
-      # ⚠️ THE GATE. No secret, no variable, no connection — and exit 0 rather than 1, because a
-      # weekly job that fails by design would train everybody to ignore a red cross on this
-      # workflow, which is the one place a real failure needs to be visible.
-      - name: Stop here unless both inputs exist
+      - name: Stop here unless all five inputs exist, and are what they say
         id: gate
         env:
-          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
-        run: |
-          missing=
-          [ -z "$DB_URL" ] && missing="$missing SUPABASE_DB_URL(secret)"
-          [ -z "$AGE_RECIPIENT" ] && missing="$missing AGE_RECIPIENT(variable)"
-          if [ -n "$missing" ]; then
-            echo "::notice title=Not configured yet::This backup is waiting on:$missing. Nothing was connected to. See docs/2026-11-21-database-backup-and-restore.md."
-            echo "ready=no" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=yes" >> "$GITHUB_OUTPUT"
-          fi
+          DB_BACKUP_PGHOST: ${{ secrets.DB_BACKUP_PGHOST }}
+          DB_BACKUP_PGUSER: ${{ secrets.DB_BACKUP_PGUSER }}
+          DB_BACKUP_PGPASSWORD: ${{ secrets.DB_BACKUP_PGPASSWORD }}
+          DB_BACKUP_AGE_RECIPIENT: ${{ secrets.DB_BACKUP_AGE_RECIPIENT }}
+          DB_BACKUP_CA_CERT: ${{ secrets.DB_BACKUP_CA_CERT }}
+        run: bash scripts/db-backup.sh gate
 
-      # ⚠️ THE CLIENT MAJOR MUST MATCH THE SERVER. Supabase is on Postgres 17 and pg_dump refuses
-      # a server newer than itself; ubuntu-latest ships an older client, so this takes 17 from
-      # PGDG rather than hoping.
-      - name: Install the Postgres 17 client
+      # ⚠️ THE CLIENT MAJOR MUST MATCH. Supabase is on Postgres 17, and the image ships a newer
+      # client than that; the script calls /usr/lib/postgresql/17/bin by path, never the wrapper.
+      - name: Install the Postgres 17 client and age
         if: steps.gate.outputs.ready == 'yes'
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -86,65 +90,67 @@ jobs:
             https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+          sudo apt-get install -y -qq postgresql-client-17 age
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
-      - name: Install age
-        if: steps.gate.outputs.ready == 'yes'
-        run: sudo apt-get install -y -qq age
-
-      # ⚠️ THE URL IS NEVER ECHOED AND NEVER A COMMAND-LINE ARGUMENT. `pg_dump` reads it from the
-      # environment, so it cannot turn up in `ps`, in `set -x` output, or in a log line somebody
-      # adds later. `--no-owner --no-privileges` because the roles on a restore target are not
-      # these roles; the ACLs are rebuilt from the repository's own baseline, which is the thing
-      # under version control.
+      # ⚠️ THE CONNECTION IS libpq's ENVIRONMENT, NEVER A URI. The password cannot turn up in `ps`
+      # or in a parse error quoting a string it could not read, and the certificate is checked
+      # against Supabase's own CA with the host name, not merely encrypted.
       - name: Dump
         if: steps.gate.outputs.ready == 'yes'
         env:
-          PGURI: ${{ secrets.SUPABASE_DB_URL }}
+          PGHOST: ${{ secrets.DB_BACKUP_PGHOST }}
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: ${{ secrets.DB_BACKUP_PGUSER }}
+          PGPASSWORD: ${{ secrets.DB_BACKUP_PGPASSWORD }}
+          PGSSLMODE: verify-full
+          PGSSLROOTCERT: ${{ runner.temp }}/supabase-ca.crt
+          PGCONNECT_TIMEOUT: '30'
+          PGAPPNAME: yaya-weekly-backup
+          DB_BACKUP_CA_CERT: ${{ secrets.DB_BACKUP_CA_CERT }}
         run: |
-          set -o pipefail
-          pg_dump "$PGURI" \
-            --schema=public --schema=finance \
-            --no-owner --no-privileges \
-            --format=custom --compress=9 \
-            --file=yaya.dump
-          ls -l yaya.dump
+          printf '%s\n' "$DB_BACKUP_CA_CERT" > "$PGSSLROOTCERT"
+          bash scripts/db-backup.sh dump "$RUNNER_TEMP/bundle"
 
-      # ⚠️ ENCRYPT BEFORE UPLOAD, AND FAIL IF IT DID NOT. A `--armor`-less age file starts with
-      # the bytes `age-encryption.org/v1`; a plain custom-format dump starts with `PGDMP`. The
-      # check below is cheap and is the difference between publishing ciphertext and publishing
-      # the database, so it is not left to the assumption that the previous step worked.
-      - name: Encrypt to the recipient, and prove it is encrypted
+      # ⚠️ A BACKUP NOBODY HAS RESTORED IS A HOPE. This one is restored every week, here, and
+      # compared with production's own account of itself line for line — every table's rows, every
+      # definition, every grant — before it is allowed to become the artifact. The plaintext never
+      # leaves this runner; the log names a table that differs and nothing about its contents.
+      - name: Restore it into a scratch Postgres and compare it with production
         if: steps.gate.outputs.ready == 'yes'
         env:
-          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+          PGHOST: 127.0.0.1
+          PGPORT: '55443'
+          PGDATABASE: postgres
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGSSLMODE: disable
         run: |
-          age --encrypt --recipient "$AGE_RECIPIENT" --output yaya.dump.age yaya.dump
-          rm -f yaya.dump
-          head -c 21 yaya.dump.age | grep -q 'age-encryption.org/v1' || {
-            echo "::error title=Refusing to upload::The artifact does not begin with the age header, so it is not ciphertext."
-            exit 1
-          }
-          head -c 5 yaya.dump.age | grep -q 'PGDMP' && {
-            echo "::error title=Refusing to upload::The artifact is a raw pg_dump. This repository is PUBLIC."
-            exit 1
-          }
-          ls -l yaya.dump.age
+          bash scripts/db-backup.sh prepare-plain-target
+          bash scripts/db-backup.sh restore "$RUNNER_TEMP/bundle"
+
+      - name: Encrypt to the recipient, prove it is ciphertext, and drop the plaintext
+        if: steps.gate.outputs.ready == 'yes'
+        env:
+          DB_BACKUP_AGE_RECIPIENT: ${{ secrets.DB_BACKUP_AGE_RECIPIENT }}
+        run: |
+          bash scripts/db-backup.sh seal "$RUNNER_TEMP/bundle" "$DB_BACKUP_AGE_RECIPIENT" "$RUNNER_TEMP/yaya-db.tar.age"
+          rm -rf "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/supabase-ca.crt"
 
       - name: Keep it
         if: steps.gate.outputs.ready == 'yes'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: yaya-db-${{ github.run_id }}
-          path: yaya.dump.age
+          path: ${{ runner.temp }}/yaya-db.tar.age
           retention-days: 90
           if-no-files-found: error
 
-  # The restore procedure, exercised on every run WITHOUT any production data in it. A backup
-  # nobody has restored is a hope; this proves the path works using a database built from the
-  # repository's own baseline and seed, so it runs on a pull request, needs no secret, and tells
-  # you the same thing about `pg_restore` that a real dump would.
+  # The whole procedure — dump, seal, open, restore, compare — on a database built from the
+  # repository's own schema with member data in it, restored into a target shaped like a fresh
+  # Supabase project, and then broken on purpose in every way it has failed or could. No secret,
+  # no production data, so it runs on every pull request that touches any of it.
   restore-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -165,7 +171,7 @@ jobs:
         ports: ['55442:5432']
     steps:
       - uses: actions/checkout@v7
-      - name: Install the Postgres 17 client
+      - name: Install the Postgres 17 client and age
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
@@ -174,9 +180,10 @@ jobs:
             https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-17
-      - name: Dump a synthetic database and restore it into an empty one
+          sudo apt-get install -y -qq postgresql-client-17 age
+      - name: Back up, restore and check a database holding member data, then break it on purpose
         run: bash scripts/restore-test.sh
         env:
-          SOURCE_URL: postgresql://postgres:postgres@127.0.0.1:55441/postgres
-          TARGET_URL: postgresql://postgres:postgres@127.0.0.1:55442/postgres
+          SOURCE_PORT: '55441'
+          TARGET_PORT: '55442'
+          PGPASSWORD: postgres

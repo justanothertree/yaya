@@ -53,3 +53,11 @@ supabase/.temp/
 
 # vitest --reporter=json scratch output
 .vitest/
+
+# Database backups: a decrypted dump is every member's rows, and a key reads every artifact.
+# Restore in a directory outside the repository (docs/2026-11-21-database-backup-and-restore.md);
+# these are here for the day somebody does not.
+*.dump
+*.age
+*.key
+yaya-db-*/
