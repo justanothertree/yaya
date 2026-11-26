@@ -246,7 +246,7 @@ SQL
 dq restored -1 -f "$WORK/after.sql" >/dev/null || fail "after-restore's SQL did not run"
 read -r -d '' ELSEWHERE <<'SQL' || true
 select count(*) || '|' || md5(string_agg(x, E'\n' order by x collate "C")) from (
-  select 'policy|' || polname || '|' || polcmd || '|' || pg_get_expr(polqual, polrelid) from pg_policy
+  select 'policy|' || polname || '|' || polcmd::text || '|' || pg_get_expr(polqual, polrelid) from pg_policy
    where polrelid = 'realtime.messages'::regclass
   union all
   select 'trigger|' || pg_get_triggerdef(oid) from pg_trigger where tgrelid = 'auth.users'::regclass and not tgisinternal
