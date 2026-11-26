@@ -41,14 +41,14 @@ select 'policy', n.nspname || '.' || c.relname || '.' || p.polname,
   from pg_policy p join pg_class c on c.oid = p.polrelid join pg_namespace n on n.oid = c.relnamespace
  -- not ours to dump, and not pg_cron's own (it makes those itself)
  where n.nspname not in ('public', 'finance', 'cron', 'pg_catalog', 'information_schema')
- order by 2 collate "C";
+ order by n.nspname || '.' || c.relname || '.' || p.polname collate "C";
 
 select 'trigger', n.nspname || '.' || c.relname || '.' || t.tgname,
        translate(encode(convert_to(pg_get_triggerdef(t.oid) || ';', 'UTF8'), 'base64'), E'\n', '')
   from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_namespace n on n.oid = c.relnamespace
   join pg_proc f on f.oid = t.tgfoid join pg_namespace fn on fn.oid = f.pronamespace
  where not t.tgisinternal and n.nspname not in ('public', 'finance') and fn.nspname in ('public', 'finance')
- order by 2 collate "C";
+ order by n.nspname || '.' || c.relname || '.' || t.tgname collate "C";
 
 -- in order, because each question errors if the one before it was no
 select case when to_regnamespace('cron') is null then false
