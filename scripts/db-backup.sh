@@ -534,12 +534,12 @@ after_restore() {
       cron)
         if [ "$f2" = "-" ]; then name="(unnamed)"; else name="$(printf '%s' "$f2" | base64 -d)"; fi
         # the readable copy, as comments, for the person who has to read it before running it
-        printf -- '-- cron job %s, %s%s:\n' "$name" "$(printf '%s' "$f3" | base64 -d)" "$([ "$f5" = f ] && echo ', PAUSED')"
+        printf -- '-- cron job %s, %s%s:\n' "$name" "$(printf '%s' "$f3" | base64 -d)" "$([ "$f5" = paused ] && echo ', PAUSED')"
         printf '%s' "$f4" | base64 -d | sed 's/^/--   /'
         echo
         if [ "$f2" = "-" ]; then call="cron.schedule($(dec "$f3"), $(dec "$f4"))"; else call="cron.schedule($(dec "$f2"), $(dec "$f3"), $(dec "$f4"))"; fi
         # a paused job comes back paused
-        if [ "$f5" = f ]; then
+        if [ "$f5" = paused ]; then
           printf 'select cron.alter_job(%s, active := false);\n' "$call"
         else
           printf 'select %s;\n' "$call"

@@ -13,7 +13,7 @@
 --   trigger      <schema.table.trigger>  base64(create trigger …)
 --       a trigger on a table outside these schemas that calls a function inside them (an
 --       auth.users trigger that makes a profile is the usual one; on 26 Nov there were none)
---   cron         base64(jobname) or -    base64(schedule)   base64(command)   t|f (active)
+--   cron         base64(jobname) or -    base64(schedule)   base64(command)   active|paused
 --       pg_cron's jobs, if this role may read cron.job; otherwise one line `cron-not-captured`.
 --       Every field is base64 or a fixed word, so none is ever empty: an empty field between two
 --       tabs is one a shell's `read` silently drops, and a NULL jobname is how pg_cron names an
@@ -64,7 +64,10 @@ select 'cron',
        coalesce(nullif(translate(encode(convert_to(jobname, 'UTF8'), 'base64'), E'\n', ''), ''), '-'),
        translate(encode(convert_to(schedule, 'UTF8'), 'base64'), E'\n', ''),
        translate(encode(convert_to(command, 'UTF8'), 'base64'), E'\n', ''),
-       active::text
+       -- a word, not active::text: that renders `false`, while psql shows the same boolean as `f`,
+       -- and the first version compared against the one it did not get — a paused job came back
+       -- running, which the restore test caught
+       case when active then 'active' else 'paused' end
   from cron.job
  order by jobid;
 \else
