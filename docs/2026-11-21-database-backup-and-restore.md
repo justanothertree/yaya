@@ -94,12 +94,16 @@ select pg_size_pretty(pg_database_size(current_database()));
 4. **Restore and compare** (`prepare-plain-target`, then `restore`). This happens in a throwaway
    Postgres inside the same job.
    - The real backup is restored and compared with production's own manifest, line for line,
-     before it's allowed to become the artifact.
+     before it's sealed.
    - That makes this the only place all of production's tables are ever round-tripped.
    - The plaintext never leaves the runner.
 5. **Seal** (`db-backup.sh seal`): it encrypts the bundle, proves the result is ciphertext, and
    deletes the plaintext.
 6. **Upload**, with `actions/upload-artifact` pinned by SHA.
+
+If step 4 fails, the run is red, but steps 5 and 6 still happen, and the artifact is named
+`yaya-db-<run id>-unverified`. A backup that didn't restore cleanly is still the newest copy
+there is. The name means nobody restores it trusting it.
 
 ## The restore test
 

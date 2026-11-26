@@ -80,7 +80,7 @@ lines(kind, name, val) as (
                    (select coalesce(string_agg(g, ',' order by g collate "C"), '-')
                       from (select format('%s:%s:%s', case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end,
                                           x.privilege_type, x.is_grantable) as g
-                              from aclexplode(coalesce(r.relacl, acldefault(case when r.relkind = 'S' then 's' else 'r' end, r.relowner))) x) a))
+                              from aclexplode(coalesce(r.relacl, acldefault((case when r.relkind = 'S' then 's' else 'r' end)::"char", r.relowner))) x) a))
     from rel r
   union all
   -- the columns, in order: name, type, not null, default, identity, generated, collation, grants

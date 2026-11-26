@@ -83,10 +83,10 @@ sq -f supabase/baseline/00-privileges.sql
 sq -f supabase/baseline/01-extensions.sql
 sq -f supabase/migrations/00000000000000_baseline.sql
 sq -f supabase/baseline/02-triggers.sql
-sq -f supabase/seed.sql
+sq -f supabase/seed.sql >/dev/null
 # the fixtures were written against this migration, exactly as db-guards loads them
 sq -1 -f supabase/migrations/20261122234003_circuit_creator_staple.sql
-sq -f supabase/tests/db-speed-tidy-fixtures.sql
+sq -f supabase/tests/db-speed-tidy-fixtures.sql >/dev/null
 sq -f scripts/db-backup/test-source-extras.sql
 
 # ⚠️ A FLOOR UNDER THE DATA, said as numbers. A restore of an empty database restores perfectly,

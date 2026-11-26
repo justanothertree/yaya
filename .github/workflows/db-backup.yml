@@ -97,6 +97,7 @@ jobs:
       # or in a parse error quoting a string it could not read, and the certificate is checked
       # against Supabase's own CA with the host name, not merely encrypted.
       - name: Dump
+        id: dump
         if: steps.gate.outputs.ready == 'yes'
         env:
           PGHOST: ${{ secrets.DB_BACKUP_PGHOST }}
@@ -118,6 +119,7 @@ jobs:
       # definition, every grant — before it is allowed to become the artifact. The plaintext never
       # leaves this runner; the log names a table that differs and nothing about its contents.
       - name: Restore it into a scratch Postgres and compare it with production
+        id: verify
         if: steps.gate.outputs.ready == 'yes'
         env:
           PGHOST: 127.0.0.1
@@ -130,8 +132,12 @@ jobs:
           bash scripts/db-backup.sh prepare-plain-target "$RUNNER_TEMP/bundle"
           bash scripts/db-backup.sh restore "$RUNNER_TEMP/bundle"
 
+      # ⚠️ KEPT EVEN WHEN THE RESTORE CHECK FAILED, AND SAID SO IN ITS NAME. A dump that did not
+      # restore cleanly here is still the newest copy there is, and losing it would make a bad week
+      # worse; the run is red either way, and the artifact is called -unverified so that nobody
+      # restores it trusting it.
       - name: Encrypt to the recipient, prove it is ciphertext, and drop the plaintext
-        if: steps.gate.outputs.ready == 'yes'
+        if: ${{ !cancelled() && steps.dump.outcome == 'success' }}
         env:
           DB_BACKUP_AGE_RECIPIENT: ${{ secrets.DB_BACKUP_AGE_RECIPIENT }}
         run: |
@@ -139,13 +145,18 @@ jobs:
           rm -rf "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/supabase-ca.crt"
 
       - name: Keep it
-        if: steps.gate.outputs.ready == 'yes'
+        if: ${{ !cancelled() && steps.dump.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: yaya-db-${{ github.run_id }}
+          name: yaya-db-${{ github.run_id }}${{ steps.verify.outcome != 'success' && '-unverified' || '' }}
           path: ${{ runner.temp }}/yaya-db.tar.age
           retention-days: 90
           if-no-files-found: error
+
+      # the runner is thrown away anyway; this is for the step that failed halfway
+      - name: Leave no plaintext behind
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/supabase-ca.crt"
 
   # The whole procedure — dump, seal, open, restore, compare — on a database built from the
   # repository's own schema with member data in it, restored into a target shaped like a fresh
