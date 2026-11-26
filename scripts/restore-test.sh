@@ -190,7 +190,7 @@ for fake in old-client no-data; do
   ln -sf "$real_bin/pg_restore" "$WORK/$fake/pg_restore"
 done
 printf '#!/usr/bin/env bash\n[ "${1:-}" = --version ] && { echo "pg_dump (PostgreSQL) 16.4"; exit 0; }\nexec "%s/pg_dump" "$@"\n' "$real_bin" >"$WORK/old-client/pg_dump"
-printf '#!/usr/bin/env bash\nexec "%s/pg_dump" --exclude-table-data=public.zz_restore_probe "$@"\n' "$real_bin" >"$WORK/no-data/pg_dump"
+printf '#!/usr/bin/env bash\n[ "${1:-}" = --version ] && exec "%s/pg_dump" --version\nexec "%s/pg_dump" --exclude-table-data=public.zz_restore_probe "$@"\n' "$real_bin" "$real_bin" >"$WORK/no-data/pg_dump"
 chmod +x "$WORK/old-client/pg_dump" "$WORK/no-data/pg_dump"
 refused "a pg_dump older than the server" 'pg_dump 16 cannot dump a Postgres 17 server' -- as_backup postgres env PG_BIN="$WORK/old-client" bash "$BK" dump "$WORK/old"
 refused "a dump missing a table's rows" 'the dump carries data for [0-9]+ tables and the source has [0-9]+' -- as_backup postgres env PG_BIN="$WORK/no-data" bash "$BK" dump "$WORK/short"
@@ -375,7 +375,13 @@ SQL
 put_back_src="$(src "$PSQL" -X -At -c "$ELSEWHERE")"
 put_back_dst="$(dst restored "$PSQL" -X -At -c "$ELSEWHERE")"
 echo "    what no dump carries, source $put_back_src, restored $put_back_dst"
-[ "$put_back_src" = "$put_back_dst" ] || fail "after-restore did not put back exactly what the source had"
+if [ "$put_back_src" != "$put_back_dst" ]; then
+  fail "after-restore did not put back exactly what the source had"
+  # the rows themselves, which are the test's own invented ones: say which thing differs
+  ROWS="select x from (${ELSEWHERE#*from (}"
+  ROWS="${ROWS%) s(x)*}) s(x) order by 1"
+  diff <(src "$PSQL" -X -At -c "$ROWS") <(dst restored "$PSQL" -X -At -c "$ROWS") | sed 's/^/      /' >&2 || true
+fi
 [ "${put_back_src%%|*}" = 7 ] || fail "expected 2 policies, a trigger, 2 publication entries and 2 cron jobs, found ${put_back_src%%|*}"
 
 # ── the restores that must fail ────────────────────────────────────────────────────────────────
@@ -417,7 +423,7 @@ fresh_project no_ids_public
 dst no_ids_public bash "$BK" preflight >/dev/null
 dst no_ids_public bash "$BK" neutralise-defaults >/dev/null
 copy_bundle quiet-bundle
-refused "restored without the auth ids, in a public log" 'failed at FK CONSTRAINT .*restore-errors.txt' -- dst no_ids_public env DB_BACKUP_PUBLIC_LOG=1 bash "$BK" pg-restore "$WORK/quiet-bundle"
+refused "restored without the auth ids, in a public log" 'failed at: ALTER TABLE ONLY [^ ]+ ADD CONSTRAINT [^ ]+ FOREIGN KEY.*restore-errors.txt' -- dst no_ids_public env DB_BACKUP_PUBLIC_LOG=1 bash "$BK" pg-restore "$WORK/quiet-bundle"
 while read -r id; do
   grep -qF "$id" "$WORK/fault.log" && fail "the public log printed a member id: the database's own message got through"
 done <"$WORK/opened/auth-user-ids.txt"
@@ -467,16 +473,16 @@ grep -q 'zz_restore_probe' "$WORK/fault.log" && fail "the moved table was compar
 say "changing the restore, one kind of thing at a time"
 changed() {
   # changed NAME PATTERN SQL   — make the change on the good restore, and verify must name it
-  dq restored -c "$3"
+  dq restored -c "$3" >/dev/null
   refused "$1" "$2" -- dst restored bash "$BK" verify "$WORK/opened"
 }
 changed "a row missing" 'rows\ttable\tpublic\.zz_restore_probe' "delete from public.zz_restore_probe where note = 'the far future'"
 changed "a constraint missing" 'catalog\tconstraints\tpublic\.zz_restore_probe' "alter table public.zz_restore_probe drop constraint zz_restore_probe_note_check"
 changed "a grant widened" 'catalog\trelation\tpublic\.profile_blocks' "grant select on public.profile_blocks to anon"
-changed "a default privilege widened" 'catalog\tdefault-acl\tpostgres:public:r' "alter default privileges for role postgres in schema public grant select on tables to anon"
+changed "a default privilege widened" 'catalog\tdefault-acl\tpostgres:finance:r' "alter default privileges for role postgres in schema finance grant select on tables to anon"
 changed "a policy missing" 'catalog\tpolicies\tpublic\.zz_restore_probe' "drop policy zz_restore_probe_own on public.zz_restore_probe"
 changed "a sequence moved" 'rows\tsequence\tpublic\.zz_restore_probe_id_seq' "select setval('public.zz_restore_probe_id_seq', 999)"
-changed "a column default changed" 'catalog\tcolumns\tpublic\.zz_restore_probe' "alter table public.zz_restore_probe alter column blob set default null"
+changed "a column default changed" 'catalog\tcolumns\tpublic\.zz_restore_probe' "alter table public.zz_restore_probe alter column note set default 'changed'"
 changed "a trigger added" 'catalog\ttriggers\tpublic\.zz_restore_probe' "create trigger zz_extra before update on public.zz_restore_probe for each row execute function public.zz_restore_probe_noticed()"
 changed "a type changed" 'catalog\ttype\tpublic\.visibility_tier' "alter type public.visibility_tier add value 'zz_new'"
 changed "a column comment changed" 'catalog\tcomment\tpublic\.zz_restore_probe\.note' "comment on column public.zz_restore_probe.note is 'changed'"

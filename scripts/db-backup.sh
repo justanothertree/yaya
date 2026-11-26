@@ -70,9 +70,10 @@ count() { public_log || printf '%s ' "$1"; }
 kind_count() { awk -F'\t' -v k="$1" '$1 == k' "$2" | wc -l | tr -d ' '; }
 
 # ⚠️ IN A PUBLIC LOG, THE DATABASE DOES NOT GET TO SPEAK. Its error text quotes the row it choked
-# on. So the command's stderr goes to restore-errors.txt in the bundle — which is sealed after
-# this, so the detail is kept for whoever holds the key — and the log gets the one line that
-# names the object: pg_restore's own "from TOC entry …" with the owner trimmed off.
+# on — the ERROR line itself can ("invalid input syntax for type uuid: …"), and DETAIL and CONTEXT
+# do. So the command's stderr goes to restore-errors.txt in the bundle, which is sealed after this
+# so the detail is kept for whoever holds the key, and the log gets only pg_restore's "Command
+# was:" — DDL, or the header of a COPY, which are the schema and never a row.
 quietly() {
   local dir="$1"
   shift
@@ -83,8 +84,9 @@ quietly() {
   local status=0 at
   "$@" 2>>"$dir/restore-errors.txt" || status=$?
   if [ "$status" != 0 ]; then
-    at="$(sed -nE 's/^pg_restore: from TOC entry [0-9]+; [0-9]+ [0-9]+ (.*) [^ ]+$/\1/p' "$dir/restore-errors.txt" | tail -1)"
-    echo "!!! failed${at:+ at $at}. The database's own message quotes rows, so it is not printed here: it is in restore-errors.txt, inside the sealed bundle." >&2
+    at="$(awk '/^Command was: / { c = substr($0, 14); if ((getline n) > 0 && n ~ /^    /) c = c " " substr(n, 5); last = c }
+               END { print last }' "$dir/restore-errors.txt" | cut -c1-240)"
+    echo "!!! failed${at:+ at: $at}. The database's own message quotes rows, so it is not printed here: it is in restore-errors.txt, inside the sealed bundle." >&2
   fi
   return "$status"
 }
