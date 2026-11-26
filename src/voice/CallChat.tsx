@@ -2,6 +2,7 @@ import { MessageLog } from '../circuit/ui/MessageLog'
 import { Composer } from '../circuit/ui/Composer'
 import { sendToThread } from '../circuit/roomThread'
 import type { Msg } from '../circuit/chatRooms'
+import type { ChatSong } from '../circuit/chatSongs'
 import { sendCallChat } from './callChatStore'
 
 /**
@@ -17,6 +18,8 @@ export function CallChat({
   msgs,
   inRoom,
   err,
+  songs,
+  focusBox = false,
   onClose,
 }: {
   roomId: string | null
@@ -24,6 +27,11 @@ export function CallChat({
   msgs: Msg[]
   inRoom: boolean
   err: string | null
+  /** the room's songs, when the call is in a chat room — see useCallMessages */
+  songs?: Record<string, ChatSong>
+  /** put the focus in the box on opening — asked from the page, where the panel is far away in
+   *  the tab order (callChatOpen.ts); not from the dock's 💬, which it sits straight after */
+  focusBox?: boolean
   onClose: () => void
 }) {
   return (
@@ -49,6 +57,7 @@ export function CallChat({
       <MessageLog
         msgs={msgs}
         empty={inRoom ? undefined : 'Nothing yet — say something to the call.'}
+        songs={inRoom ? songs : undefined}
       />
       {err && (
         <p className="muted cz-chat-err" role="alert">
@@ -56,6 +65,7 @@ export function CallChat({
         </p>
       )}
       <Composer
+        autoFocus={focusBox}
         placeholder={inRoom ? `Message ${roomName}` : 'Message the call'}
         onSend={(text) => (inRoom && roomId ? sendToThread(roomId, text) : sendCallChat(text))}
       />

@@ -3,6 +3,7 @@ import { here } from '../links'
 import type { LabMatch } from './useLabMatch'
 import { toyName } from './names'
 import { matchHash, matchLine, otherName } from './words'
+import { ChatHud } from './ChatHud'
 
 /**
  * Everything around the board while a toy shows a match by turns: who is playing whom, the
@@ -131,6 +132,21 @@ export function MatchBar({ lm, sides }: { lm: LabMatch; sides: [string, string] 
         <p className="muted mc-note">
           Copy this link: <code className="match-link">{link}</code>
         </p>
+      )}
+      {v.status !== 'declined' && lm.chat.ready && (
+        <ChatHud
+          label={`Chat with ${them}`}
+          lines={lm.chat.lines.map((l) => ({
+            key: l.id,
+            who: l.mine ? 'You' : (v.seats[l.seat].name ?? them),
+            mine: l.mine,
+            text: l.body,
+          }))}
+          onSend={lm.chat.send}
+          busy={lm.chat.busy}
+          error={lm.chat.error}
+          empty={`Only you and ${them} can see this. It stays with the match.`}
+        />
       )}
     </div>
   )

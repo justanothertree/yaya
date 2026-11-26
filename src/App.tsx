@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { dropWriters } from './profile/writerRegistry'
 import { applyLook, registerLookApplier, type Look } from './ui/looks'
 import { lazyRetry } from './lazyRetry'
 import { VizFloat } from './audio/VizFloat'
@@ -13,6 +14,7 @@ import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
 import { WhatsHere } from './components/WhatsHere'
+import { CHRONICLE_KEYS } from './chronicle/keys'
 import { MobileNav } from './components/MobileNav'
 import { AmbientBackdrop } from './components/AmbientBackdrop'
 import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from './ui/clickFx'
@@ -168,6 +170,13 @@ const AgeNoticePreview = import.meta.env.DEV
   ? lazyRetry(
       () => import('./dev/AgeNoticePreview'),
       (m) => m.AgeNoticePreview,
+    )
+  : null
+/** Claiming a Circuit person, both halves, on the same bench and for the same reason (§19e). */
+const CircuitClaimsPreview = import.meta.env.DEV
+  ? lazyRetry(
+      () => import('./dev/CircuitClaimsPreview'),
+      (m) => m.CircuitClaimsPreview,
     )
   : null
 const AcceptInvite = lazyRetry(
@@ -1099,6 +1108,8 @@ export default function App() {
         onSignedIn()
         startLibrarySync()
       } else if (event === 'SIGNED_OUT') {
+        /* the profile page's writers are per session (profile/pageWriterLive.ts) */
+        dropWriters()
         uidRef.current = null
         setIsFinanceAuthed(false)
         onSignedOut()
@@ -1604,7 +1615,7 @@ export default function App() {
       case 'visualizer':
         return <AudioVisualizer />
       case 'instrument':
-        return <InstrumentRoom inCanvas />
+        return <InstrumentRoom inCanvas username={me.username} />
       case 'paint':
         return <PaintRoom />
       case 'lab':
@@ -2141,6 +2152,7 @@ export default function App() {
               </p>
               <Suspense fallback={<div aria-busy>Loading…</div>}>
                 {AgeNoticePreview && <AgeNoticePreview />}
+                {CircuitClaimsPreview && <CircuitClaimsPreview />}
                 <AdminPanel />
               </Suspense>
             </section>
@@ -2315,7 +2327,7 @@ export default function App() {
           {!sharedCanvasShowing && active === 'chronicle' && (
             <section id="chronicle" className="reveal">
               <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <Chronicle authed={isFinanceAuthed || previewMember} />
+                <Chronicle authed={isFinanceAuthed || previewMember} keysOff={gameHasControl} />
               </Suspense>
             </section>
           )}
@@ -2562,7 +2574,7 @@ export default function App() {
                 it.
               </p>
               <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <InstrumentRoom />
+                <InstrumentRoom username={me.username} />
               </Suspense>
             </section>
           )}
@@ -2724,6 +2736,9 @@ export default function App() {
           canvasOpen={canvasOpen}
           canvasCapable={canvasCapable}
           desktop={desktop}
+          roomKeys={
+            active === 'chronicle' ? { room: 'Chronicle', keys: CHRONICLE_KEYS } : undefined
+          }
         />
       )}
     </div>

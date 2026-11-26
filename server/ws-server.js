@@ -11,6 +11,7 @@
 import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
 import crypto from 'crypto'
+import { fileURLToPath } from 'url'
 import { createClient } from '@supabase/supabase-js'
 // The SAME parser the CLI uses — see the note in that file.
 import { parseTrades } from './lib/parseTrades.mjs'
@@ -19,24 +20,50 @@ import { parseTrades } from './lib/parseTrades.mjs'
 import { DEFAULT_SETTINGS, boardModeFor, sanitizeSettings } from './lib/settings.mjs'
 import { r2Operations, r2Storage } from './lib/r2ops.mjs'
 import { clientAddr, makeConnGate } from './lib/connGate.mjs'
+/* "did Supabase answer, or could it not be asked" — see tokenAnswer below */
+import { sureOf } from './lib/supabaseAnswer.mjs'
+import { stampOfServer } from './lib/buildStamp.mjs'
+/* the largest frame read from a client, and why it is that size — see the header of that file */
+import { MAX_MSG_BYTES } from './lib/frameCap.mjs'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
 
-// Max incoming message size (32 KB) – prevents DoS via huge payloads.
-const MAX_MSG_BYTES = 32768
+/**
+ * Which relay this is: a fingerprint of the files it is running from, served on /health so a
+ * deploy can be checked against the commit it was meant to ship (scripts/relay-smoke.mjs).
+ * Computed once, at start, from the files beside this one — see server/lib/buildStamp.mjs.
+ *
+ * ⚠️ A RELAY THAT CANNOT READ ITS OWN SOURCE STILL SERVES. The stamp is a diagnostic; a crash
+ * here would fail Render's health check and keep the previous build serving, so every fix after
+ * it would be blocked over a fingerprint. It says null instead, which the smoke reads as "not the
+ * build you merged" — the same answer, without the outage.
+ */
+const BUILD = (() => {
+  try {
+    return stampOfServer(fileURLToPath(new URL('.', import.meta.url)))
+  } catch (err) {
+    console.error('[relay] could not stamp the build', err?.message || err)
+    return null
+  }
+})()
+
 /**
  * ⚠️ HOW LONG THE RELAY WAITS ON ANYTHING OUTSIDE ITSELF. Every `fetch` below had no timeout at
  * all, so a Supabase or Cloudflare endpoint that accepts a connection and then says nothing holds
- * the handler open indefinitely — and in `verifyToken`/`inGoodStanding`/`isAdmin` that means a
+ * the handler open indefinitely — and in `tokenAnswer`/`standingAnswer`/`isAdmin` that means a
  * join request that never answers rather than one that is refused.
  *
- * Every one of those three already ends in `catch { return false }`, and the two Cloudflare ones
- * and `finalize_round_rpc` either catch or throw into a caller that does — so an `AbortError`
- * lands on the existing failure path and the auth checks stay FAIL-CLOSED, which is the property
- * that mattered before adding this.
+ * Every one of those three catches, and a catch lets nobody in (`isAdmin` returns false; the two
+ * answers say 'unsure', which their boolean wrappers read as no). The two Cloudflare ones and
+ * `finalize_round_rpc` either catch or throw into a caller that does — so a timeout lands on the
+ * existing failure path and the auth checks stay FAIL-CLOSED, which is the property that mattered
+ * before adding this. scripts/relay-fail-closed.test.mjs holds every door to that.
+ *
+ * The environment can shorten it, for that test, and never lengthen it. A shorter wait can only
+ * turn an answer into a refusal, never a refusal into an answer.
  */
-const OUTBOUND_TIMEOUT_MS = 8000
+const OUTBOUND_TIMEOUT_MS = Math.min(8000, Number(process.env.OUTBOUND_TIMEOUT_MS) || 8000)
 // Max length for user-supplied strings before they are truncated.
 const MAX_NAME_LEN = 64
 // In-match chat. Nothing is stored: the relay forwards a line to the room and forgets it.
@@ -161,8 +188,10 @@ const WALK_WINDOW_MS = 1000
  * and then its token, and verifying the token is a round trip to Supabase — so there is always a
  * window where somebody is in the room and not yet vouched for. The window is what is bounded
  * here; what happens INSIDE it is bounded by broadcastPark, which sends them nothing.
+ *
+ * Shortened by the environment for a test, never lengthened, as OUTBOUND_TIMEOUT_MS is.
  */
-const PARK_VOUCH_MS = 12000
+const PARK_VOUCH_MS = Math.min(12000, Number(process.env.PARK_VOUCH_MS) || 12000)
 /** How many rooms may exist at once. See the room-leak note in the hello handler. */
 const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500)
 /**
@@ -278,6 +307,17 @@ const rooms = new Map()
 //   },
 //   meta: { name: string, public: boolean, createdAt: number }
 // })
+
+/**
+ * Open rooms by kind, for /relay-config. Every room that is not a park or a bout is a Snake room
+ * — that is how `hello` treats an id it has no special rule for.
+ */
+function roomCounts() {
+  const n = { snake: 0, park: 0, bout: 0 }
+  for (const roomId of rooms.keys())
+    n[isPark(roomId) ? 'park' : isBout(roomId) ? 'bout' : 'snake']++
+  return n
+}
 
 function uuid() {
   if (crypto.randomUUID) return crypto.randomUUID()
@@ -855,9 +895,16 @@ function bearer(req) {
  * yields is never taken from the client's own message. That distinction is the whole point:
  * accepting a userId the client typed would let anyone post scores to anyone's handle, which is
  * exactly what the RPC's claimed-handle rule exists to prevent.
+ *
+ * Every existing caller wants exactly that — a user or null — and gets it from `verifyToken`.
+ * `tokenAnswer` underneath also says how SURE the null is (server/lib/supabaseAnswer.mjs):
+ * 'no' when Supabase refused the token, 'unsure' when it could not be asked. A door that turns
+ * people away with words needs the difference; one that only lets them in or not does not.
  */
-async function verifyToken(token) {
-  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+async function tokenAnswer(token) {
+  /* no token, or one no real session could have: definite, and never worth a round trip */
+  if (!token) return { user: null, sure: 'no' }
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return { user: null, sure: sureOf(null) }
   /**
    * ⚠️ THE LENGTH IS CHECKED BEFORE ANYTHING ELSE, AND AN OVERSIZED TOKEN IS NEVER CACHED. A real
    * Supabase access token is a JWT of a few hundred bytes; there is no legitimate one anywhere
@@ -867,35 +914,46 @@ async function verifyToken(token) {
    * frame has its own 4096 check at the call site; this is the one that covers every OTHER
    * caller, including the HTTP side through `verifyUser`.
    */
-  if (token.length > 4096) return null
+  if (token.length > 4096) return { user: null, sure: 'no' }
   const hit = tokenCache.get(token)
-  if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.user
+  if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.answer
+  let answer
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
       signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
-    /**
-     * ⚠️ A REFUSAL IS CACHED TOO, and it was not before. An expired token is the common case —
-     * a tab left open overnight retries on every frame — and each retry was a fresh call to
-     * Supabase for an answer that cannot change until the token does. Caching the null for the
-     * same minute makes a stale tab cost one round trip rather than hundreds, and makes a
-     * deliberate flood of one bad token cost one as well.
-     */
-    if (!r.ok) {
-      tokenCache.set(token, { at: Date.now(), user: null })
-      capMap(tokenCache, 200)
-      return null
+    const sure = sureOf(r.status)
+    if (sure !== 'yes') answer = { user: null, sure }
+    else {
+      const user = await r.json()
+      answer = user?.id ? { user, sure: 'yes' } : { user: null, sure: 'no' }
     }
-    const user = await r.json()
-    const ok = user?.id ? user : null
-    tokenCache.set(token, { at: Date.now(), user: ok })
+  } catch (err) {
+    return { user: null, sure: sureOf(err) }
+  }
+  /**
+   * ⚠️ A REFUSAL IS CACHED TOO — BUT ONLY A SURE ONE. An expired token is the common case — a
+   * tab left open overnight retries on every frame — and each retry was a fresh call to
+   * Supabase for an answer that cannot change until the token does. Caching the 'no' for the
+   * same minute makes a stale tab cost one round trip rather than hundreds, and makes a
+   * deliberate flood of one bad token cost one as well.
+   *
+   * ⚠️ AND A 5xx WAS CACHED AS ONE, UNTIL 23 Nov 2026. This used to cache on `!r.ok`, so a second
+   * of Supabase trouble refused that token for the next sixty, to someone who had done nothing
+   * wrong. 'unsure' is never kept: it is the one answer that asking again can change, and the
+   * auth frame's own allowance (one in flight, five a minute) is what bounds the asking.
+   */
+  if (answer.sure !== 'unsure') {
+    tokenCache.set(token, { at: Date.now(), answer })
     // the cache is per-token and unbounded otherwise; a call has a handful of tokens at most
     capMap(tokenCache, 200)
-    return ok
-  } catch {
-    return null
   }
+  return answer
+}
+
+async function verifyToken(token) {
+  return (await tokenAnswer(token)).user
 }
 
 /**
@@ -911,13 +969,22 @@ async function verifyToken(token) {
  * verified at all and nobody gets in — so the failure is already closed. Here the token is good
  * and only the standing is unknown, and the safe answer for a room somebody's family is in is to
  * wait rather than to wave them through.
+ *
+ * `standingAnswer` says which kind of no it was, as `tokenAnswer` does: 'no' for a suspended
+ * account (or a refused token), 'unsure' when nobody could be asked. `inGoodStanding` is the
+ * yes-or-no every existing caller reads, and reads 'unsure' as no.
+ *
+ * ⚠️ ONLY A 2xx IS CACHED, as before, because only a 2xx is a fact about THE PERSON. The cache is
+ * keyed by user, and a 401 here is about the token in hand — keeping it would refuse that
+ * person's next, perfectly good token for a minute.
  */
 const standingCache = new Map()
 
-async function inGoodStanding(token, userId) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !userId) return false
+async function standingAnswer(token, userId) {
+  if (!userId) return 'no'
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return sureOf(null)
   const hit = standingCache.get(userId)
-  if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.ok
+  if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.answer
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/is_suspended`, {
       method: 'POST',
@@ -929,15 +996,20 @@ async function inGoodStanding(token, userId) {
       body: JSON.stringify({ p_user_id: userId }),
       signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
-    if (!r.ok) return false
+    const sure = sureOf(r.status)
+    if (sure !== 'yes') return sure
     const suspended = await r.json()
-    const ok = suspended !== true
-    standingCache.set(userId, { at: Date.now(), ok })
+    const answer = suspended === true ? 'no' : 'yes'
+    standingCache.set(userId, { at: Date.now(), answer })
     capMap(standingCache, 200)
-    return ok
-  } catch {
-    return false
+    return answer
+  } catch (err) {
+    return sureOf(err)
   }
+}
+
+async function inGoodStanding(token, userId) {
+  return (await standingAnswer(token, userId)) === 'yes'
 }
 
 async function verifyUser(req) {
@@ -1268,10 +1340,14 @@ const server = createServer((req, res) => {
    *
    * Explicitly routed rather than left to the catch-all below, so that changing the catch-all
    * later cannot silently break deployment again.
+   *
+   * `build` is the one thing it says besides ok: which code is answering (see BUILD). It is a
+   * hash of source that is public anyway, so it costs this route nothing to be open — and it is
+   * the answer to the question the story above could not get: did the deploy actually go live?
    */
   if (url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ ok: true }))
+    res.end(JSON.stringify({ ok: true, build: BUILD }))
     return
   }
 
@@ -1333,6 +1409,14 @@ const server = createServer((req, res) => {
             inWindow: connGate.inWindow,
             open: wss.clients.size,
           },
+          /**
+           * How many rooms of each kind are open right now. A deploy restarts this process and
+           * ends every one of them — a park walk, a pet bout, a Snake round — so this is the
+           * reading to take before merging a relay change. Counts only, never an id: a bout's id
+           * is its invite (see `list`). And here rather than on /health, because how busy the
+           * relay is, and when, is the operator's business and not a stranger's.
+           */
+          rooms: roomCounts(),
           has: {
             SUPABASE_URL: !!SUPABASE_URL,
             SUPABASE_ANON_KEY: !!SUPABASE_ANON_KEY,
@@ -1566,10 +1650,17 @@ const connGate = makeConnGate({
 /** How many connections still get to describe their address on the log. See the block below. */
 let addrDiag = Number(process.env.ADDR_DIAG || 8)
 
-/* ⚠️ `maxPayload` REFUSES AN OVERSIZED FRAME BEFORE BUFFERING IT. The length check further down
-   is still there and still right, but it runs on a message `ws` has already assembled in memory —
-   so the default ~100 MiB ceiling was the real limit, 3,200× the one this file thinks it has.
-   Over the cap the socket closes with 1009. */
+/* ⚠️ `maxPayload` REFUSES AN OVERSIZED FRAME BEFORE BUFFERING IT. `ws` reads a frame's declared
+   length first and closes the socket with 1009 the moment a message would pass the cap, so the
+   bytes are never held. Without it the ceiling is `ws`'s default of 100 MiB, whatever the length
+   check in handleMessage says, because that check runs on a message already assembled in memory.
+
+   ⚠️ ONE NUMBER FOR BOTH, AND THE TRANSPORT'S IS THE ONE THAT BITES. With `maxPayload` equal to
+   MAX_MSG_BYTES the check in handleMessage cannot fire: `ws` never hands over a message longer
+   than the cap. It stays as the rule written where the message is read, for the day this socket
+   is built some other way. A frame AT the cap is read; one byte past it closes that socket and
+   only that socket (scripts/relay-frame-cap.test.mjs). What sets the size is in
+   ./lib/frameCap.mjs: the largest frame a real client sends, with headroom. */
 const wss = new WebSocketServer({ server, maxPayload: MAX_MSG_BYTES })
 
 wss.on('connection', (ws, req) => {
@@ -1672,8 +1763,12 @@ wss.on('connection', (ws, req) => {
    * bytes to send and costs this process an outbound round trip to Supabase — and the handler is
    * fire-and-forget, so nothing upstream was counting them. A client that sent a hundred bought a
    * hundred concurrent fetches for almost nothing, and the token cache cannot absorb that because
-   * each junk token is a different key. The message limiter below counts frames per socket, which
-   * does not help: these are cheap frames with an expensive tail.
+   * each junk token is a different key.
+   *
+   * ⚠️ THIS IS THE ONLY CEILING AN AUTH FRAME MEETS. This note used to point at a "message
+   * limiter below" that counted frames per socket, and there is no such thing. What exists is a
+   * size cap on every frame (MAX_MSG_BYTES) and a window per kind for the ones that are firehoses
+   * or broadcasts — chat, walk, boss, bstep, step — so a kind with no window of its own has none.
    *
    * Five a minute is far past honest use. A client authenticates once on joining, and again only
    * if it reconnects — which opens a new socket and gets a fresh allowance anyway.
@@ -1687,7 +1782,7 @@ wss.on('connection', (ws, req) => {
     ws.isAlive = true
   })
   const handleMessage = (data) => {
-    // Reject oversized messages before parsing to prevent DoS.
+    // Never true while `maxPayload` is MAX_MSG_BYTES — see the note on `wss`.
     if (data.length > MAX_MSG_BYTES) {
       send(ws, { type: 'error', code: 'msg-too-large', message: 'Message exceeds size limit' })
       return
@@ -2370,8 +2465,8 @@ wss.on('connection', (ws, req) => {
          * Never broadcast: peers learn names, never account ids.
          */
         if (typeof msg.token !== 'string' || msg.token.length > 4096) break
-        /* see authInFlight above: cheap frames with an expensive tail, so they are counted here
-           rather than left to the byte-based message limiter */
+        /* see authInFlight above: cheap frames with an expensive tail, counted here because
+           nothing else counts them — the only general ceiling is a frame's size */
         if (authInFlight) break
         {
           const nowMs = Date.now()
@@ -2838,6 +2933,8 @@ const heartbeat = setInterval(() => {
 heartbeat.unref?.()
 wss.on('close', () => clearInterval(heartbeat))
 
+/* the port actually bound, not the one asked for: PORT=0 lets the OS choose, which is how
+   scripts/relay-harness.mjs starts a relay for a test that cannot collide with one running */
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[ws-server] listening on :${PORT}`)
+  console.log(`[ws-server] listening on :${server.address().port}`)
 })

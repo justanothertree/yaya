@@ -173,7 +173,7 @@ html:has(.lab) {
   font-size: 0.85rem;
 }
 
-/* which experiment: one bar (step, dropdown, browse, favourite), then one line saying what it is */
+/* the line under the picker saying what the toy on screen is, and who is on it with you */
 .lab-line {
   margin: 0;
   font-weight: 600;
@@ -217,6 +217,15 @@ html:has(.lab) {
 .lab-picker .btn.lab-other:focus-visible {
   opacity: 0.8;
 }
+/* ⚠️ WHICH TOY IS ON SCREEN, AND WHICH KIND IS CHOSEN, LOOKED LIKE EVERY OTHER BUTTON. Both rows
+   set aria-pressed and nothing drew it — the only pressed style in the Lab was .lab-controls' —
+   so the one fact a picker exists to show was said to a screen reader and to nobody else. The
+   same tint as the toy's own controls, so "pressed" means one thing on this page. */
+.lab-picker .btn.btn-ghost[aria-pressed='true'],
+.lab-filter .btn.btn-ghost[aria-pressed='true'] {
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  border-color: var(--accent);
+}
 /* friends in your call on this toy: initials in their own colour (src/lab/social/where.ts) */
 .lab-friends {
   display: inline-flex;
@@ -245,6 +254,246 @@ html:has(.lab) {
   margin-left: 2px;
   font-size: 11px;
   font-weight: 700;
+}
+/* a friend arriving on a toy lands on it, the way a token lands on a board space. The dot on the
+   toy they left and the dot on the toy they reached are different elements, so no layout code
+   follows anybody anywhere — and the class is only given to a dot whose friend has just ARRIVED
+   (GpuLab), because a dot also mounts when somebody else leaving lets a friend who was there all
+   along into the first three, and that friend has not moved. */
+.lab-friend-in {
+  animation: lab-friend-land 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes lab-friend-land {
+  from {
+    transform: translateY(-7px) scale(0.4);
+    opacity: 0;
+  }
+}
+/* you, on the toy your call is being told: a hollow ring in your own colour, the colour your
+   cursor is on their screens. Hollow, so it never reads as one more friend on the toy. */
+.lab-friend.lab-friend-me {
+  background: transparent;
+  box-shadow:
+    inset 0 0 0 2px hsl(var(--h) 70% 45%),
+    0 0 0 2px var(--panel, #fff);
+}
+/* "👥 with Ann, Bo and Cy" can be three 40-character names: it wraps inside the card rather than
+   keeping the label pill's nowrap and running off a phone */
+.lab-badge.lab-with {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  border-radius: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lab-friend-in {
+    animation: none;
+  }
+}
+
+/* ── the tour: who on your call is where in the Lab (src/lab/social/TourStrip.tsx) ────────────
+   Sizes in px where they are a target or a floor: the root font-size is fluid (CLAUDE.md §6). */
+.lab-tour {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+}
+.lab-tour-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.lab-tour-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lab-tour-quiet,
+.lab-tour-note {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.lab-tour-people {
+  display: grid;
+  /* 280px holds a chip at its widest — token, a 64px name, Go and "Following" — so a person with
+     somewhere to go and somebody following them never spills or cuts their place short */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lab-tour-people[hidden] {
+  display: none;
+}
+/* a chip never moves when somebody changes toy (tour.ts keeps the roster's order), so a focused Go
+   stays where it was; the name keeps a 64px floor so a long one ellipses instead of vanishing */
+.lab-tour-one {
+  display: grid;
+  grid-template-columns: 28px minmax(64px, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 40px;
+  padding: 0.25rem 0.4rem;
+  border-radius: 8px;
+  background: var(--panel);
+}
+.lab-tour-who {
+  display: grid;
+  min-width: 64px;
+}
+.lab-tour-name,
+.lab-tour-place,
+.lab-tour-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lab-tour-at {
+  display: flex;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.lab-tour-place {
+  min-width: 0;
+}
+.lab-tour-talking {
+  flex: none;
+  white-space: pre;
+}
+.lab-tour-go,
+.lab-tour-follow,
+.lab-tour-dice,
+.lab-tour-toggle {
+  min-height: 36px;
+  padding: 0.3rem 0.8rem;
+}
+/* the Go of a chip whose person is with you is absent, so Follow keeps its own column */
+.lab-tour-follow {
+  grid-column: 4;
+}
+.lab-tour-wrap {
+  display: contents;
+}
+.lab-tour-follow.is-on {
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  border-color: var(--accent);
+}
+/* following somebody: one row saying whom, what is happening, and Stop — kept visible on a phone
+   while the list is folded away, so the follow and its way out are never hidden */
+.lab-tour-follow-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  background: var(--panel);
+}
+.lab-tour-follow-say {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+/* Go and Stop stay side by side, so on a phone the words take a line and the two choices the next */
+.lab-tour-follow-acts {
+  display: flex;
+  gap: 0.4rem;
+}
+.lab-tour-follow-say:focus {
+  outline: none;
+}
+.lab-tour-follow-say:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* the token: their colour, their initial, their cursor's shape in the corner */
+.lab-tour-token {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+.lab-tour-token.is-with {
+  color: #fff;
+  background: hsl(var(--h) 70% 40%);
+}
+.lab-tour-token.is-away {
+  color: var(--text);
+  background: hsl(var(--h) 70% 40% / 0.25);
+  box-shadow: inset 0 0 0 2px hsl(var(--h) 70% 45%);
+}
+.lab-tour-token.is-quiet {
+  color: var(--muted);
+  border: 2px dashed var(--muted);
+  opacity: 0.6;
+}
+.lab-tour-token.is-me {
+  box-shadow: inset 0 0 0 2px hsl(var(--h) 70% 45%);
+}
+/* talking: a still ring outside the token, and the word in the chip — never colour alone */
+.lab-tour-token.is-talking {
+  outline: 2px solid hsl(var(--h) 70% 50%);
+  outline-offset: 2px;
+}
+.lab-tour-skin {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
+}
+/* a phone's one row: up to four tokens, a line saying where everybody is, and Show */
+.lab-tour-sum {
+  display: grid;
+  grid-template-columns: auto minmax(64px, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lab-tour-stack {
+  display: inline-flex;
+  align-items: center;
+}
+.lab-tour-stack .lab-tour-token {
+  width: 24px;
+  height: 24px;
+  margin-left: -5px;
+  font-size: 11px;
+}
+.lab-tour-stack .lab-tour-token:first-child {
+  margin-left: 0;
+}
+.lab-tour-more {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.lab-tour-line {
+  font-size: 0.85rem;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .lab-tour-go,
+  .lab-tour-follow,
+  .lab-tour-dice,
+  .lab-tour-toggle {
+    min-height: 44px;
+  }
+  .lab-tour-one {
+    min-height: 48px;
+  }
 }
 
 /* ── bike trials ─────────────────────────────────────────────────── */
@@ -1367,6 +1616,19 @@ html:has(.lab) {
   height: 76px;
   font-size: 1.25rem;
 }
+/* a match by turns: the last hand, with the hands turned up at its showdown */
+.pk-last p {
+  margin: 0.25rem 0;
+}
+.pk-shown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: center;
+}
+.pk-shown .pk-hole {
+  align-items: center;
+}
 .pk-raise {
   flex: 1 1 10rem;
   min-width: 140px;
@@ -2059,6 +2321,16 @@ html:has(.lab) {
   border-top: 1px dashed rgba(255, 255, 255, 0.35);
   padding-top: 6px;
 }
+/* a match: the row the palette fills — the code being hidden, or the guess — is ringed */
+.cb-row.is-code {
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.35);
+  padding-bottom: 6px;
+}
+.cb-row.is-editing {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 1px;
+  border-radius: 8px;
+}
 .cb-n {
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -2413,6 +2685,19 @@ html:has(.lab) {
 }
 .tw-hint {
   font-weight: 700;
+}
+/* a duel by turns, at its end: every round, both sides, side by side */
+.tw-duel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.tw-duel th,
+.tw-duel td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.25));
+  text-align: left;
 }
 .tw-acts .btn {
   min-height: 44px;
@@ -7024,4 +7309,130 @@ html:has(.lab) {
 .your-game.is-yours .your-game-state {
   color: inherit;
   font-weight: 600;
+}
+
+/* ── a match's chat by turns (src/lab/matches/ChatHud.tsx); a live game uses the call's ─────────
+   In the page on a phone, under the match bar; floating in the corner from 700px up, like the
+   snake games' chat, and faded there until something happens. */
+.lab-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.lab-chat.is-floating {
+  position: fixed;
+  /* ⚠️ THE RIGHT-HAND CORNER, NOT THE SNAKE GAMES' LEFT: a Lab board sits on the left of a wide
+     page, and the left corner covered the first player's back rank (chess, measured at 1440). Raised
+     clear of the back-to-top button below it, and of the call's dock (--dock-h) when there is one. */
+  right: var(--pin-gap, 0.75rem);
+  bottom: calc(
+    var(--bottom-guard, 0px) + var(--kb, 0px) + var(--pin-gap, 0.75rem) + var(--dock-h, 0px) +
+      3.5rem
+  );
+  z-index: 55;
+  width: min(22rem, calc(100vw - 1.5rem));
+  margin: 0;
+  border-color: transparent;
+  background: transparent;
+  /* idle: legible but recessive, never invisible — a chat you cannot find is worse than one that
+     is slightly in the way */
+  opacity: 0.45;
+  transition:
+    opacity 0.25s ease,
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+}
+.lab-chat.is-floating.is-live,
+.lab-chat.is-floating:hover,
+.lab-chat.is-floating:focus-within {
+  opacity: 1;
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.lab-chat-log {
+  /* a fixed height: a box that grew as lines arrived would push the board down mid-game */
+  height: 7rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lab-chat-line,
+.lab-chat-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.lab-chat.is-floating .lab-chat-line,
+.lab-chat.is-floating .lab-chat-empty {
+  /* readable over the page while the panel behind it is transparent */
+  text-shadow: 0 1px 2px var(--bg);
+}
+.lab-chat-line.is-mine {
+  color: var(--acc, var(--accent));
+}
+.lab-chat-form {
+  display: flex;
+  gap: 6px;
+}
+.lab-chat-form input {
+  flex: 1;
+  /* an input's min-width is its size attribute's worth of characters: without this it runs off a
+     narrow panel (CLAUDE.md §6, "flex: 1 does not shrink an input") */
+  min-width: 0;
+}
+.lab-chat-error {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+/* ⚠️ A LIVE GAME'S CHAT IS THE CALL'S (src/voice/CallChat.tsx, opened from the table by
+   CallChatButton.tsx), AND ON A PHONE IT HID THE BOARD. The dock's panel is sized to all the room
+   above the dock — at 375×667 about 352px wide from just under the nav down to the dock, with the
+   board entirely under it until its ✕ — which suits a page you are only reading and not a game,
+   where the board is the one part you cannot afford to lose (why ChatHud sits in the flow below
+   700px). So on a page showing the Lab it takes the bottom part of that room only, and the board
+   can be scrolled into the part left above it. Floored in px (the root size is fluid) so a short
+   landscape phone still has a log to read; index.css's `height` keeps it under the room above the
+   dock either way, so this can only ever make it shorter. Below the width ChatHud floats at. */
+@media (max-width: 699.98px) {
+  html:has(.lab) .call-chat {
+    max-height: max(40dvh, 240px);
+  }
+}
+
+/* Shadow box by turns: each round's score over par, and the boxes shown once it is over */
+.sbx-rounds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.sbx-rounds li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.8rem;
+}
+
+/* Dominoes by turns: the hands as a round ended, a row each */
+.dm-ended {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.3rem 0;
+}
+.dm-last {
+  display: grid;
+  gap: 0.2rem;
 }

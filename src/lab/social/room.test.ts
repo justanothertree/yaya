@@ -336,3 +336,128 @@ describe('somebody else’s message', () => {
     expect(seatOf(r)).toBeNull()
   })
 })
+
+/* what an arrival cost BEFORE the fix, counted on this file's own wire on 23 Nov 2026: a higher id
+   joining a game is 3 sends, four people filling a fresh toy lowest first is 10. The fix may add
+   nothing to either. */
+const HIGH_ID_ARRIVAL = 3
+const FRESH_FOUR = 10
+
+describe('somebody with a lower id joining a game in progress', () => {
+  /**
+   * Presence makes them host the moment their `where` lands — before their own room exists,
+   * because the toy's code mounts after. Their room is fresh, so until somebody hands them the real
+   * one they would lead from an empty board and refuse every move. Who answers their hello is the
+   * whole fix: the host as it was before they arrived, or whoever published the room we hold.
+   */
+  type Net = ReturnType<typeof party>
+  /** Bo and Cy sitting at a game three moves in */
+  const playing = () => {
+    const n = party(['bo', 'cy'])
+    n.see()
+    n.flush()
+    n.do('bo', { t: 'sit', seat: 0 })
+    n.flush()
+    n.do('cy', { t: 'sit', seat: 1 })
+    n.flush()
+    n.do('bo', { t: 'move', move: 2 })
+    n.flush()
+    return n
+  }
+  /** `x`'s `where` lands: everybody already on the toy counts them present */
+  const arrives = (n: Net, x: string, also: string[] = []) => {
+    const here = [...n.rooms.keys(), x, ...also]
+    for (const id of n.rooms.keys()) {
+      const s = present(race, n.get(id), here, 0)
+      n.rooms.set(id, s.room)
+      n.wire.push(...s.out.map((body) => ({ from: id, body })))
+    }
+    n.flush()
+  }
+  /** `x`'s toy mounts: its room opens, says hello and sees who is here */
+  const opens = (n: Net, x: string, here: string[]) => {
+    const o = openRoom(race, 'race', x)
+    n.rooms.set(x, o.room)
+    n.wire.push(...o.out.map((body) => ({ from: x, body })))
+    const s = present(race, o.room, here, 0)
+    n.rooms.set(x, s.room)
+    n.wire.push(...s.out.map((body) => ({ from: x, body })))
+    n.flush()
+  }
+  /** Cy moves: does it land, on everybody's board? */
+  const cyMoves = (n: Net) => {
+    const before = n.get('cy').game.total
+    n.do('cy', { t: 'move', move: 1 })
+    n.flush()
+    return n.get('cy').game.total === before + 1 && n.agree()
+  }
+
+  it('one arriving after their where: handed the room, and the game goes on', () => {
+    const n = playing()
+    arrives(n, 'ann')
+    opens(n, 'ann', ['ann', 'bo', 'cy'])
+    expect(n.get('ann').seq).toBe(n.get('bo').seq)
+    expect(n.get('ann').game.total).toBe(2)
+    expect(cyMoves(n)).toBe(true)
+  })
+  it('two arriving together, in either order their toys open', () => {
+    for (const order of [
+      ['a1', 'a2'],
+      ['a2', 'a1'],
+    ]) {
+      const n = playing()
+      arrives(n, 'a1', ['a2'])
+      arrives(n, 'a2', ['a1'])
+      for (const x of order) opens(n, x, ['a1', 'a2', 'bo', 'cy'])
+      expect(n.agree()).toBe(true)
+      expect(cyMoves(n)).toBe(true)
+    }
+  })
+  it('the host who published the room has gone: whoever leads now hands it on', () => {
+    const n = playing()
+    /* Bo leaves; Cy leads, holding the room Bo last published */
+    n.rooms.delete('bo')
+    const s = present(race, n.get('cy'), ['cy'], 0)
+    n.rooms.set('cy', s.room)
+    expect(n.get('cy').from).toBe('bo')
+    arrives(n, 'ann')
+    opens(n, 'ann', ['ann', 'cy'])
+    expect(n.get('ann').game.total).toBe(2)
+    expect(n.agree()).toBe(true)
+  })
+  it('somebody whose hello arrives before their where is handed the room as before', () => {
+    const n = playing()
+    opens(n, 'ann', ['ann', 'bo', 'cy'])
+    arrives(n, 'ann')
+    expect(n.get('ann').game.total).toBe(2)
+    expect(cyMoves(n)).toBe(true)
+  })
+  it('costs nothing more: a higher id arriving, and a fresh toy filling up', () => {
+    /* every message anybody puts on the wire, counted where it is queued */
+    const counting = (n: Net) => {
+      const push = n.wire.push.bind(n.wire)
+      const c = { sent: 0 }
+      n.wire.push = (...xs) => {
+        c.sent += xs.length
+        return push(...xs)
+      }
+      return c
+    }
+    const n = playing()
+    const c = counting(n)
+    arrives(n, 'dee')
+    opens(n, 'dee', ['bo', 'cy', 'dee'])
+    expect(n.get('dee').game.total).toBe(2)
+    expect(c.sent).toBe(HIGH_ID_ARRIVAL)
+    const f = party([])
+    const d = counting(f)
+    const ids: string[] = []
+    for (const x of ['a', 'b', 'c', 'd']) {
+      ids.push(x)
+      arrives(f, x)
+      opens(f, x, [...ids])
+    }
+    expect(f.agree()).toBe(true)
+    expect(d.sent).toBe(FRESH_FOUR)
+  })
+})

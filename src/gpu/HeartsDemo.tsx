@@ -25,6 +25,13 @@ import {
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { seatsPlayed, totals as heartsTotals, type HeartsGame } from './heartsRoom'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 type Phase = 'pass' | 'play' | 'between' | 'over'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
@@ -67,6 +74,15 @@ function Face({ c, small }: { c: Card; small?: boolean }) {
 }
 
 export function HeartsDemo() {
+  /* a match by turns, when the address names one (src/lab/matches/useLabMatch.ts): the friends
+     across the table with two computers between, the hands kept back by the server (heartsRoom.ts) */
+  const lm = useLabMatch('hearts', { preview: false })
+  if (lm.id) return <HeartsMatch lm={lm} />
+  return <HeartsAlone />
+}
+
+function HeartsAlone() {
+  const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(HEARTS_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [round, setRound] = useState(0)
@@ -266,6 +282,13 @@ export function HeartsDemo() {
         <button className="btn btn-ghost" onClick={() => nextHand(true)}>
           ↻ New game
         </button>
+        {signedIn && (
+          <MatchChallenge
+            demo="hearts"
+            settings={{ end: saved.end, level: saved.level }}
+            levelNames={LEVEL_NAMES}
+          />
+        )}
       </div>
 
       <div className="dice-scores ht-scores">
@@ -421,4 +444,219 @@ export function HeartsDemo() {
       </p>
     </div>
   )
+}
+
+type HeartsMine = { hand: Card[] | null; passed: Card[] | null; got: Card[] | null }
+
+/**
+ * A match by turns: the table as all four seats see it, and my own hand as lab-move shows it me.
+ * Seats are shown from where I sit: me, the computer on my left, my friend across, the computer
+ * on my right — the computers by names both friends share.
+ */
+function HeartsMatch({ lm }: { lm: LabMatch }) {
+  const [saved] = useKept(HEARTS_KEY, readSaved)
+  const g = lm.shown as HeartsGame | null
+  const at = lm.view?.you === 1 ? 2 : 0
+  const friend = !lm.view ? 'Your friend' : otherName(lm.view)
+  // the computers keep one name each at the table, so the two friends mean the same seat by it
+  const nameOf = (seat: number) =>
+    seat === at
+      ? 'You'
+      : seat % 2 === 0
+        ? friend
+        : seat === 1
+          ? 'Robin (computer)'
+          : 'Kit (computer)'
+  const [cards, setCards] = useState<HeartsMine | null>(null)
+  const [chosen, setChosen] = useState<Card[]>([])
+  const seq = lm.view?.seq
+  const active = lm.view?.status === 'active' || lm.view?.status === 'finished'
+  useEffect(() => {
+    if (!lm.id || !active) return
+    let live = true
+    myHidden(lm.id)
+      .then((m) => {
+        if (!live) return
+        setCards(m && typeof m === 'object' ? (m as HeartsMine) : null)
+        setChosen([])
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [lm.id, seq, active])
+  if (!g)
+    return (
+      <div className="lab-keys ht-room">
+        <MatchBar lm={lm} sides={['the first to pass', 'the second']} />
+      </div>
+    )
+
+  const t = heartsTotals(g)
+  const way = PASS[g.past.length % 4]
+  const myTurn = lm.canPlay
+  const hand = cards?.hand ?? []
+  const passing = g.phase === 'pass' && myTurn
+  const table: Hand = { ...g.h, hands: g.h.hands.map((x, i) => (i === at ? hand : x)) }
+  const playable = new Set(g.phase === 'play' && myTurn ? legal(table, at) : [])
+  const order = (a: Card, b: Card) => {
+    const o = [3, 2, 0, 1]
+    return o.indexOf(suitOf(a)) - o.indexOf(suitOf(b)) || rankOf(a) - rankOf(b)
+  }
+  const mine = [...hand].sort(order)
+  const got = cards?.got ?? []
+  // the last trick taken, shown while the next is still empty
+  const seats = seatsPlayed(g.h.played, g.first)
+  const lastTrick =
+    g.phase === 'play' && !g.h.trick.length && g.h.played.length >= 4
+      ? g.h.played.slice(-4).map((c, i) => ({ seat: seats[seats.length - 4 + i], card: c }))
+      : []
+  const onTable = g.h.trick.length ? g.h.trick : lastTrick
+  const held = (seat: number) =>
+    g.phase === 'pass' ? 13 : 13 - seats.filter((s) => s === seat).length
+  const last = g.past[g.past.length - 1]
+  const lastPts = last ? score(replayHandPoints(last.order, last.first)) : null
+  const newHand = !!last && (g.phase === 'pass' || (g.phase === 'play' && g.h.played.length < 4))
+  const words = (() => {
+    const lastLine = lastPts
+      ? `Hand ${g.past.length}: ${[0, 1, 2, 3].map((s) => `${nameOf(s).replace(' (computer)', '')} +${lastPts[s]}`).join(', ')}. `
+      : ''
+    if (lm.view?.status === 'finished') return lastLine
+    if (g.phase === 'pass') {
+      if (passing) return `${newHand ? lastLine : ''}Pick three cards to pass ${way}.`
+      if (cards?.passed) return `Your three are passed face down. ${friend} is passing.`
+      return `${friend} is passing first.`
+    }
+    if (myTurn)
+      return `${newHand ? lastLine : ''}Your card${g.h.trick.length ? '' : ' — your lead'}.`
+    return `${newHand ? lastLine : ''}${nameOf(g.h.turn)} is to play.`
+  })()
+  return (
+    <div className={`lab-keys ht-room is-${saved.felt}`}>
+      <MatchBar lm={lm} sides={['the first to pass', 'the second']} />
+      <div className="dice-scores ht-scores">
+        {[at, (at + 1) % 4, (at + 2) % 4, (at + 3) % 4].map((seat) => (
+          <div
+            key={seat}
+            className={`dice-score${g.phase === 'play' && g.h.turn === seat ? ' is-up' : ''}`}
+          >
+            <span>{nameOf(seat)}</span>
+            <strong>{t[seat]}</strong>
+            <span className="muted">
+              {g.phase === 'play'
+                ? `+${g.h.taken[seat].reduce((a, c) => a + points(c), 0)} this hand`
+                : ' '}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="muted mc-note">
+        {`Lowest of you and ${friend} wins; the computers only fill the table. To ${g.end}.`}
+      </p>
+      {words && (
+        <p className="mc-line" aria-live="polite">
+          {words}
+        </p>
+      )}
+      {g.phase !== 'over' && lm.view?.status !== 'finished' && (
+        <div className="ht-table">
+          {[2, 1, 3].map((rel) => {
+            const seat = (at + rel) % 4
+            return (
+              <div
+                key={rel}
+                className={`ht-seat is-s${rel}`}
+                aria-label={`${nameOf(seat)}: ${held(seat)} cards`}
+                role="img"
+              >
+                <span className={`pk-card is-back tw-back is-${saved.back}`}>
+                  <span className="ht-count">{held(seat)}</span>
+                </span>
+                <span className="ht-name">{nameOf(seat)}</span>
+              </div>
+            )
+          })}
+          <div
+            className="ht-trick"
+            aria-label={
+              onTable.length
+                ? `${g.h.trick.length ? 'On the table' : 'The last trick'}: ${onTable.map((x) => `${nameOf(x.seat)} ${longName(x.card)}`).join(', ')}`
+                : 'Nothing on the table'
+            }
+            role="img"
+          >
+            {onTable.map((x) => (
+              <span key={x.seat} className={`ht-played is-s${(x.seat - at + 4) % 4}`}>
+                <Face c={x.card} />
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {cards && g.phase !== 'over' && lm.view?.status !== 'finished' && (
+        <div
+          className="ht-hand"
+          role="group"
+          aria-label={passing ? 'Your hand: pick three to pass' : 'Your hand'}
+        >
+          {mine.map((c) => {
+            const picked = chosen.includes(c)
+            const ok = passing || playable.has(c)
+            return (
+              <button
+                key={c}
+                className={`ht-mine${picked ? ' is-picked' : ''}${ok ? '' : ' is-dim'}${got.includes(c) ? ' is-new' : ''}`}
+                disabled={lm.busy || !ok}
+                aria-pressed={passing ? picked : undefined}
+                aria-label={`${longName(c)}${picked ? ', picked to pass' : ''}${got.includes(c) ? ', passed to you' : ''}`}
+                onClick={() => {
+                  if (passing)
+                    setChosen((x) =>
+                      x.includes(c) ? x.filter((y) => y !== c) : x.length < 3 ? [...x, c] : x,
+                    )
+                  else if (playable.has(c)) lm.commit({ play: c })
+                }}
+              >
+                <Face c={c} />
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {passing && (
+        <div className="lab-controls">
+          <button
+            className="btn"
+            disabled={chosen.length !== 3 || lm.busy}
+            onClick={() => lm.commit({ pass: [chosen[0], chosen[1], chosen[2]] })}
+          >
+            {`Pass ${chosen.length}/3 ${way}`}
+          </button>
+        </div>
+      )}
+      <p className="muted lab-hint">
+        Hearts by turns: the hands are dealt by the server and yours is shown to you alone. Pass
+        three (left, right, across, then none), then thirteen tricks — follow suit when you can;
+        each heart costs a point and the queen of spades thirteen, unless one player takes them all.
+        The computers play their seats the moment it is their turn.
+      </p>
+    </div>
+  )
+}
+
+/** a finished hand's table, played back from its order and first seat, for its points */
+function replayHandPoints(order: Card[], first: number): Hand {
+  let h: Hand = {
+    hands: [[], [], [], []],
+    trick: [],
+    leader: first,
+    turn: first,
+    taken: [[], [], [], []],
+    broken: false,
+    tricks: 0,
+    void: [0, 1, 2, 3].map(() => [false, false, false, false]),
+    played: [],
+  }
+  for (const c of order) h = playCard(h, c)
+  return h
 }

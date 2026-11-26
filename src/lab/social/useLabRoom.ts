@@ -5,15 +5,19 @@ import { usePartyHere } from '../../party/whereEveryone'
 import { labSocial } from './social'
 import type { Table } from './table'
 import { keepOnline } from './online'
+import { rosterNow, sharingNow } from './where'
+import { heldSeat } from './held'
 import {
   act,
   computerTurn,
+  idle,
   isHost,
   openRoom,
   outcomeFor,
   playComputer,
   present,
   receive,
+  seatOf,
   waitingFor,
   type Action,
   type Room,
@@ -40,15 +44,6 @@ import {
 /** a call's room is a table (table.ts): the same seats, line and result words as a saved match */
 export type LabRoom<G, M> = Table<G, M>
 
-const sharingNow = () => party.getState().sharing
-/** the call's own roster, as one string so it only changes when somebody joins or leaves */
-const rosterNow = () =>
-  voiceSession
-    .getState()
-    .peers.map((p) => p.id)
-    .sort()
-    .join(',')
-
 export function useLabRoom<G, M>(sub: string, rules: Rules<G, M>): LabRoom<G, M> {
   const here = usePartyHere()
   const verdict = useSyncExternalStore(labSocial.subscribe, labSocial.get, labSocial.get)
@@ -56,8 +51,9 @@ export function useLabRoom<G, M>(sub: string, rules: Rules<G, M>): LabRoom<G, M>
   const me = myPeerId()
   const live = verdict.allowed && sharing && !!me
   /* ⚠️ ON THIS TOY AND STILL IN THE CALL. The party remembers somebody for up to 16 s after they
-     stop saying where they are (a crash sends no goodbye), but the call's roster knows at once
-     when somebody leaves it — and somebody who has left the call has left the room. */
+     stop saying where they are, and hanging up tells the party nothing; the call's roster drops
+     them at their `bye` — and somebody who has left the call has left the room. A crash sends no
+     `bye` and stays on the roster (gate.ts, onToysNow), so it still takes the party's 16 s. */
   const roster = useSyncExternalStore(voiceSession.subscribe, rosterNow, rosterNow)
   const people = useMemo(() => {
     const inCall = new Set(roster.split(','))
@@ -134,6 +130,17 @@ export function useLabRoom<G, M>(sub: string, rules: Rules<G, M>): LabRoom<G, M>
     }, 700)
     return () => window.clearTimeout(t)
   }, [dueAt, take])
+
+  /* ⚠️ A SEAT IN A GAME STILL GOING IS SOMETHING A FOLLOW MUST NOT TAKE AWAY. Following a friend
+     round the Lab moves you by remounting the toy, which ends this room and the game in it — so
+     while you sit in an unfinished one, the tour offers instead of moving (held.ts, tour.ts). A
+     seat at a game that is over or not yet begun is not held: moving on from it costs nothing. */
+  const holding = live && !!room && seatOf(room) !== null && !idle(rules, room)
+  useEffect(() => {
+    if (!holding) return
+    heldSeat.set(sub)
+    return () => heldSeat.clear(sub)
+  }, [holding, sub])
 
   const doAct = useCallback(
     (a: Action<M>) => {

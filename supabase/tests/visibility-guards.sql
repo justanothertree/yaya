@@ -411,7 +411,7 @@ from (
 --     mere presence of `is_admin()` as a gate, and `rename_circuit` -- `is_admin() OR the
 --     circuit OWNER` -- walked straight through it.
 --
--- And four named exemptions, which ARE a list, because each is a judgement:
+-- And seven named exemptions, which ARE a list, because each is a judgement:
 --
 --   * `submit_contact_message` -- how somebody APPEALS a suspension. Shutting it would make the
 --     punishment unappealable.
@@ -419,6 +419,11 @@ from (
 --     unread badges and reach nobody.
 --   * `close_park_room`, `close_profile_room` -- they only close a room of your own, which is a
 --     narrowing action like a delete.
+--   * `chat_song_remove` -- an UPDATE rather than a DELETE only because the row must outlive its
+--     R2 object (supabase/migrations/20261122221602_chat_songs.sql); for the member it is taking
+--     a song down.
+--   * `push_device_remove` -- it only stops alerts reaching a phone of your own, a narrowing like a
+--     delete (supabase/migrations/20261122223957_phone_alerts.sql).
 --
 --   `link_snake_names_to_accounts` used to be listed here and is no longer member-callable at
 --   all: anybody can pre-post a leaderboard score under a username nobody has claimed, and that
@@ -433,7 +438,11 @@ where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
   and p.proname not like 'admin\_%'
   and p.proname not in (
     'submit_contact_message', 'mark_activity_seen', 'mark_room_read',
-    'close_park_room', 'close_profile_room'
+    'close_park_room', 'close_profile_room',
+    -- a suspended member may still take their own song down, a narrowing action like picture_drop
+    'chat_song_remove',
+    -- a suspended member may still stop alerts reaching their own phone
+    'push_device_remove'
   )
   /* comments stripped first, for the reason block I records: a word in a comment is not code */
   and regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),

@@ -18,11 +18,16 @@ import {
   type Side,
 } from './halma'
 import { useKept } from './kept'
-import { halmaRules } from './halmaRoom'
+import { halmaRules, type HalmaGame } from './halmaRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -59,19 +64,31 @@ export function HalmaDemo() {
   const recorded = useRef(false)
   const firstRef = useRef<Side>(1)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A move
+     shows at once and waits for Send; the server plays it and the board comes back. */
+  const lm = useLabMatch('halma')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as HalmaGame | null) : null
+
   /* ── the call's room: the game travels as each peg's hole and landing */
   const lab = useLabRoom('halma', halmaRules)
   const words = tableSeats(lab, halmaRules)
-  const room = mode === 'call' ? lab.room : null
-  /** the game on screen: the call's in a call, else this one */
-  const view = room ? room.game.g : game
-  const viewLast = room ? room.game.last : last
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** the toy's own controls: alone or two on one screen, neither in a call nor in a match */
+  const local = mode !== 'call' && !inMatch
+  /** the game on screen: the match's, the call's in a call, else this one */
+  const view = matchGame ? matchGame.g : room ? room.game.g : game
+  const viewLast = matchGame ? matchGame.last : room ? room.game.last : last
   /**
    * The star turned half round for whoever races from the far point in a call, so their pegs
    * start at the bottom. The star is symmetric about its middle, so a hole drawn at (x, y) is drawn
    * at (1 - x, 1 - y), and the arrow keys, which walk the holes by where they are on screen, follow.
    */
-  const flip = room?.mode === 'versus' && words.mySeat === 1
+  const flip = inMatch
+    ? lm.view?.mode === 'versus' && lm.view.you === 1
+    : room?.mode === 'versus' && words.mySeat === 1
   const spot = (i: number) => {
     const p = place(i)
     return flip ? { x: 1 - p.x, y: 1 - p.y } : p
@@ -79,22 +96,32 @@ export function HalmaDemo() {
 
   const sides = SIDES[saved.look]
   const all = moves(view)
-  const yours = room
-    ? lab.live && myTurn(halmaRules, room)
-    : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === 1)
-  const computerTurn = mode === 'bot' && !game.winner && game.turn === 2
+  const yours = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(halmaRules, room)
+      : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === 1)
+  const computerTurn = mode === 'bot' && !inMatch && !game.winner && game.turn === 2
   const nameOf = (s: Side) =>
-    room
-      ? room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? s === 1
-          ? 'Together'
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[s - 1])
-      : mode === 'bot'
-        ? s === 1
+        : s - 1 === lm.view.you
           ? 'You'
-          : 'The computer'
-        : sides[s - 1]
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? s === 1
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[s - 1])
+        : mode === 'bot'
+          ? s === 1
+            ? 'You'
+            : 'The computer'
+          : sides[s - 1]
   const targets = picked === null ? [] : all.filter((m) => m.from === picked)
   const lit = new Map(targets.map((m) => [m.to, m]))
   const inGoal = (s: Side) => goalOf(s).filter((i) => view.cells[i] === s).length
@@ -171,6 +198,15 @@ export function HalmaDemo() {
     )
   }
 
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   const tap = (i: number) => {
     if (!yours) return
     if (view.cells[i] === view.turn) {
@@ -178,7 +214,10 @@ export function HalmaDemo() {
       return
     }
     const m = lit.get(i)
-    if (m && room) {
+    if (m && inMatch) {
+      setPicked(null)
+      lm.play(m)
+    } else if (m && room) {
       // in the call the host decides: this asks it, and the board comes back with everybody's
       setPicked(null)
       lab.act({ t: 'move', move: m })
@@ -251,59 +290,65 @@ export function HalmaDemo() {
   const record = saved.record[saved.level]
   return (
     <div className={`lab-keys hm-room is-${saved.look}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={[sides[0].toLowerCase(), sides[1].toLowerCase()]} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                setMode('call')
-                setPicked(null)
-              }}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
             </button>
-          )}
-        </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
               <button
-                key={l}
                 className="btn btn-ghost"
-                aria-pressed={saved.level === l}
+                aria-pressed={mode === 'call'}
                 onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (!last || game.winner) fresh(mode, l)
+                  setMode('call')
+                  setPicked(null)
                 }}
               >
-                {LEVEL_NAMES[l]}
+                👥 With the call
               </button>
-            ))}
+            )}
           </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (!last || game.winner) fresh(mode, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
+            </button>
+          )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge demo="halma" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
+        </div>
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={halmaRules}
@@ -324,7 +369,7 @@ export function HalmaDemo() {
           </div>
         ))}
       </div>
-      {mode !== 'call' && (
+      {local && (
         <p className="mc-line" aria-live="polite">
           {line}
         </p>
@@ -377,7 +422,8 @@ export function HalmaDemo() {
           )
         })}
       </div>
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -385,7 +431,7 @@ export function HalmaDemo() {
           </span>
         </p>
       )}
-      {mode === 'bot' && last && !game.winner && level !== saved.level && (
+      {mode === 'bot' && !inMatch && last && !game.winner && level !== saved.level && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
       <div className="fw-panel">

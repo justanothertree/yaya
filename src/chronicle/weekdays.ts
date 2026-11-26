@@ -2,7 +2,7 @@ import { localMidnight } from './record'
 
 /**
  * Selected-weekday recurrence for a repeating day goal: "swim on Tuesdays", "floss every day but
- * Sunday". It is the logic half of docs/2026-11-08-chronicle-weekdays.DRAFT.sql, and the one rule
+ * Sunday". It is the logic half of docs/applied/2026-11-08-chronicle-weekdays.DRAFT.sql, and the one rule
  * Evan set for it — a schedule change affects FUTURE occurrences, never the completion history
  * already recorded — is a property of this arithmetic rather than of the table.
  *

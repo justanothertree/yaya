@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labShareAllowed, isToyId } from './gate'
+import { labShareAllowed, isToyId, onToysNow } from './gate'
 
 const friends = new Set(['ann', 'bo', 'cy'])
 const call = (over: Partial<Parameters<typeof labShareAllowed>[0]> = {}) =>
@@ -37,5 +37,36 @@ describe('a toy id off the wire', () => {
     expect(isToyId('time-trial')).toBe(true)
     for (const bad of ['', 'Four', 'a b', '<img>', 'x'.repeat(41), 7, null, undefined, {}])
       expect(isToyId(bad)).toBe(false)
+  })
+})
+
+describe('who is drawn on a toy (onToysNow)', () => {
+  /* every field filled, so a filter that drops the wrong thing shows */
+  const lab = [
+    { id: 'ann', name: 'Ann', route: 'lab', sub: 'chess', skin: 'pen', at: 5 },
+    { id: 'bo', name: 'Bo', route: 'lab', sub: 'swarm', skin: 'dot', at: 6 },
+    { id: 'cy', name: 'Cy', route: 'lab', at: 7 },
+  ]
+  const roster = new Set(['ann', 'bo', 'cy'])
+  it('draws everybody on a toy who is still in the call, while your gate allows', () => {
+    expect(onToysNow(lab, roster, true).map((p) => p.id)).toEqual(['ann', 'bo'])
+  })
+  it('somebody the call no longer has is not drawn, however recently they said where they were', () => {
+    /* Bo's tab crashed: the roster dropped him, the party still remembers his last `where` */
+    expect(onToysNow(lab, new Set(['ann', 'cy']), true).map((p) => p.id)).toEqual(['ann'])
+  })
+  it('an id that never joined the call is never drawn', () => {
+    const spoof = [...lab, { id: 'ghost', name: 'Ann', route: 'lab', sub: 'chess', at: 8 }]
+    expect(onToysNow(spoof, roster, true).map((p) => p.id)).toEqual(['ann', 'bo'])
+  })
+  it('nobody is drawn while your own gate is shut', () => {
+    expect(onToysNow(lab, roster, false)).toEqual([])
+  })
+  it('somebody on the Lab with no toy said is not on a toy', () => {
+    expect(onToysNow(lab, roster, true).some((p) => p.id === 'cy')).toBe(false)
+  })
+  it('keeps what it was given', () => {
+    expect(onToysNow(lab, roster, true)[0]).toBe(lab[0])
+    expect(onToysNow(undefined, roster, true)).toEqual([])
   })
 })

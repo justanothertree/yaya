@@ -17,8 +17,8 @@ import { loopState, subscribeLoop } from '../audio/looper'
  */
 
 const KEY = 'inst_song_name_v1'
-/** the library takes names this long and no longer */
-const MAX = 80
+/** a song's name is cut to this many characters wherever a song is read (songFile.ts MAX_NAME) */
+const MAX = 60
 
 function read(): string | null {
   try {

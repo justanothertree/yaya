@@ -89,6 +89,25 @@ export default defineConfig([
     },
   },
 
+  /**
+   * ⚠️ `public/sw.js` IS THE THIRD KIND OF JAVASCRIPT HERE, AND IT WOULD HAVE BEEN THE THIRD FILE
+   * LINTED BY NOTHING. It runs in a service worker: no `document`, no `window`, a `self` that is
+   * the worker's own global, and `clients` and `registration` on it. Browser globals would let it
+   * reach for a `document` that does not exist; node globals would hand it a `process`. It is a
+   * classic script, not a module — browsers load a worker as one unless told otherwise, and the
+   * module kind is newer than the browsers this has to reach. Served as-is from `public/`, so
+   * nothing else (tsc, vite) ever reads it.
+   */
+  {
+    files: ['public/**/*.js'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'script',
+      globals: { ...globals.serviceworker },
+    },
+  },
+
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

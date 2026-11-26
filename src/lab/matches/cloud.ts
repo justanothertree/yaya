@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../finance/client'
+import { readLine, type ChatLine } from './chat'
 import { MatchError, SIGN_IN_TO_SEE, matchErrorOf } from './errors'
 
 export { MatchError }
@@ -106,6 +107,18 @@ const one = (x: unknown) => {
   return v
 }
 
+/** a line for the match's chat, from your seat; what the server kept, or MatchError */
+export async function sayLine(id: string, text: string): Promise<ChatLine> {
+  const l = readLine(await rpc('lab_match_say', { p_match: id, p_body: text }))
+  if (!l) throw new MatchError('The line came back in a shape this page does not know.')
+  return l
+}
+/** the match's chat after line `after`, oldest first */
+export async function readLines(id: string, after = 0): Promise<ChatLine[]> {
+  const rows = await rpc('lab_match_lines', { p_match: id, p_after: after })
+  return (Array.isArray(rows) ? rows : []).map(readLine).filter((l): l is ChatLine => l !== null)
+}
+
 export const getMatch = async (id: string) => one(await rpc('lab_match_get', { p_match: id }))
 export const listMatches = async () => {
   const rows = await rpc('lab_match_list')
@@ -157,7 +170,20 @@ async function move(body: Record<string, unknown>): Promise<MatchView> {
   }
   return one(data)
 }
-export const acceptMatch = (id: string) => move({ op: 'accept', match: id })
+/** accept; a toy that keeps something hidden brings the friend's side of it (their fleet) with the yes */
+export const acceptMatch = (id: string, brought?: unknown) =>
+  move(brought === undefined ? { op: 'accept', match: id } : { op: 'accept', match: id, brought })
+/**
+ * Your own side of what a toy keeps hidden (your fleet), from lab-move: the state never carries
+ * it and no RPC returns the secret, so this is the one way to see it, and it is only ever yours.
+ */
+export async function myHidden(id: string): Promise<unknown> {
+  const { data, error } = await getSupabaseClient().functions.invoke('lab-move', {
+    body: { op: 'mine', match: id },
+  })
+  if (error) throw new MatchError('Your side of this match could not be fetched.')
+  return (data as { mine?: unknown } | null)?.mine ?? null
+}
 export const sendMove = (id: string, at: number, m: unknown) =>
   move({ op: 'move', match: id, at, move: m })
 

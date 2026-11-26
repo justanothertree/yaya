@@ -1986,7 +1986,8 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.cz-msg-line > .cz-challenge {
+.cz-msg-line > .cz-challenge,
+.cz-msg-line > .cz-song {
   flex: 1 1 100%;
 }
 .cz-msg-time {
@@ -3082,6 +3083,9 @@ section[id] {
   gap: 0.2rem;
 }
 .nav-menu-steps .btn {
+  /* a floor in pixels: see the touch rule below .nav-menu-pct */
+  min-height: 24px;
+  min-width: 24px;
   padding: 0.2rem 0.45rem;
   font-size: 0.8rem;
   line-height: 1.2;
@@ -3102,6 +3106,24 @@ section[id] {
   min-width: 3rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+/**
+ * ⚠️ THE STEP BUTTONS HAVE A FLOOR, IN PIXELS. They were 23px tall — 0.2rem of padding on an
+ * 0.8rem label, with nothing saying how small that could get — which is under WCAG 2.5.8's 24px,
+ * and on a phone they are pressed with a thumb in a sheet that is only ever opened that way. Found
+ * by mobileAudit on 21 Nov 2026 with the phone settings sheet open: the three text-size buttons and
+ * the seven status and theme buttons. The rows around them were already 44px on a phone; the
+ * buttons inside the rows were not.
+ *
+ * Pixels because the root size is fluid (CLAUDE.md §6). 24 everywhere, so the mouse menu meets the
+ * floor too, and 36 on a touch screen — gated on the pointer as well as the width, because a width
+ * query is not a pointer: a tablet held in the hand gets the desktop dropdown and its small buttons.
+ */
+@media (max-width: 780px), (pointer: coarse) {
+  .nav-menu-steps .btn {
+    min-height: 36px;
+    min-width: 36px;
+  }
 }
 .nav-menu-switch {
   width: 1.9rem;
@@ -3134,6 +3156,48 @@ section[id] {
   left: calc(100% - 0.72rem - 2px);
   background: var(--btn-text);
   opacity: 1;
+}
+
+/**
+ * 📱 Phone alerts' switches, in Account (src/notify/PhoneAlertsCard.tsx). The WHOLE ROW is the
+ * button, so the target is the card's width and 2.5rem tall — over the 1.77rem line that clears
+ * WCAG 2.5.8's 24px at every UI scale, and nothing to aim at with a thumb but the row itself. The
+ * switch drawn at its end is the menu's own, so a switch looks like one switch across the site.
+ * It stops at a phone's width, because a full-width card at 1440 put every switch 1,200px from the
+ * words it answers to.
+ */
+.alerts-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 26rem;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: var(--r-sm, 7px);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+.alerts-switch:hover:not(:disabled) {
+  background: var(--control-bg, rgba(127, 127, 127, 0.12));
+}
+.alerts-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* six rows stacked 2px apart and pressed with a thumb: the comfortable 44 on a touch screen, in
+   pixels because the root size is fluid, and gated on the pointer as well as the width because a
+   width query is not a pointer (CLAUDE.md §6) */
+@media (max-width: 640px), (pointer: coarse) {
+  .alerts-switch {
+    min-height: 44px;
+  }
 }
 
 /* ── the canvas menu ──
@@ -4921,6 +4985,87 @@ select {
   font-weight: 600;
 }
 
+/* ── a song sent into a chat (ChatSongPlayer) ───────────────────────────────
+   Inside the bubble and the whole width of it, like the invite card above. A song's words are
+   short and a bubble is as wide as its words, so the player asks for a width of its own — in
+   PIXELS, because the root size is fluid — that fits the browser's audio controls, and never more
+   than the bubble may be. */
+.cz-song {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  max-width: 100%;
+  min-width: 0;
+}
+.cz-song-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+/* a floor in pixels, so a long name wraps rather than being crushed by the length beside it */
+.cz-song-name {
+  flex: 1 1 auto;
+  min-width: 60px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cz-song-len {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+.cz-song-play {
+  align-self: flex-start;
+}
+.cz-song-audio {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+}
+/* there from the start so ▶ can unlock it inside the tap (iPhone Safari), shown once it has a link */
+.cz-song-audio.is-waiting {
+  display: none;
+}
+.cz-song-mine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+.cz-song-remove {
+  min-height: 26px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+}
+.cz-song-say {
+  margin: 0;
+  font-size: 0.8rem;
+}
+.cz-song.is-removed {
+  font-size: 0.85rem;
+  font-style: italic;
+  opacity: 0.8;
+}
+/* your own bubble is the accent colour, and so is a button: on it, a button is drawn in the
+   bubble's own text colour instead, or ▶ would be accent on accent */
+.cz-msg.is-mine .cz-song .btn {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+}
+/* ⚠️ AND SO IS THE FOCUS RING: the site's is a 2px accent outline, which on your own bubble is
+   accent on accent — a keyboard reaching ▶, Remove or the player saw nothing move. The bubble's
+   own text colour is the one thing guaranteed to stand against its fill. */
+.cz-msg.is-mine :focus-visible {
+  outline-color: currentColor;
+}
+
 /* ── make your own palette ──────────────────────────────────────────────────
    A dialog, not a row in the cog popover. Three colour pickers, three hex fields, a contrast
    readout and a live preview don't fit in ~230px, which is what made it fiddly to see and
@@ -6080,6 +6225,19 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   border-radius: 4px;
   padding: 0 4px;
   font-size: 0.72rem;
+}
+/* the room's own keys, under the site's: a short list, one key and what it does per line */
+.wh-room-keys {
+  margin-top: 0;
+}
+.wh-room-keys p {
+  margin: 0 0 0.25rem;
+}
+.wh-room-keys ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.15rem;
 }
 /* a link, not a button: it sits in the footer beside the copyright and must not shout */
 .wh-open {
@@ -8665,11 +8823,14 @@ a.cz-msg-author:focus-visible {
   min-width: 0;
 }
 .inst-bar-cell {
-  width: 12px;
+  /* ⚠️ `--bar-w` IS SET BY THE PARTS LIST so a song's bars fill the strip (LayerList.tsx, the
+     timeline): every bar-wide thing reads it, which is what keeps the columns columns. 12px, the
+     tile's own size, wherever nothing has set it. */
+  width: var(--bar-w, 12px);
   height: 18px;
   /* ⚠️ fixed basis: the strip no longer wraps, so without this flex would squeeze the cells
      to fit and the columns would stop lining up between layers with different bar counts */
-  flex: 0 0 12px;
+  flex: 0 0 var(--bar-w, 12px);
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 2px;
@@ -14030,10 +14191,10 @@ a.cz-msg-author:focus-visible {
   padding-left: calc(var(--layer-pad) + var(--layer-line));
 }
 .inst-ruler-cell {
-  width: 12px;
+  width: var(--bar-w, 12px);
   height: 14px;
   padding: 0;
-  flex: 0 0 12px;
+  flex: 0 0 var(--bar-w, 12px);
   border: 0;
   border-radius: 2px;
   background: none;
@@ -18941,6 +19102,73 @@ a.cz-msg-author:focus-visible {
  * pixels so a long one ellipses instead of collapsing to nothing (the root size is fluid, so
  * `rem` is not a length here — see CLAUDE.md §6).
  */
+/**
+ * Feedback you can see — see `useFresh`, and haptics.ts for the half you can feel.
+ *
+ * ⚠️ SMALL AND QUICK, AND EACH ONE IS ABOUT SOMETHING YOU JUST DID: the bar easing in when a timer
+ * starts, the stopped sitting settling into the log once its dialog closes, the count of notes
+ * nudging up, a goal filling. Nothing loops and nothing plays on arrival.
+ *
+ * ⚠️ AND REDUCE MOTION NEEDS NOTHING HERE. `:root[data-motion='reduce']` flattens every animation
+ * on the site to 1ms, and `motion.ts` sets it from the system's prefers-reduced-motion as well as
+ * from the site's own switch — so these are plain keyframes, and the blanket rule is the guard.
+ */
+@keyframes chron-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes chron-settle {
+  from {
+    background: color-mix(in oklab, var(--accent), transparent 72%);
+    transform: translateY(-4px);
+  }
+  to {
+    background: transparent;
+    transform: none;
+  }
+}
+@keyframes chron-nudge {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.14);
+  }
+}
+@keyframes chron-fill {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent), transparent 45%);
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.015);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+    transform: scale(1);
+  }
+}
+.chron-running.is-new {
+  animation: chron-enter 0.26s ease-out both;
+}
+.chron-ent.is-settled > .chron-row-open {
+  border-radius: 8px;
+  animation: chron-settle 0.7s ease-out both;
+}
+.chron-runnote-n.is-up {
+  animation: chron-nudge 0.35s ease-out;
+}
+.chron-goal.is-filled {
+  border-radius: 10px;
+  animation: chron-fill 0.65s ease-out;
+}
 .chron-running {
   display: grid;
   grid-template-columns: auto minmax(64px, 1fr) auto auto;
@@ -21302,7 +21530,12 @@ button.chron-runnote-n {
 /* a control whose face is one glyph, named in its aria-label: Panic, mute, ⋯, undo, redo.
    ⚠️ TWO CLASSES, because `.inst-layers .btn` sets a 24px floor on a touch screen at two classes'
    weight and was winning — a part's mute measured 31×24 and its ⋯ 26×24 at 375. */
-.btn.inst-icon {
+/* ⚠️ .inst-icon-slot IS THE EMPTY PLACE A ROW KEEPS WHERE ANOTHER ROW HAS AN ICON BUTTON (a take and
+   the words have no ⋯), and it takes the button's own width rule so every row's bars are the same
+   width — the timeline's bars scroll as one, and a strip 36px wider than the others could not
+   follow them (LayerList.tsx). */
+.btn.inst-icon,
+.inst-icon-slot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -21319,7 +21552,8 @@ button.chron-runnote-n {
    a glyph-only button is all target, so it gets the floor the touch rules give the rest */
 @media (hover: none) and (pointer: coarse) {
   .btn.inst-icon,
-  .inst-layers li .btn.inst-icon {
+  .inst-layers li .btn.inst-icon,
+  .inst-icon-slot {
     min-width: 36px;
     min-height: 36px;
   }
@@ -21362,6 +21596,8 @@ button.chron-runnote-n {
   flex-direction: column;
   gap: 0.35rem;
   min-width: 0;
+  /* the playhead is placed over the whole list — see .inst-tl-playhead */
+  position: relative;
   /* ⚠️ ONE WIDTH FOR THE NAME, shared by every row and by the ruler's label above them. It is
      what lines the bars up into columns — bar 3 of one part over bar 3 of the next — which the
      strip got from having a line of its own before. */
@@ -21441,10 +21677,133 @@ button.chron-runnote-n {
   }
   .inst-part-vol input[type='range'] {
     width: 7rem;
+    /* no default margin, so the column is 7rem whether a row has a slider or keeps its room */
+    margin: 0;
   }
 }
 .inst-parts-foot {
   gap: 0.6rem;
+}
+/* Snap, at the end of the row under the takes it moves */
+.inst-snap {
+  margin-left: auto;
+}
+/**
+ * 🎚 Volume, a phone's: every row's bars give their place to its fader, and take it back. A desktop
+ * row shows both, so the button is not there. The ruler keeps its room, hidden, so undo and redo
+ * stay where a thumb left them.
+ */
+@media (min-width: 701px) {
+  .inst-levels-toggle {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .inst-parts.is-levels .inst-layers .inst-arrange {
+    display: none;
+  }
+  .inst-parts.is-levels .inst-ruler {
+    visibility: hidden;
+  }
+  .inst-parts.is-levels .inst-part-vol {
+    display: flex;
+    min-width: 0;
+    margin: 0;
+  }
+  .inst-parts.is-levels .inst-part-vol input[type='range'] {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+}
+
+/* ── THE TIMELINE: one playhead through every row, and the recordings drawn where they play ──── */
+.inst-tl-playhead {
+  position: absolute;
+  left: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text);
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 2;
+}
+.inst-tl-playhead[hidden] {
+  display: none;
+}
+/**
+ * A recording's lane: as long as the song's bars, with a line at every bar and a fainter one at
+ * every beat, so where Snap will put it can be seen before it is let go. `--pitch` is the measured
+ * distance from one bar to the next, set on the track by LayerList — not `--bar-w`, which a thumb's
+ * wider tiles outgrow (see the fit's note there).
+ */
+.inst-take-lane {
+  align-self: stretch;
+}
+.inst-take-track {
+  position: relative;
+  flex: 0 0 auto;
+  height: 18px;
+  border-radius: 2px;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size:
+    var(--pitch, 14px) 100%,
+    calc(var(--pitch, 14px) / 4) 100%;
+}
+.inst-take-clip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 6px;
+  padding: 0;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  /* the waveform is drawn in this colour (TakeWave reads it) */
+  color: var(--text);
+  overflow: hidden;
+  cursor: grab;
+  /* a finger moving sideways moves the take; up and down still scrolls the page */
+  touch-action: pan-y;
+}
+.inst-take-clip.is-moving {
+  cursor: grabbing;
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.inst-take-clip:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.inst-take-row.is-muted .inst-take-clip {
+  opacity: 0.45;
+}
+.inst-take-wave {
+  display: block;
+  height: 100%;
+  pointer-events: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  .inst-take-track {
+    height: 1.9rem;
+  }
+  /* a short sound is still something a thumb can land on */
+  .inst-take-clip {
+    min-width: 24px;
+  }
+}
+/* the words themselves, once a bar is wide enough to hold some of them */
+.inst-word-text {
+  display: block;
+  min-width: 0;
+  padding-inline: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
 }
 
 /* THE TOOLS: four doors in a row, and whichever one is open under them */
@@ -21534,10 +21893,6 @@ button.chron-runnote-n {
 .inst-mix-pct {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
-}
-.inst-mix-as {
-  grid-column: 2 / 4;
   font-size: 0.8rem;
 }
 .inst-mix-row.is-muted .inst-mix-name {
@@ -21849,6 +22204,99 @@ button.chron-runnote-n {
 }
 .inst-export-done {
   margin-top: 0.4rem;
+}
+/* 💬 Send in a chat: the chat and the name, then Send, wrapping onto lines of their own on a
+   phone. The name takes the room left over and keeps a floor in pixels, because an input's own
+   minimum is its `size` (~200px) and the root size is fluid. */
+.inst-send-pick {
+  margin-top: 0.4rem;
+}
+.inst-send-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.7rem;
+}
+.inst-send-chat {
+  min-width: 0;
+  max-width: 100%;
+}
+.inst-send-chat select {
+  min-width: 0;
+  max-width: 100%;
+}
+.inst-send-name {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.inst-send-name input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 100px;
+  font: inherit;
+  padding: 0.15rem 0.4rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.inst-send-say {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  /* it quotes the song's name, which is whatever was typed — sixty letters with no space in them
+     included */
+  overflow-wrap: anywhere;
+}
+.inst-send-say:empty {
+  margin: 0;
+}
+/* Your songs in chat: a song a line, its name taking what the length and Remove leave, with a
+   floor in pixels so a long name wraps rather than being crushed to nothing */
+.inst-send-mine {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+}
+.inst-send-mine-head {
+  margin: 0 0 0.3rem;
+  font-weight: 600;
+}
+.inst-send-mine-head .muted {
+  font-weight: 400;
+}
+.inst-send-mine-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.inst-send-mine-one {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.6rem;
+  min-width: 0;
+}
+.inst-send-mine-name {
+  flex: 1 1 120px;
+  min-width: 80px;
+  overflow-wrap: anywhere;
+}
+.inst-send-mine-len {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.inst-send-mine-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+.inst-send-mine-x {
+  min-height: 26px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
 }
 .inst-copy-all .inst-pick {
   min-width: 0;

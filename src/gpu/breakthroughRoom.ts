@@ -58,6 +58,12 @@ function readMove(x: unknown): Move | null {
     : null
 }
 
+/** a match's board from its settings: the toy's own sizes, 8 when none is named; null otherwise */
+export function readBreakthroughSize(s: Record<string, unknown>): number | null {
+  const size = s.size ?? 8
+  return (SIZES as readonly unknown[]).includes(size) ? (size as number) : null
+}
+
 export function breakthroughRules(size: number): Rules<BreakthroughGame, Move> {
   return {
     fresh: () => fresh(size),

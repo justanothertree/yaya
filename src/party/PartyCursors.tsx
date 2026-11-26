@@ -4,11 +4,13 @@ import {
   currentRoute,
   hueFor,
   labStage,
-  TAP_MS,
+  type PartyHere,
   type PartyPeer,
   type PartyTap,
 } from './party'
 import { currentToy } from '../lab/links'
+import { labSocial } from '../lab/social/social'
+import { cursorPlace, tapShown } from './cursorPlace'
 import { motionReduced } from '../ui/motion'
 import { shared } from './shared'
 import { cursorHot, cursorMark } from '../ui/cursorSkin'
@@ -39,6 +41,12 @@ export function PartyCursors() {
   peersRef.current = state.peers
   const tapsRef = useRef<PartyTap[]>([])
   tapsRef.current = state.taps
+  const hereRef = useRef<Record<string, PartyHere>>({})
+  hereRef.current = state.here
+  /* your own Lab gate: what a friend's toy-relative pointer may show on YOUR screen (cursorPlace.ts) */
+  const labOk = useSyncExternalStore(labSocial.subscribe, labSocial.allowed, labSocial.allowed)
+  const labOkRef = useRef(labOk)
+  labOkRef.current = labOk
 
   useEffect(() => party.start(), [])
   /**
@@ -83,55 +91,65 @@ export function PartyCursors() {
       const here = currentRoute()
       const sy = window.scrollY
       /* ⚠️ A LAB POSITION IS ON THE TOY'S OWN STAGE, wherever that stage sits on this screen —
-         the reason it is sent as a fraction of the stage rather than of the page. Somebody on a
-         different toy is not drawn: their pointer is over a picture you do not have. */
+         the reason it is sent as a fraction of the stage rather than of the page. Where each
+         pointer may be drawn at all is cursorPlace's answer (cursorPlace.ts), and it asks YOUR
+         Lab gate, not the sender's. */
       const toy = here === 'lab' ? currentToy() : null
       const stage = toy ? labStage() : null
       const sr = stage?.getBoundingClientRect()
+      const labOk = labOkRef.current
+      const now = performance.now()
       const still = motionReduced()
       for (const [key, el] of tapNodes.current) {
         const t = tapsRef.current.find((x) => x.key === key)
-        if (!t || !sr || t.sub !== toy || performance.now() - t.at > TAP_MS) {
+        if (!t || !sr || !tapShown({ tap: t, myToy: toy, labOk, stage: true, age: now - t.at })) {
           el.style.visibility = 'hidden'
           continue
         }
         el.style.visibility = 'visible'
         el.style.transform = `translate3d(${(sr.left + t.tx * sr.width).toFixed(1)}px, ${(sr.top + t.ty * sr.height).toFixed(1)}px, 0)`
       }
+      /* the line under the picker, measured only when somebody is known to be on another toy —
+         a layout read per frame is not free, and nearly every frame has nobody to ask it for */
+      let lineTop: number | null | undefined
+      const lineNow = () => {
+        if (lineTop === undefined) {
+          const line = document.querySelector<HTMLElement>('.lab .lab-line')
+          lineTop = line ? line.getBoundingClientRect().top + sy : null
+        }
+        return lineTop
+      }
       for (const [id, el] of nodes.current) {
         const p = peersRef.current[id]
         if (!p) continue
-        if (p.sub !== undefined && p.tx !== undefined && p.ty !== undefined && toy) {
-          if (p.sub !== toy) {
-            el.style.visibility = 'hidden'
-            shown.delete(id)
-            continue
-          }
-          if (sr) {
-            const tx = sr.left + p.tx * sr.width
-            const ty = sr.top + p.ty * sr.height
-            /* eased toward the last report, because eight samples a second drawn as they come
-               are eight jumps; snapped instead under reduced motion, or after a long way */
-            const was = shown.get(id)
-            const far = !was || Math.hypot(tx - was.x, ty - was.y) > 400
-            const at =
-              still || far
-                ? { x: tx, y: ty }
-                : { x: was.x + (tx - was.x) * 0.45, y: was.y + (ty - was.y) * 0.45 }
-            shown.set(id, at)
-            el.style.visibility = 'visible'
-            el.style.transform = `translate3d(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px, 0)`
-            continue
-          }
+        const knownSub = hereRef.current[id]?.sub
+        const placed = cursorPlace({
+          peer: p,
+          knownSub,
+          myRoute: here,
+          myToy: toy,
+          labOk,
+          stage: !!sr,
+          lineTop: labOk && toy && knownSub && knownSub !== toy ? lineNow() : null,
+        })
+        if (placed === 'stage' && sr && p.tx !== undefined && p.ty !== undefined) {
+          const tx = sr.left + p.tx * sr.width
+          const ty = sr.top + p.ty * sr.height
+          /* eased toward the last report, because eight samples a second drawn as they come
+             are eight jumps; snapped instead under reduced motion, or after a long way */
+          const was = shown.get(id)
+          const far = !was || Math.hypot(tx - was.x, ty - was.y) > 400
+          const at =
+            still || far
+              ? { x: tx, y: ty }
+              : { x: was.x + (tx - was.x) * 0.45, y: was.y + (ty - was.y) * 0.45 }
+          shown.set(id, at)
+          el.style.visibility = 'visible'
+          el.style.transform = `translate3d(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px, 0)`
+          continue
         }
         shown.delete(id)
-        /**
-         * Someone on another page is not drawn at all, rather than drawn at the edge or faded.
-         * A cursor floating over content it is not actually pointing at is worse than no cursor:
-         * it is a wrong answer to "what are they looking at" rather than no answer. The voice
-         * bar names the page they are on instead, which is the true version of that fact.
-         */
-        if (p.route !== here) {
+        if (placed === 'hidden') {
           el.style.visibility = 'hidden'
           continue
         }

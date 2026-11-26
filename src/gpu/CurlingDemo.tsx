@@ -45,11 +45,16 @@ import {
 } from './curling'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
-import { curlingRules, type CurlingGame } from './curlingRoom'
+import { MATCH_SPANS, curlingRules, replay, roundShot, type CurlingGame } from './curlingRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const ICE: Record<
@@ -124,6 +129,8 @@ type Live = {
   /** steps slid so far, and the swept ones, for sending a throw to the call */
   k?: number
   spans?: Spans
+  /** in a match, the most sweeps this throw may carry (curlingRoom.ts's MATCH_SPANS) */
+  cap?: number
   shot?: Shot
   /** a slide played back from the call, and what to do when it has come to rest */
   done?: () => void
@@ -171,41 +178,71 @@ export function CurlingDemo() {
     setSweeping(on)
   }
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the ice over whatever else was showing; leaving it puts the toy back as it was.
+     ⚠️ A THROW IS SENT WHEN ITS STONE COMES TO REST, with no Undo. Sweeping is done live, so the
+     thrower has watched the stone stop before it is a move at all; a take-back then would let it
+     be thrown again until it lay well. Throw is the choosing: the hook's `commit` sends it. */
+  const lm = useLabMatch('curling', { preview: false })
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as CurlingGame | null) : null
+
   /* ── the call's room: seat 0 yellow and first, seat 1 red with the hammer; it travels as throws */
   const [mode, setMode] = useState<Mode>('bot')
   const lab = useLabRoom('curling', curlingRules)
   const words = tableSeats(lab, curlingRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** shared with somebody, in a call or a match: the throws arrive and slide, the line is theirs */
+  const shared = !!room || inMatch
   /** a throw of mine sent to the call, whose slide I have already watched here */
   const sent = useRef(false)
-  const yourTurn = room
-    ? lab.live && myTurn(curlingRules, room) && !busy && !game.over
-    : mode === 'bot' && !busy && !game.over && toThrow(game) === 0
+  const yourTurn = inMatch
+    ? lm.canPlay && !busy && !game.over
+    : room
+      ? lab.live && myTurn(curlingRules, room) && !busy && !game.over
+      : mode === 'bot' && !busy && !game.over && toThrow(game) === 0
   const callName = (t: Team) =>
-    !room
-      ? ''
-      : room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? t === 1
           ? 'The computer'
-          : words.mySeat !== null
-            ? 'You'
-            : 'The team'
-        : words.who(room.seats[t])
-  const names = (): [string, string] | undefined => (room ? [callName(0), callName(1)] : undefined)
+          : 'You'
+        : t === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : !room
+        ? ''
+        : room.mode === 'together'
+          ? t === 1
+            ? 'The computer'
+            : words.mySeat !== null
+              ? 'You'
+              : 'The team'
+          : words.who(room.seats[t])
+  const names = (): [string, string] | undefined =>
+    shared ? [callName(0), callName(1)] : undefined
   const [youTotal, itTotal] = totals(game)
   const endNo = game.scores.length + 1
 
   /** a stone has come to rest: the next throw, or the end scored, or the game over */
   const rested = (stones: Stone[], by: Team) => {
     const lv = live.current
-    if (room && lv?.mine && lv.shot) {
-      // in the call the host slides it again with the same sweep, and the throw comes back to all
+    if (shared && lv?.mine && lv.shot) {
+      // the host or the server slides it again with the same sweep, and it comes back to all
       live.current = null
       setSliding(false)
       setSweep(false)
       setLie(stones)
       sent.current = true
-      lab.act({ t: 'move', move: { shot: lv.shot, sweeps: lv.spans ?? [] } })
+      const t = { shot: lv.shot, sweeps: lv.spans ?? [] }
+      if (!inMatch) lab.act({ t: 'move', move: t })
+      else if (!lm.commit(t)) {
+        // not a throw the match takes: the ice goes back to how the server has it
+        sent.current = false
+        if (matchGame) showGame(matchGame)
+        setBusy(false)
+      }
       return
     }
     live.current = null
@@ -318,8 +355,10 @@ export function CurlingDemo() {
     // your hand strays as much as Fair's does, and on average a touch light — about 40cm short of a
     // draw to the button — as a curler throws, so that sweeping is how a stone is brought home
     const w = wobble(planned, 'fair', Math.random)
-    const shot = { ...w, speed: w.speed * 0.985 }
-    const team = room ? toThrow(game) : 0
+    const thrown = { ...w, speed: w.speed * 0.985 }
+    // a match keeps a throw's numbers to four places, so the stone slides here as it will there
+    const shot = inMatch ? roundShot(thrown) : thrown
+    const team = shared ? toThrow(game) : 0
     const stones = deliver(game.stones, shot, team)
     live.current = {
       stones,
@@ -329,6 +368,7 @@ export function CurlingDemo() {
       mine: true,
       k: 0,
       spans: [],
+      cap: inMatch ? MATCH_SPANS : undefined,
       shot,
       t: 0,
     }
@@ -410,16 +450,34 @@ export function CurlingDemo() {
     }
     setSliding(false)
   }
-  const callGame = room?.game
+  const callGame = matchGame ?? room?.game
   useEffect(() => {
     if (!callGame) {
+      // nothing shared yet (a match still waiting for its friend): nothing of the last one is said
       seen.current = null
       queue.current = []
+      setSaid('')
       return
     }
     const n = callGame.throws.length
     if (seen.current === n) return
-    const next1 = seen.current !== null && n === seen.current + 1 && !!callGame.last
+    const from = seen.current
+    const more = from === null ? 0 : n - from
+    // a match together comes back with the computer's throw — or two, across the end — after mine
+    if (more >= 2 && more <= 4 && !!callGame.last) {
+      seen.current = n
+      // my own throw I watched slide here; theirs are replayed from the throws and slid in turn
+      const mineFirst = sent.current
+      sent.current = false
+      for (let k = from! + (mineFirst ? 2 : 1); k < n; k++) {
+        const cg = replay(callGame.throws.slice(0, k))
+        if (cg?.last) queue.current.push(cg)
+      }
+      queue.current.push(callGame)
+      if (!live.current) playNext()
+      return
+    }
+    const next1 = more === 1 && !!callGame.last
     seen.current = n
     if (next1 && sent.current) {
       // my own throw coming back: I watched it slide here already
@@ -444,6 +502,29 @@ export function CurlingDemo() {
     if (!live.current) playNext()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a new game state is the only cue
   }, [callGame])
+  /* a throw the server would not take (somebody moved first): the ice goes back to how it is */
+  useEffect(() => {
+    if (!lm.error || !sent.current) return
+    sent.current = false
+    live.current = null
+    if (matchGame) showGame(matchGame)
+    setBusy(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the refusal is the only cue
+  }, [lm.error])
+
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's ice */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) {
+      stopHere()
+      setMode('bot')
+      start()
+    }
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   /** whether a slide is being played back from the call */
   const show = () => !!live.current?.done
 
@@ -539,72 +620,76 @@ export function CurlingDemo() {
 
   return (
     <div className={`lab-keys cu-room is-${saved.ice}`}>
-      <div className="lab-controls">
-        {(lab.live || mode === 'call') && (
-          <div className="lab-group" role="group" aria-label="Opponent">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={mode === 'bot'}
-              onClick={() => {
-                if (mode === 'bot') return
-                stopHere()
-                setMode('bot')
-                start()
-              }}
-            >
-              Against the computer
-            </button>
-            <button
-              className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                stopHere()
-                setMode('call')
-              }}
-            >
-              👥 With the call
-            </button>
-          </div>
-        )}
-        {mode === 'bot' && (
-          <>
-            <div className="lab-group" role="group" aria-label="How well the computer throws">
-              {LEVELS.map((l) => (
-                <button
-                  key={l}
-                  className="btn btn-ghost"
-                  aria-pressed={saved.level === l}
-                  onClick={() => {
-                    setSaved((s) => ({ ...s, level: l }))
-                    if (untouched || game.over) start(l)
-                  }}
-                >
-                  {LEVEL_NAMES[l]}
-                </button>
-              ))}
+      {inMatch && <MatchBar lm={lm} sides={['yellow', 'red']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          {(lab.live || mode === 'call') && (
+            <div className="lab-group" role="group" aria-label="Opponent">
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'bot'}
+                onClick={() => {
+                  if (mode === 'bot') return
+                  stopHere()
+                  setMode('bot')
+                  start()
+                }}
+              >
+                Against the computer
+              </button>
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => {
+                  stopHere()
+                  setMode('call')
+                }}
+              >
+                👥 With the call
+              </button>
             </div>
-            <div className="lab-group" role="group" aria-label="How many ends">
-              {END_COUNTS.map((n) => (
-                <button
-                  key={n}
-                  className="btn btn-ghost"
-                  aria-pressed={saved.ends === n}
-                  onClick={() => {
-                    setSaved((s) => ({ ...s, ends: n }))
-                    if (untouched || game.over) start(saved.level, n)
-                  }}
-                >
-                  {n} ends
-                </button>
-              ))}
-            </div>
-            <button className="btn btn-ghost" onClick={() => start()}>
-              ↻ New game
-            </button>
-          </>
-        )}
-      </div>
-      {mode === 'call' && (
+          )}
+          {mode === 'bot' && (
+            <>
+              <div className="lab-group" role="group" aria-label="How well the computer throws">
+                {LEVELS.map((l) => (
+                  <button
+                    key={l}
+                    className="btn btn-ghost"
+                    aria-pressed={saved.level === l}
+                    onClick={() => {
+                      setSaved((s) => ({ ...s, level: l }))
+                      if (untouched || game.over) start(l)
+                    }}
+                  >
+                    {LEVEL_NAMES[l]}
+                  </button>
+                ))}
+              </div>
+              <div className="lab-group" role="group" aria-label="How many ends">
+                {END_COUNTS.map((n) => (
+                  <button
+                    key={n}
+                    className="btn btn-ghost"
+                    aria-pressed={saved.ends === n}
+                    onClick={() => {
+                      setSaved((s) => ({ ...s, ends: n }))
+                      if (untouched || game.over) start(saved.level, n)
+                    }}
+                  >
+                    {n} ends
+                  </button>
+                ))}
+              </div>
+              <button className="btn btn-ghost" onClick={() => start()}>
+                ↻ New game
+              </button>
+              {signedIn && <MatchChallenge demo="curling" settings={{}} levelNames={LEVEL_NAMES} />}
+            </>
+          )}
+        </div>
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={curlingRules}
@@ -623,7 +708,7 @@ export function CurlingDemo() {
           <div key={t} className={`dice-score${!game.over && toThrow(game) === t ? ' is-up' : ''}`}>
             <span>
               <span className="cu-dot" style={{ background: STONES[t] }} aria-hidden />
-              {room ? callName(t) : t === 0 ? 'You' : `The computer · ${LEVEL_NAMES[level]}`}
+              {shared ? callName(t) : t === 0 ? 'You' : `The computer · ${LEVEL_NAMES[level]}`}
               {game.hammer === t && !game.over ? ' · hammer' : ''}
             </span>
             <strong>{t === 0 ? youTotal : itTotal}</strong>
@@ -642,7 +727,7 @@ export function CurlingDemo() {
           </span>
         </div>
       </div>
-      {mode === 'call' ? (
+      {shared || mode === 'call' ? (
         said && (
           <p className="muted cu-said" aria-live="polite">
             {said}
@@ -689,8 +774,17 @@ export function CurlingDemo() {
                   } else {
                     const n = Math.min(30, Math.round(dt / STEP))
                     for (let k = 0; k < n && moving(lv.stones); k++) {
+                      const last = lv.spans?.[lv.spans.length - 1]
+                      // in a match the sweepers are spent after MATCH_SPANS sweeps: a new one
+                      // does not start, so the throw sent is the one that slid here
+                      const spent =
+                        lv.cap !== undefined &&
+                        (lv.spans?.length ?? 0) >= lv.cap &&
+                        last?.[1] !== (lv.k ?? 0)
                       const sw =
-                        sweepRef.current && lv.stones.includes(lv.thrown) ? lv.thrown : null
+                        sweepRef.current && !spent && lv.stones.includes(lv.thrown)
+                          ? lv.thrown
+                          : null
                       // the steps swept are kept, so the call can slide this stone again exactly
                       if (sw && lv.spans) addStep(lv.spans, lv.k ?? 0)
                       lv.k = (lv.k ?? 0) + 1
@@ -905,7 +999,7 @@ export function CurlingDemo() {
         )}
       </div>
 
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}

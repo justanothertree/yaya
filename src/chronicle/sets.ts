@@ -4,7 +4,7 @@ import { countText } from './record'
 /**
  * A set: a quantity of one Circuit exercise on one day — recorded once, and canonical for both
  * rooms. Step 1 of docs/2026-11-07-chronicle-recorded-once.md §2f, whose table is
- * docs/2026-11-08-chronicle-sets.DRAFT.sql.
+ * docs/applied/2026-11-08-chronicle-sets.DRAFT.sql.
  *
  * ⚠️ THE TABLE IS A DRAFT, NOT APPLIED TO PRODUCTION, and nothing on screen counts sets yet: the
  * tally, the Circuit grid and the day's feed learn them in step 2. What the room does with them

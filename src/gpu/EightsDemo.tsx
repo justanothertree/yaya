@@ -23,6 +23,13 @@ import {
 } from './eights'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { totals as eightsTotals, type EightsGame } from './eightsRoom'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FELT_NAMES: Record<Saved['felt'], string> = { green: 'Green', blue: 'Blue', red: 'Red' }
@@ -67,6 +74,16 @@ function Face({ c }: { c: Card }) {
 }
 
 export function EightsDemo() {
+  /* a match by turns, when the address names one (src/lab/matches/useLabMatch.ts): heads up, the
+     hands, stock and a drawn card kept back by the server (eightsRoom.ts) */
+  const lm = useLabMatch('eights', { preview: false })
+  // keyed by the match: another match starts with nothing of this one (a half-picked eight)
+  if (lm.id) return <EightsMatch key={lm.id} lm={lm} />
+  return <EightsAlone />
+}
+
+function EightsAlone() {
+  const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(EIGHTS_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [players, setPlayers] = useState<number>(saved.players)
@@ -237,6 +254,7 @@ export function EightsDemo() {
             </button>
           ))}
         </div>
+        {signedIn && <MatchChallenge demo="eights" settings={{}} levelNames={LEVEL_NAMES} />}
         <button className="btn btn-ghost" onClick={() => nextHand(true)}>
           ↻ New game
         </button>
@@ -399,6 +417,200 @@ export function EightsDemo() {
         hundred wins. Fair keeps its eights until nothing else will go; Hard also remembers which
         suits each player has been seen without, and asks for those — a small edge, since between
         two sensible players this game is mostly the deal.
+      </p>
+    </div>
+  )
+}
+
+type EightsMine = { hand: Card[] | null; drew: Card | null }
+
+/** a match by turns, heads up: the table both players see, and my own hand as lab-move shows it */
+function EightsMatch({ lm }: { lm: LabMatch }) {
+  const [saved] = useKept(EIGHTS_KEY, readSaved)
+  const g = lm.shown as EightsGame | null
+  const together = lm.view?.mode === 'together'
+  const side: 0 | 1 = together ? 0 : lm.view?.you === 1 ? 1 : 0
+  const theirs: 0 | 1 = side === 0 ? 1 : 0
+  const them = !lm.view ? 'They' : together ? 'The computer' : otherName(lm.view)
+  const myName = together ? 'You two' : 'You'
+  const [cards, setCards] = useState<EightsMine | null>(null)
+  const [eight, setEight] = useState<Card | null>(null)
+  const seq = lm.view?.seq
+  const active = lm.view?.status === 'active' || lm.view?.status === 'finished'
+  useEffect(() => {
+    if (!lm.id || !active) return
+    let live = true
+    myHidden(lm.id)
+      .then((m) => {
+        if (!live) return
+        setCards(m && typeof m === 'object' ? (m as EightsMine) : null)
+        setEight(null)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [lm.id, seq, active])
+  if (!g)
+    return (
+      <div className="lab-keys ce-room">
+        <MatchBar lm={lm} sides={['the first to play', 'the second']} />
+      </div>
+    )
+
+  const t = eightsTotals(g)
+  const myTurn = lm.canPlay
+  const topCard = g.pile[g.pile.length - 1]
+  const goes = (c: Card) => isEight(c) || suitOf(c) === g.suit || rankOf(c) === rankOf(topCard)
+  const hand = cards?.hand ?? []
+  const drew = myTurn && g.drawn ? (cards?.drew ?? null) : null
+  const playable = new Set(
+    myTurn ? (g.drawn ? (drew !== null && goes(drew) ? [drew] : []) : hand.filter(goes)) : [],
+  )
+  const mustDraw = myTurn && !g.drawn && cards !== null && !playable.size
+  const asked = !g.between && isEight(topCard)
+  const last = g.done[g.done.length - 1] ?? null
+  const newHand = !!last && g.pile.length === 1 && g.moves === 0
+  const lastWords = !last
+    ? ''
+    : last.winner === null
+      ? 'The last hand went nowhere and was called off: no score.'
+      : `${last.winner === side ? myName : them} went out: +${last.points}.`
+  const tap = (c: Card) => {
+    if (!playable.has(c)) return
+    if (isEight(c)) setEight(c)
+    else lm.commit({ play: c })
+  }
+  const words =
+    lm.view?.status === 'finished'
+      ? lastWords
+      : eight !== null
+        ? 'Name the suit to follow.'
+        : drew !== null
+          ? `You drew the ${longName(drew)}: play it, or keep it.`
+          : myTurn
+            ? `${newHand ? `${lastWords} A new hand. ` : ''}${mustDraw ? 'Nothing goes: draw one.' : `Your card: ${SUIT_NAMES[g.suit]}${asked ? ' were asked for' : ''}, or a ${LONG[rankOf(topCard)]}, or an eight.`}`
+            : `${newHand ? `${lastWords} ` : ''}${together && lm.view?.turn !== lm.view?.you ? 'Your partner' : them} is to play${g.drawn ? ', with a card just drawn' : ''}.`
+  return (
+    <div className={`lab-keys ce-room is-${saved.felt}`}>
+      <MatchBar lm={lm} sides={['the first to play', 'the second']} />
+      <div className="dice-scores ce-scores" style={{ ['--ce-n' as string]: 2 }}>
+        {[side, theirs].map((s) => (
+          <div key={s} className={`dice-score${!g.between && g.turn === s ? ' is-up' : ''}`}>
+            <span>{s === side ? myName : them}</span>
+            <strong>{t[s]}</strong>
+            <span className="muted">
+              {g.sizes[s]} card{g.sizes[s] === 1 ? '' : 's'} · to {g.target}
+            </span>
+          </div>
+        ))}
+      </div>
+      {words && (
+        <p className="mc-line" aria-live="polite">
+          {words}
+        </p>
+      )}
+      {!g.between && (
+        <div className="ce-table">
+          <div className="ce-seats">
+            <div
+              className={`ce-seat${g.turn === theirs ? ' is-up' : ''}`}
+              role="img"
+              aria-label={`${them}: ${g.sizes[theirs]} cards`}
+            >
+              <span className={`pk-card is-back tw-back is-${saved.back}`}>
+                <span className="ce-count">{g.sizes[theirs]}</span>
+              </span>
+              <span className="ce-who">{them}</span>
+            </div>
+          </div>
+          <div className="ce-middle">
+            <button
+              className="ce-stock"
+              onClick={() => lm.commit({ draw: true })}
+              disabled={!mustDraw || lm.busy}
+              aria-label={`Draw one from the stock, ${g.stockLeft} cards`}
+            >
+              <span className={`pk-card is-back tw-back is-${saved.back}`}>
+                <span className="ce-count">{g.stockLeft}</span>
+              </span>
+            </button>
+            <div
+              className="ce-pile"
+              role="img"
+              aria-label={`On the pile: the ${longName(topCard)}${asked ? `; ${SUIT_NAMES[g.suit]} asked for` : ''}`}
+            >
+              <Face c={topCard} />
+              {asked && <span className="ce-asked">{SUITS[g.suit]} asked</span>}
+            </div>
+          </div>
+        </div>
+      )}
+      {eight !== null && (
+        <div className="lab-controls ce-name" role="group" aria-label="Which suit to ask for">
+          {[0, 1, 2, 3].map((s) => (
+            <button
+              key={s}
+              className="btn"
+              disabled={lm.busy}
+              onClick={() => lm.commit({ play: eight, suit: s })}
+            >
+              {SUITS[s]} {SUIT_NAMES[s]}
+            </button>
+          ))}
+          <button className="btn btn-ghost" onClick={() => setEight(null)}>
+            Not the eight
+          </button>
+        </div>
+      )}
+      {drew !== null && eight === null && (
+        <div className="lab-controls">
+          {playable.has(drew) && (
+            <button className="btn" disabled={lm.busy} onClick={() => tap(drew)}>
+              Play the {longName(drew)}
+            </button>
+          )}
+          <button
+            className="btn btn-ghost"
+            disabled={lm.busy}
+            onClick={() => lm.commit({ pass: true })}
+          >
+            Keep it
+          </button>
+        </div>
+      )}
+      {cards && !g.between && (
+        <div className="ce-hand" role="group" aria-label="Your hand">
+          {hand.map((c) => (
+            <button
+              key={c}
+              className={`ce-mine${playable.has(c) || !myTurn ? '' : ' is-dim'}${drew === c ? ' is-new' : ''}`}
+              disabled={lm.busy || !playable.has(c)}
+              aria-label={`${longName(c)}${drew === c ? ', just drawn' : ''}${myTurn && !playable.has(c) ? ', will not go' : ''}`}
+              onClick={() => tap(c)}
+            >
+              <Face c={c} />
+            </button>
+          ))}
+        </div>
+      )}
+      {last && last.winner !== null && (newHand || lm.view?.status === 'finished') && (
+        <p className="sun-reading">
+          <span className="muted">
+            Left in{' '}
+            {last.winner === side
+              ? `${them.toLowerCase() === 'the computer' ? 'the computer’s' : `${them}’s`}`
+              : 'your'}{' '}
+            hand: {last.left.map(longName).join(', ') || 'nothing'}.
+          </span>
+        </p>
+      )}
+      <p className="muted lab-hint">
+        Crazy eights by turns, heads up, to {g.target}: each hand is dealt by the server and your
+        cards are shown to you alone. Match the top card by suit or number, or play an eight and
+        name the suit; with nothing that goes, draw one — and play it if it fits. Out first takes
+        the points left in the other hand.
+        {together ? ' Together, the two of you hold one hand and take its moves in turn.' : ''}
       </p>
     </div>
   )

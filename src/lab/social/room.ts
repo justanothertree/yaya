@@ -13,7 +13,9 @@
  * answer from the same presence, so there is no election and nothing to agree on. The host alone
  * changes the room; everyone else asks (`sit`, `stand`, `move`, `new`) and the host answers with
  * `state` — the whole room: seats, a sequence number and the game. When the host leaves, the next
- * lowest id carries on from the last state it had.
+ * lowest id carries on from the last state it had. A newcomer's `hello` is answered by the host as
+ * it was before they arrived, or by whoever published the room we hold (answersHello): a newcomer
+ * with a lower id is host the moment they are present, and holds nothing yet.
  *
  * ⚠️ WHOLE STATE, NOT MOVES. A board game is under a kilobyte, so each change sends the room
  * entire. A lost message is then repaired by the next one, a repeated or late one is recognised by
@@ -68,6 +70,39 @@ export type Rules<G, M> = {
   result?: (g: G) => Seat | 'draw' | null
   /** whether a game has had a move; when absent, a game is begun if it differs from a fresh one */
   begun?: (g: G) => boolean
+  /**
+   * For a toy with dice, played only by turns: the server's roll. lab-move calls it as a match
+   * begins, after every move and before the computer chooses, so no roll is known before the
+   * server makes it. Never called in a browser; a call room has no toy that rolls.
+   */
+  roll?: (g: G, rand: () => number) => G
+  /**
+   * Together, for a toy where each friend holds their own place at the table (Hearts, Spades):
+   * which of the two friends moves next, as the table says — at a table of four the friends do
+   * not simply take turns. Without it, they do. Only lab-move asks it.
+   */
+  friendTurn?: (g: G) => Seat | null
+  /**
+   * For a toy where one side must not see something of the other's (a fleet, a hand), played
+   * only by turns: what the server keeps back in the match's `secret`, which no RPC ever returns.
+   * The game `encode` gives is the part anybody in the match may see; `join` puts the hidden part
+   * back on the server, and a player is shown only their own side's through `mine`.
+   */
+  hidden?: {
+    /** the hidden part of a game, for the match's `secret` */
+    secret: (g: G) => unknown
+    /** a game read from its state with its hidden part put back, or null if they do not belong */
+    join: (g: G, secret: unknown) => G | null
+    /**
+     * What one side may see of the hidden part: its own. `seat` is the player asking — the same
+     * as `side` versus; together, which of the two friends, for a toy where each holds their own
+     */
+    mine: (g: G, side: Seat, seat?: Seat) => unknown
+    /** what the match's history keeps of a move, anything hidden in it taken out */
+    logged: (m: M) => unknown
+    /** a fresh game with what accepting brought (the friend's fleet), or null if it brought none */
+    accept: (g: G, brought: unknown, mode: Mode) => G | null
+  }
 }
 
 export type Room<G> = {
@@ -138,6 +173,26 @@ export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string): Ste
 }
 
 export const hostOf = (room: Room<unknown>) => [room.me, ...room.present].sort()[0]
+
+/**
+ * Whether I hand a newcomer the room: I was host before they arrived, or I published the room we
+ * all hold.
+ *
+ * ⚠️ NOT "AM I HOST", WHICH WAS THE RULE AND BROKE GAMES IN PROGRESS. Presence makes somebody with
+ * a lower id host the moment their `where` lands — before their own room exists, because the toy's
+ * code mounts after. The old host stopped answering, nobody else ever had, and the newcomer led
+ * from an empty board: their state was older than everybody's and ignored, while every move went
+ * to them and was refused as made against a board that had changed. A game between two friends
+ * stopped the moment a third, with a lower id, came to watch.
+ *
+ * The host-before half covers one newcomer. The publisher half covers two arriving together (each
+ * is "before" the other) and a host who left the room in somebody else's hands. A newcomer who is
+ * not host costs nothing more: whoever was host already answered. Measured in room.test.ts on
+ * 23 Nov 2026: three sends for a higher id joining, ten for four filling a fresh toy, as before.
+ */
+export const answersHello = (room: Room<unknown>, from: string) =>
+  [room.me, ...room.present.filter((id) => id !== from)].sort()[0] === room.me ||
+  (room.seq > 0 && room.from === room.me)
 export const isHost = (room: Room<unknown>) => hostOf(room) === room.me
 export const seatOf = (room: Room<unknown>, id = room.me): Seat | null =>
   room.seats[0] === id ? 0 : room.seats[1] === id ? 1 : null
@@ -350,8 +405,9 @@ export function receive<G, M>(
     if (b.seq < room.seq || (b.seq === room.seq && from >= room.from)) return none
     return { room: { ...room, seq: b.seq, from, seats, mode, level, next: b.next, game }, out: [] }
   }
+  if (b.t === 'hello')
+    return answersHello(room, from) ? { room, out: [stateOf(rules, room)] } : none
   if (!isHost(room)) return none
-  if (b.t === 'hello') return { room, out: [stateOf(rules, room)] }
   if (b.t === 'sit')
     return isSeat(b.seat) ? decide(rules, room, from, { t: 'sit', seat: b.seat }) : none
   if (b.t === 'stand' || b.t === 'new') return decide(rules, room, from, { t: b.t })

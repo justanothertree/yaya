@@ -72,6 +72,17 @@ export function replay(n: number, swapRule: boolean, moves: readonly unknown[]):
   return g
 }
 
+/**
+ * A match's board from its settings: the toy's own sizes, 9 when none is named, and the swap rule,
+ * off unless asked for — or null for anything the toy does not offer.
+ */
+export function readHexSettings(s: Record<string, unknown>): [number, boolean] | null {
+  const size = s.size ?? 9
+  const swap = s.swap ?? false
+  if (!(SIZES as readonly unknown[]).includes(size) || typeof swap !== 'boolean') return null
+  return [size as number, swap]
+}
+
 export function hexRules(size: number, swapRule: boolean): Rules<HexGame, number> {
   return {
     fresh: () => fresh(size, swapRule),

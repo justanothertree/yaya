@@ -53,7 +53,7 @@ for (const id of ids) {
         const xs = [...lab.querySelectorAll('button, [role=button], input[type=checkbox]')].filter(
           (e) =>
             !e.closest(
-              '.lab-picker, .lab-filter, .lab-feedback, .lab-report, details.lab-comments, .lab-votes, .lab-catalog, nav',
+              '.lab-picker, .lab-filter, .lab-tour, .lab-feedback, .lab-report, details.lab-comments, .lab-votes, .lab-catalog, nav',
             ) &&
             e.checkVisibility() &&
             !e.disabled &&
