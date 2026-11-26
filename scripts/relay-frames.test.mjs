@@ -687,3 +687,65 @@ describe('a park and a bout, to members who have been let in and a stranger who 
     }
   })
 })
+
+/**
+ * A third relay, whose park door is on a short clock, for what a socket that LEAVES a park
+ * still hears from it.
+ *
+ * ⚠️ A PARK'S TIMER WAS THE CONNECTION'S, NOT THE ROOM'S. It was set on a park hello, cleared on
+ * a close or on being let in, and never on leaving — and its callback reads the park it was set
+ * for, where a socket that has moved on has no entry, so it counted as never let in. A socket
+ * that walked from a park into a Snake room was told the park's members-only sentence there, and
+ * one that walked into the next park was told it twice. The Lab table review found it, because a
+ * Lab room is the one that promises a socket hears nothing it did not ask for; the Snake half is
+ * on main as well, and no shipped client can reach either, since NetClient opens a socket per
+ * room.
+ */
+describe('a socket that leaves a park for another room', () => {
+  const QUICK_PARK_MS = 600
+  const parkSays = {
+    type: 'error',
+    code: 'members-only',
+    message: 'The park is for people with an account on the site',
+  }
+  let quick
+  beforeAll(async () => {
+    quick = await startRelay({ HEARTBEAT_MS: '600000', PARK_VOUCH_MS: String(QUICK_PARK_MS) })
+  })
+  afterAll(async () => {
+    await quick?.stop()
+  })
+  /* a room's whole hello to its first socket: the same for a park and for a Snake room */
+  const first = (name) => [
+    welcome(`<${name}>`, 0),
+    host(`<${name}>`),
+    host(`<${name}>`),
+    presence(1),
+    presence(1),
+    settings(DEFAULT_SETTINGS),
+  ]
+
+  it('takes nothing of the park’s door with it: nothing in a Snake room, once in the next park', async () => {
+    const r = room(quick)
+    try {
+      await r.hello('A', { room: 'park:relay-frames-hop-a', create: true }, { A: first('A') })
+      await r.send(
+        'A',
+        { type: 'hello', room: 'relay-frames-hop-snake', create: true },
+        { A: first('A') },
+      )
+      /* past the park's clock: a Snake room has no door, and the park's may not speak in it */
+      await r.wait(QUICK_PARK_MS + 300, { A: [] })
+      await r.hello('B', { room: 'park:relay-frames-hop-b', create: true }, { B: first('B') })
+      await r.send(
+        'B',
+        { type: 'hello', room: 'park:relay-frames-hop-c', create: true },
+        { B: first('B') },
+      )
+      /* once, from the park B is in — never again from the one it left */
+      await r.wait(QUICK_PARK_MS + 300, { B: [parkSays] })
+    } finally {
+      r.closeAll()
+    }
+  })
+})

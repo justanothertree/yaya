@@ -4,8 +4,8 @@ import {
   SAY,
   admitAfter,
   charge,
-  crowdedOut,
   doorFor,
+  forgetSpent,
   friendsAt,
   helloAgain,
   helloFrames,
@@ -19,6 +19,7 @@ import {
   pairsToAsk,
   placesFull,
   rate,
+  reachesAnother,
   readLab,
   verdictOf,
   vouchTimerCloses,
@@ -134,6 +135,27 @@ describe('the windows (2.8)', () => {
   it('and one account’s share of the relay’s is a third of it, whatever it sends from', () => {
     expect(LAB.personHz).toBe(LAB.socketHz)
     expect(LAB.personHz * 3).toBe(LAB.globalHz)
+  })
+
+  it('a window is forgotten once its last second is over, and never while it still counts', () => {
+    const t0 = 1_000_000
+    const windows = new Map([
+      ['spent', [t0 - 5000, t0 - 1000]],
+      ['counts', [t0 - 2000, t0 - 999]],
+      ['empty', []],
+    ])
+    forgetSpent(windows, t0)
+    expect([...windows.keys()]).toEqual(['counts'])
+    /* rate's own second: 999 ms ago still counts against a window, 1,000 ms ago does not */
+    expect(rate([t0 - 999], t0, 1).ok).toBe(false)
+    expect(rate([t0 - 1000], t0, 1).ok).toBe(true)
+  })
+
+  it('a frame is worth anything only if it reaches somebody else: one person’s own tabs are no audience', () => {
+    expect(reachesAnother('ann', [])).toBe(false)
+    expect(reachesAnother('ann', ['ann', 'ann'])).toBe(false)
+    expect(reachesAnother('ann', ['ann', 'bo'])).toBe(true)
+    expect(reachesAnother('ann', ['bo'])).toBe(true)
   })
 
   it('a frame is charged to every window it fits, or to none of them', () => {
@@ -515,15 +537,17 @@ describe('a socket that never says who it is', () => {
     expect(helloAgain('lab:x', `lab:${B22}`)).toBe('one-table')
   })
 
-  it('is the one to make way at a full table, the longest-silent first, and never one being checked', () => {
-    const s = (id, at, sentAuth = false, vouched = false) => ({ id, at, sentAuth, vouched })
-    expect(crowdedOut([s('in', 1, true, true), s('new', 30), s('old', 20), s('newer', 40)])).toBe(
-      'old',
-    )
-    expect(crowdedOut([s('checking', 1, true), s('in', 2, true, true)])).toBeNull()
-    expect(crowdedOut([])).toBeNull()
-    /* oldest by its hello, not by where it sits in the map */
-    expect(crowdedOut([s('b', 9), s('a', 3)])).toBe('a')
+  it('and knocks only as its first room: from any other room, a Lab id is one-table', () => {
+    const t = `lab:${B22}`
+    for (const want of [t, 'lab:x', 'lab:'])
+      expect(helloAgain(null, want, true), want).toBe('one-table')
+    /* moving between rooms that are not Lab tables is none of this door's business */
+    for (const want of ['default', 'park:abc', 'fight:abc'])
+      expect(helloAgain(null, want, true), want).toBeNull()
+    expect(helloAgain(null, t, false)).toBeNull()
+    /* and a socket that has knocked is bound to its table, wherever it counts itself */
+    expect(helloAgain(t, t, true)).toBe('same')
+    expect(helloAgain(t, 'default', false)).toBe('one-table')
   })
 })
 

@@ -24,9 +24,18 @@
  * the client's own outbox stays under forty a second, so fifty per socket is a ceiling a real
  * table never meets and a console does.
  *
- * `vouched` and `sockets` count SOCKETS, not people: a second tab is a second socket, and the
- * relay's cost is per socket. `rooms` counts only rooms two different people have been let into
- * — see liveRoomsFull.
+ * `vouched` counts SOCKETS, not people: a second tab is a second socket, and the relay's cost is
+ * per socket. `rooms` counts only rooms two different people have been let into — see
+ * liveRoomsFull.
+ *
+ * ⚠️ AND NOTHING COUNTS THE SOCKETS AT A TABLE THAT HAVE NOT BEEN LET IN. There was a cap of
+ * sixteen, and a knock at sixteen pushed out whichever had said nothing longest — which is only
+ * longest among the silent, so a stranger who kept a table at sixteen could answer an arrival with
+ * fifteen hellos and push out the friend between their welcome and their auth, every time, and
+ * could count everybody at the table by knocking. And it bounded nothing the relay pays for: a
+ * code costs nothing to mint, so those sockets go to another table. A socket that never signs in
+ * is bounded by the silent-socket timer, which nothing restarts (helloAgain), and by the relay's
+ * connection gate; the one count at a table is the door's eight.
  *
  * ⚠️ AND SOME OF THEM ARE PER PERSON, because the relay-wide ones are shared by everybody and a
  * limit one account can fill is a limit that account can take from everybody else. `tables` and
@@ -39,7 +48,6 @@ export const LAB = Object.freeze({
   vouchMs: 12_000,
   doorMs: 40_000,
   vouched: 8,
-  sockets: 16,
   rooms: 6,
   tables: 2,
   tabs: 4,
@@ -68,8 +76,9 @@ export const looksLab = (id) => typeof id === 'string' && id.startsWith('lab:')
 export const listable = (id) => !looksLab(id)
 
 /**
- * A hello from a socket that has already said hello to a Lab table: null if it never has, 'same'
- * if it names that table again (nothing to do), and otherwise the refusal `one-table`.
+ * A hello, from a socket that has said hello to the Lab table `table` (null if it never has) and
+ * that is in some other room now if `inRoom`: null if the hello may go ahead, 'same' if it names
+ * that table again (nothing to do), and otherwise the refusal `one-table`.
  *
  * ⚠️ A SOCKET THAT KNOCKS ON A LAB TABLE BELONGS TO THAT TABLE FOR LIFE. The silent-socket timer
  * starts at the hello, and a hello is how a socket moves — so while a socket could go somewhere
@@ -78,9 +87,17 @@ export const listable = (id) => !looksLab(id)
  * an honest one never sends a second hello and loses nothing. `table` is whatever id the socket
  * first knocked with, well-formed or not: a refusal closes the socket, and nothing it says while
  * the close completes may put it in a room.
+ *
+ * ⚠️ AND A LAB TABLE IS A SOCKET'S FIRST ROOM AS WELL AS ITS ONLY ONE. A socket that has been in a
+ * park, a bout or a Snake room carries that room's state on the connection: the park's
+ * members-only timer, which went on to tell a socket the Lab had let in that it was refused, and
+ * the socket's one auth slot, which a park check still on its way took from the Lab's — so a good
+ * token was dropped unasked and closed as silent. Every such thing is per connection, and a Lab
+ * room cannot know them all, so it takes no socket that has been anywhere. Moving between rooms
+ * that are not Lab tables is none of this door's business.
  */
-export function helloAgain(table, want) {
-  if (table === null || table === undefined) return null
+export function helloAgain(table, want, inRoom = false) {
+  if (table === null || table === undefined) return inRoom && looksLab(want) ? 'one-table' : null
   return want === table ? 'same' : 'one-table'
 }
 
@@ -126,6 +143,32 @@ export function rate(times, now, perSec) {
   const kept = times.filter((t) => now - t < 1000)
   return { ok: kept.length < perSec, times: kept }
 }
+
+/**
+ * Forget every window in `windows` (key -> times) that holds nothing from the last second, and
+ * keep every one that does.
+ *
+ * ⚠️ A WINDOW GOES WHEN IT IS SPENT, NEVER WHEN ITS OWNER DOES. An account's window used to be
+ * forgotten with the account's last socket, which is exactly when it is still full: fifty frames,
+ * a close, a new socket — let in at once, since its token, standing and friendships are all
+ * remembered — and fifty more inside the same second, so the account's share was the room's. A
+ * window that holds nothing is the same as no window, so forgetting that one changes nothing.
+ */
+export function forgetSpent(windows, now) {
+  for (const [key, times] of windows) if (!rate(times, now, 1).times.length) windows.delete(key)
+}
+
+/**
+ * Whether a frame from `uid`, to sockets let in as `uids` (one per socket), reaches anybody but
+ * `uid` — the only kind a Lab room forwards, or charges to any window.
+ *
+ * ⚠️ ONE PERSON'S TABS ARE NO AUDIENCE, as they are no game (isLive). A frame that reached only the
+ * sender's own other tab still reached SOMEBODY, so it was charged to the relay's window, and
+ * three members each alone at a table with two tabs spent all of it between their own tabs while
+ * a real table's moves were dropped. A frame that does reach somebody else still goes to the
+ * sender's other tabs too.
+ */
+export const reachesAnother = (uid, uids) => uids.some((u) => u !== uid)
 
 /**
  * Every window a frame must fit, at once: `windows` is `[times, perSec]` pairs, and the answer is
@@ -281,26 +324,6 @@ export function placesFull(uid, elsewhere, here) {
   }
   if (tabs >= LAB.tabs) return true
   return !here.includes(uid) && tables >= LAB.tables
-}
-
-/**
- * Who makes way when a table already holds LAB.sockets and somebody else knocks: the socket that
- * has waited longest without sending `auth`, or null when every one has — let in, or being
- * checked — and the knock is then `lab-full`. `entries` are `{id, at, sentAuth, vouched}`, `at`
- * being when each said hello.
- *
- * ⚠️ SOCKETS NOBODY HAS LET IN MUST NEVER SHUT OUT THE PEOPLE THE TABLE IS FOR. Counting every
- * socket at the knock let sixteen that never said who they were keep a table's friends out for
- * as long as they could be renewed, which a handful of addresses can do. An honest client sends
- * `auth` as soon as it has its welcome, so the socket silent longest is the least likely to be
- * anybody's friend, and one that is had said nothing for longer than a client ever does. A socket
- * being checked never makes way: Supabase can be slow, and a slow answer must not become a
- * refusal.
- */
-export function crowdedOut(entries) {
-  let out = null
-  for (const e of entries) if (!e.sentAuth && !e.vouched && (out === null || e.at < out.at)) out = e
-  return out ? out.id : null
 }
 
 /**

@@ -45,14 +45,15 @@ import {
   LAB,
   SAY,
   charge,
-  crowdedOut,
   doorFor,
+  forgetSpent,
   helloAgain,
   helloFrames,
   isLabId,
   kindAllowed,
   leaveFrames,
   looksLab,
+  reachesAnother,
   readLab,
   vouchTimerCloses,
 } from '../server/lib/labDoor.mjs'
@@ -125,15 +126,15 @@ const send = (ws, o) => {
 const closeAfter = (ws) => setTimeout(() => ws.close(1008), LAG)
 
 /**
- * Lab tables: roomId -> { clients: Map<id, { ws, uid, at, sentAuth, vouched, times, timer, kick }>,
- * door, times }. Every decision is labDoor's; this is only the bookkeeping the relay keeps in its
+ * Lab tables: roomId -> { clients: Map<id, { ws, uid, sentAuth, vouched, times, timer }>, door,
+ * times }. Every decision is labDoor's; this is only the bookkeeping the relay keeps in its
  * own rooms map.
  */
 const labs = new Map()
 /** uid -> the friends its tab said it has, from `stub-who` — the stub's whole Supabase */
 const said = new Map()
 let labTimes = []
-/** uid -> that account's window, as the relay keeps one (LAB.personHz) */
+/** uid -> that account's window, as the relay keeps one (LAB.personHz), forgotten once spent */
 const personTimes = new Map()
 const labVouched = (room) => [...room.clients.values()].filter((c) => c.vouched).map((c) => c.uid)
 const labElsewhere = (room) => [...labs.values()].filter((r) => r !== room).map(labVouched)
@@ -145,8 +146,7 @@ function labLeave(roomId, id) {
   if (!me) return
   clearTimeout(me.timer)
   room.clients.delete(id)
-  if (me.vouched && !labElsewhere(null).some((uids) => uids.includes(me.uid)))
-    personTimes.delete(me.uid)
+  if (me.vouched) forgetSpent(personTimes, Date.now())
   if (room.clients.size === 0) labs.delete(roomId)
   else
     for (const frame of leaveFrames(id, me.vouched))
@@ -159,32 +159,22 @@ wss.on('connection', (ws) => {
   /** the Lab id this socket first knocked with: it knocks nowhere else, as at the relay */
   let labTable = null
 
+  /* ⚠️ OUT OF A LAB ROOM, NEVER OUT OF A PARK: a park socket refused at a Lab hello is still in
+     its park until the close, and the close is what tells the park — `over`, as at the relay */
   const labRefuse = (code) => {
     send(ws, { type: 'error', code, message: SAY[code] })
-    if (roomId && labs.has(roomId)) labLeave(roomId, id)
-    roomId = null
+    if (roomId && labs.has(roomId)) {
+      labLeave(roomId, id)
+      roomId = null
+    }
     closeAfter(ws)
   }
 
   function labHello(want) {
     if (!isLabId(want)) return labRefuse('bad-room')
     let room = labs.get(want)
-    if (room && room.clients.size >= LAB.sockets) {
-      const out = crowdedOut([...room.clients].map(([cid, c]) => ({ id: cid, ...c })))
-      if (!out) return labRefuse('lab-full')
-      room.clients.get(out).kick('lab-full')
-    }
     if (!room) labs.set(want, (room = { clients: new Map(), door: doorFor(), times: [] }))
-    const me = {
-      ws,
-      uid: null,
-      at: Date.now(),
-      sentAuth: false,
-      vouched: false,
-      times: [],
-      timer: null,
-      kick: labRefuse,
-    }
+    const me = { ws, uid: null, sentAuth: false, vouched: false, times: [], timer: null }
     room.clients.set(id, me)
     roomId = want
     for (const frame of helloFrames(id)) send(ws, frame)
@@ -239,11 +229,12 @@ wss.on('connection', (ws) => {
     if (msg.type === 'auth' || !me.vouched) return
     const m = readLab(msg, labVouched(room))
     if (!m) return
-    /* reaching nobody, it is charged nothing — as at the relay */
+    /* reaching nobody but the sender's own tabs, it is charged nothing — as at the relay */
     const to = [...room.clients].filter(
       ([cid, c]) => cid !== id && c.vouched && (!m.to || c.uid === m.to),
     )
-    if (!to.length) return
+    const uids = to.map(([, c]) => c.uid)
+    if (!reachesAnother(me.uid, uids)) return
     const c = charge(
       [
         [me.times, LAB.socketHz],
@@ -271,13 +262,12 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'hello') {
       const want = String(msg.room || '').trim()
-      const again = helloAgain(labTable, want)
+      /* a Lab table is a socket's first room and its only one, as at the relay */
+      const again = helloAgain(labTable, want, roomId !== null)
       if (again === 'same') return
+      if (looksLab(want)) labTable ??= want
       if (again) return labRefuse(again)
-      if (looksLab(want)) {
-        labTable = want
-        return labHello(want)
-      }
+      if (looksLab(want)) return labHello(want)
     }
     if (roomId && labs.has(roomId)) return labMessage(msg)
 
