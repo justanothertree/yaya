@@ -37,6 +37,9 @@
  *   STUB_WAKE=40000  every socket opened in its first 40 s waits until then to open — a free relay
  *                    waking. Whether Render's proxy really holds an upgrade like this is unverified
  *   STUB_KILL_AT=ms  it exits once, that long after starting — a deploy mid-game, for reconnecting
+ *   STUB_ASK=200     every Lab friends answer takes 200 ms, as a round trip to Supabase does. At 0 a
+ *                    door here never has two checks waiting, so its queue, and the bound on what
+ *                    one account may have in it, cannot be seen at all
  */
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
@@ -77,6 +80,7 @@ const PORT = Number(process.env.PORT || 8080)
 const LAG = Number(process.env.STUB_LAG || 0)
 const WAKE = Number(process.env.STUB_WAKE || 0)
 const KILL_AT = Number(process.env.STUB_KILL_AT || 0)
+const ASK = Number(process.env.STUB_ASK || 0)
 const started = Date.now()
 /**
  * ⚠️ A WAKING RELAY IS IMITATED AT THE UPGRADE, not at the socket. A socket that opens and then
@@ -138,7 +142,13 @@ let labTimes = []
 const personTimes = new Map()
 const labVouched = (room) => [...room.clients.values()].filter((c) => c.vouched).map((c) => c.uid)
 const labElsewhere = (room) => [...labs.values()].filter((r) => r !== room).map(labVouched)
+/** and each of those doors' arrivals still being checked: what an arrival's places count against */
+const labHeldElsewhere = (room) =>
+  [...labs.values()].filter((r) => r !== room).map((r) => r.door.held(labVouched(r)))
 const mutual = (a, b) => (said.get(a)?.has(b) && said.get(b)?.has(a) ? 'yes' : 'no')
+/** the friends answer, a round trip late if STUB_ASK says so, and read when it lands */
+const answer = (a, b) =>
+  ASK > 0 ? new Promise((r) => setTimeout(() => r(mutual(a, b)), ASK)) : mutual(a, b)
 
 function labLeave(roomId, id) {
   const room = labs.get(roomId)
@@ -198,7 +208,8 @@ wss.on('connection', (ws) => {
         uid,
         vouched: () => labVouched(room),
         elsewhere: () => labElsewhere(room),
-        ask: (other) => mutual(uid, other),
+        heldElsewhere: () => labHeldElsewhere(room),
+        ask: (other) => answer(uid, other),
         gone: () => !here(),
         enter: () => {
           me.vouched = true

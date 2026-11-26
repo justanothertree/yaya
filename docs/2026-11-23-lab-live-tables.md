@@ -297,9 +297,10 @@ itself goes red only when both are removed.
   becoming live, gets `lab-busy`, given at the door, never at hello, so a full relay cannot be used
   to test whether a code exists. Rooms nobody was let into do not count, and nor do rooms holding
   one person, so neither strangers nor a member alone can fill the cap.
-- **Per account:** let into 2 tables and 4 sockets at most, across the relay (`too-many-places`).
-  A tab moving tables while its old link closes, and a phone beside a laptop, fit with room to
-  spare.
+- **Per account:** 2 tables and 4 sockets at most, across the relay (`too-many-places`), counting
+  every socket let in and every one still waiting at a door, from the moment it joins a room's
+  chain. One past that is refused at once, never in its turn (added 26 Nov, below). A tab moving
+  tables while its old link closes, and a phone beside a laptop, fit with room to spare.
 - **`lab` frames:** a non-empty string of at most 4,096 UTF-8 bytes (measured in bytes, not
   `.length`). A `to` must name somebody let into this room, or the whole frame is refused rather
   than sent to everybody. Windows of 50 a second per socket, 50 per account wherever it sends
@@ -321,16 +322,36 @@ every socket opened that long after start, as a free relay asleep does. `STUB_KI
 as a deploy does. The stale comment about scenes is corrected: the real relay does drop a scene
 from anybody but the park's owner.
 
+`STUB_ASK=ms` makes every friends answer take that long, as a round trip to Supabase does (added 26
+Nov, third review, below). At 0 every answer is ready in the turn it is asked, so a door there
+never has two checks waiting: its queue cannot be seen at all, and nor can the bound on what one
+account may have in it. The stub counts an account's waiting arrivals across tables the relay's way,
+through the same `held`.
+
+**A known difference: a Lab hello after a hello the relay refuses.** The first-room rule is
+`helloAgain`'s third argument, "this socket is in another room". The stub passes `roomId !== null`
+and the relay `!!joinedRoomId`, and each is true exactly when that server has welcomed the socket
+into a room that is not a Lab table. They part because the stub welcomes every non-Lab hello, while
+the relay refuses some and leaves the socket where it was: `room-not-found` without `create`,
+`room-full`, `bout-full`, `too-many-rooms`. After one of those, the relay welcomes a Lab hello and
+the stub says `one-table`, because by its own state the socket really is in a park. So no one-line
+change to the argument is faithful; only teaching the stub the relay's refusals would be, and that
+is outside the Lab door. It is older than this step: on main the stub already welcomes the hellos
+the relay refuses. Measured with the confirmer's probe on b8d0f537 and on this commit's tree
+(18:40–18:41 EST): a fresh socket and a socket in a room made with `create` agree; after
+`room-not-found`, `room-full` and `bout-full` the relay said `welcome` and the stub `one-table`; at
+`too-many-rooms` the relay refused the Lab hello as well, for its own reason.
+
 ### Tests
 
-| File                               | Asks                                                                                                                                                                                                                                                                                           | Runs in              |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `server/lib/labDoor.test.mjs`      | every rule directly; tests 2.6–2.14, the race in 8 resolution orders                                                                                                                                                                                                                           | `npm run test`       |
-| `scripts/relay-frames.test.mjs`    | the real relay, no Supabase: a Lab arrival hears `welcome` alone, the room hears nothing, the timer's sentence and close; `bad-room`; `list`. The Snake, park and bout goldens are unchanged. A park's timer stays in the park when its socket moves (a relay of its own, `PARK_VOUCH_MS` 600) | `npm run test`       |
-| `scripts/relay-lab.test.mjs`       | the real relay against a loopback stand-in for Supabase: the wiring, case by case                                                                                                                                                                                                              | `npm run test`       |
-| `scripts/park-stub-relay.test.mjs` | the stub imports the door and keeps no copy; it refuses to start unasked; `STUB_WAKE`; friends meet, one-sided lists do not; silent sockets push nobody out; own tabs are no audience; a window outlives a reconnect; a park socket is `one-table` at a Lab id and its park hears `over`       | `npm run test`       |
-| `scripts/lab-door-probe.mjs`       | the real relay against a **real local Supabase**                                                                                                                                                                                                                                               | by hand, below       |
-| `scripts/relay-smoke.mjs`          | after a deploy: a token-less knock on a fresh table                                                                                                                                                                                                                                            | by hand, after merge |
+| File                               | Asks                                                                                                                                                                                                                                                                                                                                                                | Runs in              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `server/lib/labDoor.test.mjs`      | every rule directly; tests 2.6–2.14, the race in 8 resolution orders                                                                                                                                                                                                                                                                                                | `npm run test`       |
+| `scripts/relay-frames.test.mjs`    | the real relay, no Supabase: a Lab arrival hears `welcome` alone, the room hears nothing, the timer's sentence and close; `bad-room`; `list`. The Snake, park and bout goldens are unchanged. A park's timer stays in the park when its socket moves (a relay of its own, `PARK_VOUCH_MS` 600)                                                                      | `npm run test`       |
+| `scripts/relay-lab.test.mjs`       | the real relay against a loopback stand-in for Supabase: the wiring, case by case                                                                                                                                                                                                                                                                                   | `npm run test`       |
+| `scripts/park-stub-relay.test.mjs` | the stub imports the door and keeps no copy; it refuses to start unasked; `STUB_WAKE`; friends meet, one-sided lists do not; silent sockets push nobody out; own tabs are no audience; a window outlives a reconnect; a park socket is `one-table` at a Lab id and its park hears `over`; with `STUB_ASK`, one account's knocks past its places are refused at once | `npm run test`       |
+| `scripts/lab-door-probe.mjs`       | the real relay against a **real local Supabase**                                                                                                                                                                                                                                                                                                                    | by hand, below       |
+| `scripts/relay-smoke.mjs`          | after a deploy: a token-less knock on a fresh table                                                                                                                                                                                                                                                                                                                 | by hand, after merge |
 
 ### The real door without production, 23 Nov 2026
 
@@ -496,6 +517,8 @@ nobody used pushed out 4 of the stranger's own sockets, and 7 at a table with th
   door says `lab-full`. The cap bounded nothing the relay pays for: a code costs nothing to mint,
   so those sockets go to another table. A socket that never signs in is bounded by the 12 s
   timer, which nothing restarts, and by the connection gate (30 a minute per address, 240 in all).
+  **That was not so** (third review, below): the cap also held a room's chain of door checks to
+  about fourteen, and without it one account queued 390 at one table.
 - The review suggested a floor instead: only a socket silent for 6 s may make way, and otherwise
   the knock is refused. Tried as a mutation, it turned the same four cases red, and in the burst
   case it was the friend's own knock that got no welcome. Sixteen fresh silent sockets, renewed
@@ -624,6 +647,98 @@ sends at real rates, which is what the number should be set against. The comment
 `globalHz` says this now, so the 150 is no longer unexplained. That comment is the commit's only
 change to `server/`, which now stamps as `10b53e746d25` (it was `84892a068aac`).
 
+### A third review's finding: one account could keep a friend at the door (26 Nov 2026)
+
+An independent review of b8d0f537 found, and a second agent reproduced with its own probe, that one
+member's account could hold a friend at the door until the door gave up on him. Every socket that
+sends `auth` waits its turn in the room's chain, and `placesFull` counted only sockets already let
+in, so nothing bounded how many checks one account had waiting. A check costs a Supabase round trip
+whenever its friends answer is unsure, and an unsure is never cached. One way to make every answer
+unsure: the relay kept a token's yes for its minute whatever the token's own `exp`, so a token said
+yes to in its last minute, and then expired, made every `are_friends` a 401. The 16-socket cap the
+second review removed had held the chain to about fourteen checks, which is what the cap bounded
+after all.
+
+Reproduced first, with copies of both agents' probes run against the real relay (PORT=0, a
+loopback stand-in for Supabase, the production 12 s and 40 s timers): b8d0f537 at 18:22–18:39 EST,
+this commit's tree at 18:36–18:40 EST. 390 sockets of one account knock at Ann and Bo's table, all
+at once, and then their friend Cy does; every `are_friends` takes 120 ms.
+
+| Probe                                      | b8d0f537: Cy                    | calls | This commit: Cy                 | calls | The 390, now                                |
+| ------------------------------------------ | ------------------------------- | ----- | ------------------------------- | ----- | ------------------------------------------- |
+| the reporter's, a token cached, then dead  | `door-unavailable` at 40,053 ms | 647   | let in at 515 ms                | 9     | 387 `too-many-places`, 3 `door-unavailable` |
+| the reporter's, a good token (control)     | let in at 1,250 ms              | 5     | let in at 883 ms                | 5     | 386 `too-many-places`, 4 `not-friends`      |
+| the confirmer's, a token cached, then dead | `door-unavailable` at 40,056 ms | 642   | let in at 617 ms                | 10    | 386 `too-many-places`, 4 `door-unavailable` |
+| the confirmer's, a good token (control)    | let in at 331 ms                | 4     | let in at 248 ms                | 4     | 386 `too-many-places`, 4 `not-friends`      |
+| the reporter's, with a JWT whose exp ends  | `door-unavailable` at 40,059 ms | 641   | let in at 615 ms                | 3     | 390 `members-only`                          |
+| 390 accounts, one socket each              | `door-unavailable` at 40,420 ms | 634   | `door-unavailable` at 40,218 ms | 634   | unchanged, and why is in Left               |
+
+"calls" is `are_friends` calls during the attack. The JWT row is the reporter's probe copied with
+the token made a JWT, since the reporter's own `tok-M~<ms>` has no `exp` that anything could read.
+
+**1. A socket waiting at the door is one of its account's places.** `doorFor` counts an arrival as
+it joins the chain, against the account's 4 sockets and 2 tables across the relay: its `held` is
+the sockets let in plus every arrival queued or being checked, and `heldElsewhere` reads every
+other room's. Past them the arrival is told `too-many-places` at once, never in its turn. That is
+the existing code and sentence, so the client has nothing new to word, and a refusal is the same
+two frames as before: the sentence, then a close.
+
+- An arrival gives its place back in the same turn as it is let in, refused, or found gone, so no
+  socket is ever counted twice. One that has gone holds nothing even before its turn comes, so a
+  tab reloaded while the door is slow is not refused for the socket it replaced.
+- The count starts at the chain, not at the token: the token and standing questions are asked side
+  by side, and only the chain makes anybody wait for anybody else.
+- Per account, not per table, because a cap on a table's queue is a count somebody else can fill,
+  which is the second review's making-way hole again. An account is the one thing here that a
+  stranger cannot make more of.
+- An honest member never meets it: four tabs at two tables, all knocking while the door is slow,
+  are all let in, and so is a tab reloaded while it waited. The door gives out the same places as
+  before. What changes is when an account over them hears so: a non-friend's sockets past four used
+  to hear `not-friends` in turn, and now hear `too-many-places` at once, which is also true.
+- Cy's wait is now bounded by the places of the accounts ahead of him, at most four checks each.
+  Thirty-two accounts with one socket each, as many places as eight members have between them,
+  held him 4,214 ms (18:40 EST).
+
+**2. A token's yes is kept no longer than the token lives.** `keepYes`
+(`server/lib/supabaseAnswer.mjs`, pure) is the minute, or `exp` minus now if the token carries a
+readable `exp` that comes sooner. A refusal is still kept the minute, and what `verifyToken` and
+`tokenAnswer` return is unchanged. The `exp` is read, never believed: it can only make the relay
+forget sooner. Each fix closes the dead-token route alone. Two copies of this commit's relay, each
+with one fix taken out, at 18:39–18:40 EST: with only the bound, Cy was let in at 524 ms (the
+reporter's token) and 530 ms (the JWT); with only the cap, at 531 ms with the JWT, and
+`door-unavailable` at 40,060 ms with the reporter's token, which has no `exp` to read. A real
+session is a JWT, but `are_friends` can be unsure for other reasons, so the bound is the fix and the
+cap is the second lock.
+
+**3. The stub** passes `heldElsewhere` and gains `STUB_ASK` (its section, above). The confirmed nit
+about its first-room rule is recorded there as a known difference: no faithful one-line change
+exists.
+
+Fourteen new cases. Thirteen were red on b8d0f537 before any code changed: five in
+`labDoor.test.mjs` (the honest member's among them only because `held` did not exist yet), four for
+`keepYes` in `supabaseAnswer.test.mjs`, three in `relay-lab` and the stub's. The relay-lab three are the attack at test scale (twenty knocks, 450 ms an answer, a 2 s
+door: "Cy let in, not door-unavailable"), the same across three tables, and a token outliving its
+`exp`. The fourteenth, the honest member at the relay, guards against too tight a bound and passed
+on b8d0f537, which had none. On this tree, 109 of 109 pass across the four Lab files and 9 of 9 in
+`supabaseAnswer.test.mjs`.
+
+Mutations, each made once and put back by checksum:
+
+| Mutation (of 118 across the five files)                   | Red                                                     |
+| --------------------------------------------------------- | ------------------------------------------------------- |
+| no count at the door                                      | 5: relay's attack and across tables, the stub's, 2 pure |
+| relay: no `heldElsewhere`                                 | 2: the relay's attack and across tables                 |
+| stub: no `heldElsewhere`                                  | 1, the stub's                                           |
+| an arrival that has gone still holds its place            | 2: the relay's reloaded tab, the pure rule              |
+| the place given back a turn late, on the returned promise | 2: the pure same-turn rule, and the chain's race test   |
+| relay: a yes kept the minute whatever its `exp`           | 1, the token case                                       |
+| `keepYes` ignoring `exp`                                  | 3: the token case and 2 pure                            |
+| relay: a yes never kept                                   | 1, the token case (its second tab asked again)          |
+
+This commit's `server/` stamps as `95b64098f20b` (b8d0f537's was `10b53e746d25`). The tree measured
+above differed from it only by a comment; the first four probes, re-run on it at 18:51 EST, let Cy
+in at 555, 876, 621 and 250 ms, with the same outcomes for the 390.
+
 ### Left
 
 - **After merging, once Render's metrics show no live connections (Evan's rule, above):** run
@@ -643,10 +758,23 @@ change to `server/`, which now stamps as `10b53e746d25` (it was `84892a068aac`).
   `one-table` now also answers a socket that has been in another room, and only the door says
   `lab-full`, at eight let in.
 - **No per-address cap.** Sockets that never sign in are bounded by the connection gate (30 a
-  minute per address) and a clock nothing can restart. A signed-in
-  person is bounded by their account, which a stranger cannot multiply by opening sockets. An
-  address is shared by a household, and a cap on it would refuse the people at one house on one
-  call while bounding nothing the account's limits do not.
+  minute per address) and a clock nothing can restart. A signed-in person is bounded by their
+  account: 4 sockets, let in or waiting at a door, across the relay. Until 26 Nov only sockets let
+  in were counted, and that was not a bound: one account queued 390 checks at one table and a
+  friend behind them waited the door's full 40 s; counting the waiting ones, the same 390 held him
+  515 ms (third review, above). An address is shared by a household, and a cap on it would refuse
+  the people at one house on one call while bounding nothing the account's limits do not.
+- **The bound is per account, so it is no bound on accounts.** 390 accounts with one socket each
+  still hold a friend past the 40 s, on this tree (40,218 ms) as on b8d0f537 (40,420 ms). Sign-up
+  is invite-only and there are about eight members; thirty-two one-socket accounts held him
+  4,214 ms. Without the chain there would be no queue at all, since the re-read alone keeps the
+  race safe, but the chain is one of the door's two locks and is kept on purpose. If members ever
+  number in the hundreds, that is the question to reopen.
+- **A second hello to the park a socket is already in leaves a second park timer running.**
+  `leavePrevious` returns at once for the room the socket is in, so the timer it clears is never
+  cleared, and the new hello sets another beside it. It is older than this branch: on main the
+  same hello skipped the same step and no leaving cleared the timer at all. No client sends a
+  second hello to a room it is in, and park behaviour is not changed here.
 - **150 a second across the relay is three accounts' worth, and it is still open.** Any three
   accounts that each reach somebody else at a live table fill it, and so do four honest players
   near the forty a second the client's outbox stays under. A table none of them is at loses its

@@ -46,10 +46,32 @@ const asked = []
 const inFlight = new Map()
 let mostAskersAtOnce = 0
 
+/**
+ * A session shaped as GoTrue issues one, which this stand-in refuses once its own `exp` has
+ * passed: the payload is all it reads, and the signature is junk because nothing may depend on it.
+ */
+const jwt = (sub, expSec) =>
+  ['{}', JSON.stringify({ sub, exp: expSec })]
+    .map((part) => Buffer.from(part).toString('base64url'))
+    .concat('sig')
+    .join('.')
+/** whose session a token is: `tok-<uid>`, or a jwt() still inside its life — or nobody's */
+function sessionOf(token) {
+  if (token.startsWith('tok-')) return token.slice(4)
+  try {
+    const { sub, exp } = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+    return Date.now() < exp * 1000 ? sub : null
+  } catch {
+    return null
+  }
+}
+/** token -> how many times `/auth/v1/user` was asked about it, good or not */
+const userAsked = new Map()
+
 const supabase = createServer((req, res) => {
   const token = (req.headers.authorization || '').replace(/^Bearer /, '')
   const path = (req.url || '').split('?')[0]
-  const caller = token.startsWith('tok-') ? token.slice(4) : null
+  const caller = sessionOf(token)
   let raw = ''
   req.on('data', (c) => (raw += c))
   req.on('end', async () => {
@@ -59,6 +81,7 @@ const supabase = createServer((req, res) => {
     }
     const body = raw ? JSON.parse(raw) : {}
     if (path === '/auth/v1/user') {
+      userAsked.set(token, (userAsked.get(token) ?? 0) + 1)
       if (!caller) return json(401, { msg: 'stand-in: no such session' })
       await sleep(delay.get(`user ${caller}`) ?? 0)
       return json(200, { id: caller, aud: 'authenticated' })
@@ -678,6 +701,127 @@ describe('one account, and what it may take from everybody else', () => {
       Array.from({ length: LAB.personHz }, (_, i) => `a${i}`),
     )
     await shut(peer, again)
+  })
+})
+
+describe('one account’s knocks, and the friend behind them', () => {
+  /* every friends answer about `who` comes back a 401 after `ms`: unsure, so never remembered, and
+     each check of hers costs that round trip — the reporter's attack, at test scale */
+  const unsureAbout = (who, others, ms) => {
+    for (const u of others) {
+      trouble.set(`friends ${pair(who, u)}`, [401])
+      delay.set(`friends ${pair(who, u)}`, ms)
+    }
+  }
+  /** `n` sockets at `rooms` in turn, welcomed, none of them signed in yet */
+  const knockers = (n, rooms) =>
+    Promise.all(Array.from({ length: n }, (_, i) => arrive(rooms[i % rooms.length])))
+  /** 'in', a refusal's code, or 'none' yet */
+  const outcome = (s) => {
+    const f = s.inbox.find((x) => x.type === 'labin' || x.type === 'error')
+    return f ? (f.code ?? 'in') : 'none'
+  }
+  const tally = (socks) => {
+    const t = {}
+    for (const s of socks) t[outcome(s)] = (t[outcome(s)] ?? 0) + 1
+    return t
+  }
+  const settled = (socks) => until(() => socks.every((s) => outcome(s) !== 'none'), DOOR_MS + 1500)
+
+  it('cannot hold a friend at the door: past its four places, its knocks are refused at once', async () => {
+    /* ten checks in a row would outlast the door's deadline; the three she has room for do not */
+    const ASK = 450
+    befriend('qa-ann', 'qa-cy')
+    unsureAbout('qa-mal', ['qa-ann'], ASK)
+    const room = table()
+    const ann = await letIn(room, 'qa-ann')
+    /* as in the attack: let in at a table of her own first, so her token and standing are
+       remembered and every knock goes straight to the queue */
+    const own = await letIn(table(), 'qa-mal')
+    const mal = await knockers(20, [room])
+    const cy = await arrive(room)
+    for (const s of mal) s.send({ type: 'auth', token: 'tok-qa-mal' })
+    cy.send({ type: 'auth', token: 'tok-qa-cy' })
+    /* refused before a single one of her round trips could have come back */
+    await sleep(ASK / 2)
+    const atOnce = mal.filter((s) => outcome(s) === 'too-many-places').length
+    expect(await has(cy, 'labin', DOOR_MS + 1000), `Cy let in, not ${outcome(cy)}`).toBe(true)
+    expect(heard(cy, 'error')).toEqual([])
+    expect(atOnce).toBe(20 - (LAB.tabs - 1))
+    expect(await settled(mal)).toBe(true)
+    expect(tally(mal)).toEqual({
+      'too-many-places': 20 - (LAB.tabs - 1),
+      'door-unavailable': LAB.tabs - 1,
+    })
+    /* and Supabase was asked about her only for the places she had */
+    expect(asked.filter((a) => a === 'qa-mal qa-ann')).toHaveLength(LAB.tabs - 1)
+    await shut(ann, own, cy, ...mal)
+  })
+
+  it('and a check at any table counts: four places across the relay, at two tables at most', async () => {
+    const peers = ['qb-ann', 'qb-bo', 'qb-dee']
+    unsureAbout('qb-mal', peers, 300)
+    const rooms = [table(), table(), table()]
+    const inside = []
+    for (const [i, u] of peers.entries()) inside.push(await letIn(rooms[i], u))
+    const mal = await knockers(30, rooms)
+    for (const s of mal) s.send({ type: 'auth', token: 'tok-qb-mal' })
+    expect(await settled(mal)).toBe(true)
+    expect(tally(mal)).toEqual({ 'too-many-places': 30 - LAB.tabs, 'door-unavailable': LAB.tabs })
+    const about = asked.filter((a) => a.startsWith('qb-mal '))
+    expect(about).toHaveLength(LAB.tabs)
+    expect(new Set(about).size).toBeLessThanOrEqual(LAB.tables)
+    await shut(...inside, ...mal)
+  })
+
+  it('one person’s four tabs at two tables, knocking at once while the door is slow, are all let in, and so is a tab reloaded while it waited', async () => {
+    befriend('hc-ann', 'hc-bo')
+    befriend('hc-ann', 'hc-cy')
+    delay.set(`friends ${pair('hc-ann', 'hc-bo')}`, 300)
+    delay.set(`friends ${pair('hc-ann', 'hc-cy')}`, 300)
+    const [t1, t2] = [table(), table()]
+    const bo = await letIn(t1, 'hc-bo')
+    const cy = await letIn(t2, 'hc-cy')
+    const tabs = await knockers(4, [t1, t2])
+    for (const s of tabs) s.send({ type: 'auth', token: 'tok-hc-ann' })
+    expect(await settled(tabs)).toBe(true)
+    expect(tabs.map(outcome)).toEqual(['in', 'in', 'in', 'in'])
+    /* one tab closed, and its replacement queued behind somebody else's slow check */
+    await shut(tabs[0])
+    delay.set(`friends ${pair('hc-eve', 'hc-bo')}`, 600)
+    const eve = await arrive(t1, 'hc-eve')
+    await sleep(50)
+    const reloading = await arrive(t1, 'hc-ann')
+    await sleep(100)
+    /* reloaded again before the door got to it: that socket has gone, and holds no place */
+    await shut(reloading)
+    const again = await arrive(t1, 'hc-ann')
+    expect(await settled([eve, again])).toBe(true)
+    expect([outcome(eve), outcome(again)]).toEqual(['not-friends', 'in'])
+    await shut(bo, cy, ...tabs, again)
+  })
+})
+
+describe('a session the relay has checked', () => {
+  it('is believed no longer than it lives: past its own exp, the same token is asked about again, and is members-only', async () => {
+    /* a second or two of life left, as a tab's session has in its last minute */
+    const exp = Math.floor(Date.now() / 1000) + 2
+    const token = jwt('tt-ann', exp)
+    const first = await arrive(table())
+    first.send({ type: 'auth', token })
+    expect(await has(first, 'labin')).toBe(true)
+    /* while it lives it is remembered, as every token is: a second tab asks Supabase nothing */
+    const second = await arrive(table())
+    second.send({ type: 'auth', token })
+    expect(await has(second, 'labin')).toBe(true)
+    expect(userAsked.get(token)).toBe(1)
+    await shut(first, second)
+    await until(() => Date.now() > exp * 1000 + 50, 3000)
+    const late = await arrive(table())
+    late.send({ type: 'auth', token })
+    expect(await closed(late)).toBe(true)
+    expect(late.inbox).toEqual([refused('members-only')])
+    expect(userAsked.get(token)).toBe(2)
   })
 })
 

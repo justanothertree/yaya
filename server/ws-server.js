@@ -20,8 +20,8 @@ import { parseTrades } from './lib/parseTrades.mjs'
 import { DEFAULT_SETTINGS, boardModeFor, sanitizeSettings } from './lib/settings.mjs'
 import { r2Operations, r2Storage } from './lib/r2ops.mjs'
 import { clientAddr, makeConnGate } from './lib/connGate.mjs'
-/* "did Supabase answer, or could it not be asked" — see tokenAnswer below */
-import { sureOf } from './lib/supabaseAnswer.mjs'
+/* "did Supabase answer, or could it not be asked", and how long to keep a yes: see tokenAnswer */
+import { keepYes, sureOf } from './lib/supabaseAnswer.mjs'
 import { stampOfServer } from './lib/buildStamp.mjs'
 /* the largest frame read from a client, and why it is that size — see the header of that file */
 import { MAX_MSG_BYTES } from './lib/frameCap.mjs'
@@ -390,6 +390,16 @@ function labVouched(room) {
 function labElsewhere(room) {
   const out = []
   for (const r of rooms.values()) if (r.lab && r !== room) out.push(labVouched(r))
+  return out
+}
+
+/**
+ * The same, with each of those rooms' arrivals still being checked: every place an account holds
+ * elsewhere, which its next arrival is counted against before it may queue (labDoor's doorFor).
+ */
+function labHeldElsewhere(room) {
+  const out = []
+  for (const r of rooms.values()) if (r.lab && r !== room) out.push(r.lab.door.held(labVouched(r)))
   return out
 }
 
@@ -990,7 +1000,7 @@ async function tokenAnswer(token) {
    */
   if (token.length > 4096) return { user: null, sure: 'no' }
   const hit = tokenCache.get(token)
-  if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.answer
+  if (hit && Date.now() - hit.at < hit.keep) return hit.answer
   let answer
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
@@ -1017,11 +1027,22 @@ async function tokenAnswer(token) {
    * of Supabase trouble refused that token for the next sixty, to someone who had done nothing
    * wrong. 'unsure' is never kept: it is the one answer that asking again can change, and the
    * auth frame's own allowance (one in flight, five a minute) is what bounds the asking.
+   *
+   * ⚠️ AND A YES IS KEPT NO LONGER THAN THE TOKEN LIVES (keepYes). Until 26 Nov 2026 it was kept
+   * the minute whatever the token said, so one said yes to in its last minute was believed here
+   * after it had expired, by this cache and nothing else — Supabase refused it everywhere. Every
+   * `are_friends` asked with it was then a 401, which is unsure and never kept, and each of that
+   * account's Lab door checks cost a round trip for an answer nobody could change. The token's
+   * own `exp` is read only to forget it sooner, never to believe anything.
    */
   if (answer.sure !== 'unsure') {
-    tokenCache.set(token, { at: Date.now(), answer })
-    // the cache is per-token and unbounded otherwise; a call has a handful of tokens at most
-    capMap(tokenCache, 200)
+    const at = Date.now()
+    const keep = answer.sure === 'yes' ? keepYes(token, at, TOKEN_TTL) : TOKEN_TTL
+    if (keep > 0) {
+      tokenCache.set(token, { at, keep, answer })
+      // the cache is per-token and unbounded otherwise; a call has a handful of tokens at most
+      capMap(tokenCache, 200)
+    } else tokenCache.delete(token)
   }
   return answer
 }
@@ -1966,7 +1987,8 @@ wss.on('connection', (ws, req) => {
    * ⚠️ AND NEVER `lab-full`: NOTHING HERE COUNTS WHO IS AT THE TABLE. A knock at sixteen sockets
    * used to push out the one silent longest, which let a stranger push out a friend who had their
    * welcome and not yet their answer, and count the table by knocking. The door's eight, after
-   * the token, is the only count (see LAB in labDoor.mjs).
+   * the token, is the only count of a table; what bounds one account's knocks is its own places,
+   * counted at the door too (see LAB and doorFor in labDoor.mjs).
    */
   const helloLab = (roomId) => {
     if (!isLabId(roomId)) return refuseLab('bad-room')
@@ -2057,6 +2079,7 @@ wss.on('connection', (ws, req) => {
         uid,
         vouched: () => labVouched(room),
         elsewhere: () => labElsewhere(room),
+        heldElsewhere: () => labHeldElsewhere(room),
         ask: (other) => friendAnswer(token, uid, other),
         gone: () => !here(),
         enter: () => {

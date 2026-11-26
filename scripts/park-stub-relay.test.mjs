@@ -217,6 +217,54 @@ describe('the stub relay', () => {
     expect(cy.inbox.find((f) => f.type === 'park')?.who.map((w) => w.name)).toEqual(['Bo'])
   })
 
+  it('with answers as slow as Supabase’s, one account’s knocks cannot hold a friend: past its four places, refused at once', async () => {
+    /* at no delay a door here never has two checks waiting, so nothing can queue and no bound on
+       the queue can be seen; STUB_ASK gives each friends answer a round trip's worth */
+    const ASK = 200
+    const slow = await startRelay(
+      { PARK_STUB_RELAY: 'yes', STUB_ASK: String(ASK) },
+      { script: STUB },
+    )
+    try {
+      const at = async (room, uid, friends) => {
+        const s = openSocket(slow.url)
+        socks.push(s)
+        await s.opened
+        s.send({ type: 'hello', room })
+        await until(() => s.inbox.some((f) => f.type === 'welcome'), 5000)
+        if (uid) s.send({ type: 'stub-who', uid, friends })
+        return s
+      }
+      const outcome = (s) => {
+        const f = s.inbox.find((x) => x.type === 'labin' || x.type === 'error')
+        return f ? (f.code ?? 'in') : 'none'
+      }
+      const rooms = [table(), table(), table()]
+      const inside = [
+        await at(rooms[0], 'slow-ann', ['slow-cy']),
+        await at(rooms[1], 'slow-bo', []),
+        await at(rooms[2], 'slow-dee', []),
+      ]
+      expect(await until(() => inside.every((s) => outcome(s) === 'in'), 5000)).toBe(true)
+      /* four knocks at each of the three tables, welcomed, then all saying who they are at once */
+      const mal = []
+      for (let i = 0; i < 12; i++) mal.push(await at(rooms[i % 3]))
+      const cy = await at(rooms[0])
+      for (const s of mal) s.send({ type: 'stub-who', uid: 'slow-mal', friends: [] })
+      cy.send({ type: 'stub-who', uid: 'slow-cy', friends: ['slow-ann'] })
+      await sleep(ASK / 2)
+      const atOnce = mal.filter((s) => outcome(s) === 'too-many-places').length
+      expect(await until(() => outcome(cy) === 'in', 5000)).toBe(true)
+      expect(atOnce).toBe(12 - LAB.tabs)
+      expect(await until(() => mal.every((s) => outcome(s) !== 'none'), 5000)).toBe(true)
+      const tally = {}
+      for (const s of mal) tally[outcome(s)] = (tally[outcome(s)] ?? 0) + 1
+      expect(tally).toEqual({ 'too-many-places': 12 - LAB.tabs, 'not-friends': LAB.tabs })
+    } finally {
+      await slow.stop()
+    }
+  })
+
   it('a badly shaped lab: id is bad-room there too', async () => {
     const s = openSocket(stub.url)
     socks.push(s)

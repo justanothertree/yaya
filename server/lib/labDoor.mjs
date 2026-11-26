@@ -28,21 +28,31 @@
  * per socket. `rooms` counts only rooms two different people have been let into — see
  * liveRoomsFull.
  *
- * ⚠️ AND NOTHING COUNTS THE SOCKETS AT A TABLE THAT HAVE NOT BEEN LET IN. There was a cap of
+ * ⚠️ AND NOTHING COUNTS THE SOCKETS AT A TABLE THAT HAVE NOT SIGNED IN. There was a cap of
  * sixteen, and a knock at sixteen pushed out whichever had said nothing longest — which is only
  * longest among the silent, so a stranger who kept a table at sixteen could answer an arrival with
  * fifteen hellos and push out the friend between their welcome and their auth, every time, and
- * could count everybody at the table by knocking. And it bounded nothing the relay pays for: a
- * code costs nothing to mint, so those sockets go to another table. A socket that never signs in
- * is bounded by the silent-socket timer, which nothing restarts (helloAgain), and by the relay's
- * connection gate; the one count at a table is the door's eight.
+ * could count everybody at the table by knocking. A socket that never signs in is bounded by the
+ * silent-socket timer, which nothing restarts (helloAgain), and by the relay's connection gate;
+ * the one count of sockets at a table is the door's eight.
+ *
+ * ⚠️ BUT THE CAP DID BOUND SOMETHING THE RELAY PAYS FOR, and this said it bounded nothing. Every
+ * socket that signs in waits its turn in the room's chain (doorFor), and a check whose friends
+ * answer is 'unsure' is never cached, so each one costs a round trip. Sixteen sockets held that
+ * chain to about fourteen checks. Without them, on 26 Nov 2026, one member's account — a token
+ * Supabase had said yes to in its last minute, then expired, so every `are_friends` was a 401 —
+ * queued 390 checks at one table, 647 calls to `are_friends`, and a friend who knocked after them
+ * waited out the door's 40 s and was told door-unavailable. The bound is per account, not per
+ * table, so nobody at the door can use it against anybody else: a socket being checked is one of
+ * its account's places (placesFull, counted by doorFor before it queues). With that, the same 390
+ * held the friend 515 ms.
  *
  * ⚠️ AND SOME OF THEM ARE PER PERSON, because the relay-wide ones are shared by everybody and a
  * limit one account can fill is a limit that account can take from everybody else. `tables` and
- * `tabs` are how many tables and sockets one account may be let into at once, across the relay
- * (a tab moving tables, and a phone beside a laptop, with room to spare); `personHz` is that
- * account's share of `globalHz`, whatever it sends from — a person plays one seat, so their tabs
- * together send what one client does. See placesFull and charge.
+ * `tabs` are how many tables and sockets one account may hold at once, across the relay — let in,
+ * or waiting at a door (a tab moving tables, and a phone beside a laptop, with room to spare);
+ * `personHz` is that account's share of `globalHz`, whatever it sends from — a person plays one
+ * seat, so their tabs together send what one client does. See placesFull, doorFor and charge.
  *
  * ⚠️ BUT `globalHz` IS AN OPEN QUESTION, NOT PART OF THAT SIZING. It is the one window every table
  * shares, so whoever fills it decides whose moves are dropped, and at three accounts' `personHz`
@@ -316,14 +326,16 @@ export function liveRoomsFull(elsewhere, here, uid) {
 }
 
 /**
- * Whether `uid` already holds as many places as one account may: LAB.tabs sockets let in across
- * the relay, or — for a table they are not already at — LAB.tables tables. `here` and
- * `elsewhere` are as in liveRoomsFull.
+ * Whether `uid` already holds as many places as one account may: LAB.tabs sockets across the
+ * relay, or — for a table they are not already at — LAB.tables tables. `here` and `elsewhere` are
+ * account ids, one per socket, as in liveRoomsFull: the sockets let in, and — when a door asks
+ * this before an arrival queues — the arrivals each door is still checking (doorFor's `held`).
  *
  * ⚠️ PER ACCOUNT, BECAUSE EVERY OTHER LIMIT HERE IS SHARED. A table's eight and the relay's six
  * are counted in sockets and rooms, and an account that can open sockets can fill both: eight
  * tabs of one person filled a table, and one person alone at six tables filled the relay. An
- * account is the one thing here that a stranger cannot make more of by opening another socket.
+ * account is the one thing here that a stranger cannot make more of by opening another socket —
+ * which held for sockets let in and not for sockets waiting, until those were counted too.
  */
 export function placesFull(uid, elsewhere, here) {
   let tabs = here.filter((u) => u === uid).length
@@ -369,19 +381,40 @@ export const SAY = Object.freeze({
  * One room's door: the friends check for an arrival whose token and standing are already good,
  * run one arrival at a time.
  *
- *   check({ uid, vouched, elsewhere, ask, gone, enter }) -> 'admit' | a refusal | null (gone)
+ *   check({ uid, vouched, elsewhere, heldElsewhere, ask, gone, enter })
+ *     -> 'admit' | a refusal | null (gone)
+ *   held(vouched) -> `vouched`, and the account id of every arrival this door has queued or is
+ *     checking and has not answered, one per arrival: the places this room holds (placesFull)
  *
  * - `vouched()` the account ids of the sockets let in, one per socket (a second tab twice)
  * - `elsewhere()` the same for every OTHER Lab room on the relay, one list per room (for
  *   liveRoomsFull and placesFull)
+ * - `heldElsewhere()` every OTHER Lab room's `held`, one list per room: what an arrival's places
+ *   are counted against before it queues. The relay and the stub both pass it; left out, an
+ *   account's waiting arrivals are counted only at this door
  * - `ask(u)` the friends answer for (uid, u)
  * - `gone()` whether the arrival has left, been refused or timed out meanwhile
  * - `enter()` lets them in; called in the same turn as the last read of the room, so nothing can
  *   come between "everyone here is a friend" and "and now so are you"
  *
- * The limits are asked twice: before any question, because a round trip saved is worth having
- * and an arrival with no room has no question worth asking; and again at the end, because the
- * answers took time and other rooms' doors do not queue behind this one's.
+ * ⚠️ AN ARRIVAL'S PLACE IS COUNTED BEFORE IT QUEUES, AND PAST ITS ACCOUNT'S LAST IT DOES NOT QUEUE.
+ * The chain below holds everybody behind whoever arrived first, and a check whose friends answer
+ * is 'unsure' costs a round trip every time, because an unsure is never cached. When only sockets
+ * let in were places, nothing bounded how many checks one account had waiting: 390 at one table
+ * held a friend past the door's deadline. So an arrival takes one of its account's places as it
+ * joins the chain and gives it back in the same turn as it is let in, refused, or found gone —
+ * and is told too-many-places at once, never in its turn, when it has none. Only the chain makes
+ * anybody wait for anybody else; the token and standing questions before it are asked side by
+ * side, which is why the count starts here.
+ *
+ * ⚠️ AND AN ARRIVAL THAT HAS GONE HOLDS NOTHING, even before its turn comes. Its entry stays in
+ * the chain until then, and counting it would refuse a tab reloaded while the door was slow, for
+ * the very socket it replaced.
+ *
+ * The limits are asked again inside the chain: before any question, because a round trip saved is
+ * worth having and an arrival with no room has no question worth asking; and at the end, because
+ * the answers took time and other rooms' doors do not queue behind this one's — a table can fill,
+ * or the relay's live tables, while an arrival waits.
  *
  * ⚠️ ONE AT A TIME, PER ROOM. Two arrivals checked side by side are each checked against a room
  * without the other; one after the other, the second is checked against a room the first is in.
@@ -389,28 +422,51 @@ export const SAY = Object.freeze({
  */
 export function doorFor() {
   const queue = serial()
+  /** every arrival in this door's chain, not yet answered: `{ uid, gone }` */
+  const waiting = new Set()
+  const held = (vouched) => [...vouched, ...[...waiting].filter((w) => !w.gone()).map((w) => w.uid)]
   return {
-    check: ({ uid, vouched, elsewhere, ask, gone = () => false, enter }) =>
-      queue.run(async () => {
-        if (gone()) return null
-        const limits = () => {
-          const here = vouched()
-          if (here.length >= LAB.vouched) return 'lab-full'
-          const others = elsewhere()
-          if (placesFull(uid, others, here)) return 'too-many-places'
-          if (liveRoomsFull(others, here, uid)) return 'lab-busy'
-          return null
+    held,
+    check: ({
+      uid,
+      vouched,
+      elsewhere,
+      heldElsewhere = () => [],
+      ask,
+      gone = () => false,
+      enter,
+    }) => {
+      if (placesFull(uid, heldElsewhere(), held(vouched())))
+        return Promise.resolve('too-many-places')
+      const me = { uid, gone }
+      waiting.add(me)
+      return queue.run(async () => {
+        /* ⚠️ GIVEN BACK INSIDE THE TURN THAT ANSWERS: a `finally` on the returned promise runs a
+           turn later, and in between this socket would be let in and still waiting — two places */
+        try {
+          if (gone()) return null
+          const limits = () => {
+            const here = vouched()
+            if (here.length >= LAB.vouched) return 'lab-full'
+            const others = elsewhere()
+            if (placesFull(uid, others, here)) return 'too-many-places'
+            if (liveRoomsFull(others, here, uid)) return 'lab-busy'
+            return null
+          }
+          const early = limits()
+          if (early) return early
+          const friends = await friendsAt(uid, vouched, ask)
+          if (gone()) return null
+          const verdict = verdictOf({ token: 'yes', standing: 'yes', friends })
+          if (verdict !== 'admit') return verdict
+          const late = limits()
+          if (late) return late
+          enter()
+          return 'admit'
+        } finally {
+          waiting.delete(me)
         }
-        const early = limits()
-        if (early) return early
-        const friends = await friendsAt(uid, vouched, ask)
-        if (gone()) return null
-        const verdict = verdictOf({ token: 'yes', standing: 'yes', friends })
-        if (verdict !== 'admit') return verdict
-        const late = limits()
-        if (late) return late
-        enter()
-        return 'admit'
-      }),
+      })
+    },
   }
 }

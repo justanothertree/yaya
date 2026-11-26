@@ -525,6 +525,156 @@ describe('one account’s places on the relay', () => {
   })
 })
 
+/**
+ * What one account may hold at the door itself, before anybody has answered: the chain puts every
+ * arrival behind those before it, and a check whose friends answer is unsure costs a round trip
+ * every time, so a place in the queue is a place on the relay.
+ */
+describe('one account’s arrivals still being checked', () => {
+  /** an answer held until `release()`, as a slow Supabase holds it */
+  const held = () => {
+    let release
+    const answer = new Promise((r) => (release = r))
+    return { answer, release }
+  }
+  /** `p`, or 'still waiting' if it has not settled within a few turns of the event loop */
+  const soon = (p) =>
+    Promise.race([p, new Promise((r) => setTimeout(() => r('still waiting'), 30))])
+
+  it('hold places: past four, the next is refused at once, never in its turn', async () => {
+    const door = doorFor()
+    const room = ['bo']
+    const slow = held()
+    const asked = []
+    const knock = () =>
+      door.check({
+        uid: 'mal',
+        vouched: () => room,
+        elsewhere: () => [],
+        ask: async (u) => (asked.push(u), await slow.answer, 'unsure'),
+        enter: () => room.push('mal'),
+      })
+    const four = Array.from({ length: LAB.tabs }, knock)
+    /* the queue in front of anybody who arrives next is these four, and nothing she adds to it */
+    expect(await soon(knock())).toBe('too-many-places')
+    expect(door.held(room)).toEqual(['bo', ...Array(LAB.tabs).fill('mal')])
+    slow.release()
+    expect(await Promise.all(four)).toEqual(Array(LAB.tabs).fill('door-unavailable'))
+    /* the fifth was never asked about, and every place is given back */
+    expect(asked).toEqual(Array(LAB.tabs).fill('bo'))
+    expect(door.held(room)).toEqual(['bo'])
+  })
+
+  it('counted across every table: another door’s arrivals hold places and tables there', async () => {
+    const [d1, d2] = [doorFor(), doorFor()]
+    const [r1, r2, r3] = [['bo'], ['cy'], ['dee']]
+    const slow = held()
+    const at = (door, room, others) =>
+      door.check({
+        uid: 'mal',
+        vouched: () => room,
+        elsewhere: () => [],
+        heldElsewhere: others,
+        ask: async () => (await slow.answer, 'unsure'),
+        enter: () => room.push('mal'),
+      })
+    const from1 = () => [d2.held(r2)]
+    const from2 = () => [d1.held(r1)]
+    const waiting = [at(d1, r1, from1), at(d2, r2, from2)]
+    /* two tables held by arrivals neither door has answered: a third table is refused at once */
+    expect(await soon(at(doorFor(), r3, () => [d1.held(r1), d2.held(r2)]))).toBe('too-many-places')
+    /* two more at those tables make four sockets, and a fifth at either is refused at once */
+    waiting.push(at(d1, r1, from1), at(d2, r2, from2))
+    expect(await soon(at(d1, r1, from1))).toBe('too-many-places')
+    expect(await soon(at(d2, r2, from2))).toBe('too-many-places')
+    slow.release()
+    expect(await Promise.all(waiting)).toEqual(Array(4).fill('door-unavailable'))
+    expect([r1, r2, r3]).toEqual([['bo'], ['cy'], ['dee']])
+  })
+
+  it('an arrival that has gone holds nothing, even before its turn: a reloaded tab is not refused for the one it replaced', async () => {
+    const door = doorFor()
+    /* three tabs let in, and a fourth whose answer is slow */
+    const room = ['bo', 'ann', 'ann', 'ann']
+    const slow = held()
+    let left = false
+    const first = door.check({
+      uid: 'ann',
+      vouched: () => room,
+      elsewhere: () => [],
+      ask: async () => (await slow.answer, 'yes'),
+      gone: () => left,
+      enter: () => room.push('ann'),
+    })
+    expect(door.held(room)).toHaveLength(5)
+    /* reloaded while the door was slow: that socket has gone, and its place with it */
+    left = true
+    expect(door.held(room)).toHaveLength(4)
+    const again = door.check({
+      uid: 'ann',
+      vouched: () => room,
+      elsewhere: () => [],
+      ask: async () => 'yes',
+      enter: () => room.push('ann'),
+    })
+    slow.release()
+    expect(await first).toBeNull()
+    expect(await again).toBe('admit')
+    expect(room.filter((u) => u === 'ann')).toHaveLength(LAB.tabs)
+  })
+
+  it('one person’s four tabs at two tables, all knocking while the answers are slow, are all let in', async () => {
+    const [d1, d2] = [doorFor(), doorFor()]
+    const [r1, r2] = [['bo'], ['cy']]
+    const knock = (door, room, other, otherRoom) =>
+      door.check({
+        uid: 'ann',
+        vouched: () => [...room],
+        elsewhere: () => [[...otherRoom]],
+        heldElsewhere: () => [other.held(otherRoom)],
+        ask: () => new Promise((r) => setTimeout(() => r('yes'), 20)),
+        enter: () => room.push('ann'),
+      })
+    const four = [
+      knock(d1, r1, d2, r2),
+      knock(d2, r2, d1, r1),
+      knock(d1, r1, d2, r2),
+      knock(d2, r2, d1, r1),
+    ]
+    expect(await Promise.all(four)).toEqual(Array(4).fill('admit'))
+    expect([r1, r2]).toEqual([
+      ['bo', 'ann', 'ann'],
+      ['cy', 'ann', 'ann'],
+    ])
+    expect([d1.held(r1), d2.held(r2)]).toEqual([r1, r2])
+  })
+
+  it('let in, an arrival stops waiting in the same turn, so nothing ever counts that socket twice', async () => {
+    const door = doorFor()
+    const room = ['bo']
+    let seen = null
+    const v = await door.check({
+      uid: 'ann',
+      vouched: () => room,
+      elsewhere: () => [],
+      ask: async () => 'yes',
+      enter: () => {
+        room.push('ann')
+        /* the very next thing that could run: another socket's check, say */
+        queueMicrotask(() => {
+          try {
+            seen = door.held(room)
+          } catch (err) {
+            seen = err
+          }
+        })
+      },
+    })
+    expect(v).toBe('admit')
+    expect(seen).toEqual(['bo', 'ann'])
+  })
+})
+
 describe('a socket that never says who it is', () => {
   it('knocks on one table for life: the same id again is nothing, anything else is one-table', () => {
     const t = `lab:${B22}`
