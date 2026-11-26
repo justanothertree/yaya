@@ -5,12 +5,13 @@ import { readMapDoc, type MapDoc } from './mapDoc'
 /**
  * Publishing a map, and walking into somebody else's.
  *
- * ⚠️ THE MAP IS NOT ON THE WIRE, AND THAT IS THE WHOLE DESIGN. The relay refuses a message over
- * 32KB; a map is 320KB in this browser and up to 2MB on the account, which is ten and sixty-four
- * times that. (This said "12,000 characters" and "200KB", and both were wrong in the same
- * direction: 12,000 is MAX_LOOK_BYTES, which caps a creature's DRAWING and is checked in only the
- * two cases that carry one, and 200KB was the map cap two changes ago. The conclusion was always
- * right and the numbers quoted for it were not.) A palette of
+ * ⚠️ THE MAP IS NOT ON THE WIRE, AND THAT IS THE WHOLE DESIGN. The relay refuses a frame over
+ * MAX_MSG_BYTES (server/lib/frameCap.mjs, tens of kilobytes); a map is 320KB in this browser and up
+ * to 2MB on the account, many times that. (This said "12,000 characters" and "200KB", and both were
+ * wrong in the same direction: 12,000 is MAX_LOOK_BYTES, which caps a creature's DRAWING and is
+ * checked in only the two cases that carry one, and 200KB was the map cap two changes ago. Then it
+ * said 32KB, which stopped being the cap on 26 Nov 2026. The conclusion was always right and the
+ * numbers quoted for it were not, so it names the constant now.) A palette of
  * up to twenty-four drawings, the pieces, a ground drawing and a 23,040-cell no-walk grid is not
  * a message, it is a document. So it lives in Postgres, the room carries a REFERENCE, and every
  * client fetches the same bytes by id before standing on them — see

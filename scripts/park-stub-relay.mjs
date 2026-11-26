@@ -24,6 +24,7 @@
  *   # open two tabs on #dev-park, walk both in
  */
 import { WebSocketServer } from 'ws'
+import { MAX_MSG_BYTES } from '../server/lib/frameCap.mjs'
 
 if (process.env.PARK_STUB_RELAY !== 'yes') {
   console.error(
@@ -42,7 +43,11 @@ const PORT = Number(process.env.PORT || 8080)
  * time" over a real relay are 20 to 80ms apart, not one. STUB_LAG=60 makes that reproducible.
  */
 const LAG = Number(process.env.STUB_LAG || 0)
-const wss = new WebSocketServer({ port: PORT })
+/* ⚠️ THE PIPE IS AS WIDE AS THE REAL ONE, imported rather than copied. A frame size is the
+   transport's rule, not a check on what the park says, so it is the one refusal this double keeps:
+   without it a client frame the relay would close with 1009 would sail through here, and the
+   first anybody heard of it would be on the live site. */
+const wss = new WebSocketServer({ port: PORT, maxPayload: MAX_MSG_BYTES })
 /** roomId -> Map<clientId, { ws, look, name }> */
 const rooms = new Map()
 /** roomId -> { by, name, art } */
@@ -181,6 +186,11 @@ wss.on('connection', (ws) => {
     }
     console.log(`[stub] ${id} left (${room.size} here)`)
   })
+
+  /* ⚠️ A FRAME PAST THE CAP ARRIVES HERE, and `ws` closes that socket by itself afterwards (1009),
+     which runs the close handler above. With no listener the error is thrown instead, and nothing
+     in this file catches it: one oversized frame would end the double for everyone in it. */
+  ws.on('error', () => {})
 })
 
 console.log(`[stub] doorless park relay on :${PORT} — development only`)

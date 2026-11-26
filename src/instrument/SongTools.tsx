@@ -19,6 +19,7 @@ import {
   type loopState,
 } from '../audio/looper'
 import { setSongName } from './songName'
+import { isFresh, startNewSong } from './newSong'
 import { ProfileSong } from './ProfileSong'
 import { library, removeFromLibrary, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { songNotes, songToLayers } from '../audio/songFile'
@@ -356,6 +357,9 @@ function Songs({
   confirmIt: (question: string) => boolean
 }) {
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
+  /* ⚠️ NOT WHILE JAMMING: parts are shared with the room as you change them, so a new song here
+     would empty the arrangement on everybody's screen — see the note beside the button */
+  const jamOn = useSyncExternalStore(jam.subscribe, jam.getState, jam.getState).on
   const { parts, bouncing, doBounce, stems } = takes
   /* one recording of the song at a time: stems and the export each play it through */
   const [exporting, setExporting] = useState(false)
@@ -374,6 +378,18 @@ function Songs({
         >
           ⬇ Keep this song
         </button>
+        {/* ✚ New song: an empty song at the starting tempo, asking first when that would lose
+            something you have not kept — newSong.ts says what "kept" means and what stays */}
+        <button
+          className="btn btn-ghost"
+          disabled={isFresh(loop) || jamOn}
+          onClick={() => {
+            if (startNewSong({ saved, confirm: confirmIt })) setEditing(null)
+          }}
+          title="Start an empty song: no parts, and the starting tempo"
+        >
+          ✚ New song
+        </button>
         {/* ⚠️ A FIRST VISIT HAS NOTHING TO BOUNCE, so it is not offered — see `parts` in useTakes */}
         {parts > 0 && (
           <button
@@ -388,6 +404,11 @@ function Songs({
           </button>
         )}
       </div>
+      {jamOn && !isFresh(loop) && (
+        <p className="muted inst-note">
+          Leave the jam to start a new song — it would clear everyone’s.
+        </p>
+      )}
       <ExportSong loop={loop} busy={!!bouncing} setBusy={setExporting} member={!!username} />
       <ProfileSong loop={loop} username={username} askName={askName} confirmIt={confirmIt} />
       {stems.length > 0 && (
