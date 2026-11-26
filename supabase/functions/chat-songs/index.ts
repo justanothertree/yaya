@@ -29,7 +29,16 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { AwsClient } from 'npm:aws4fetch@1.0.20'
 /* what an upload may be, in its own file so vitest can ask it — see that file's header */
-import { MAX_BYTES, readAtMost, songId, uploadFrom, verdictFor } from './verdict.ts'
+import {
+  DRAIN_CAP,
+  MAX_BYTES,
+  drain,
+  jsonBodyFrom,
+  readAtMost,
+  songId,
+  uploadFrom,
+  verdictFor,
+} from './verdict.ts'
 
 /* named origins rather than `*`: the JWT is the lock, but an endpoint that writes to the bucket
    is not one to leave answering every origin. localhost reaches the same production database. */
@@ -157,44 +166,62 @@ Deno.serve(async (req) => {
   }
   if (req.method !== 'POST') return json({ error: 'post something' }, 405, origin)
 
+  /**
+   * ⚠️ AN UPLOAD'S BODY IS THE RECORDING, so its op travels in a header and its body is the bytes.
+   * Every other op is a small JSON body. NO BODY OF EITHER KIND IS LOOKED AT until the caller has
+   * been named below — kept, parsed, checked or stored — though a refusal before that point reads
+   * it off and discards it (`refuse`).
+   */
+  const isUpload = req.headers.get('x-song-op') === 'upload'
+
+  /**
+   * ⚠️ AND A REQUEST REFUSED BEFORE ITS BODY IS READ IS READ OFF FIRST, or the answer never
+   * arrives: measured on the live project, a stale token's 401 came back at 1 KB and not at all at
+   * 1 MB (`drain` in verdict.ts has the figures). Every refusal that can come ahead of the body
+   * being read goes through here. The bytes are read and thrown away a chunk at a time, never kept
+   * or inspected, so nothing is looked at before its sender is named — but an unnamed caller's
+   * body IS read, up to `DRAIN_CAP`, which is the cost of answering it at all.
+   */
+  const refuse = async (body: unknown, status: number) => {
+    if (!req.bodyUsed) await drain(req.body, DRAIN_CAP)
+    return json(body, status, origin)
+  }
+
   const auth = req.headers.get('Authorization')
-  if (!auth) return json({ error: 'not authenticated' }, 401, origin)
+  if (!auth) return await refuse({ error: 'not authenticated' }, 401)
 
   const kit = r2()
   /* said plainly rather than as a 500: until the four secrets are set this can do nothing */
-  if (!kit) return json({ error: 'R2 is not configured on this project yet' }, 503, origin)
+  if (!kit) return await refuse({ error: 'R2 is not configured on this project yet' }, 503)
 
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
     global: { headers: { Authorization: auth } },
   })
 
   /**
-   * ⚠️ AN UPLOAD'S BODY IS THE RECORDING, so its op travels in a header and its body is not read
-   * here — not as JSON, and not at all until the caller has been named below. Every other op is a
-   * small JSON body.
-   */
-  const isUpload = req.headers.get('x-song-op') === 'upload'
-  let body: Record<string, unknown> = {}
-  if (!isUpload) {
-    try {
-      body = await req.json()
-    } catch {
-      return json({ error: 'that was not json' }, 400, origin)
-    }
-    /* `null` and `3` are JSON too, and `body.op` on either would throw past every answer below */
-    if (!body || typeof body !== 'object') return json({ error: 'that was not json' }, 400, origin)
-  }
-  const op = isUpload ? 'upload' : body.op
-
-  /**
    * ⚠️ AN `Authorization` HEADER IS NOT A PERSON. The publishable anon key is a valid value for it
    * and ships in the bundle, so the header existing proves nothing. `getUser()` asks Auth to
    * verify the token and name who it belongs to; nothing below runs without that answer, and no
-   * byte of an upload is read before it.
+   * byte of any body is kept, parsed or inspected before it (a refusal reads it off unseen —
+   * `refuse`).
+   *
+   * ⚠️ IT COMES BEFORE THE JSON BODY IS READ, NOT AFTER, which is where it was until 25 Nov 2026:
+   * `req.json()` ran first, so anybody with the public key could have the function read and parse a
+   * body of any size. Measured on the live function, an anonymous request of 1 MB of garbage was
+   * answered "that was not json". Now it is "not authenticated", and only then is a body read —
+   * a few kilobytes at most (`jsonBodyFrom`).
    */
   const { data: whoData, error: whoErr } = await supabase.auth.getUser()
   const user = whoData?.user ?? null
-  if (whoErr || !user) return json({ error: 'not authenticated' }, 401, origin)
+  if (whoErr || !user) return await refuse({ error: 'not authenticated' }, 401)
+
+  let body: Record<string, unknown> = {}
+  if (!isUpload) {
+    const got = await jsonBodyFrom(req.body)
+    if ('error' in got) return json({ error: got.error }, got.status, origin)
+    body = got.value
+  }
+  const op = isUpload ? 'upload' : body.op
 
   /**
    * ⚠️ A SUSPENDED MEMBER MAY ONLY `play` AND `remove`, the decision made for pictures: suspension
@@ -204,7 +231,7 @@ Deno.serve(async (req) => {
    */
   const { data: suspended } = await supabase.rpc('is_suspended', { p_user_id: user.id })
   if (suspended === true && op !== 'play' && op !== 'remove') {
-    return json({ error: 'your account is suspended' }, 403, origin)
+    return await refuse({ error: 'your account is suspended' }, 403)
   }
 
   /**
@@ -285,13 +312,14 @@ Deno.serve(async (req) => {
    * are written.
    */
   if (op === 'upload') {
-    if (!service) return json({ error: 'this project cannot finish songs yet' }, 503, origin)
+    if (!service) return await refuse({ error: 'this project cannot finish songs yet' }, 503)
     await tidy()
 
     const said = uploadFrom(req.headers)
     let read: Awaited<ReturnType<typeof readAtMost>>
     try {
-      read = await readAtMost(req.body, MAX_BYTES)
+      /* past 5 MB the rest is read off as far as DRAIN_CAP, so the 413 below is answered */
+      read = await readAtMost(req.body, MAX_BYTES, DRAIN_CAP)
     } catch {
       return json({ error: 'that song never arrived — try it again' }, 400, origin)
     }
