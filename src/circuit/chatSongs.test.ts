@@ -3,9 +3,12 @@ import { FunctionsFetchError, FunctionsHttpError } from '@supabase/supabase-js'
 import { SMALL } from '../instrument/songExport'
 import {
   LINK_LIFE_MS,
+  SEND_TIMEOUT_MS,
+  SIGNED_OUT,
   SONGS_BYTES,
   SONGS_OFF,
   SONG_BYTES,
+  TOO_SLOW,
   afterPlayError,
   bareMime,
   lengthLabel,
@@ -33,7 +36,7 @@ import {
  * shaped like the real ones — supabase-js's own error classes, real `Response`s, and the body the
  * platform was measured sending for a function that is not deployed.
  */
-type Invoked = { name: string; body: unknown; headers: Record<string, string> }
+type Invoked = { name: string; body: unknown; headers: Record<string, string>; timeout?: number }
 /** what a call asked the function to do: the op header for the upload, the JSON's op otherwise */
 const opOf = (i: Omit<Invoked, 'name'>) =>
   i.headers['x-song-op'] ?? String((i.body as { op?: unknown } | null)?.op)
@@ -46,6 +49,8 @@ let onRpc: (
 ) => { data?: unknown; error?: unknown } = () => ({ data: [] })
 const added: unknown[][] = []
 const gone: string[] = []
+/** what getSession answers: a session, or null once a sign-in has lapsed */
+let session: { access_token: string } | null = { access_token: 'token' }
 
 vi.mock('../dev/previewMember', () => ({ previewMember: false }))
 vi.mock('../finance/env', () => ({
@@ -56,9 +61,13 @@ vi.mock('../finance/client', () => ({
     functions: {
       invoke: async (
         name: string,
-        { body, headers = {} }: { body: unknown; headers?: Record<string, string> },
+        {
+          body,
+          headers = {},
+          timeout,
+        }: { body: unknown; headers?: Record<string, string>; timeout?: number },
       ) => {
-        invoked.push({ name, body, headers })
+        invoked.push({ name, body, headers, timeout })
         calls.push(opOf({ body, headers }))
         return { data: null, error: null, ...onInvoke({ body, headers }) }
       },
@@ -66,6 +75,9 @@ vi.mock('../finance/client', () => ({
     rpc: async (name: string, args: Record<string, unknown>) => {
       calls.push(name)
       return { data: null, error: null, ...onRpc(name, args) }
+    },
+    auth: {
+      getSession: async () => ({ data: { session }, error: null }),
     },
   }),
 }))
@@ -102,6 +114,7 @@ beforeEach(() => {
   fetched = []
   onInvoke = () => ({})
   onRpc = () => ({ data: [] })
+  session = { access_token: 'token' }
   onFetch = async () => new Response(null, { status: 200 })
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
     fetched.push({ url, init })
@@ -362,6 +375,59 @@ describe('sending a song', () => {
     const r = await sendSong(ROOM, blob(), 'Sunday', 125)
     expect(r).toEqual({ why: 'That song didn’t go up.' })
     expect(calls).toEqual(['upload'])
+  })
+})
+
+/**
+ * ⚠️ "SENDING…" MUST END, and say why. A send whose sign-in had lapsed used to spin: supabase-js
+ * sent the anon key, the function refused it before reading the 5 MB, and that refusal never
+ * arrived (supabase/functions/chat-songs, `drain`). The function answers now; these are about
+ * what the page says when it does, and about never waiting for ever.
+ */
+describe('a send whose sign-in has lapsed, or that stalls', () => {
+  const blob = () => new Blob([new Uint8Array(1234)], { type: 'audio/webm' })
+
+  it('says signed out, and uploads nothing, when there is no session at all', async () => {
+    session = null
+    expect(await sendSong(ROOM, blob(), 'Sunday', 60)).toEqual({ why: SIGNED_OUT })
+    expect(invoked).toEqual([])
+  })
+
+  it('says signed out for the function’s own 401', async () => {
+    onInvoke = () => ({ error: said(401, 'not authenticated') })
+    expect(await sendSong(ROOM, blob(), 'Sunday', 60)).toEqual({ why: SIGNED_OUT })
+  })
+
+  it('says signed out for the gateway’s 401, which carries no sentence of its own', async () => {
+    /* measured 25 Nov 2026: an expired or forged token, refused before the function runs */
+    onInvoke = () => ({
+      error: new FunctionsHttpError(
+        new Response(JSON.stringify({ code: 'UNAUTHORIZED_LEGACY_JWT', message: 'Invalid JWT' }), {
+          status: 401,
+        }),
+      ),
+    })
+    expect(await sendSong(ROOM, blob(), 'Sunday', 60)).toEqual({ why: SIGNED_OUT })
+  })
+
+  it('gives the upload a deadline, so it cannot wait for ever', async () => {
+    onInvoke = () => ({ error: said(400, 'stop here') })
+    await sendSong(ROOM, blob(), 'Sunday', 60)
+    expect(invoked.find((i) => opOf(i) === 'upload')?.timeout).toBe(SEND_TIMEOUT_MS)
+  })
+
+  it('says it took too long when the deadline passes, not that the server was unreachable', async () => {
+    onInvoke = () => ({
+      error: new FunctionsFetchError(new DOMException('The operation was aborted.', 'AbortError')),
+    })
+    expect(await sendSong(ROOM, blob(), 'Sunday', 60)).toEqual({ why: TOO_SLOW })
+  })
+
+  it('still sends when there is a session, and the function says yes', async () => {
+    onInvoke = (i) => (opOf(i) === 'upload' ? { data: { id: 'f1' } } : {})
+    onRpc = () => ({ data: [{ id: 'm1', room_id: ROOM }] })
+    const r = await sendSong(ROOM, blob(), 'Sunday', 60)
+    expect('msg' in r).toBe(true)
   })
 })
 

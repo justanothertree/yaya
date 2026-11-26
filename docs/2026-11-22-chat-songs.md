@@ -270,5 +270,21 @@ x-client-info, content-type, x-song-op, x-song-room, x-song-mime, x-song-seconds
   body is read off and thrown away, unlooked-at, then the answer goes. Its four tests were each
   made to fail by a broken drain. **It needs a redeploy of `chat-songs` to take effect**, and
   after it the same anonymous 1 MB and 5 MB probes must come back with the function's own 401.
-  Not covered: a body OVER 5 MB is still cut off at `readAtMost` and may hang the same way; only a
-  client ignoring its own 5 MB check sends one.
+- **And three more, found and closed before that redeploy (25 Nov 2026):**
+  - **A play or remove was parsed before its caller was named.** `req.json()` ran ahead of
+    `getUser`, with no size limit: measured live, an anonymous 1 MB of garbage was answered "that
+    was not json". The caller is named first now, and the body is read by `jsonBodyFrom`, at most
+    4 KB (`MAX_JSON_BYTES`); a bigger one is read off and refused with 413.
+  - **An upload over 5 MB was cancelled at once**, and could hang like the refusals did.
+    `readAtMost` now keeps nothing past 5 MB but reads the rest off as far as `DRAIN_CAP` (10 MB)
+    before saying `over`; only a body past that is cut off. The platform itself took 12 MB through
+    `push` in 2.5 s, so the cap sits below anything it refuses on its own.
+  - **The page said "That song didn’t go up." for a lapsed sign-in.** Two doors answer it: the
+    gateway refuses an expired or forged token at once (0.4 s at 1 MB, `{"code":
+"UNAUTHORIZED_LEGACY_JWT"}`), and the function refuses a token Auth no longer names a person
+    for. Any 401 now reads "You’re signed out. Sign in and try again." With no session at all
+    nothing is uploaded; and the upload has a two-minute deadline, after which it says it took too
+    long — so "Sending…" always ends.
+  - `handler.test.ts` runs the real handler with Deno, Supabase and R2 stood in, watching every
+    pull of the body: it failed 4 of 7 against the drain-only handler and 5 of 7 against the one
+    deployed, and passes on this.

@@ -24,6 +24,17 @@
 /** the most a recording sent into a chat may be: 5 MB, as `chat_song_claim` and the table hold */
 export const MAX_BYTES = 5_242_880
 
+/**
+ * The most read off a body that is not going to be kept, so that the answer to it can be sent
+ * (`drain` says why that is needed): twice the largest honest one. Past it the rest is cancelled.
+ * ⚠️ BELOW WHAT THE PLATFORM ITSELF TAKES, measured rather than assumed: on 25 Nov 2026 `push`,
+ * which reads its whole body, was sent 12 MB through the gateway and answered in 2.5 seconds.
+ */
+export const DRAIN_CAP = 2 * MAX_BYTES
+
+/** the most a `play` or `remove` may send: `{"op":"remove","id":"<a uuid>"}` is about sixty bytes */
+export const MAX_JSON_BYTES = 4096
+
 /** the kinds `chat_song_claim` keeps, and the table's CHECK, word for word */
 export const KINDS = ['audio/mp4', 'audio/webm', 'audio/ogg'] as const
 export type Kind = (typeof KINDS)[number]
@@ -69,19 +80,24 @@ export function verdictFor(mime: string | null, bytes: Uint8Array): Verdict {
 }
 
 /**
- * A request body, read to at most `max` bytes: the bytes, or `over` as soon as more than that has
+ * A request body, read to at most `max` bytes: the bytes, or `over` once more than that has
  * arrived.
  *
- * ⚠️ READ AS A STREAM AND STOPPED, NEVER `arrayBuffer()`. That would hold whatever was sent before
- * any size could be asked, so the 5 MB ceiling would be checked on a body already sitting in the
- * function's memory at whatever size somebody chose. Here the reading stops at the chunk that
- * passes `max`, the rest is cancelled unread, and that chunk is dropped rather than kept — so no
- * more than `max` bytes are ever held. A `Content-Length` is not consulted: it is the sender's
- * word, and a chunked body has none.
+ * ⚠️ READ AS A STREAM, NEVER `arrayBuffer()`. That would hold whatever was sent before any size
+ * could be asked, so the 5 MB ceiling would be checked on a body already sitting in the function's
+ * memory at whatever size somebody chose. Here nothing past `max` is kept: the chunk that passes
+ * it is dropped, and so is everything held before it — so no more than `max` bytes are ever
+ * held. A `Content-Length` is not consulted: it is the sender's word, and a chunked body has none.
+ *
+ * ⚠️ AND PAST `max` THE REST IS READ OFF, AS FAR AS `drainTo`, BEFORE `over` IS SAID. An answer
+ * sent while the body is still unread never arrives (measured; see `drain`), so a body that is
+ * over the ceiling but under `drainTo` is read to its end and thrown away, and only then refused.
+ * Past `drainTo` it is cancelled. `drainTo` defaults to `max`, which cancels at once.
  */
 export async function readAtMost(
   body: ReadableStream<Uint8Array> | null,
   max: number,
+  drainTo: number = max,
 ): Promise<{ bytes: Uint8Array<ArrayBuffer> } | { over: true }> {
   if (!body) return { bytes: new Uint8Array(0) }
   const reader = body.getReader()
@@ -93,11 +109,17 @@ export async function readAtMost(
     if (!value || value.length === 0) continue
     n += value.length
     if (n > max) {
-      await reader.cancel().catch(() => {})
-      return { over: true }
+      /* over the ceiling: nothing more is kept, and what was held goes too */
+      parts.length = 0
+      if (n > drainTo) {
+        await reader.cancel().catch(() => {})
+        return { over: true }
+      }
+      continue
     }
     parts.push(value)
   }
+  if (n > max) return { over: true }
   const bytes = new Uint8Array(n)
   let at = 0
   for (const p of parts) {
@@ -141,6 +163,43 @@ export async function drain(body: ReadableStream<Uint8Array> | null, cap: number
     /* a body that broke off part way has nothing left to wait for */
     return n
   }
+}
+
+/** a play or remove request's body, read: the object, or the refusal and its status */
+export type JsonBody = { value: Record<string, unknown> } | { status: 400 | 413; error: string }
+
+/**
+ * The JSON body of a `play` or `remove`, read to at most `MAX_JSON_BYTES`.
+ *
+ * ⚠️ BOUNDED, because `req.json()` is not: it reads whatever arrives, and it ran before the
+ * caller was named, so an anonymous caller could hand the function a body of any size to hold and
+ * parse. Measured on the live function on 25 Nov 2026: an anonymous request of 1 MB of garbage was
+ * answered "that was not json" — parsed — where it should have been "not authenticated". The
+ * caller is now named first (index.ts), and this reads a few kilobytes at most; a bigger body is
+ * read off as far as `DRAIN_CAP` and refused with 413, so that answer arrives too.
+ */
+export async function jsonBodyFrom(
+  body: ReadableStream<Uint8Array> | null,
+  max: number = MAX_JSON_BYTES,
+  drainTo: number = DRAIN_CAP,
+): Promise<JsonBody> {
+  let read: Awaited<ReturnType<typeof readAtMost>>
+  try {
+    read = await readAtMost(body, max, drainTo)
+  } catch {
+    /* a body that broke off part way is no JSON at all */
+    return { status: 400, error: 'that was not json' }
+  }
+  if ('over' in read) return { status: 413, error: 'that request is too big' }
+  let value: unknown
+  try {
+    value = JSON.parse(new TextDecoder().decode(read.bytes))
+  } catch {
+    return { status: 400, error: 'that was not json' }
+  }
+  /* `null` and `3` are JSON too, and `body.op` on either would throw past every answer in index.ts */
+  if (!value || typeof value !== 'object') return { status: 400, error: 'that was not json' }
+  return { value: value as Record<string, unknown> }
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
