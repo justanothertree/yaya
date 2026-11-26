@@ -25,6 +25,12 @@ export type FunctionFailure = {
   code: string | null
   /** supabase-js's own message, the last resort */
   message: string | null
+  /**
+   * The caller gave up: an `AbortSignal` or `invoke`'s own `timeout` ended it before an answer.
+   * Told apart from a dropped connection, because "that took too long" and "couldn't reach the
+   * server" are different things to try next.
+   */
+  aborted?: boolean
 }
 
 export async function readFunctionError(error: unknown): Promise<FunctionFailure> {
@@ -36,6 +42,9 @@ export async function readFunctionError(error: unknown): Promise<FunctionFailure
     message: typeof message === 'string' ? message : null,
   }
   const res = (error as { context?: Response })?.context
+  /* an abort arrives as a FunctionsFetchError carrying the fetch's DOMException, named for it */
+  const name = (res as { name?: unknown } | undefined)?.name
+  if (name === 'AbortError' || name === 'TimeoutError') out.aborted = true
   /* a FunctionsFetchError carries the fetch's own TypeError here, which has neither */
   if (!res || typeof res.json !== 'function' || typeof res.status !== 'number') return out
   out.status = res.status
