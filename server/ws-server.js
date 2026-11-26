@@ -23,6 +23,8 @@ import { clientAddr, makeConnGate } from './lib/connGate.mjs'
 /* "did Supabase answer, or could it not be asked" — see tokenAnswer below */
 import { sureOf } from './lib/supabaseAnswer.mjs'
 import { stampOfServer } from './lib/buildStamp.mjs'
+/* the largest frame read from a client, and why it is that size — see the header of that file */
+import { MAX_MSG_BYTES } from './lib/frameCap.mjs'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
@@ -46,8 +48,6 @@ const BUILD = (() => {
   }
 })()
 
-// Max incoming message size (32 KB) – prevents DoS via huge payloads.
-const MAX_MSG_BYTES = 32768
 /**
  * ⚠️ HOW LONG THE RELAY WAITS ON ANYTHING OUTSIDE ITSELF. Every `fetch` below had no timeout at
  * all, so a Supabase or Cloudflare endpoint that accepts a connection and then says nothing holds
@@ -58,9 +58,12 @@ const MAX_MSG_BYTES = 32768
  * answers say 'unsure', which their boolean wrappers read as no). The two Cloudflare ones and
  * `finalize_round_rpc` either catch or throw into a caller that does — so a timeout lands on the
  * existing failure path and the auth checks stay FAIL-CLOSED, which is the property that mattered
- * before adding this.
+ * before adding this. scripts/relay-fail-closed.test.mjs holds every door to that.
+ *
+ * The environment can shorten it, for that test, and never lengthen it. A shorter wait can only
+ * turn an answer into a refusal, never a refusal into an answer.
  */
-const OUTBOUND_TIMEOUT_MS = 8000
+const OUTBOUND_TIMEOUT_MS = Math.min(8000, Number(process.env.OUTBOUND_TIMEOUT_MS) || 8000)
 // Max length for user-supplied strings before they are truncated.
 const MAX_NAME_LEN = 64
 // In-match chat. Nothing is stored: the relay forwards a line to the room and forgets it.
@@ -185,8 +188,10 @@ const WALK_WINDOW_MS = 1000
  * and then its token, and verifying the token is a round trip to Supabase — so there is always a
  * window where somebody is in the room and not yet vouched for. The window is what is bounded
  * here; what happens INSIDE it is bounded by broadcastPark, which sends them nothing.
+ *
+ * Shortened by the environment for a test, never lengthened, as OUTBOUND_TIMEOUT_MS is.
  */
-const PARK_VOUCH_MS = 12000
+const PARK_VOUCH_MS = Math.min(12000, Number(process.env.PARK_VOUCH_MS) || 12000)
 /** How many rooms may exist at once. See the room-leak note in the hello handler. */
 const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500)
 /**
@@ -1645,10 +1650,17 @@ const connGate = makeConnGate({
 /** How many connections still get to describe their address on the log. See the block below. */
 let addrDiag = Number(process.env.ADDR_DIAG || 8)
 
-/* ⚠️ `maxPayload` REFUSES AN OVERSIZED FRAME BEFORE BUFFERING IT. The length check further down
-   is still there and still right, but it runs on a message `ws` has already assembled in memory —
-   so the default ~100 MiB ceiling was the real limit, 3,200× the one this file thinks it has.
-   Over the cap the socket closes with 1009. */
+/* ⚠️ `maxPayload` REFUSES AN OVERSIZED FRAME BEFORE BUFFERING IT. `ws` reads a frame's declared
+   length first and closes the socket with 1009 the moment a message would pass the cap, so the
+   bytes are never held. Without it the ceiling is `ws`'s default of 100 MiB, whatever the length
+   check in handleMessage says, because that check runs on a message already assembled in memory.
+
+   ⚠️ ONE NUMBER FOR BOTH, AND THE TRANSPORT'S IS THE ONE THAT BITES. With `maxPayload` equal to
+   MAX_MSG_BYTES the check in handleMessage cannot fire: `ws` never hands over a message longer
+   than the cap. It stays as the rule written where the message is read, for the day this socket
+   is built some other way. A frame AT the cap is read; one byte past it closes that socket and
+   only that socket (scripts/relay-frame-cap.test.mjs). What sets the size is in
+   ./lib/frameCap.mjs: the largest frame a real client sends, with headroom. */
 const wss = new WebSocketServer({ server, maxPayload: MAX_MSG_BYTES })
 
 wss.on('connection', (ws, req) => {
@@ -1770,7 +1782,7 @@ wss.on('connection', (ws, req) => {
     ws.isAlive = true
   })
   const handleMessage = (data) => {
-    // Reject oversized messages before parsing to prevent DoS.
+    // Never true while `maxPayload` is MAX_MSG_BYTES — see the note on `wss`.
     if (data.length > MAX_MSG_BYTES) {
       send(ws, { type: 'error', code: 'msg-too-large', message: 'Message exceeds size limit' })
       return

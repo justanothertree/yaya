@@ -266,9 +266,9 @@ export type BossEcho = {
  * is five chances for them to disagree, and the disagreement would be invisible until two people
  * were standing in different places insisting they were together.
  *
- * ⚠️ THE MAP IS AN ID. The relay refuses a message over 32KB and a map is up to two megabytes,
- * sixty-four times that — everything here rests on the map being FETCHABLE rather than sendable, which is
- * why maps moved to the account first.
+ * ⚠️ THE MAP IS AN ID. The relay refuses a frame over MAX_MSG_BYTES (server/lib/frameCap.mjs, tens
+ * of kilobytes) and a map is up to two megabytes, far past it — everything here rests on the map
+ * being FETCHABLE rather than sendable, which is why maps moved to the account first.
  *
  * ⚠️ `at` IS A COUNTER THE HOST OWNS, NOT A CLOCK. Two machines' clocks disagree by seconds; a
  * counter cannot. A client ignores any scene not newer than the last it accepted, which makes

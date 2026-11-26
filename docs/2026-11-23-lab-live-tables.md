@@ -75,6 +75,88 @@ without `afterAll` leaves nothing behind.
 Also fixed: two comments said a "message limiter" counted frames per socket. There is no such
 thing. There is a size cap on every frame and a window for each of chat, walk, boss, bstep and step.
 
+### 4. A frame is refused at the size of the largest real message (added 26 Nov 2026)
+
+The relay already gave `ws` a `maxPayload`, which refuses a frame on its declared length before
+buffering it and closes that socket with 1009. It was `MAX_MSG_BYTES`, 32,768. What nobody had
+asked is whether every frame a real client sends fits under it, so every sender was read: Snake
+(`src/game/manager.tsx` through `src/game/net.ts`), the park (`src/park/room.ts`), a bout
+(`src/pets/boutRoom.ts`), and the Lab frames of the next step (`lab {d, to}`, with `d` at most
+4,096 UTF-8 bytes, so even a `d` made entirely of control characters, each escaped to six bytes, is
+under 25 kB on the wire). The largest by far is Snake's `preview`, sent every tick: the whole board,
+one `{x, y}` per snake cell and per apple. The apples box goes up to every free cell, so a full
+board carries a point for every cell.
+
+**At 32 KiB a real frame did not fit.** On the Huge board (48 × 48) with the apples box at its own
+maximum, the first preview is over the cap, and the relay closed that player's socket with 1009 on
+it. The player drops out of the room, and the most the client says is "Lobby offline — continuing
+solo", which is not the reason. At the largest grid `sanitizeSettings` keeps (60), which every
+honest client in a room plays once the host's settings say so, the preview is about 55 KiB.
+
+**The cap is 64 KiB now**, in `server/lib/frameCap.mjs`, imported by the relay and by the stub,
+with the derivation in its header. The length check inside `handleMessage` uses the same number and
+so can never fire while `maxPayload` is set; it stays as the rule written where the message is read.
+Every other kind is far smaller: a park creature or boss is held under `MAX_LOOK_BYTES` (12,000),
+and a chat line under 300 characters.
+
+**The stub's pipe is as wide as the real one.** It had no `maxPayload` (so `ws`'s 100 MiB default)
+and no `error` listener on its sockets. With a cap and no listener, one oversized frame ended the
+whole stub, because `ws` reports a frame past the cap as an `error` on that socket and nothing in
+the stub caught it. It has both now.
+
+**Every door that asks Supabase fails closed, and a test says so.**
+`scripts/relay-fail-closed.test.mjs` runs two real relays, one against a loopback stand-in that
+answers 5xx or never answers, and one with no Supabase configured. The park and bout door (token,
+then standing), `/ice`'s TURN relay (token) and the admin gate (`is_admin`, as `/relay-config` asks
+it) are each asked while Supabase cannot answer, three ways, and each refuses. A refused park socket
+hears no roster, is told `members-only` when the window closes, and nothing it says reaches the
+member who was let in. Each case also shows it asked the question it is about: a standing case
+passes the token first, and a timeout case shows the stand-in heard the relay hang up. The same
+stand-in lets a good token, a member in good standing and an admin through, so the refusals are not
+a door that refuses everybody. `OUTBOUND_TIMEOUT_MS` and `PARK_VOUCH_MS` can be shortened by the
+environment for that test and never lengthened: a shorter wait can only turn an answer into a
+refusal.
+
+`scripts/relay-frame-cap.test.mjs` builds the largest preview with the real engine at the largest
+grid the relay keeps, sends it through the real relay, and then sends a frame of exactly the cap
+and one byte more: the cap is read, one past it closes that socket with 1009, and the two left in
+the room go on talking through a relay whose `/health` still answers.
+
+Found, not fixed: `hostOfParkRoom` caches a failed lookup of a hosted park's owner as "no owner"
+for the life of the process (`parkHosts` never expires), and its service client has no timeout. That
+fails closed, since a scene from anyone but the owner is dropped, but one Supabase blip on a hosted
+park's first scene leaves its real host unable to set the scene until the relay restarts. It is the
+same mistake this step fixed for tokens, on a path the Lab does not use.
+
+Measured, 26 Nov 2026:
+
+- From the real engine with the apples box at its maximum, the first preview over five seeds was
+  35,213–35,443 bytes at 48 × 48 and 55,449–55,639 at 60 × 60. A board with a point on every cell
+  is 36,127 bytes at 48 and 56,743 at 60, with a 64-character name of three-byte characters. 64 KiB
+  is 15% above the last.
+- The stub on this tree, probed by hand: a frame of exactly the cap was forwarded; one past it
+  closed that socket with 1009, the other socket stayed and a new one could open. With the new
+  `error` listener taken out, the same frame ended the stub (exit 1) and dropped the other socket
+  (1006).
+- Mutations, each made once and put back:
+
+  | Mutation                                                        | Red                                           |
+  | --------------------------------------------------------------- | --------------------------------------------- |
+  | the cap back to 32,768                                          | the largest-frame case                        |
+  | `maxPayload` one byte short of the cap                          | the exact-cap case                            |
+  | the handler's check as `>=`                                     | the exact-cap case                            |
+  | no `maxPayload`                                                 | the one-past case                             |
+  | no `error` listener on the relay's sockets                      | nothing: the process-wide backstop holds      |
+  | no process-wide `uncaughtException` backstop                    | nothing: the socket's listener holds          |
+  | both of the above                                               | the one-past case (the relay went down)       |
+  | an unanswered token check let in as a provisional user          | 7 fail-closed cases (park, bout, /ice)        |
+  | an unanswered standing check read as good standing (`!== 'no'`) | the 4 standing cases                          |
+  | both of the above                                               | 13, the unconfigured park and bout among them |
+  | the admin gate refusing only a definite no                      | the 3 admin cases                             |
+  | the token check with no timeout                                 | the 3 token-timeout cases                     |
+  | good standing never granted                                     | the whole file (the witness is never let in)  |
+  | `is_admin` never true; `/ice` never giving the relay            | the admin control; the /ice control           |
+
 ### Measured, 23 Nov 2026
 
 - A local relay on this commit's `server/` answered `curl :8080/health` with
