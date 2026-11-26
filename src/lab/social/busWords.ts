@@ -215,8 +215,14 @@ export const SHARING_OFF =
   'You stopped sharing, so the party tour is hidden. Your place on the bus is kept.'
 /** the pause over and the tour on screen again: said, because the pause was */
 export const TOUR_BACK = 'The party tour is back.'
-export const twoStartsWords = (v: View, starter: string) =>
-  `Two tours started at once; this one is ${nameOf(v, starter)}'s. Press Take me there at the first stop to ride.`
+/**
+ * My fresh tour lost to another started at the same moment. ⚠️ NOT "TWO TOURS": three Starts in
+ * one moment told a loser "Two tours started at once" (measured on the dev call), and no browser
+ * can know how many there were — each hears only the tours that reach it before the winner does —
+ * so the count is not said.
+ */
+export const startedAtOnceWords = (v: View, starter: string) =>
+  `More than one tour started at once; this one is ${nameOf(v, starter)}'s. Press Take me there at the first stop to ride.`
 /**
  * The window's time is up and the departure has not been heard. ⚠️ NOT "THE BUS LEAVES IN 0 s",
  * which is what the count said once it ran out: true for the moment a departure takes to arrive,
@@ -248,7 +254,7 @@ export function saidOf(prev: Bus, v: View): string | null {
     /* my own fresh tour lost to one started at the same moment */
     const mine = holds(prev) && prev.phase !== 'end' && prev.riders[0]?.id === b.me
     if (mine && !prev.stops.length && b.riders[0]?.id !== b.me)
-      return twoStartsWords(v, b.riders[0]?.id ?? '')
+      return startedAtOnceWords(v, b.riders[0]?.id ?? '')
     return b.phase === 'pick' && !b.stops.length ? startedWords(v) : null
   }
   if (b.phase === 'end' && prev.phase !== 'end' && !b.riders.some((r) => r.on)) return ALL_OFF

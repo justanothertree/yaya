@@ -34,7 +34,7 @@ import {
   startedWords,
   starLineWords,
   stopLogWords,
-  twoStartsWords,
+  startedAtOnceWords,
   type View,
 } from './busWords'
 
@@ -131,10 +131,47 @@ describe('the tour starts (§1.2, 1–2)', () => {
   it('a tour that lost to another started at the same moment', () => {
     const mine = busFor(ANN, { tour: 'tour0002', riders: [rider(ANN)] })
     const v = view(ANN, { riders: [rider(BO)] })
-    expect(saidOf(mine, v)).toBe(twoStartsWords(v, BO))
-    expect(twoStartsWords(v, BO)).toBe(
-      "Two tours started at once; this one is Bo's. Press Take me there at the first stop to ride.",
+    expect(saidOf(mine, v)).toBe(startedAtOnceWords(v, BO))
+    expect(startedAtOnceWords(v, BO)).toBe(
+      "More than one tour started at once; this one is Bo's. Press Take me there at the first stop to ride.",
     )
+  })
+  it('however many tours started at once, nothing said to a starter counts them wrong', () => {
+    const NUMBER: Record<string, number> = { two: 2, three: 3, four: 4, five: 5 }
+    const counted = (s: string) => {
+      const m = /\b(two|three|four|five)\s+tours?\b/i.exec(s)
+      return m ? NUMBER[m[1].toLowerCase()] : null
+    }
+    /* every order the other tours can reach a starter in */
+    const orders = (xs: string[]): string[][] =>
+      xs.length <= 1
+        ? [xs]
+        : xs.flatMap((x, i) => orders(xs.filter((_, j) => j !== i)).map((o) => [x, ...o]))
+    for (const n of [2, 3, 4]) {
+      const starters = [BO, ANN, CY, DEE].slice(0, n)
+      /* each starter's own fresh tour; the lower starter's wins (bus.ts's beats) */
+      const tourOf = (starter: string): Partial<Bus> => ({
+        tour: `tour000${starters.indexOf(starter) + 1}`,
+        from: starter,
+        seq: 1,
+        riders: [rider(starter)],
+      })
+      for (const me of starters) {
+        const said: string[] = []
+        for (const order of orders(starters.filter((s) => s !== me))) {
+          let held = me
+          for (const s of order) {
+            if (s > held) continue
+            const v = view(me, tourOf(s))
+            const words = saidOf(busFor(me, tourOf(held)), v)
+            if (words) said.push(words)
+            held = s
+          }
+        }
+        if (me !== BO) expect(said.length).toBeGreaterThan(0)
+        for (const s of said) expect([n, me, s, counted(s)]).toEqual([n, me, s, counted(s) && n])
+      }
+    }
   })
 })
 
