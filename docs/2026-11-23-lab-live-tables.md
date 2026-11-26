@@ -6,6 +6,25 @@ over the relay (`server/ws-server.js`) in a friends-only room, and a seated frie
 referees each round. It is built in steps, each one commit and releasable alone, and each adds its
 section here: the reasons, and what was measured, with the date.
 
+## Evan's answers, 26 Nov 2026
+
+The build plan put six questions to Evan that only he could answer. His answers, which every step
+below and after follows:
+
+| Question                                           | Answer                                                                                                                 | What it changes                                                                                                                                                                                                                     |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Who holds the Spades hands at a live table?        | **B: the relay deals and plays the computers.**                                                                        | No browser ever holds another seat's cards, which keeps the written rule that hidden hands need a dealer nobody can peek at. Spades gets a relay step of its own (6a): a relay deploy, and a relay restart redeals the hand in play |
+| Who is "the challenger" at a live table?           | **Whoever sat down first.** If they leave, the next person to sit takes over                                           | The challenger sets the mode and the teams and presses Start. It is derived from who sat when, never elected, so a table with anyone seated always has one                                                                          |
+| When may a relay change merge?                     | **Only when Render's metrics show no live connections**                                                                | Every relay merge (steps 2, 3 and 6a) waits for that reading, because a relay deploy ends every live park, bout and table                                                                                                           |
+| Does the relay have its Supabase URL and anon key? | **Evan checks it himself**, on `/relay-config` as admin, along with Supabase Realtime's public access and the 👥 meter | Nothing here reads production. If either key is missing, every table answers `door-unavailable`, and setting it on Render is his change                                                                                             |
+| Gust online?                                       | **No: Gust stays out of online play**                                                                                  | It stays one keyboard, or against the computer. Its puck lives on the GPU and its fluid differs by graphics card, so two machines would each see a different game                                                                   |
+| Four-player Spades by turns, across days?          | **Parked:** no production SQL and no `lab-move` redeploy                                                               | The exact ask is in docs/OPEN-DECISIONS.md §25. Four friends playing together live on a call does not wait on it                                                                                                                    |
+
+The question about Gust also named two smaller cuts: air hockey two against two (there are only
+two paddles) and the Night crossing race (it belongs with the ghost race). The answer named Gust
+alone, so those two stay as the plan has them, cut. Two answers in the same message are about the
+party bus, not live tables, and are not recorded here.
+
 ## Step 2: a Supabase outage is not a refusal, and /health says which build is running
 
 The relay changes coming next (a `lab:` room with a friends-only door) need three things that the
@@ -192,7 +211,7 @@ Measured, 26 Nov 2026:
 
 ### Left
 
-- **After merging, at a quiet hour Evan names:** run
+- **After merging, once Render's metrics show no live connections (Evan's rule, above):** run
   `RELAY_URL=<the relay> node scripts/relay-smoke.mjs --ref origin/main`. Nothing in this step
   touched the deployed relay.
 - **Then Evan reads `/relay-config` once, as admin.** It shows whether `has.SUPABASE_URL` and

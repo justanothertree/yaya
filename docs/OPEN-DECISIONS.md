@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-22 for Chronicle: §24 records Evan's answers of that day and what was applied. Before that, 2026-11-21: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
+Last reviewed: 2026-11-26 for the Lab: §25 parks four-player Spades by turns, on Evan's answer of that day. Before that, 2026-11-22 for Chronicle: §24 records Evan's answers of that day and what was applied. Before that, 2026-11-21: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
 
 ---
 
@@ -1471,3 +1471,44 @@ flow, and the live result asked of production as a member in a transaction that 
 | 22d, who gave a kudos        | Yes, as recommended                                                                                                                                                    | Shipped in #451: a line above the open comments, and the names in each chip's accessible name                                                                                                     |
 | 20d, the conversion          | **No** cutover date, no conversion, no freeze of legacy writes                                                                                                         | A read-only dry run of the draft's own rules: 9 linked people; 4 would convert cleanly, 2 would stop on 3 entries whose exercise is gone, 3 have nothing; 178 cells; 525 imported day totals kept |
 | 19e, verifying a claim       | Not approval to apply. Admin approval first; the claimed person confirming is a separate step, never through `claim_person`; nobody's log moves on an unverified claim | Applied 22 Nov, 6:39 PM EST (#456): the three claim doors write a request, an owner's own UPDATE is refused, an admin's approval is the one way an owner is set. Proved in CI and live            |
+
+---
+
+## 25. Four-player Spades by turns — parked (26 Nov 2026)
+
+⏸ **PARKED BY EVAN, 26 Nov 2026:** no production SQL and no `lab-move` redeploy for it. Recorded
+here so it is not mistaken for forgotten, with the exact ask for the day it is wanted.
+
+**Already built.**
+
+- **Two friends, by turns.** Spades is a match by turns today (`src/gpu/spadesRoom.ts`, played
+  through `lab-move`). In versus each friend is partnered with a computer across the table; in
+  together the two friends are partners against two computers. The server keeps the hands back, so
+  each friend fetches only their own.
+- **Four players live, coming on the relay.** Friends on a call sitting at a live table, the relay
+  dealing and playing any computers (Evan's option B, the same day), is step 6 and 6a of
+  docs/2026-11-23-lab-live-tables.md. That is four friends playing together, live. It needs none of
+  what is below.
+
+**The exact ask**, if four friends should also be able to play one game across days:
+
+- **Production SQL**, as a new migration, because `lab_matches` is two seats throughout
+  (`supabase/migrations/20261115002456_lab_matches_and_results.sql`):
+  - seats beyond `player_a` and `player_b` (:71–72), or a seats table;
+  - `lab_matches.turn` (:79) and `lab_match_moves.by_seat` (:104) widened from `(0, 1)`;
+  - a challenge to three friends, each of whom accepts, and a rule for two invitees who are not
+    friends with each other;
+  - results for all four: `lab_results` is a row per person already (:110), but
+    `lab_match_record` writes one for `player_a` and one for `player_b` (:253);
+  - the one-open-match-per-pair index, `lab_matches_one_open` (:95–97), rethought for four.
+- **A `lab-move` redeploy.** `supabase/functions/lab-move/core.ts` maps a member to seat 0 or 1
+  (:434), lets only seat 1 accept (:483) and hands out a hidden hand by that seat (:478). `Seat`
+  (`src/lab/social/room.ts:48`, `src/lab/matches/cloud.ts:15`) and `friendTurn` (room.ts:84) would
+  return 0–3. The function runs a committed bundle that `core.test.ts` checks, so this is a rebuild
+  and a deploy, with the deployed source diffed against git afterwards (CLAUDE.md §2).
+- **New deploy access.** Applying SQL to production and deploying an edge function both need access
+  this work does not have now.
+
+**If it keeps waiting:** nothing else is blocked. Two friends go on playing Spades by turns as they
+do today, and four friends play it together on a call once step 6 lands. What waits is only four
+friends playing one game over several days.
