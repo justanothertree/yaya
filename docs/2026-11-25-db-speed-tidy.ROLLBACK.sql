@@ -1,4 +1,4 @@
--- ROLLBACK for docs/2026-11-25-db-speed-tidy.DRAFT.sql: its indexes dropped, and the 54 policies
+-- ROLLBACK for docs/applied/2026-11-25-db-speed-tidy.DRAFT.sql: its indexes dropped, and the 54 policies
 -- back to calling `auth.uid()` per row, exactly as they were.
 --
 -- It deletes no rows and changes no answer: an index is never what a query's result depends on,
