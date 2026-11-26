@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { KINDS, MAX_BYTES, looksLike, readAtMost, songId, uploadFrom, verdictFor } from './verdict'
+import {
+  DRAIN_CAP,
+  KINDS,
+  MAX_BYTES,
+  MAX_JSON_BYTES,
+  drain,
+  jsonBodyFrom,
+  looksLike,
+  readAtMost,
+  songId,
+  uploadFrom,
+  verdictFor,
+} from './verdict'
 
 /**
  * ⚠️ THE EDGE FUNCTION ITSELF CANNOT BE ASKED ANYTHING FROM HERE — it needs a deployed runtime, a
@@ -123,19 +135,22 @@ describe('the first bytes', () => {
  * A body that hands out `chunks` one at a time and counts what it was asked for, so a test can
  * tell "stopped reading" from "read everything and then said no".
  */
-function streamOf(chunks: Uint8Array[]) {
+function streamOf(chunks: Uint8Array[], highWaterMark = 1) {
   const seen = { pulls: 0, cancelled: false }
   let i = 0
-  const stream = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      seen.pulls++
-      if (i < chunks.length) controller.enqueue(chunks[i++])
-      else controller.close()
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        seen.pulls++
+        if (i < chunks.length) controller.enqueue(chunks[i++])
+        else controller.close()
+      },
+      cancel() {
+        seen.cancelled = true
+      },
     },
-    cancel() {
-      seen.cancelled = true
-    },
-  })
+    { highWaterMark },
+  )
   return { stream, seen }
 }
 
@@ -181,6 +196,145 @@ describe('reading the body', () => {
     expect('bytes' in got && why(verdictFor('audio/ogg', got.bytes))).toBe(
       'that recording came to nothing',
     )
+  })
+})
+
+/**
+ * ⚠️ A REFUSAL OF AN UPLOAD WAITS FOR ITS BODY TO BE READ OFF, or the platform never sends it
+ * (measured, see `drain`). So what matters is that an honest body is read to its very END — the
+ * stream reports done — while one past the cap is cut off rather than read for ever.
+ */
+describe('reading a refused body off', () => {
+  /* every byte consumed, counted by what drain says it read — not by the stream's pulls, which its
+     own read-ahead makes whether or not anybody finished reading (that assertion was tried first,
+     and a drain that stopped at the last byte passed it) */
+  it('reads an honest upload to its end, keeping nothing, and does not cancel it', async () => {
+    const sizes = [MiB, 3, MiB, 65_537, MiB - 7]
+    const { stream, seen } = streamOf(sizes.map((n) => new Uint8Array(n)))
+    expect(await drain(stream, MAX_BYTES)).toBe(sizes.reduce((a, b) => a + b, 0))
+    expect(seen.cancelled).toBe(false)
+  })
+
+  /* ⚠️ WITH NO READ-AHEAD (highWaterMark 0) a pull happens only when somebody reads, so the third
+     pull below is drain asking for more after the last byte — the read that hears "done". With the
+     default read-ahead the stream closes on its own, and a drain that returned at exactly 5 MB
+     without asking passed this test; an independent review found that. */
+  it('reads exactly 5 MB to its end, the most an honest client sends', async () => {
+    const { stream, seen } = streamOf([new Uint8Array(MAX_BYTES - 1), new Uint8Array(1)], 0)
+    expect(await drain(stream, MAX_BYTES)).toBe(MAX_BYTES)
+    expect(seen.pulls).toBe(3)
+    expect(seen.cancelled).toBe(false)
+  })
+
+  it('cuts off a body past the cap instead of reading it for ever', async () => {
+    const { stream, seen } = streamOf(Array.from({ length: 50 }, () => new Uint8Array(MiB)))
+    const n = await drain(stream, MAX_BYTES)
+    expect(n).toBeGreaterThan(MAX_BYTES)
+    expect(n).toBeLessThanOrEqual(MAX_BYTES + MiB)
+    expect(seen.cancelled).toBe(true)
+  })
+
+  it('answers for no body, and for one that breaks off, without throwing', async () => {
+    expect(await drain(null, MAX_BYTES)).toBe(0)
+    let sent = 0
+    const broken = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ === 0) controller.enqueue(new Uint8Array(10))
+        else controller.error(new Error('the connection dropped'))
+      },
+    })
+    expect(await drain(broken, MAX_BYTES)).toBe(10)
+  })
+})
+
+/**
+ * ⚠️ AN UPLOAD OVER 5 MB WAS CANCELLED AT ONCE, and an answer sent over an unread body never
+ * arrives (see `drain`). So past the ceiling the rest is read off and thrown away, up to
+ * DRAIN_CAP, and only a body past THAT is cut off. No read-ahead (highWaterMark 0), so the pull
+ * after the last chunk is the read that heard "done".
+ */
+describe('an upload over the ceiling', () => {
+  it('is read off to its end and answered over, keeping nothing', async () => {
+    const { stream, seen } = streamOf([new Uint8Array(MAX_BYTES), new Uint8Array(MiB)], 0)
+    expect(await readAtMost(stream, MAX_BYTES, DRAIN_CAP)).toEqual({ over: true })
+    expect(seen.pulls).toBe(3)
+    expect(seen.cancelled).toBe(false)
+  })
+
+  it('is cut off once past the drain cap', async () => {
+    const { stream, seen } = streamOf(
+      Array.from({ length: 50 }, () => new Uint8Array(MiB)),
+      0,
+    )
+    expect(await readAtMost(stream, MAX_BYTES, DRAIN_CAP)).toEqual({ over: true })
+    expect(seen.cancelled).toBe(true)
+    expect(seen.pulls).toBeLessThanOrEqual(Math.ceil(DRAIN_CAP / MiB) + 1)
+  })
+
+  it('still keeps every byte of one that fits, with a drain cap given', async () => {
+    const whole = bytesOf(OGG_SIG, 0, 300_001)
+    const { stream } = streamOf([whole.slice(0, 100_000), whole.slice(100_000)])
+    const got = await readAtMost(stream, MAX_BYTES, DRAIN_CAP)
+    expect('bytes' in got && got.bytes).toEqual(whole)
+  })
+})
+
+/** a play or remove: its body read to at most MAX_JSON_BYTES, never past DRAIN_CAP */
+describe('a play or remove body', () => {
+  const enc = (t: string) => new TextEncoder().encode(t)
+  const padTo = (n: number) => {
+    const base = '{"op":"play","id":"22222222-2222-4222-8222-222222222222"}'
+    return base.slice(0, -1) + ' '.repeat(n - base.length) + '}'
+  }
+
+  it('reads an op and its id', async () => {
+    const got = await jsonBodyFrom(streamOf([enc('{"op":"remove","id":"x"}')]).stream)
+    expect(got).toEqual({ value: { op: 'remove', id: 'x' } })
+  })
+
+  it('takes exactly MAX_JSON_BYTES, and refuses one byte more with 413', async () => {
+    expect(padTo(MAX_JSON_BYTES)).toHaveLength(MAX_JSON_BYTES)
+    const at = await jsonBodyFrom(streamOf([enc(padTo(MAX_JSON_BYTES))]).stream)
+    expect('value' in at && at.value.op).toBe('play')
+    const over = await jsonBodyFrom(streamOf([enc(padTo(MAX_JSON_BYTES + 1))]).stream)
+    expect(over).toEqual({ status: 413, error: 'that request is too big' })
+  })
+
+  it('reads a big one off to its end before refusing it, and cuts off a huge one', async () => {
+    const big = streamOf(
+      Array.from({ length: 3 }, () => new Uint8Array(MiB)),
+      0,
+    )
+    expect(await jsonBodyFrom(big.stream)).toEqual({
+      status: 413,
+      error: 'that request is too big',
+    })
+    expect(big.seen.pulls).toBe(4)
+    expect(big.seen.cancelled).toBe(false)
+    const huge = streamOf(
+      Array.from({ length: 50 }, () => new Uint8Array(MiB)),
+      0,
+    )
+    expect(await jsonBodyFrom(huge.stream)).toEqual({
+      status: 413,
+      error: 'that request is too big',
+    })
+    expect(huge.seen.cancelled).toBe(true)
+  })
+
+  it('refuses what is not a JSON object, and a body that breaks off', async () => {
+    for (const t of ['', 'null', '3', '"play"', '{"op":', 'not json']) {
+      expect(await jsonBodyFrom(streamOf([enc(t)]).stream)).toEqual({
+        status: 400,
+        error: 'that was not json',
+      })
+    }
+    const broken = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error('the connection dropped'))
+      },
+    })
+    expect(await jsonBodyFrom(broken)).toEqual({ status: 400, error: 'that was not json' })
   })
 })
 
