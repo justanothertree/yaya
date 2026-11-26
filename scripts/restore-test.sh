@@ -279,9 +279,12 @@ grep -q 'alter publication' "$WORK/restore.log" && fail "the restore printed aft
 # Postgres.app would be (its superuser is named after whoever installed it). Everything restored
 # with --no-owner belongs to that role, so a manifest that compared the owner by name would fail a
 # perfect restore hundreds of times over; the owner is compared as OWNER, whoever it is.
-say "restoring as a superuser that is not postgres"
+# (A plain scratch target, as that server would be — not a fresh Supabase project, whose default
+# grants belong to postgres, the role a real project's restore always runs as.)
+say "restoring as a superuser that is not postgres, into a plain scratch server"
 dq postgres -c "do \$\$ begin if not exists (select 1 from pg_roles where rolname = 'zz_restorer') then create role zz_restorer superuser login password 'restore-test-only'; end if; end \$\$"
-fresh_project restored_other "$WORK/opened"
+dq postgres -c "drop database if exists restored_other with (force)" -c "create database restored_other"
+dst restored_other bash "$BK" prepare-plain-target "$WORK/opened" >/dev/null
 PGUSER=zz_restorer PGPASSWORD=restore-test-only dst restored_other bash "$BK" restore "$WORK/opened" >"$WORK/other.log" 2>&1 || {
   sed 's/^/      /' "$WORK/other.log" | tail -12 >&2
   fail "a restore run by a role other than postgres did not match its source"
