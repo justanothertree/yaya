@@ -2,8 +2,8 @@ name: db guards
 
 # Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, then
 # supabase/tests/lab-nudge-guards.sql, then the profile page version checks and race, then the chat
-# songs checks, then the phone alerts checks, then the cron log trim checks, against a throwaway
-# local database on every push.
+# songs checks, then the phone alerts checks, then the cron log trim checks, then the database speed
+# tidy-up checks, against a throwaway local database on every push.
 #
 # ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
 # `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
@@ -298,6 +298,31 @@ jobs:
             fi
             echo "RED as it should be: $wrong"; grep -h "ERROR" /tmp/trim.out | head -2
           done
+
+      # ⏳ A DRAFT, NOT YET APPLIED TO PRODUCTION: the database speed tidy-up — an index under each
+      # foreign key the advisors list as unindexed, and `auth.uid()` made once per query in the 54
+      # policies they list as slow (docs/2026-11-25-db-speed-tidy.DRAFT.sql). The proof that no
+      # policy's meaning moved: with fixture rows of four members in all 25 tables, what anon and
+      # each member can SELECT, UPDATE and DELETE is looked at before the draft, after it and after
+      # its rollback, and all three must agree; the policies must differ only by the wrapper, and
+      # come back exactly. ⚠️ cpg_delete is younger than the 4 Nov dump, so the Circuit migration
+      # that made it is loaded first, exactly as production ran it. LAST, because the fixtures
+      # commit rows no step before it expects.
+      - name: Run the database speed tidy-up checks
+        run: |
+          DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
+          if [ -z "$DB_URL" ]; then
+            DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          fi
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f supabase/migrations/20261122234003_circuit_creator_staple.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/tests/db-speed-tidy-fixtures.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -v phase=before -f supabase/tests/db-speed-tidy-look.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -1 -f docs/2026-11-25-db-speed-tidy.DRAFT.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -v phase=after -f supabase/tests/db-speed-tidy-look.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -v want=after -f supabase/tests/db-speed-tidy-compare.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f docs/2026-11-25-db-speed-tidy.ROLLBACK.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -v phase=rolled_back -f supabase/tests/db-speed-tidy-look.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -v want=rolled_back -f supabase/tests/db-speed-tidy-compare.sql
 
       - name: Stop the database
         if: always()
