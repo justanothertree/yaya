@@ -40,7 +40,8 @@
  *
  * Two tours at once — two Starts in the same moment, or a call that split — settle on the one with
  * more riders, then more stops, then the lower starter's id. An ended or abandoned tour gives way
- * to anything; a live one never to an ended one.
+ * to anything, and so does one whose only decider sends a state of another (`leftBy`: it ended
+ * there, and its end never came); a live one never to an ended one.
  */
 
 import { answersHello, newer, readSeats, type Seats } from './room'
@@ -1283,10 +1284,36 @@ function onState(bus: Bus, ctx: Ctx, from: string, s: State): Step {
     return none(b)
   }
   /* ⚠️ AN ENDED TOUR NEVER REPLACES A LIVE ONE, and a fresh one only by having more riders or
-     more stops — or the lower starter, when two were started at the same moment */
-  const live = holds(bus) && bus.phase !== 'end' && !abandoned(bus, ctx)
+     more stops — or the lower starter, when two were started at the same moment. A tour whose
+     only decider has moved on to another is not live any more, whatever its last state said */
+  const live = holds(bus) && bus.phase !== 'end' && !abandoned(bus, ctx) && !leftBy(bus, ctx, from)
   if (live && (s.phase === 'end' || !beats(s, bus))) return none(bus)
   return none(adopt(bus, s, from, ctx))
+}
+
+/**
+ * Whether `from`, by sending a state of another tour, has left the one I hold with nobody to
+ * decide it: it was the only one deciding mine — its host, or the publisher still deciding until
+ * the host publishes (`leads`, asked of everybody here) — and I am not deciding it myself.
+ *
+ * ⚠️ A STATE NAMES THE TOUR ITS SENDER HOLDS NOW, AND A BROWSER HOLDS ONE. So a state of another
+ * tour from the one deciding mine says it holds mine no more — it ended there, or lost to the
+ * other — and since everybody reckons the host alike, nobody else will ever take mine up: its
+ * last state stands on every other screen for good. Measured on the dev call: Dee, alone on her
+ * tour and its host, rolled, pressed Hop off and then 🚌 Another tour within the second; the
+ * Outbox folds every state inside a second into one serialised when it goes, so the tour's end
+ * never went out, and the next thing anybody heard from Dee was the new tour — which lost to the
+ * old one on stops (`beats`), so Bo and Ann kept "Next stop: Four in a row. The bus leaves in
+ * 0 s." with Take me there for as long as anybody watched, and never saw Dee's new tour. The fold
+ * is right — a second's states are the bus as it stands at the end of it — and an end can go
+ * unsent other ways (a host that reloads comes back holding nothing, and its next Start is the
+ * first anybody hears from it), so it is read here: the decider's next state is the end of mine.
+ * ⚠️ NEVER WHILE I DECIDE IT, nor while anybody else here does: a publisher who is not the host
+ * leaving takes nothing, the host carries on.
+ */
+function leftBy(bus: Bus, ctx: Ctx, from: string) {
+  const deciding = hostSet(bus, ctx.present).filter((id, j) => j === 0 || id === bus.from)
+  return deciding.length > 0 && deciding.every((id) => id === from)
 }
 
 /**
@@ -1481,6 +1508,25 @@ export function sitNow(
   const was = sat?.key === key ? sat.on : me >= 0 && bus.busy.includes(me)
   return on === was ? null : { sat: { key, on }, on }
 }
+
+/** the finale's card, closed here by Close: which tour's ending, and the state it was closed on */
+export type Closed = { tour: string; seq: number } | null
+/**
+ * What a Close pressed here closes, against the bus held when the press is handled: the card of a
+ * tour that is over, or nothing.
+ *
+ * ⚠️ CLOSE MEANS THE ENDED TOUR IT WAS DRAWN ON, as an answer means its own window (`meant`). It
+ * was the seq held when it was handled, and a new tour carries the seq on from the one before
+ * (startTour) — so 🚌 Another tour and Close handled in that order closed the NEW tour, and its
+ * starter's whole panel went, Start with it, until somebody else changed the bus. And keyed by a
+ * seq alone, a card closed on one tour stayed closed over another that happened to arrive at the
+ * same number, which another browser's count can do.
+ */
+export function closeOf(bus: Bus): Closed {
+  return holds(bus) && bus.phase === 'end' ? { tour: bus.tour, seq: bus.seq } : null
+}
+/** whether the card is closed for the bus held now: that tour's end, until its next state */
+export const closedFor = (c: Closed, bus: Bus) => !!c && c.tour === bus.tour && c.seq === bus.seq
 
 /** the tour kept aside while listening is paused (useBus's restore), and the call it is from */
 export type Kept = { bus: Bus; at: number; room: string } | null

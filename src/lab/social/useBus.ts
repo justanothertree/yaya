@@ -19,6 +19,8 @@ import {
   ask,
   askAgain,
   canStart,
+  closeOf,
+  closedFor,
   consentAfter,
   holdOn,
   holds,
@@ -45,6 +47,7 @@ import {
   wireOf,
   type Asked,
   type Bus,
+  type Closed,
   type Consent,
   type Ctx,
   type Faces,
@@ -210,7 +213,8 @@ type Local = {
   offer: Offer | null
   pending: { key: 'roll' | 'go'; until: number; seq: number } | null
   flash: { text: string; until: number } | null
-  closedSeq: number | null
+  /** the finale's card closed here (bus.ts's closeOf) */
+  closed: Closed
   /** the last sit asked for, per stop */
   sat: Sat
   /** windows already answered no for a toy this Lab does not list */
@@ -281,7 +285,7 @@ export function useBus(a: BusInputs): BusApi {
     offer: null,
     pending: null,
     flash: null,
-    closedSeq: null,
+    closed: null,
     sat: null,
     autoNo: new Set(),
     asked: null,
@@ -431,7 +435,7 @@ export function useBus(a: BusInputs): BusApi {
         L.autoNo.clear()
       }
       plan(c)
-      if (L.closedSeq !== null && L.bus.seq !== L.closedSeq) L.closedSeq = null
+      if (L.closed && !closedFor(L.closed, L.bus)) L.closed = null
       if (L.pending && L.bus.seq !== L.pending.seq) L.pending = null
       const said = saidOf(prev, view(c))
       if (said) say(said)
@@ -690,7 +694,7 @@ export function useBus(a: BusInputs): BusApi {
       L.consent = null
       L.hop = null
       L.offer = null
-      L.closedSeq = null
+      L.closed = null
       L.pending = null
       apply(startTour(b, c, tourIdFrom(crypto.getRandomValues(new Uint8Array(8)))), c)
       run()
@@ -765,7 +769,7 @@ export function useBus(a: BusInputs): BusApi {
           break
         }
         case 'close':
-          L.closedSeq = b.seq
+          L.closed = closeOf(b)
           break
       }
       run()
@@ -804,7 +808,7 @@ export function useBus(a: BusInputs): BusApi {
       L.offer = null
       L.pending = null
       L.flash = null
-      L.closedSeq = null
+      L.closed = null
       L.sat = null
       L.planned.clear()
       L.autoNo.clear()
@@ -892,7 +896,7 @@ function placeOf(v: View, id: string, me: string): Place {
 /** everything the panel draws, in words (busWords.ts), from the bus and this browser's own part */
 function modelOf(
   v: View,
-  L: Pick<Local, 'offer' | 'flash' | 'pending' | 'closedSeq' | 'hop' | 'consent'>,
+  L: Pick<Local, 'offer' | 'flash' | 'pending' | 'closed' | 'hop' | 'consent'>,
   me: string,
 ): BusModel {
   const b = v.bus
@@ -939,6 +943,6 @@ function modelOf(
     count: counting,
     pending: L.pending?.key ?? null,
     riding: b.phase !== 'end' && b.riders[i]?.on === true,
-    closed: L.closedSeq !== null && L.closedSeq === b.seq,
+    closed: closedFor(L.closed, b),
   }
 }

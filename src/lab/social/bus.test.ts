@@ -5,6 +5,8 @@ import {
   ask,
   askAgain,
   canStart,
+  closeOf,
+  closedFor,
   consentAfter,
   holdOn,
   hopPlan,
@@ -2681,5 +2683,120 @@ describe('hosts handing over within a second (3.16)', () => {
       /* the case is exercised: several hosts published inside one second */
       expect(changes).toBeGreaterThan(2)
     }
+  })
+})
+
+describe('a tour that ends and starts again', () => {
+  /*
+   * The recheck's Dee: she starts a tour alone, so she is its only rider and its host; she rolls,
+   * the window opens on Bo's and Ann's screens, and she presses Hop off and then, within the
+   * second, 🚌 Another tour. Ids sort Bo < Ann < Dee, so neither friend can host either tour.
+   * The shape of the world afterwards: everybody holds the tour Dee holds — the new one, as she
+   * has it — and nobody is left on the window of the one that ended.
+   */
+  const lone = (stopsFirst: number) => {
+    const net = party(['p01', 'p02', 'p04'], { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    const rand = seeded(11 + stopsFirst)
+    for (let s = 0; s < stopsFirst; s++) {
+      rollAndPick(net, rand)
+      expect(net.runUntil(() => net.bus('p01').stops.length === s + 1, 30_000)).toBe(true)
+    }
+    rollAndPick(net, rand)
+    expect(net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'ready'))).toBe(
+      true,
+    )
+    return net
+  }
+  for (const stopsFirst of [0, 1])
+    for (const wait of [0, 300, 900, 1500])
+      it(`Hop off, then Another tour ${wait} ms after the window opened, ${stopsFirst} stop(s) made: every friend on the new tour`, () => {
+        const net = lone(stopsFirst)
+        const opened = net.states('p04').at(-1)!.at
+        if (opened + wait > net.now) net.run(opened + wait - net.now, 10)
+        const old = net.bus('p04').tour
+        /* two presses, as a person makes them: whatever the first may send goes before the second */
+        net.press('p04', { t: 'off' })
+        net.flush()
+        expect(net.bus('p04').phase).toBe('end')
+        net.start('p04')
+        const fresh = net.bus('p04').tour
+        expect(fresh).not.toBe(old)
+        /* ⚠️ the case is the one claimed: under a second, the tour's end is still waiting to go */
+        if (wait < 1000) expect(net.now - opened).toBeLessThan(net.k.STATE_GAP_MS)
+        for (const after of [3000, 30_000]) {
+          net.run(after)
+          for (const id of ['p01', 'p02'])
+            expect([id, after, net.bus(id).tour]).toEqual([id, after, fresh])
+          expect(net.agree()).toBe(true)
+        }
+      })
+
+  it('nobody who decides a tour gives it up for a state of another from the one who published it', () => {
+    /* Ann leads her tour (the host: the lowest rider here); Dee published it last and is still on
+       it. A state of another tour from Dee is two tours at once, settled as ever — Ann's has a stop
+       and Dee's fresh one none, so Ann's stands, on Ann's screen and on Bo's */
+    const net = party(['p01', 'p02', 'p04'])
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(3))
+    net.ready('p02', true)
+    net.flush()
+    net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)
+    const mine = net.bus('p02')
+    expect(leads(mine, net.ctx('p02'))).toBe(true)
+    const other: Bus = {
+      ...listen('p04', net.now),
+      seq: mine.seq + 5,
+      tour: 'zzzz0000',
+      len: 5,
+      riders: [{ id: 'p04', on: true, stars: 0, played: 0 }],
+      phase: 'pick',
+      openAt: net.now,
+      due: net.now + net.k.TOUR_IDLE_MS,
+    }
+    const forced = { ...net.bus('p01'), from: 'p04' }
+    net.get('p01').bus = forced
+    net.get('p02').bus = { ...mine, from: 'p04' }
+    net.wire.push({ from: 'p04', m: wireOf(other, net.here, net.now) })
+    net.flush()
+    for (const id of ['p01', 'p02']) expect([id, net.bus(id).tour]).toEqual([id, mine.tour])
+  })
+})
+
+describe('Close closes the finished tour it was drawn on', () => {
+  const ended = (me: string, over: Partial<Bus> = {}): Bus => ({
+    ...listen(me, 0),
+    seq: 7,
+    from: 'p04',
+    tour: 'aaaa0001',
+    len: 5,
+    riders: [{ id: 'p04', on: false, stars: 0, played: 0 }],
+    phase: 'end',
+    heard: true,
+    ...over,
+  })
+  it('Another tour then Close, handled in that order, leaves the new tour on screen', () => {
+    /* Dee's two presses, handled one after the other: the new tour is what Close is handled with */
+    const net = party(['p01', 'p04'])
+    net.run(2000)
+    net.get('p04').bus = ended('p04')
+    net.start('p04')
+    const fresh = net.bus('p04')
+    expect(fresh.phase).toBe('pick')
+    const shut = closeOf(fresh)
+    expect(closedFor(shut, fresh)).toBe(false)
+  })
+  it('the card closed on one tour is never another tour that happens to be at the same state', () => {
+    const shut = closeOf(ended('p01'))
+    expect(closedFor(shut, ended('p01'))).toBe(true)
+    /* Ann's new tour, heard at seq 7 too: a new tour, so the card is back */
+    const anns = ended('p01', { tour: 'bbbb0002', phase: 'pick', from: 'p02' })
+    expect(closedFor(shut, anns)).toBe(false)
+    /* and the next state of the same tour shows it again, as ever */
+    expect(closedFor(shut, ended('p01', { seq: 8 }))).toBe(false)
   })
 })

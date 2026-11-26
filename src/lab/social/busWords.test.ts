@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { KNOBS, hopMs, listen, type Bus, type Rider } from './bus'
 import {
+  ABOUT_TO_LEAVE,
   ALL_OFF,
   GATE_SHUT,
   HOPPED_OFF,
@@ -685,5 +686,109 @@ describe('every phase, every role, has words', () => {
     expect(seen).toBe(phases.length * roles.length * 2)
     /* and no tour is no line at all: the strip's own Start is the whole of it */
     expect(phaseLine(view(DEE, { tour: '' }))).toBeNull()
+  })
+})
+
+describe('a count that has run out with no departure heard', () => {
+  /*
+   * A host gone silent mid-window stays on the Lab until the party's sweep, so for 10–15 s nothing
+   * arrives: the window's time is up on every screen and the bus has not left. Swept through the
+   * whole window and past it, for every viewer the window has, the line never says the bus leaves
+   * in a time that has already passed — and once it is out, it says one thing and holds it, so a
+   * screen reader reading it hears it once, not a new sentence every second.
+   */
+  const yes = { tour: 'tour0001', n: 2, toy: 'fourrow', leaves: null }
+  const viewers: [string, string, Partial<View>, Partial<Bus>][] = [
+    ['the guide, going', ANN, { consent: yes }, {}],
+    ['a rider asked', BO, {}, {}],
+    ['a non-rider invited', DEE, {}, {}],
+    ['a rider going, with the host gone quiet', BO, { consent: yes }, { ready: [0, 1] }],
+  ]
+  it('never "0 s", and one sentence from the moment it is out until the bus moves', () => {
+    for (const [who, me, v, over] of viewers) {
+      const due = NOW + 3000
+      const at = (now: number) =>
+        view(
+          me,
+          {
+            phase: 'ready',
+            toy: 'fourrow',
+            ready: [0],
+            readyAt: due - KNOBS.READY_MS,
+            due,
+            stops: [stop('lamps')],
+            ...over,
+          },
+          { ...v, now },
+        )
+      const out = new Set<string>()
+      const above = new Set<string>()
+      for (let now = due - 2750; now <= due + 15_000; now += 250) {
+        const line = phaseLine(at(now))!.text
+        const top = busLine(at(now))!.text
+        const left = Math.ceil((due - now) / 1000)
+        if (now < due) {
+          /* the count, as it was: a whole second, and never less than one */
+          expect([who, now - due, line]).toEqual([
+            who,
+            now - due,
+            expect.stringContaining(`The bus leaves in ${left} s.`),
+          ])
+          expect([who, now - due, top]).toEqual([
+            who,
+            now - due,
+            expect.stringContaining(` ${left} s`),
+          ])
+        } else {
+          expect([who, now - due, line]).toEqual([
+            who,
+            now - due,
+            expect.stringContaining(ABOUT_TO_LEAVE),
+          ])
+          out.add(line)
+          above.add(top)
+        }
+        expect([who, now - due, line]).toEqual([
+          who,
+          now - due,
+          expect.not.stringMatching(/\b0 s\b/),
+        ])
+        expect([who, now - due, top]).toEqual([
+          who,
+          now - due,
+          expect.not.stringMatching(/\b0 s\b/),
+        ])
+      }
+      expect([who, [...out]]).toEqual([who, [expect.any(String)]])
+      expect([who, [...above]]).toEqual([who, [expect.stringMatching(/^🚌 .*about to leave…$/)]])
+    }
+  })
+  it('in the words of the plan, a sentence each', () => {
+    expect(ABOUT_TO_LEAVE).toBe('The bus is about to leave…')
+    const late = (me: string, v: Partial<View> = {}, over: Partial<Bus> = {}) =>
+      view(
+        me,
+        {
+          phase: 'ready',
+          toy: 'fourrow',
+          ready: [0],
+          readyAt: NOW - 20_000,
+          due: NOW - 5000,
+          stops: [stop('lamps')],
+          ...over,
+        },
+        v,
+      )
+    expect(text(late(ANN, { consent: yes }))).toBe(
+      "You're going to Four in a row. 1 going so far. The bus is about to leave…",
+    )
+    expect(text(late(BO))).toBe('Next stop: Four in a row. Going? The bus is about to leave…')
+    expect(text(late(DEE))).toBe(
+      'Next stop: Four in a row. The bus is about to leave… Press Take me there to come along.',
+    )
+    expect(busLine(late(DEE))?.text).toBe('🚌 Four in a row: about to leave…')
+    expect(busLine(late(BO, { consent: yes }))?.text).toBe(
+      "🚌 You're going to Four in a row: about to leave…",
+    )
   })
 })

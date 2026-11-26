@@ -217,6 +217,17 @@ export const SHARING_OFF =
 export const TOUR_BACK = 'The party tour is back.'
 export const twoStartsWords = (v: View, starter: string) =>
   `Two tours started at once; this one is ${nameOf(v, starter)}'s. Press Take me there at the first stop to ride.`
+/**
+ * The window's time is up and the departure has not been heard. ⚠️ NOT "THE BUS LEAVES IN 0 s",
+ * which is what the count said once it ran out: true for the moment a departure takes to arrive,
+ * and untrue for as long as a host gone silent stays on the Lab — measured on the dev call, 12.6 to
+ * 15.2 s, until the party's sweep let somebody else take the window over. One sentence, and it
+ * holds until the bus moves: nothing about it changes by the second, so it is read once.
+ */
+export const ABOUT_TO_LEAVE = 'The bus is about to leave…'
+/** "The bus leaves in 12 s." while the window is open, then what is true once it is not */
+const leavesWords = (v: View) =>
+  v.now < v.bus.due ? `The bus leaves in ${secs(v.bus.due - v.now)} s.` : ABOUT_TO_LEAVE
 /** a button whose request is in flight: at most 3 s, then the button comes back */
 export const PENDING = { roll: 'Rolling…', ready: 'Going…' } as const
 /**
@@ -304,7 +315,7 @@ function readyLine(v: View): Line {
   const b = v.bus
   const toy = b.toy!
   const t = toyOf(v, toy)
-  const leaves = `The bus leaves in ${secs(b.due - v.now)} s.`
+  const leaves = leavesWords(v)
   if (!v.toy(toy))
     return { text: `Next stop: ${NOT_IN_LAB}, so you'll sit this one out.`, buttons: [] }
   if (v.myToy === toy) return { text: `Next stop: ${t}. You're already here.`, buttons: [] }
@@ -518,16 +529,17 @@ export function busLine(v: View): Line | null {
   if (b.phase === 'ready') {
     const toy = b.toy!
     if (!v.toy(toy) || v.myToy === toy) return null
-    const s = secs(b.due - v.now)
+    /* the count, or once it is out with no departure heard, what readyLine says then */
+    const when = v.now < b.due ? ` in ${secs(b.due - v.now)} s` : ': about to leave…'
     const n = b.stops.length + 1
     if (yes(v, n, toy))
       return {
-        text: `🚌 You're going to ${toyOf(v, toy)} in ${s} s`,
+        text: `🚌 You're going to ${toyOf(v, toy)}${when}`,
         buttons: [answer('stay', 'Stay here', n, toy)],
       }
     if (i >= 0 && b.no.includes(i)) return null
     return {
-      text: `🚌 ${toyOf(v, toy)} in ${s} s`,
+      text: `🚌 ${toyOf(v, toy)}${when}`,
       buttons: [answer('take', 'Take me there', n, toy)],
     }
   }
