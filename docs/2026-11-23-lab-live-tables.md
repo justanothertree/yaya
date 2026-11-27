@@ -33,8 +33,15 @@ room.ts asked it twice, with a sort each time: `hostOf` as `[room.me, ...room.pr
 which takes a whole room, and the host-before half of `answersHello` again, of plain values. Now
 `lowest(me, present)` answers it once, from ids alone, and both read it: `hostOf` is
 `lowest(room.me, room.present)` and `answersHello` asks whether I am `lowest` among everybody but the
-newcomer. Nothing that goes on the wire changes, and the rest of this section is how that is known
-rather than believed. No client, relay or edge function behaves differently.
+newcomer. The refactor itself (d0546785) changes nothing that goes on the wire, and the golden and
+the measurements below are how that is known rather than believed.
+
+⚠️ **The fixes that follow it DO change what clients send** (58e46345, from review, and the commit
+after it, from verification). A tab now hands its host the room it holds when the host shows it
+lacks it, and a host shown a move made against a board newer than its own says `hello` again. Both
+are in room.ts, which every live call game runs on (Four in a row, Reversi, Chess, Lamps and the
+rest of `src/gpu/*Room.ts`), so both reach production when this branch merges. Neither reaches the
+relay or lab-move.
 
 ### The golden, recorded before the change
 
@@ -85,7 +92,8 @@ it. The ids differ in the first digit, the last and the middle, and use the lett
   | the hello counting the newcomer, against the first recording | room.test.ts alone, 1                                                                                                                      |
   | the hello counting the newcomer, against the recording kept  | 2: the golden (2 lines gone: Ann's answer and Bo's freeing of the seat) and room.test.ts                                                   |
 
-- room.test.ts and roomModes.test.ts are unchanged (same md5 as 8b4d87ea) and green: 35 tests.
+- At d0546785, room.test.ts and roomModes.test.ts were unchanged (same md5 as 8b4d87ea) and green:
+  35 tests. The fixes below add to room.test.ts and pass the clock to every `receive`.
 - Every one of the 39 `src/gpu/*Room.ts` files and lab-move's `core.ts` imports room.ts with
   `import type` only, checked by parsing every import of it.
   `node scripts/lab-move-bundle.mjs --check` passed without a rebuild, the committed bundle's md5 is
@@ -110,8 +118,8 @@ it. The ids differ in the first digit, the last and the middle, and use the lett
     same board, because the host was consistently the wrong person (Cy); only the wire said so.
   - **Seen in one run of three:** when Cy's presence reaches Ann before Bo's, Ann is for a moment the
     lowest id she can see, and announces the empty room she holds, at seq 0. Every tab ignores it as
-    older. `present()` is untouched here, so this is how the code behaved before too; it costs one
-    message.
+    older. The refactor left `present()` untouched, so this is how the code behaved before too; it
+    costs one message, and the fixes below leave it as it was.
   - **The first run read "Cy's drops do nothing", and the probe was wrong.** At 1280 × 900 the
     canvas's centre sits under the fixed call dock, so a press there lands on the dock. The probe
     now scrolls the grid into view and refuses to press unless the canvas is what is under the point.
@@ -170,10 +178,106 @@ Measured, 26 Nov 2026, 19:30–20:05 EST:
   the board by Cy, once, 10.9 s after his tab opened. With the hello's debt taken out of room.ts on
   disk, the same run left Al at "Take a seat to play" with no discs after 17 s.
 
+### What verification found, 27 Nov 2026
+
+An independent verification of the review's fixes confirmed two faults that 58e46345 brought in,
+an older stall that its new comment said it covered, and this section's own lead saying nothing on
+the wire changes. Each fault has a test that failed first.
+
+- **A roster tick between a newcomer's hello and its answer sent a whole room nobody needed.** The
+  hello leaves every tab that is not to answer it owing the new host, and the answer, a hop behind,
+  pays that. Paid "at the next `present`", a tick falling inside that hop sent the room first.
+  Nothing was lost and every tab ended on the same room, but it happened on every live game. What
+  is owed now waits `OWE_MS` (a second) from when it was owed, so `receive` takes the clock as
+  `present` does (useLabRoom passes `performance.now()` to both), and `hostBehind` is that time
+  rather than a flag.
+- **What was owed could reach every player but a watching host, and then the table stopped.** Al
+  hosts and watches. The room Bo's move made reaches Cy and is lost on its way to Bo; Al's toy
+  remounts, and Bo, the host before him, answers from the room before it. Cy owes Al hers and pays
+  it once, and that is lost on its way to Al alone. Both players were then ahead of their host, and
+  nobody owed anybody: Cy's room said Al published it, so the late-copy rule read him as late. A
+  quiet host says nothing, so every move was refused as made against a board that had changed.
+  Before 58e46345 there was no repair to lose, and the first loss alone left Bo and Al on one board,
+  so the game went on from it. **What shows a host it is behind is a move made against a board newer
+  than its own:** the host refuses it, as before, and says `hello` again, which everybody answers as
+  they would a newcomer's. A move against an older board is the ordinary race, a mover a state
+  behind, and is still refused quietly.
+- **The header said that should a newcomer's answer never come, whoever holds the room hands it
+  on.** That is true of an answer that never went out. An answer that went out and was lost on its
+  way to the newcomer alone left Cy, who heard it, owing nothing, and Bo, who sent it, with nothing
+  more to do, so the newcomer hosted an empty board and refused every move. That stall is older
+  than these branches: 8b4d87ea and origin/main stall the same way. The rule above covers it too,
+  from the first move made against it, and the header now says which repair covers which case.
+- **This section's lead said nothing on the wire changes**, and so did the 35-test line and the
+  `present()` line. All three were true of d0546785 alone, and now say so; Left names the change.
+
+Measured, 27 Nov 2026, 05:34–06:01 EST:
+
+- **Red first.** On 58e46345's room.ts, 5 tests: the tick test (Cy's tick sent the game 0, 200 and
+  999 ms after the hello), the lost-repair test (seqs 4, 5 and 5 after Cy's move, for good), the
+  lost-answer test (Al still at seq 0), the move test in "somebody else's message" (no hello for a
+  move at a newer seq), and "a host carrying on from a room that missed the last state", which now
+  also asks that a look within `OWE_MS` of the debt sends nothing (it sent at once).
+- **Mutations of room.ts, each made once and put back with its md5 checked, red counted over
+  `src/lab/social`.** Every one went red. What is owed going at the next look again, 2; a move
+  against a newer board refused quietly again, 3; a hello for every stale move, older ones too, 1;
+  what is owed never paid, 4; a hello's debt timed from 0 rather than from when it was owed, 1; an
+  older room's debt timed from 0, 1.
+- **roomWire.test.ts's recording is byte for byte unchanged**, and room.test.ts's arrival counts
+  hold: 3 sends for a higher id joining, 10 for a fresh toy filling.
+- **The verification's own timed model**, 4,000 sessions a case: each link in order with a random
+  hop, every tab's 5 s tick at a random phase, and the newcomer's `where` landing up to half a
+  second either side of their toy mounting. Sessions that sent one room more than three:
+
+  | Case                                    | 58e46345 | This fix | One relay, 58e46345 | One relay, this fix |
+  | --------------------------------------- | -------- | -------- | ------------------- | ------------------- |
+  | Bo joins Ann and Cy, hops 100–300 ms    | 228      | 59       | 162                 | 0                   |
+  | the same, hops 30–80 ms                 | 86       | 34       | 47                  | 0                   |
+  | with Dee watching too, hops 100–300 ms  | 452      | 137      | 320                 | 0                   |
+  | Bo, the host, remounts, hops 100–300 ms | 244      | 83       | 165                 | 0                   |
+
+  Every session left on the fix is the answer overtaking the hello at the tab that owes, which that
+  model allows because every link has its own hop. "One relay" sends everything up to one server
+  and down again in that server's order, over one ordered connection a tab, which is the shape of
+  the call's Supabase broadcast: there the answer can overtake the hello only between two of
+  Supabase's own servers. No session diverged in any column.
+
+- **The dev call** (Playwright's headless Chromium, the dev server on :5401 with placeholder
+  Supabase values, ids Al …0001, Bo …0002, Cy …0003; Bo and Cy dropped three discs, then Al
+  arrived), 05:50–05:54 EST. The two runs of 26 Nov, 8 of 8: with Bo there, Bo alone handed Al the
+  board, Cy sent nothing, and Cy's next disc landed on all three, published by Al; with Bo's `lab`
+  messages stopped at his tab, Cy handed Al the board once, 8.9 s after his tab opened. And a third,
+  for the lost answer: Al's tab dropped Bo's answer to his hello, and 7 s later Al still showed
+  "Take a seat to play" with no discs. Cy pressed a column; Al said `hello` again, Bo answered, and
+  Al showed the three discs. Cy's next disc landed on all three tabs, published by Al. 5 of 5. With
+  the host's second hello taken out of room.ts on disk, Al stayed at no discs through both of Cy's
+  presses, 3 of 5. Put back, md5 the same.
+- **Gates on this tree, 05:55–06:01 EST:** `npm run typecheck`, `npm run lint` and `npm run build`
+  passed. `npm run test` passed 408 files, 6,190 tests, 6 skipped: 58e46345's 6,186 and these 4.
+  `node scripts/lab-move-bundle.mjs --check` passed with no rebuild, the bundle's md5 unchanged
+  (3d2b8570…), because room.ts reaches lab-move as types only. `prettier --check` passed on every
+  changed file. The built GpuLab chunk holds `hostBehind`, which 8b4d87ea's room.ts does not have.
+
 ### Left
 
-- After the Pages deploy, Evan plays one move of Four in a row on a call (the plan's §8). Nothing in
-  this step reaches the relay or lab-move.
+- After the Pages deploy, Evan plays one move of Four in a row on a call (the plan's §8). That
+  reaches the refactor and nothing the fixes change.
+- ⚠️ **The fixes change what every live call game's clients send, and a call with everybody present
+  never reaches the change.** One check by hand comes close: the friend with the lowest id on the
+  call reloads the toy mid-game, and the next move lands on every tab. The others owe that friend
+  the room from their hello until somebody's answer pays it, so nothing more should be sent. The
+  room handed on for a debt, and the host's second hello, need a message lost on its way to one
+  tab, which nobody can arrange on a real call. They were checked on the dev calls above and in
+  room.test.ts. Nothing in this step reaches the relay or lab-move.
+- **Older than these branches, in production now, and not fixed here:**
+  - A host's state lost on its way to every player leaves the host ahead of everybody, and every
+    move is refused as made against an older board. It mends at the next change only the host can
+    make: a sit, a stand, a new game, or somebody arriving.
+  - A host whose toy reopens and is handed an older room than the one it published is read as late
+    by every tab holding the room it published, because the late-copy rule cannot tell a new
+    session from a late copy. A sit, stand or new game it decides on the older room says nothing
+    to them. A move made against the newer room now makes it ask again (the lost-repair test is
+    this case).
 
 ## Step 2: a Supabase outage is not a refusal, and /health says which build is running
 

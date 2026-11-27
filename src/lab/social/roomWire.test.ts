@@ -89,7 +89,8 @@ function play(): Row[] {
   const flush = (alive: string[]) => {
     for (let guard = 0; wire.length && guard < 1000; guard++) {
       const { from, body } = wire.shift()!
-      for (const id of alive) if (id !== from) take(id, receive(rules, rooms.get(id)!, from, body))
+      for (const id of alive)
+        if (id !== from) take(id, receive(rules, rooms.get(id)!, from, body, now))
     }
   }
   const does = (id: string, a: Action<number>, alive: string[]) => {

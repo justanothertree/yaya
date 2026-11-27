@@ -107,7 +107,7 @@ function party<T, M>(
         const { from, body } = wire.shift()!
         for (const id of alive) {
           if (id === from) continue
-          const s = receive(rules, n.get(id), from, body)
+          const s = receive(rules, n.get(id), from, body, now)
           rooms.set(id, s.room)
           send(id, s.out)
         }
@@ -202,7 +202,7 @@ describe('the lobby', () => {
       next: 0,
       game: race.fresh(),
     }
-    expect(receive(versusOnly, r, 'ann', forged).room).toBe(r)
+    expect(receive(versusOnly, r, 'ann', forged, 0).room).toBe(r)
   })
 })
 

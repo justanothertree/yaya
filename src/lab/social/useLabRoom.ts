@@ -100,7 +100,7 @@ export function useLabRoom<G, M>(sub: string, rules: Rules<G, M>): LabRoom<G, M>
     take(opened.room, opened.out)
     const off = onParty((m) => {
       if (m.kind !== 'lab' || !roomRef.current) return
-      const s = receive(rulesRef.current, roomRef.current, m.from, m.body)
+      const s = receive(rulesRef.current, roomRef.current, m.from, m.body, performance.now())
       if (s.room !== roomRef.current || s.out.length) take(s.room, s.out)
     })
     return off
