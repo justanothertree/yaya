@@ -296,3 +296,30 @@ describe('steps 12–14', () => {
     )
   })
 })
+
+describe('a name exactly as its owner wrote it', () => {
+  /* review of 26 Nov 2026: every name above is three letters or fewer, with nothing in it but
+     letters, so escaping an apostrophe or cutting a long name here would have passed. The roster
+     cuts a name to 40 (§1); the words never cut, escape or rewrite one */
+  const DARCY = '00000000-0000-0000-0000-0000000000da'
+  const LONG = '00000000-0000-0000-0000-0000000000aa'
+  const long = 'Maximiliana Bartholomew-Featherstonehaugh' // 41: the words pass on what they are given
+  const names: View = {
+    me: ANN,
+    name: (id) => ({ [DARCY]: "D'Arcy", [LONG]: long, [CY]: 'O’Brien & <b>Co</b>' })[id] ?? null,
+  }
+  it('an apostrophe, a long name, and what would be markup, through every kind of sentence', () => {
+    expect(long).toHaveLength(41)
+    expect(stackToppedWords(names, DARCY)).toBe("D'Arcy's well counts as topped out.")
+    expect(refereeFooter(names, DARCY)).toBe("D'Arcy's browser runs this game.")
+    expect(spadesWaitWords(names, DARCY, 41_200)).toBe(
+      "Waiting for D'Arcy. The computer takes their chair in 0:42.",
+    )
+    expect(chairName(names, LONG, true).name).toBe(long)
+    expect(waitingWords(names, LONG)).toBe(`Waiting for ${long} to connect…`)
+    expect(moveToWords(names, CY, 'North')).toEqual({
+      text: 'Move O’Brien & <b>Co</b> here',
+      named: 'Move O’Brien & <b>Co</b> to North',
+    })
+  })
+})

@@ -19,7 +19,7 @@
  * the two kinds of table can never pick different hosts from the same people. Everybody else asks
  * (`sit`, `stand`, …) and the host answers with `state`, the whole table. A host may be watching:
  * it only writes chairs and never plays. `newer` and `answersHello` are room.ts's too, imported
- * rather than copied.
+ * rather than copied; `later` puts one key before `newer`'s, how far the rounds have got.
  *
  * The CAPTAIN sets the table — mode, options, computers, who sits where — and starts each round.
  * Derived, never elected: of the seated people here, whoever sat earliest. That is Evan's answer
@@ -41,8 +41,16 @@
  * state sent is held, and the next state carries every change since — whole state means the
  * latest is all anybody needs. Answering a hello and announcing the table to somebody who has
  * just arrived are not changes and never wait: a newcomer handed nothing is a newcomer who cannot
- * sit. That is the plan's own count of an arrival, two states (§3.6). The caller ticks `present`
- * at `dueAt` so a held change goes out on time.
+ * sit. That is the plan's own count of an arrival, two states (§3.6). Nor does a fold of who has
+ * heard the code. A table owed to a host that lacks it waits a second of its own, for another
+ * reason (owesHost). The caller ticks `present` at `dueAt` so whatever is held goes out on time.
+ *
+ * ⚠️ A STATE SAYS WHO PUBLISHED IT (`by`). Whoever hands a table on — a hello's answer from the
+ * publisher, what is owed a host — sends the host's state as it was, so every tab breaks a tie
+ * between two hosts on the same id. Recorded as its relayer's, a relayed seq 1 lost the tie at a
+ * newcomer that a direct copy would have won, and two codes stood on one call (review of
+ * 26 Nov 2026). Who is listened to is still the sender: `by` is a name in the state, like a
+ * chair's.
  *
  * ⚠️ A MOVE NAMES WHO IS MOVED. `swap {a, b}` alone is undone by its own repeat and lands on the
  * wrong person when it arrives after the table has changed — Bo stands, Dee sits where he was, and
@@ -64,9 +72,10 @@
  *   fresh one at seq 1. Were the first mint folded into the first sit, that fresh seq 1 would beat
  *   a real one from a higher id (newer's tie-break) and the sit would be lost. As its own state,
  *   the worst a fresh host can replace is another fresh table, and every tab ends with one code:
- *   the lower sender's (test 4.5).
+ *   the lower publisher's (test 4.5).
  * - **Re-minted between rounds when anybody who heard it has left the call**, never mid-round, so a
- *   round is never cut off from its own room.
+ *   round is never cut off from its own room. A start still held for the pace has begun for
+ *   nobody, so a leaver in that second re-mints too (betweenRounds).
  * - ⚠️ `knew` IS EVERYONE WHO HAS HEARD THIS CODE, AS FAR AS THE HOST CAN TELL — NOT ONLY THOSE ON
  *   THE CALL WHEN IT WAS MINTED, which is what the plan wrote. Somebody who joined the call
  *   afterwards heard the code in the next state just the same, and the plan's rule would let them
@@ -75,10 +84,11 @@
  *   is first handed the table — the host folds its call roster into `knew`, in a state of its own
  *   that goes out at once: bookkeeping, like a hello's answer, and lost if it waited and the
  *   newcomer left within the second. A newcomer with the lowest id, new to the call, costs that
- *   one state more than at a call table (4 sends, not 3).
- * - `knew` holds at most 16, which cannot hide a leaver: a call holds at most 12 people
- *   (voiceSession's CALL_HARD_LIMIT), so a full `knew` always names somebody who has left, and the
- *   next round re-mints.
+ *   one state more than at a call table (4 sends, not 3). And somebody who reaches the host's
+ *   roster just after a state went out is counted as having heard it (heardFirst).
+ * - `knew` holds at most 16 different people (readChairs refuses a repeat), which cannot hide a
+ *   leaver: a call holds at most 12 (voiceSession's CALL_HARD_LIMIT), so a full `knew` always
+ *   names somebody who has left, and the next round re-mints.
  *
  *
  * WHO IS LISTENED TO
@@ -107,7 +117,10 @@ export type Chairs<O> = {
   sub: string
   me: string
   seq: number
-  /** who sent the state we hold — breaks a tie between two hosts' equal seqs */
+  /**
+   * who published the state we hold, as it says (`by`), whoever handed it to us: breaks a tie
+   * between two hosts' equal seqs, the same way on every tab
+   */
   from: string
   /** everyone else on this toy, by id */
   present: string[]
@@ -128,6 +141,16 @@ export type Chairs<O> = {
   sent: number | null
   /** a change made here and not yet sent, waiting for PACE_MS */
   owed: boolean
+  /**
+   * The round `n` of the last state this tab sent or took off the wire. A round on in this table
+   * past it is a start still held for the pace, which nobody has heard, so nobody has begun it
+   */
+  told: number
+  /**
+   * Since when (this tab's clock) the host has shown me it lacks the table I hold, or null: a
+   * `present` PACE_MS on sends it (owesHost)
+   */
+  hostBehind: number | null
 }
 
 export type LiveRules<O> = {
@@ -165,10 +188,11 @@ export type Ask<O> =
   | { t: 'start'; n: number }
   | { t: 'over'; n: number; result: unknown }
 
-/** the table on the wire: a chair is [id, since, cpu] */
+/** the table on the wire: a chair is [id, since, cpu]; `by` is who published it */
 export type StateBody = {
   t: 'state'
   seq: number
+  by: string
   chairs: [string | null, number, number | null][]
   mode: Mode
   opts: unknown
@@ -185,11 +209,17 @@ export type Step<O> = { table: Chairs<O>; out: Live[] }
 /** the fields of a state, as readChairs reads them off the wire */
 export type Read<O> = Pick<
   Chairs<O>,
-  'seq' | 'chairs' | 'mode' | 'opts' | 'code' | 'knew' | 'round'
+  'seq' | 'from' | 'chairs' | 'mode' | 'opts' | 'code' | 'knew' | 'round'
 >
 
 /** the least time between two states that carry changes */
 export const PACE_MS = 1000
+/**
+ * How long after a state goes out somebody can reach the host's roster having already heard it: a
+ * state goes to everybody subscribed to the call, and the host counts them once their voice hello
+ * has reached it, a hop later (well under a second; this allows three)
+ */
+export const ROSTER_LAG_MS = 3000
 export const CODE = /^[A-Za-z0-9_-]{22}$/
 const MAX_SEQ = 1e9
 const MAX_ROUND = 1e6
@@ -225,6 +255,8 @@ export function openChairs<O>(rules: LiveRules<O>, me: string): Step<O> {
     },
     sent: null,
     owed: false,
+    told: 0,
+    hostBehind: null,
   }
   return { table, out: [{ v: 1, sub: rules.sub, t: 'hello' }] }
 }
@@ -290,9 +322,35 @@ export function startable<O>(
 export const teamOf = <O>(rules: LiveRules<O>, c: Chairs<O>, chair: number): number =>
   rules.team ? rules.team(c, chair) : c.mode === 'versus' ? chair : rules.n === 4 ? chair % 2 : 0
 
-/** when a held change is due to go out, or null when nothing is held */
-export const dueAt = (c: Chairs<unknown>): number | null =>
-  c.owed && c.sent !== null ? c.sent + PACE_MS : null
+/** when something held is due to go out — a change waiting for the pace, a table owed the host */
+export function dueAt(c: Chairs<unknown>): number | null {
+  const change = c.owed && c.sent !== null ? c.sent + PACE_MS : null
+  const owed = c.hostBehind === null ? null : c.hostBehind + PACE_MS
+  return change === null ? owed : owed === null ? change : Math.min(change, owed)
+}
+
+/** no round has begun for anybody: none is on, or the one on is a start still held for the pace */
+const betweenRounds = (c: Chairs<unknown>) => c.round.phase !== 'on' || c.round.n > c.told
+
+/** how far a table's rounds have got: a start is past the open table before it, an end past both */
+const progress = (r: Round) => r.n * PHASES.length + PHASES.indexOf(r.phase)
+/**
+ * Whether state `s` is later than table `c`: the higher seq; at an equal seq, which only two hosts
+ * for a moment can make, the one further into its rounds; and then room.ts's `newer`, the lower
+ * publisher's.
+ *
+ * ⚠️ A ROUND STARTED IS NOT UNDONE BY A TIE (review of 26 Nov 2026). Ann, whose view had not yet
+ * caught up with Bo, still hosted; she took Cy's start, Bo took Dee's sit, both at one seq. By
+ * publisher alone Bo's won, so Cy and Dee watched round 1 begin and end without a move, and begin
+ * again when the start reached Bo; a start Ann held for the pace was simply lost. A lost sit costs
+ * a press; a lost start costs a round its referee may already be playing (step 5).
+ */
+const later = (s: Pick<Read<unknown>, 'seq' | 'from' | 'round'>, c: Read<unknown>) =>
+  s.seq !== c.seq
+    ? s.seq > c.seq
+    : progress(s.round) !== progress(c.round)
+      ? progress(s.round) > progress(c.round)
+      : newer(s.seq, s.from, c.seq, c.from)
 
 /* ── what goes out ─────────────────────────────────────────────────────────────────────────── */
 
@@ -301,6 +359,7 @@ export const wireOf = <O>(c: Chairs<O>): Live => ({
   sub: c.sub,
   t: 'state',
   seq: c.seq,
+  by: c.from,
   chairs: c.chairs.map((ch) => [ch.id, ch.since, ch.cpu]),
   mode: c.mode,
   opts: c.opts,
@@ -337,8 +396,11 @@ function heard<O>(c: Chairs<O>): Chairs<O> {
 function send<O>(c: Chairs<O>, now: number, paced: boolean): Step<O> {
   if (paced && c.sent !== null && now - c.sent < PACE_MS)
     return { table: { ...c, owed: true }, out: [] }
-  const told = isHost(c) ? heard(c) : c
-  return { table: { ...told, sent: now, owed: false }, out: [wireOf(told)] }
+  const said = isHost(c) ? heard(c) : c
+  return {
+    table: { ...said, sent: now, owed: false, told: said.round.n, hostBehind: null },
+    out: [wireOf(said)],
+  }
 }
 const owing = <O>(c: Chairs<O>, now: number): Step<O> =>
   c.owed && c.sent !== null && now - c.sent >= PACE_MS ? send(c, now, false) : { table: c, out: [] }
@@ -359,7 +421,7 @@ function publish<O>(
   const seq = base.seq + 1
   let next: Chairs<O> = { ...base, ...change(seq), seq, from: c.me }
   // between rounds, judged before this change: a round starts on a code nobody gone still holds
-  if (c.code && c.round.phase !== 'on' && stale(next)) next = minted(next)
+  if (c.code && betweenRounds(c) && stale(next)) next = minted(next)
   return send(next, now, true)
 }
 
@@ -503,6 +565,7 @@ export function readChairs<O>(rules: LiveRules<O>, body: unknown): Read<O> | nul
   if (!Number.isInteger(b.seq)) return null
   const seq = b.seq as number
   if (seq < 1 || seq > MAX_SEQ) return null
+  if (!isId(b.by)) return null
   if (!Array.isArray(b.chairs) || b.chairs.length !== rules.n) return null
   const chairs: Chair[] = []
   for (const x of b.chairs as unknown[]) {
@@ -523,6 +586,7 @@ export function readChairs<O>(rules: LiveRules<O>, body: unknown): Read<O> | nul
   if (typeof b.code !== 'string' || !CODE.test(b.code)) return null
   if (!Array.isArray(b.knew) || b.knew.length > MAX_KNEW) return null
   if (!(b.knew as unknown[]).every(isId)) return null
+  if (new Set(b.knew).size !== b.knew.length) return null
   const r = b.round as Partial<Record<string, unknown>> | null
   if (!r || typeof r !== 'object') return null
   if (!isCount(r.n, MAX_ROUND)) return null
@@ -535,6 +599,7 @@ export function readChairs<O>(rules: LiveRules<O>, body: unknown): Read<O> | nul
   if (r.result !== null && result === null) return null
   return {
     seq,
+    from: b.by,
     chairs,
     mode: b.mode as Mode,
     opts,
@@ -548,6 +613,36 @@ export function readChairs<O>(rules: LiveRules<O>, body: unknown): Read<O> | nul
     },
   }
 }
+
+/**
+ * Whether what `from` just said shows my host without the table I hold, which I then owe it: a
+ * hello from my new host that somebody else is to answer, or an earlier state from my host.
+ *
+ * ⚠️ THE HOST CAN LACK THE TABLE EVERYBODY ELSE HOLDS, AND NOTHING USED TO SAY SO (review of
+ * 26 Nov 2026). room.ts's `owes` has the first way: a lowest-id newcomer whose hello the host
+ * before them never answers, because they closed the toy or hung first. Here there is a second. A
+ * host's last state still on its way when the host hangs up is refused by every tab whose roster
+ * has already let them go (only somebody on my call is listened to), so the next host can carry on
+ * from the table before it while everybody else holds it: its first state tied that one's seq and
+ * lost the tie, a round on at Dee and none at Cy, until the next change wiped the round out.
+ *
+ * What is owed goes at a `present` PACE_MS on (dueAt says when), unless that table or a later one
+ * reaches me first from anybody: the host has heard it too. ⚠️ THE WAIT IS LONGER THAN room.ts's,
+ * WHICH PAYS AT THE NEXT LOOK, BECAUSE A HOST HERE HOLDS CHANGES FOR THE PACE: the tab owing is
+ * often a second behind the old host's own held change, which the answer answersHello names
+ * carries. Paid at once, the stale table reached the newcomer first, the newcomer started a round
+ * on it, and the answer undid the round (the review's fuzzer, seed 246 of a realistic call, on
+ * this fix's first draft).
+ *
+ * Two earlier states say nothing, as in room.ts: a newcomer's own fresh table (seq 1, minted by
+ * its sender), which is its hello again and can come more than once as its roster fills; and a
+ * late copy of a state the host published itself, to somebody holding a later one it published.
+ */
+const owesHost = (c: Chairs<unknown>, from: string, heard: 'a hello not mine' | Read<unknown>) =>
+  c.hostBehind === null &&
+  c.seq > 0 &&
+  from === hostOf(c) &&
+  (heard === 'a hello not mine' || (!(heard.seq === 1 && heard.from === from) && c.from !== from))
 
 /** somebody else's message, off the wire — everything in it checked before it is believed */
 export function receive<O>(
@@ -564,20 +659,44 @@ export function receive<O>(
   if (b.t === 'state') {
     const s = readChairs(rules, b)
     if (!s) return none
+    let next: Chairs<O> = c
     // a change of my own still held is older than this, whoever sent it
-    const next = newer(s.seq, from, c.seq, c.from) ? { ...c, ...s, from, owed: false } : c
+    if (later(s, c)) next = { ...c, ...s, owed: false, told: s.round.n, hostBehind: null }
+    // the table I hold, from anybody: the host has heard it too
+    else if (!later(c, s)) next = c.hostBehind === null ? c : { ...c, hostBehind: null }
+    else if (owesHost(c, from, s)) next = { ...c, hostBehind: now }
     /* that state went to the whole call: as host, everybody on it has now heard the code it
        carries, though I did not send it — the one way a newcomer with the lowest id is handed it.
        Said at once, as a hello's answer is: held for PACE_MS, it is lost if I leave within it */
     if (isHost(next) && s.code === next.code && unheard(next).length) return send(next, now, false)
     return next === c ? none : { table: next, out: [] }
   }
-  if (b.t === 'hello')
-    return answersHello(c.me, c.present, from, c.seq, c.from) ? tell(c, now) : none
+  if (b.t === 'hello') {
+    if (answersHello(c.me, c.present, from, c.seq, c.from)) return tell(c, now)
+    return owesHost(c, from, 'a hello not mine')
+      ? { table: { ...c, hostBehind: now }, out: [] }
+      : none
+  }
   if (!isHost(c)) return none
   const a = readAsk(rules, b)
   return a ? decide(rules, c, from, a, now) : none
 }
+
+/**
+ * Whether somebody on my call who is not in `knew` reached my roster so soon after I last sent a
+ * state that it may have reached them first.
+ *
+ * ⚠️ A STATE GOES TO EVERYBODY SUBSCRIBED TO THE CALL, AND THE HOST'S ROSTER COUNTS THEM A HOP
+ * LATER (review of 26 Nov 2026). Eve joined while Ann hosted; Cy stood, and Ann's state went to
+ * the whole call, Eve included, before Ann's roster had her, so `knew` did not. Eve sat on that
+ * roster for as long as the table stayed quiet, hung up, and two rounds played on the code she had
+ * heard. Somebody who reaches the roster within ROSTER_LAG_MS of a state is counted, in a state of
+ * its own that goes out at once, as the fold on hearing does. Later than that they cannot have
+ * heard it, and cost nothing. A state the host hears rather than sends opens no such window: the
+ * fold on hearing counts the roster as it stands then, and somebody a hop behind it is left.
+ */
+const heardFirst = (c: Chairs<unknown>, now: number) =>
+  c.code !== '' && c.sent !== null && now - c.sent < ROSTER_LAG_MS && unheard(c).length > 0
 
 /**
  * Who else is on this toy and on the call, at time `now` (this tab's clock): the host announces
@@ -595,11 +714,20 @@ export function present<O>(
   const call = [...new Set(roster)].filter((id) => id !== c.me).sort()
   const wasHost = isHost(c)
   const here = new Set([c.me, ...others])
-  const missing: Record<string, number> = {}
-  for (const ch of c.chairs) if (ch.id && !here.has(ch.id)) missing[ch.id] = c.missing[ch.id] ?? now
+  /* keyed by whatever id a chair holds, so nothing may be inherited: on a plain object
+     'constructor' reads back Object, `now - Object` is NaN, and that chair is held for ever */
+  const missing: Record<string, number> = Object.create(null)
+  for (const ch of c.chairs)
+    if (ch.id && !here.has(ch.id))
+      missing[ch.id] = Object.hasOwn(c.missing, ch.id) ? c.missing[ch.id] : now
   const next: Chairs<O> = { ...c, present: others, roster: call, missing }
-  if (!isHost(next)) return owing(next, now)
-  const between = next.round.phase !== 'on'
+  /* what I owe the host goes once it is due: nobody has handed it the table in that time. A host
+     owes nobody, and pays any debt it had as a guest with the table it tells (send) */
+  if (!isHost(next))
+    return next.hostBehind !== null && now - next.hostBehind >= PACE_MS
+      ? send(next, now, false)
+      : owing(next, now)
+  const between = betweenRounds(next)
   const gone = next.chairs.map(
     (ch) =>
       between && ch.id !== null && missing[ch.id] !== undefined && now - missing[ch.id] >= HOLD_MS,
@@ -610,6 +738,6 @@ export function present<O>(
     }))
   // a host who has just become one, or somebody new arrived: everybody hears the table as it is
   const arrived = others.some((id) => !c.present.includes(id))
-  if (!wasHost || arrived) return tell(next, now)
+  if (!wasHost || arrived || heardFirst(next, now)) return tell(next, now)
   return owing(next, now)
 }

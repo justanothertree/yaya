@@ -435,6 +435,17 @@ network with a call roster beside it.
    (which reads "black circle") and say "connecting" instead. **The Move button carries both
    forms** the plan gives, "Move Bo here" on its face and "Move Bo to North" for a screen reader.
 
+Three more, from the review below:
+
+10. **A state names who published it, `by`.** §3.1's state body gains one field, an id. A tab that
+    hands a table on sends the host's state as it was, so every tab breaks a tie between two hosts
+    on the same id. Who is listened to is still the sender, checked against my roster.
+11. **At one seq, a state further into its rounds wins before the lower publisher does.** §2.4
+    says the lower sender's state wins. It still does between two tables at the same point in
+    their rounds; between a round started and the same table not started, the start wins.
+12. **A tab that is not host sends a state when its host lacks the table it holds**, a second on.
+    §3.1 has states sent by the host alone. This is bookkeeping, like a hello's answer.
+
 ### Measured, 26 Nov 2026
 
 - **Tests:** `chairs.test.ts` holds 151 over room.test.ts's in-memory network with a call roster;
@@ -511,7 +522,141 @@ network with a call roster beside it.
   liveWords.ts, while two of busWords' sentences, as a control, are found. Nothing imports either
   file yet, so both tree-shake out entirely.
 
+### What review found, 26 Nov 2026
+
+Review confirmed fifteen findings against this step. Seven were faults in the table, five were
+gaps in the tests that let a guard be removed without anything going red, and three were small
+checks. Each is fixed below, and each fix has a test that failed first. The sixteenth finding was
+step 1's and is fixed in that section, in room.ts, which was merged in before this.
+
+**Faults in the table:**
+
+- **A host could lack the table everybody else held, and nothing ever told it.** There were two
+  ways in. A lowest-id newcomer is host at once, and `answersHello` names the host before them to
+  answer their hello. If that host closes the toy or hangs first, nobody answers, and the newcomer
+  hosts a fresh table nobody else accepts. When Bo's seq passed Cy's, Cy took his table whole and
+  lost her chair, the computer and the round she was playing. The other way is a host's last state
+  still on its way when the host hangs up. Every tab whose roster has already let the host go
+  refuses it, because only somebody on my call is listened to. So the next host carried on from
+  the table before it. Its first state tied that one's seq and lost the tie at Dee, who then
+  played round 1 alone. Cy hosted no round at all, until her next change wiped Dee's out. The fix
+  is room.ts's (owes): a tab owes its host the table it holds when it hears a hello from that host
+  that somebody else is to answer, or when the host shows it an earlier state. Here the debt waits
+  `PACE_MS` before it goes, and `dueAt` says when. room.ts pays at the next look instead. **The
+  first draft paid here at the next look too**, and the review's fuzzer caught it at seed 246 of
+  its realistic config. A host here holds changes for the pace, so the tab owing was a second
+  behind the old host's own held change. Its stale table reached the newcomer first, the newcomer
+  started a round on it, and the real answer undid the round.
+- **A state handed on was recorded as its relayer's.** Bo minted a code at seq 1 and closed the
+  toy, staying on the call. Cy hosted Bo's table and handed it to Ann, a lower-id newcomer, who
+  recorded it as Cy's. Her own fresh table won that tie, while Cy kept Bo's, so two codes stood on
+  one call until the next change. Ann never counted herself as having heard Bo's code, and when she
+  hung up it was not re-minted. States now carry `by`, as above.
+- **Two hosts for a moment could undo a round both of them had shown starting.** Ann's view had
+  not caught up with Bo, so she still hosted. She took Cy's start and Bo took Dee's sit, both at
+  one seq. By publisher alone Bo's state won, so Cy and Dee saw round 1 begin and then end without
+  a move, and begin again when the start reached Bo. A start Ann held for the pace was lost
+  outright. `later` puts how far the rounds have got before the publisher: a start beats the open
+  table before it, and an end beats the start.
+- **A start held for the pace went out on a code somebody who had just left had heard.** The held
+  table already said "on", so a leaver in that second was judged mid-round. `told` is the round of
+  the last state this tab sent or took off the wire. A round on in the table but past `told` has
+  begun for nobody, so it re-mints like any round between rounds (betweenRounds).
+- **Somebody who reached the host's roster a hop after a state could hear the code uncounted.** A
+  state goes to everybody subscribed to the call, and the host counts them only once their voice
+  hello arrives. Eve heard Cy's stand before Ann's roster had her, stayed silent while the table
+  was quiet, and hung up; two rounds then played on the code she had heard. Somebody who reaches
+  the roster within `ROSTER_LAG_MS` (3 s) of the host's last send is folded into `knew`, in a state
+  of its own that goes out at once. Later than that they cost nothing.
+- **A chair held by an id naming one of Object.prototype's keys was never freed**, and with it no
+  round could start: `missing` is room.ts's fix again.
+- **`knew` could hold the same id sixteen times**, and then a full `knew` named nobody who had
+  left. readChairs refuses a repeat, so `knew` holds sixteen different people.
+
+**Gaps in the tests, each closed with a test that goes red without its guard:** the guard against
+a re-mint mid-round in `publish` (a mid-round takeover after a leaver), and the one in `present`
+(a quiet table sending a state every second); seven halves of readChairs' checks that a neighbouring
+check had been covering (seq 0 with every since 0, a chair that is nothing or a list-like object, a
+code that is a list holding a good code, chairs, knew and starters that are list-like objects); the
+host's own copy in "somebody sitting does not take a second chair", which read a watcher's copy
+while the host's had Ann twice and every later state was refused; a host leaving and the next host
+announcing the table it holds; the seq bump in the fold, without which the fold lost the tie to
+the old host's lower id; and the no-op refusals for a mode already set, a computer at its own level
+and no computer to take away. liveWords.test.ts gets names with an apostrophe, 41 characters and
+what would be markup, each passed through untouched.
+
+**Measured, 26 Nov 2026, 20:05–20:50 EST:**
+
+- Tests: chairs.test.ts 188 (151 before), liveWords.test.ts 26 (25 before). The tests for the
+  seven faults, the new checks and what the repairs cost failed on c95544b3's chairs.ts, 24 of
+  them, each for the reason its name gives. The tests that close a gap passed on it, and go red
+  without their guard.
+- **Mutations of chairs.ts and liveWords.ts, 84, each made once and put back with both files' md5
+  checked, red counted over `src/lab/live`. Every one went red:**
+
+  | What was taken out                                                                               | Red                   |
+  | ------------------------------------------------------------------------------------------------ | --------------------- |
+  | owing on an unanswered hello; owing on an earlier state from the host                            | 4; 3                  |
+  | the debt never paid; paid at the next look; `dueAt` not saying when                              | 6; 1; 4               |
+  | paid by the same table, by a later one, by any send                                              | 2; 1; 1               |
+  | a fresh table, a late copy of the host's own, anybody's but the host's, a seq-0 table owed       | 1 each                |
+  | a state recorded as its relayer's; `by` the sender; `by` unchecked                               | 2; 5; 5               |
+  | a tie by publisher alone; rounds compared by number alone                                        | 3; 1                  |
+  | a held start counted as begun; in `present`, in `publish`; `told` not set on a send, on adopting | 1; 1; 1; 3; 1         |
+  | nobody counted for reaching the roster late; a window that never closes; no window               | 1 each                |
+  | a repeat in `knew` read                                                                          | 2                     |
+  | `missing` a plain object read with `??`; a plain object; no prototype read with `??`             | 4; 1; 4               |
+  | re-mint mid-round in `publish`; in `present`; both (the plan's 4.7 row)                          | 1; 2; 3               |
+  | a second chair; no announcement from a new host; the fold keeping its seq                        | 1; 2; 3               |
+  | a mode already set taken; a computer at its own level taken                                      | 1; 2                  |
+  | each of readChairs' 33 checks, a half of a line at a time                                        | 1 to 4 each           |
+  | the plan's rows again: 4.1, 4.3, 4.4, 4.5, 4.6, 4.9 (every tab answers; only the host)           | 15, 6, 1, 3, 50, 7, 4 |
+  | never re-mint; no fold on hearing; no pacing                                                     | 10; 3; 4              |
+  | the words: an apostrophe escaped, a name cut to 20 (twice), markup escaped                       | 1 each                |
+
+- **The review's own fuzzer** (fuzz.sim.ts, kept outside the repository and not committed: seeded
+  tables of two to six people with presence lag, repeats, delays and partitions, judged at every
+  step and at every quiet moment), with its adoption check reading `by` and its mid-round re-mint
+  check knowing a held start. The same 300 seeds per config, c95544b3's chairs.ts against this one:
+
+  | Config (300 seeds each)                                     | Split when quiet | Round started twice | Round gone back | Code held by a leaver |
+  | ----------------------------------------------------------- | ---------------- | ------------------- | --------------- | --------------------- |
+  | realistic: in order, 300 ms at most, presence 300 ms behind | 6 → 0            | 3 → 0               | 0 → 0           | 1 → 0                 |
+  | out of order up to 3 s, 10% repeated, presence exact        | 13 → 5           | 26 → 21             | 37 → 23         | 0 → 0                 |
+  | the same, with presence up to 1.5 s behind                  | 11 → 0           | 26 → 28             | 41 → 34         | 0 → 0                 |
+  | the same, with partitions and the roster up to 1 s behind   | 15 → 3           | 38 → 29             | 42 → 35         | 0 → 0                 |
+  | the same, and 8% of messages dropped                        | 40 → 40          | 42 → 25             | 42 → 25         | 2 → 0                 |
+
+  On 600 fresh seeds (301–900) the realistic config went from 8 splits, 2 rounds started twice,
+  4 rounds gone back and 1 code held by a leaver, to 1, 1, 3 and 0. The drop config went from
+  97 splits to 49. What is left is the window two hosts make while presence lags, which the plan
+  accepts (4.5), and the cases under Left.
+
+- Arrivals cost what they did: 3 sends for a higher id, 10 for four filling a fresh table, 4 for a
+  lower id new to the call (4.9), and a settle after each sends nothing more.
+- **Gates on the final tree, 20:40–20:50 EST:** `npm run typecheck`, `npm run lint` and
+  `npm run build` passed. `npm run test` passed 410 files, 6,400 tests, 6 skipped: the 6,356 before
+  this, step 1's 6 and these 38. `node scripts/lab-move-bundle.mjs --check` passed with no rebuild,
+  the bundle's md5 unchanged (3d2b8570…). `prettier --check` passed on every changed file. None of
+  the 72 chunks in `dist/assets` holds a sentence or a name only `src/lab/live` has, while a
+  busWords sentence, as a control, is found; room.ts's `owes` is there, as it should be.
+
 ### Left
 
 - Nothing to check on a call until step 6 wires the table. The plan's §8 checks for live tables
   start there.
+- **Step 6 has the hello's retry at 3 s (§3.1) to decide.** An unanswered hello is now paid for by
+  whoever holds the table, so the retry is a backstop rather than the only repair.
+- A debt is owed to whoever the tab sees as host when the earlier state arrives. A new host whose
+  announcement lands before the receiving tab's presence has made it host is owed nothing, and
+  stays behind until its next change (1 seed in 600 of the realistic fuzz).
+- Two hosts each taking the same start from different tables, Bo's with a sit in it: round 1 is
+  on everywhere, but its starters can change once, when Bo's state lands.
+- A host whose toy reopens while states from its last session are still on their way can be
+  handed one, by the publisher half of `answersHello`, older than what it published: the late-copy
+  rule then reads its next announcement as late and nothing is owed. Out-of-order delivery across a
+  remount; the next change heals it.
+- A state the host hears, rather than sends, opens no roster-lag window: the fold on hearing counts
+  the roster as it stands then.
+- A debt owed to a host that stops being host before it is paid still goes: one state nobody
+  needed.

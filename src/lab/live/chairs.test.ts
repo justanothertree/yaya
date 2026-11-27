@@ -190,6 +190,11 @@ function seated(rules: LiveRules<Opts> = cards, ids = [DEE, CY, BO, ANN]): Net {
   return t
 }
 
+/** the last state `id` put on the wire */
+const lastState = (t: Net, id: string): Sent =>
+  t.log.filter((m) => m.from === id && m.body.t === 'state').at(-1)!
+const RESULT = { won: 0, score: [300, 120] } as const
+
 /** each call to crypto.getRandomValues fills its array with the next byte in `bytes` */
 const random = (...bytes: number[]) =>
   vi.spyOn(crypto, 'getRandomValues').mockImplementation((a: ArrayBufferView) => {
@@ -284,7 +289,14 @@ describe('sitting down', () => {
     const t = seated()
     t.do(ANN, { t: 'sit', chair: 3 })
     t.settle()
-    expect(t.who(DEE)).toEqual([ANN, null, CY, null])
+    /* the host's own copy: a reader refuses a state seating one person twice, so a watcher's
+       copy stays right while the host's is wrong, and every later state is refused (review,
+       26 Nov 2026) */
+    expect(t.who(BO)).toEqual([ANN, null, CY, null])
+    expect(t.agree()).toBe(true)
+    t.do(CY, { t: 'mode', mode: 'together' })
+    t.settle()
+    expect(t.get(DEE).mode).toBe('together')
   })
   it("between rounds, anybody may take a computer's chair, and the computer goes", () => {
     const t = seated()
@@ -313,6 +325,7 @@ const good = (): Record<string, unknown> => ({
   sub: 'cards',
   t: 'state',
   seq: 41,
+  by: CY,
   chairs: [
     [ANN, 17, null],
     [null, 9, 2],
@@ -346,9 +359,23 @@ describe('4.2 a state off the wire: every field checked', () => {
     ['a seq that is not a whole number', (b) => ({ ...b, seq: 41.5 })],
     ['a seq that is a string', (b) => ({ ...b, seq: '41' })],
     ['seq 0', (b) => ({ ...b, seq: 0 })],
+    [
+      /* refused by the seq check alone: every since 0, and round 0 open (review, 26 Nov 2026) */
+      'seq 0, with every since 0 and no round yet',
+      (b) => ({
+        ...b,
+        seq: 0,
+        chairs: chairsOf(b).map(([id, , cpu]) => [id, 0, cpu]),
+        round: { n: 0, phase: 'open', starters: [null, null, null, null], result: null },
+      }),
+    ],
+    ['no publisher', (b) => ({ ...b, by: undefined })],
+    ['an empty publisher', (b) => ({ ...b, by: '' })],
+    ['a publisher that is a number', (b) => ({ ...b, by: 1 })],
     ['a seq past a billion', (b) => ({ ...b, seq: 1e9 + 1 })],
     ['three chairs on a four-chair toy', (b) => ({ ...b, chairs: chairsOf(b).slice(0, 3) })],
     ['chairs that are not a list', (b) => ({ ...b, chairs: {} })],
+    ['chairs that are not a list, four long', (b) => ({ ...b, chairs: { length: 4 } })],
     ['a chair of two fields', (b) => ({ ...b, chairs: [[ANN, 17], ...chairsOf(b).slice(1)] })],
     [
       'a chair of four fields',
@@ -358,6 +385,11 @@ describe('4.2 a state off the wire: every field checked', () => {
       'a chair that is not a list',
       (b) => ({ ...b, chairs: [{ 0: ANN, 1: 17, 2: null }, ...chairsOf(b).slice(1)] }),
     ],
+    [
+      'a chair that is not a list, three long',
+      (b) => ({ ...b, chairs: [{ 0: ANN, 1: 17, 2: null, length: 3 }, ...chairsOf(b).slice(1)] }),
+    ],
+    ['a chair that is nothing', (b) => ({ ...b, chairs: [null, ...chairsOf(b).slice(1)] })],
     ['an empty id', (b) => ({ ...b, chairs: [['', 17, null], ...chairsOf(b).slice(1)] })],
     [
       'a 65-character id',
@@ -418,12 +450,16 @@ describe('4.2 a state off the wire: every field checked', () => {
     ['a code of 21 characters', (b) => ({ ...b, code: 'q3_Lm-8RtZ0aXcVbN2pWk' })],
     ['a code with a +', (b) => ({ ...b, code: 'q3_Lm-8RtZ0aXcVbN2pWk+' })],
     ['a code that is a number', (b) => ({ ...b, code: 12345 })],
+    ['a code that is a list of one good code', (b) => ({ ...b, code: [b.code] })],
     [
       'seventeen who knew',
       (b) => ({ ...b, knew: Array.from({ length: 17 }, (_, i) => `id-${i}`) }),
     ],
     ['knew that is not a list', (b) => ({ ...b, knew: ANN })],
+    ['knew that is not a list, short', (b) => ({ ...b, knew: 'abc' })],
     ['an empty id among who knew', (b) => ({ ...b, knew: [CY, ''] })],
+    /* a full knew must name sixteen people for "a full knew names somebody gone" to hold */
+    ['somebody twice among who knew', (b) => ({ ...b, knew: [CY, ANN, CY] })],
     ['no round', (b) => ({ ...b, round: null })],
     ['a round below 0', (b) => ({ ...b, round: { ...roundOf(b), n: -1 } })],
     ['a round past a million', (b) => ({ ...b, round: { ...roundOf(b), n: 1e6 + 1 } })],
@@ -437,6 +473,10 @@ describe('4.2 a state off the wire: every field checked', () => {
     [
       'three starters at four chairs',
       (b) => ({ ...b, round: { ...roundOf(b), starters: [ANN, null, CY] } }),
+    ],
+    [
+      'starters that are not a list, four long',
+      (b) => ({ ...b, round: { ...roundOf(b), starters: { length: 4 } } }),
     ],
     [
       'a starter that is a number',
@@ -462,8 +502,11 @@ describe('4.2 a state off the wire: every field checked', () => {
   it('and a state refused is not believed: the table stays as it was', () => {
     const t = seated()
     const c = t.get(DEE)
-    for (const [, bad, rules = cards] of rows)
-      if (rules === cards) expect(receive(cards, c, BO, bad(good()), 0).table).toBe(c)
+    /* the table as a state would set it: 'not a state' is a hello from the host, which Dee may
+       answer later (owesHost), and which believes nothing */
+    for (const [name, bad, rules = cards] of rows)
+      if (rules === cards)
+        expect(wireOf(receive(cards, c, BO, bad(good()), 0).table), name).toEqual(wireOf(c))
   })
 })
 
@@ -514,6 +557,19 @@ describe('4.2 a request off the wire: every field checked', () => {
       'host',
     ],
     ['a mode nobody has', { t: 'mode', mode: 'together' }, { t: 'mode', mode: 'solo' }],
+    /* a request that would change nothing is refused, so it costs the call no state */
+    [
+      'the mode already set',
+      { t: 'mode', mode: 'together' },
+      { t: 'mode', mode: 'versus' },
+      'host',
+    ],
+    [
+      'no computer to take away',
+      { t: 'cpu', chair: 1, level: 2 },
+      { t: 'cpu', chair: 3, level: null },
+      'host',
+    ],
     [
       "options the toy can't read",
       { t: 'opts', o: { target: 500 } },
@@ -562,6 +618,16 @@ describe('4.2 a request off the wire: every field checked', () => {
     expect(over({ t: 'over', n: 0, result: { won: 0, score: [300, 120] } })).toBe('on')
     expect(over({ t: 'over', n: 2, result: { won: 0, score: [300, 120] } })).toBe('on')
     expect(over({ t: 'over', n: 1, result: { won: 5, score: [300, 120] } })).toBe('on')
+  })
+  it('a computer asked for at the level it already has costs the call no state', () => {
+    const t = seated()
+    t.do(CY, { t: 'cpu', chair: 1, level: 1 })
+    t.settle()
+    const from = t.log.length
+    t.do(CY, { t: 'cpu', chair: 1, level: 1 })
+    t.settle()
+    expect(t.sent('state', from)).toBe(0)
+    expect(t.get(DEE).chairs[1].cpu).toBe(1)
   })
   it('only somebody on the call is listened to', () => {
     const t = seated()
@@ -979,6 +1045,179 @@ describe('4.7 the code is re-minted when somebody who heard it has left the call
     expect(t.get(ANN).code).not.toBe(code)
     expect(t.get(DEE).knew).not.toContain(BO)
   })
+  /* Cy and Ann seated, a computer at West (1), round 1 on; Eve watching; Dee on the call only */
+  const playingWithDee = () => {
+    const t = table(cards, [BO, ANN, CY, EVE], [BO, ANN, CY, EVE, DEE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(ANN, { t: 'sit', chair: 0 })
+    t.settle()
+    t.do(CY, { t: 'cpu', chair: 1, level: 0 })
+    t.settle()
+    t.do(CY, { t: 'start', n: 1 })
+    t.settle()
+    expect(t.get(EVE).round.phase).toBe('on')
+    expect(t.get(BO).knew).toContain(DEE)
+    // Dee hangs up mid-round
+    t.call([BO, ANN, CY, EVE])
+    t.tick()
+    t.flush()
+    return t
+  }
+  it("a watcher taking a computer's chair mid-round, after somebody who heard the code has left, keeps the round's code", () => {
+    /* review of 26 Nov 2026: the only re-mint test went through present(), and the guard in
+       publish() that a mid-round takeover passes through had none */
+    const t = playingWithDee()
+    const code = t.get(BO).code
+    t.later(PACE_MS)
+    t.do(EVE, { t: 'sit', chair: 1 })
+    t.settle()
+    expect(t.who(ANN)).toEqual([ANN, EVE, CY, null])
+    expect(t.get(ANN).round.phase).toBe('on')
+    expect(codes(t)).toEqual(new Set([code]))
+  })
+  it('after somebody who heard the code has left mid-round, a quiet table sends nothing', () => {
+    const t = playingWithDee()
+    const from = t.log.length
+    const seq = t.get(BO).seq
+    for (let i = 0; i < 5; i++) t.settle()
+    expect(t.sent('state', from)).toBe(0)
+    expect(t.get(BO).seq).toBe(seq)
+  })
+  it('a start held for the pace goes out on a new code when somebody who heard the old one leaves within that second', () => {
+    /* review of 26 Nov 2026: the held table already said "on", so the leaver was judged
+       mid-round, and the round went out on the code they had heard */
+    const t = table(cards, [BO, ANN, CY, DEE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.later(5000)
+    t.do(ANN, { t: 'sit', chair: 0 })
+    t.flush()
+    const code = t.get(BO).code
+    t.later(200)
+    t.do(CY, { t: 'start', n: 1 })
+    t.flush()
+    expect(dueAt(t.get(BO))).not.toBeNull()
+    expect(t.get(ANN).round.phase).toBe('open')
+    t.later(100)
+    t.tabs.delete(DEE)
+    t.call([BO, ANN, CY])
+    t.see()
+    t.flush()
+    t.later(PACE_MS)
+    t.tick()
+    t.flush()
+    expect(t.agree()).toBe(true)
+    expect(t.get(ANN).round).toMatchObject({ n: 1, phase: 'on' })
+    expect(t.get(ANN).code).not.toBe(code)
+    expect(t.get(ANN).knew).not.toContain(DEE)
+  })
+  it("somebody who reaches the host's roster just after a state went out is counted as having heard it", () => {
+    /* review of 26 Nov 2026: Eve was on the call before the host's roster said so, heard Cy's
+       stand, and hung up before the next state, so nothing ever counted her */
+    const t = table(cards, [ANN, CY])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.later(5000)
+    const code = t.get(ANN).code
+    t.do(CY, { t: 'stand' })
+    t.flush()
+    expect(lastState(t, ANN).body).toMatchObject({ code })
+    // the host's roster catches up with Eve a moment later
+    t.later(300)
+    t.call([ANN, CY, EVE])
+    t.tick()
+    t.flush()
+    expect(t.get(CY).knew).toContain(EVE)
+    t.later(5000)
+    t.call([ANN, CY])
+    t.settle()
+    expect(t.get(CY).code).not.toBe(code)
+    // and somebody who reaches it long after a state has heard nothing: no state, no re-mint
+    const quiet = t.get(ANN)
+    t.later(10_000)
+    t.call([ANN, CY, EVE])
+    t.tick()
+    t.flush()
+    expect(t.get(ANN).knew).not.toContain(EVE)
+    expect(t.get(ANN).seq).toBe(quiet.seq)
+  })
+  it('a host taking over mid-round counts somebody new to the call in a state the whole call takes', () => {
+    /* review of 26 Nov 2026: the fold that counts a newcomer goes out from the new host one seq
+       on. At the old host's seq it lost to the old host's lower id, so only the newcomer heard it */
+    const t = table(cards, [BO, ANN, CY, DEE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    t.do(CY, { t: 'start', n: 1 })
+    t.settle()
+    const code = t.get(CY).code
+    // Bo closes the toy and stays on the call: Ann hosts the state Bo published
+    t.tabs.delete(BO)
+    t.see()
+    t.settle()
+    expect(t.get(CY).from).toBe(BO)
+    // Eve joins the call and opens the toy mid-round
+    t.later(10_000)
+    t.call([BO, ANN, CY, DEE, EVE])
+    t.open(EVE)
+    t.see()
+    t.settle()
+    expect(t.get(EVE).code).toBe(code)
+    for (const id of [ANN, CY, DEE]) expect(t.get(id).knew, id).toContain(EVE)
+    // Eve hangs up mid-round, Ann closes the toy, and the round ends under Cy
+    t.tabs.delete(EVE)
+    t.call([BO, ANN, CY, DEE])
+    t.see()
+    t.settle()
+    t.later(3000)
+    t.tabs.delete(ANN)
+    t.see()
+    t.settle()
+    expect(hostOf(t.get(CY))).toBe(CY)
+    t.do(DEE, { t: 'over', n: 1, result: RESULT })
+    t.settle()
+    expect(t.get(DEE).round.phase).toBe('over')
+    expect(t.get(DEE).code).not.toBe(code)
+  })
+  it('a newcomer with the lowest id, handed a table its relayer did not publish, takes it, and is counted', () => {
+    /* review of 26 Nov 2026: Cy hosted the code Bo minted and handed it to Ann, the newcomer;
+       Ann recorded it as Cy's, her own fresh table won the tie, Cy's kept Bo's, and two codes
+       stood on one call until the next change. Every tab records who published a state now */
+    const t = table(cards, [BO, CY], [BO, CY, DEE])
+    t.see()
+    t.flush()
+    const k1 = t.get(CY).code
+    expect(t.get(CY)).toMatchObject({ seq: 1, from: BO })
+    // Bo closes the toy and stays on the call: Cy hosts Bo's table
+    t.tabs.delete(BO)
+    t.see()
+    t.flush()
+    // Ann joins the call and opens the toy: the lowest id, host at once, with a fresh table
+    t.call([BO, CY, DEE, ANN])
+    t.see([CY, ANN])
+    t.open(ANN)
+    t.look(ANN, [CY, ANN])
+    t.flush()
+    expect(t.agree()).toBe(true)
+    expect(t.get(ANN).code).toBe(k1)
+    expect(t.get(CY).knew).toContain(ANN)
+    // Ann hangs up: the code she was handed is replaced
+    t.tabs.delete(ANN)
+    t.call([BO, CY, DEE])
+    t.see()
+    t.settle()
+    expect(t.get(CY).code).not.toBe(k1)
+  })
   it('at most 16 who knew, and the state still reads', () => {
     const crowd = Array.from({ length: 20 }, (_, i) => `00000000-0000-0000-0000-0000000001${i}`)
     const t = table(cards, [BO, ANN], [BO, ANN, ...crowd])
@@ -991,12 +1230,12 @@ describe('4.7 the code is re-minted when somebody who heard it has left the call
 })
 
 describe('4.8 a state round trip, every field away from its default', () => {
-  /* the table good() describes, as a tab holds it */
+  /* the table good() describes, as a tab holds it: Bo's, published by Cy when Cy hosted */
   const held = (): Chairs<Opts> => ({
     sub: 'cards',
     me: BO,
     seq: 41,
-    from: BO,
+    from: CY,
     present: [ANN, CY, DEE],
     missing: {},
     roster: [ANN, CY, DEE],
@@ -1018,9 +1257,12 @@ describe('4.8 a state round trip, every field away from its default', () => {
     },
     sent: null,
     owed: false,
+    told: 3,
+    hostBehind: null,
   })
   const fields = (c: Chairs<Opts>) => ({
     seq: c.seq,
+    from: c.from,
     chairs: c.chairs,
     mode: c.mode,
     opts: c.opts,
@@ -1094,6 +1336,9 @@ describe('4.9 what an arrival costs', () => {
     expect(t.who(DEE)).toEqual([BO, CY, null, null])
     expect(t.agree()).toBe(true)
     expect(t.log.length - from).toBe(HIGH_ID_ARRIVAL)
+    // and nobody owes anybody afterwards: a second on, nothing more
+    t.settle()
+    expect(t.log.length - from).toBe(HIGH_ID_ARRIVAL)
   })
   it('four people filling a fresh table, lowest first, is 10, as at a call table', () => {
     const t = table(cards, [], [BO, ANN, CY, DEE])
@@ -1105,6 +1350,8 @@ describe('4.9 what an arrival costs', () => {
     }
     expect(t.agree()).toBe(true)
     expect(t.get(DEE).code).toMatch(CODE)
+    expect(t.log.length).toBe(FRESH_FOUR)
+    t.settle()
     expect(t.log.length).toBe(FRESH_FOUR)
   })
   it('a lower id joining the call and a table in progress is handed it, for 4 sends', () => {
@@ -1123,11 +1370,344 @@ describe('4.9 what an arrival costs', () => {
     expect(hostOf(t.get(ANN))).toBe(BO)
     expect(t.agree()).toBe(true)
     expect(t.log.length - from).toBe(LOW_ID_ARRIVAL)
+    // Cy heard Bo's hello and owed him the table, and Ann's answer paid it: nothing more goes
+    t.settle()
+    expect(t.log.length - from).toBe(LOW_ID_ARRIVAL)
     // and the table goes on under him: Cy, who sat first, sets it
     t.do(CY, { t: 'mode', mode: 'together' })
     t.settle()
     expect(t.agree()).toBe(true)
     expect(t.get(ANN).mode).toBe('together')
+  })
+})
+
+describe('a host without the table, and two hosts at once (review of 26 Nov 2026)', () => {
+  /** Cy sits at North, adds a computer at West and starts round 1, with Ann hosting */
+  const onUnderAnn = (onCall: string[]) => {
+    const t = table(cards, [ANN, CY], onCall)
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(CY, { t: 'cpu', chair: 1, level: 0 })
+    t.settle()
+    t.do(CY, { t: 'start', n: 1 })
+    t.settle()
+    expect(t.get(CY).round).toMatchObject({ n: 1, phase: 'on' })
+    return t
+  }
+  it('a lowest id arriving whose hello the host before them never answers is handed the table at the next look', () => {
+    /* Bo's where lands and his toy mounts: he is host, with a fresh table. Ann, who answersHello
+       names, closes her toy before his hello reaches her; or her tab hangs, and stays listed */
+    for (const gone of ['closed', 'hung']) {
+      const t = onUnderAnn([ANN, CY, BO])
+      const held = t.get(CY)
+      t.see([ANN, CY, BO])
+      t.open(BO)
+      t.look(BO, [ANN, CY, BO])
+      t.tabs.delete(ANN)
+      t.flush()
+      expect(t.get(BO).seq, gone).toBe(1)
+      /* Cy owes Bo the table, due a second on: an answer reaching her in that second would pay it,
+         and a look before then sends nothing */
+      expect(dueAt(t.get(CY)), gone).toBe(t.now() + PACE_MS)
+      const here = gone === 'closed' ? [CY, BO] : [ANN, CY, BO]
+      const from = t.log.length
+      t.look(CY, here)
+      expect(t.log.length, gone).toBe(from)
+      t.later(PACE_MS)
+      t.look(CY, here)
+      t.look(BO, here)
+      t.flush()
+      expect(t.agree(), gone).toBe(true)
+      expect(t.get(BO), gone).toMatchObject({ seq: held.seq, from: ANN, round: { n: 1 } })
+      // paid once: the table is quiet after it
+      const paid = t.log.length
+      for (let i = 0; i < 3; i++) t.settle()
+      expect(t.sent('state', paid), gone).toBe(0)
+      // and the round Cy is playing can end
+      t.do(CY, { t: 'over', n: 1, result: RESULT })
+      t.settle()
+      expect(t.get(CY).round.phase, gone).toBe('over')
+    }
+  })
+  /**
+   * Ann hosts Cy and Dee playing round 1, with Bo on the call; Bo's where lands and his toy
+   * mounts, and Ann closes hers before his hello reaches her. `missed` is whether Ann's last state
+   * (a computer added at East) reached Dee and not Cy
+   */
+  const unanswered = (missed: boolean) => {
+    const t = table(cards, [ANN, CY, DEE], [ANN, CY, DEE, BO])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    t.later(5000)
+    t.do(CY, { t: 'cpu', chair: 3, level: 2 })
+    t.flush(missed ? [ANN, DEE] : undefined)
+    t.wire.length = 0
+    t.see([ANN, CY, DEE, BO])
+    t.open(BO)
+    t.look(BO, [ANN, CY, DEE, BO])
+    t.tabs.delete(ANN)
+    t.flush()
+    for (const id of [CY, DEE]) expect(dueAt(t.get(id)), id).not.toBeNull()
+    t.later(PACE_MS)
+    return t
+  }
+  it('what two tabs owe the host is paid once: the first to hand it over pays for both', () => {
+    const t = unanswered(false)
+    const from = t.log.length
+    t.look(CY, [CY, DEE, BO])
+    t.flush()
+    t.look(DEE, [CY, DEE, BO])
+    t.look(BO, [CY, DEE, BO])
+    t.flush()
+    expect(t.sent('state', from)).toBe(1)
+    expect(t.agree()).toBe(true)
+  })
+  it('and a later table handed over pays a debt for an earlier one: Cy takes it, and owes nothing', () => {
+    const t = unanswered(true)
+    const from = t.log.length
+    t.look(DEE, [CY, DEE, BO])
+    t.flush()
+    expect(t.get(CY).chairs[3].cpu).toBe(2)
+    t.look(CY, [CY, DEE, BO])
+    t.look(BO, [CY, DEE, BO])
+    t.flush()
+    expect(t.sent('state', from)).toBe(1)
+    expect(t.agree()).toBe(true)
+  })
+  it('owing nothing: a newcomer’s fresh table again, a late copy of the host’s own state, anybody else’s earlier one', () => {
+    /* Bo, on the call from the start, arrives with the lowest id and is handed the table by Ann;
+       then three earlier states reach Cy, and none of them is a host without the table */
+    const t = table(cards, [ANN, CY, DEE], [ANN, CY, DEE, BO])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    const early = lastState(t, ANN)
+    t.see([ANN, CY, DEE, BO])
+    t.open(BO)
+    t.look(BO, [ANN, CY, DEE, BO])
+    t.flush()
+    const fresh = lastState(t, BO)
+    expect(fresh.body).toMatchObject({ seq: 1, by: BO })
+    expect(t.get(CY).from).toBe(ANN)
+    // Bo's fresh table again, as his roster fills
+    const quiet = () => {
+      const from = t.log.length
+      t.settle()
+      t.settle()
+      return t.sent('state', from)
+    }
+    t.wire.push(fresh)
+    t.flush([CY])
+    expect(quiet()).toBe(0)
+    // a late copy of a state Bo published, to Cy holding a later one of his
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    const boEarly = lastState(t, BO)
+    t.do(DEE, { t: 'stand' })
+    t.settle()
+    expect(t.get(CY).from).toBe(BO)
+    t.wire.push(boEarly)
+    t.flush([CY])
+    expect(quiet()).toBe(0)
+    // an earlier state from Dee, who is not the host
+    t.wire.push({ from: DEE, body: early.body })
+    t.flush([CY])
+    expect(quiet()).toBe(0)
+    expect(t.agree()).toBe(true)
+  })
+  it('a table with nothing in it owes nobody', () => {
+    /* Cy's toy has just opened and sees Ann and Bo, before anybody has told it a thing */
+    const c = present(openChairs(cards, CY).table, [CY, ANN, BO], [ANN, BO], 0).table
+    const s = receive(cards, c, BO, { v: 1, sub: 'cards', t: 'hello' }, 0)
+    expect(present(s.table, [CY, ANN, BO], [ANN, BO], PACE_MS).out).toEqual([])
+    expect(dueAt(s.table)).toBeNull()
+  })
+  it('owing the host and then hosting it: the announcement pays, and nothing goes out again', () => {
+    const t = unanswered(false)
+    // Bo closes the toy too before anybody's look: Cy hosts, and tells the table
+    t.tabs.delete(BO)
+    t.see([CY, DEE])
+    t.flush()
+    t.later(PACE_MS)
+    // somebody lower's where lands: Cy is not host now, and has nothing left to send
+    const from = t.log.length
+    t.look(CY, [CY, DEE, '00000000-0000-0000-0000-000000000000'])
+    expect(t.sent('state', from)).toBe(0)
+  })
+  it("the host's last state, still on its way when it hangs up, is refused by the next host and handed to it by somebody who has it", () => {
+    /* Ann hosts; her start of round 1 reaches Dee and is late at Cy, who by then has her off the
+       call and refuses it, and hosts from the table before it. Until now Cy's first state tied
+       Ann's at one seq and lost, at Dee, for good */
+    const t = table(cards, [ANN, CY, DEE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    t.later(5000)
+    const code = t.get(ANN).code
+    t.do(CY, { t: 'start', n: 1 })
+    t.flush([ANN])
+    const start = lastState(t, ANN)
+    expect(start.body).toMatchObject({ round: { n: 1, phase: 'on' } })
+    t.wire.push(start)
+    t.flush([DEE])
+    t.tabs.delete(ANN)
+    t.call([CY, DEE])
+    t.see()
+    t.wire.push(start)
+    t.flush()
+    t.settle()
+    expect(t.agree()).toBe(true)
+    // the round Ann started, on the code it started on: a code is never changed mid-round
+    expect(t.get(CY)).toMatchObject({ from: ANN, code, round: { n: 1, phase: 'on' } })
+    // and Cy, hosting a round Ann started, keeps its code to the round's end though Ann has gone
+    t.settle()
+    expect(t.get(CY).code).toBe(code)
+    // Cy's own start of round 1 is refused, as a repeat; Dee's end of it is not
+    t.do(CY, { t: 'start', n: 1 })
+    t.settle()
+    t.do(DEE, { t: 'over', n: 1, result: RESULT })
+    t.settle()
+    expect(t.get(CY).round).toMatchObject({ n: 1, phase: 'over' })
+    expect(t.get(CY).code).not.toBe(code)
+    const ons = t.log.filter((m) => m.body.t === 'state' && m.body.round.phase === 'on')
+    expect(new Set(ons.map((m) => JSON.stringify((m.body as { round: unknown }).round)))).toEqual(
+      new Set([JSON.stringify((start.body as { round: unknown }).round)]),
+    )
+  })
+  it("the host's last state lost on its way to the next host, when it is the round's end: the next round can start", () => {
+    const t = table(cards, [ANN, CY, DEE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    t.do(CY, { t: 'start', n: 1 })
+    t.settle()
+    t.later(5000)
+    t.do(DEE, { t: 'over', n: 1, result: RESULT })
+    t.flush([ANN, DEE])
+    t.wire.length = 0
+    expect(t.get(DEE).round.phase).toBe('over')
+    t.tabs.delete(ANN)
+    t.call([CY, DEE])
+    t.see()
+    t.flush()
+    t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(CY).round).toMatchObject({ n: 1, phase: 'over' })
+    t.do(CY, { t: 'start', n: 2 })
+    t.settle()
+    expect(t.get(DEE).round).toMatchObject({ n: 2, phase: 'on' })
+  })
+  it('two hosts for a moment: a round one of them started is not undone by the other', () => {
+    /* Ann's view has not caught up with Bo, so she still hosts. She takes Cy's start; Bo, the
+       lowest id, takes Dee's sit; both at one seq. Until now the lower id won the tie, so Cy and
+       Dee saw round 1 begin and then end without a move, and it began again */
+    const t = table(cards, [ANN, CY, DEE], [ANN, CY, DEE, BO])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(CY, { t: 'cpu', chair: 1, level: 0 })
+    t.settle()
+    t.open(BO)
+    for (const id of [BO, CY, DEE]) t.look(id, [ANN, CY, DEE, BO])
+    t.flush()
+    expect(t.agree()).toBe(true)
+    t.later(PACE_MS)
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.do(CY, { t: 'start', n: 1 })
+    const [sit, start] = t.wire.splice(0)
+    t.wire.push(start)
+    t.flush([ANN])
+    const annStart = lastState(t, ANN)
+    t.wire.push(annStart)
+    t.flush([CY, DEE])
+    const on = t.get(DEE).round
+    expect(on).toMatchObject({ n: 1, phase: 'on' })
+    t.wire.push(sit)
+    t.flush([BO])
+    expect((lastState(t, BO).body as { seq: number }).seq).toBe(t.get(DEE).seq)
+    t.wire.push(lastState(t, BO))
+    t.flush()
+    t.look(ANN, [ANN, CY, DEE, BO])
+    t.flush()
+    expect(t.get(DEE).round).toEqual(on)
+    t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(BO).round).toEqual(on)
+    // the captain's start reaching Bo now starts nothing
+    t.wire.push(start)
+    t.settle()
+    expect(t.get(DEE).round).toEqual(on)
+  })
+  it('two hosts for a moment: a start held for the pace by the one who loses the tie still starts the round', () => {
+    /* Ann, captain and host in her own view, starts within a second of answering Bo's hello, so
+       her start waits; Bo, the real host, seats Dee at the same seq. Until now her start went out
+       after his sit, lost the tie and was gone, though she had pressed it */
+    const t = table(cards, [ANN, CY, DEE], [ANN, CY, DEE, BO])
+    t.see()
+    t.settle()
+    t.do(ANN, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(ANN, { t: 'cpu', chair: 1, level: 0 })
+    t.settle()
+    t.later(5000)
+    t.open(BO)
+    for (const id of [BO, CY, DEE]) t.look(id, [ANN, CY, DEE, BO])
+    t.flush()
+    t.do(ANN, { t: 'start', n: 1 })
+    expect(dueAt(t.get(ANN))).not.toBeNull()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.flush([BO, CY, DEE])
+    t.look(ANN, [ANN, CY, DEE, BO])
+    t.flush()
+    t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(DEE).round).toMatchObject({ n: 1, phase: 'on', starters: [null, null, ANN, null] })
+  })
+  it("at one seq a round's end is later than its start, whoever published either", () => {
+    const t = table(cards, [CY, DEE])
+    t.see()
+    t.settle()
+    const c = t.get(DEE)
+    const at = (by: string, phase: 'on' | 'over') => ({
+      ...good(),
+      by,
+      round: { ...roundOf(good()), phase, result: phase === 'over' ? RESULT : null },
+    })
+    const on = receive(cards, c, CY, at(ANN, 'on'), 0).table
+    expect(on.round.phase).toBe('on')
+    expect(receive(cards, on, CY, at(EVE, 'over'), 0).table.round.phase).toBe('over')
+    const over = receive(cards, c, CY, at(EVE, 'over'), 0).table
+    expect(receive(cards, over, CY, at(ANN, 'on'), 0).table.round.phase).toBe('over')
+  })
+  it('the host leaves: the next host tells the table it holds, so a tab that missed a state catches up', () => {
+    /* review of 26 Nov 2026: plan §5, "the next lowest on the toy carries the chairs from the last
+       state it holds, as room.ts does", and nothing here drove a host leaving */
+    const t = table(cards, [BO, ANN, DEE])
+    t.see()
+    t.settle()
+    t.later(5000)
+    t.do(ANN, { t: 'sit', chair: 0 })
+    t.flush([BO, ANN])
+    expect(t.who(DEE)).toEqual([null, null, null, null])
+    t.tabs.delete(BO)
+    t.see()
+    t.flush()
+    expect(t.who(DEE)).toEqual([ANN, null, null, null])
+    expect(t.agree()).toBe(true)
   })
 })
 
@@ -1216,6 +1796,49 @@ describe('a chair held for somebody who has gone', () => {
     expect(t.get(DEE).round.phase).toBe('over')
     expect(t.who(DEE)).toEqual([ANN, null, null, null])
   })
+})
+
+describe('a chair held for somebody whose id names one of an object’s own keys', () => {
+  /* review of 26 Nov 2026: `missing` was a plain object, so 'constructor' read back Object, the
+     wait was NaN, and the chair was never freed: no round could start. Only a modified client can
+     seat such an id, by a forged state from somebody on the call */
+  const forged = (c: Chairs<Opts>, id: string) => {
+    const b = wireOf(c) as unknown as Record<string, unknown>
+    const seq = c.seq + 5
+    const chairs = (b.chairs as unknown[][]).map((ch) => [...ch])
+    chairs[1] = [id, seq, null]
+    return { ...b, seq, chairs }
+  }
+  it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])(
+    "'%s' is freed a minute on, like anybody",
+    (id) => {
+      const t = table(cards, [BO, ANN, CY])
+      t.see()
+      t.settle()
+      t.do(ANN, { t: 'sit', chair: 0 })
+      t.settle()
+      t.wire.push({ from: CY, body: forged(t.get(BO), id) as unknown as Live })
+      t.flush()
+      expect(t.who(BO)[1]).toBe(id)
+      t.later(1)
+      t.tick()
+      t.flush()
+      t.later(HOLD_MS)
+      t.tick()
+      t.flush()
+      expect(t.who(ANN)).toEqual([ANN, null, null, null])
+      expect(startable(cards, t.get(BO))).toEqual({
+        t: 'toy',
+        words: 'Cards needs two players: take a chair, or add a computer.',
+      })
+      // and by a host whose first look comes after it holds the table, from openChairs' own `{}`
+      const fresh = { ...openChairs(cards, BO).table, roster: [CY] }
+      const held = receive(cards, fresh, CY, forged(t.get(CY), id), 0).table
+      expect(held.chairs[1].id).toBe(id)
+      const first = present(held, [BO], [CY], 0).table
+      expect(present(first, [BO], [CY], HOLD_MS).table.chairs[1].id).toBeNull()
+    },
+  )
 })
 
 describe('a seated friend who leaves the call', () => {
