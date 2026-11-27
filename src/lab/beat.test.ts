@@ -30,6 +30,8 @@ import { daySeedOf } from '../gpu/bricks'
 import { seeded } from '../gpu/stack'
 import registry from '../sections/labDemos.tsx?raw'
 /* ── g1 imports ── */
+import { CATS as YACHT_BOXES, score as yachtScore } from '../gpu/yacht'
+import { ALL as ALL_UP, tilesOf } from '../gpu/shut'
 /* ── g2 imports ── */
 /* ── g3 imports ── */
 /* ── g4 imports ── */
@@ -44,6 +46,8 @@ const FIXTURE: { [G in Game]: Extract<Beat, { game: G }> } = {
   stack: { game: 'stack', seed: 3_000_000_001, time: 192.4, lines: 45 },
   dice: { game: 'dice', seed: daySeedOf(2026, 11, 27), turns: 14 },
   /* ── g1 fixtures ── */
+  yacht: { game: 'yacht', seed: 4_279_824_600, points: 212 },
+  shut: { game: 'shut', seed: 3_000_000_001, left: 7 },
   /* ── g2 fixtures ── */
   /* ── g3 fixtures ── */
   /* ── g4 fixtures ── */
@@ -448,6 +452,94 @@ describe('the dice deal', () => {
 })
 
 /* ── g1 cases ── */
+describe('g1: Yacht and Shut the box', () => {
+  /* the bounds worked out from each toy's own rules, never typed in again beside the arm: the most
+     each of the twelve boxes holds over every throw of five dice, and every tile of the box up */
+  const most = YACHT_BOXES.reduce((sum, cat) => {
+    let best = 0
+    for (let k = 0; k < 6 ** 5; k++)
+      best = Math.max(
+        best,
+        yachtScore(
+          [0, 1, 2, 3, 4].map((i) => 1 + (Math.floor(k / 6 ** i) % 6)),
+          cat,
+        ),
+      )
+    return sum + best
+  }, 0)
+  const allUp = tilesOf(ALL_UP).reduce((s, t) => s + t, 0)
+  const yachtAt = (v: number) => {
+    const b = readBeat(`#lab?demo=yacht&seed=4279824600&points=${v}`)
+    return b?.game === 'yacht' ? b.points : null
+  }
+  const shutAt = (v: number) => {
+    const b = readBeat(`#lab?demo=shut&seed=3000000001&left=${v}`)
+    return b?.game === 'shut' ? b.left : null
+  }
+  const yacht = FIXTURE.yacht
+  const shut = FIXTURE.shut
+  it('Yacht: from no points to the most twelve boxes can hold, and nothing past it', () => {
+    // the room says "of 297 possible" beside the best alone
+    expect(most).toBe(297)
+    expect([yachtAt(-1), yachtAt(0), yachtAt(most), yachtAt(most + 1)]).toEqual([
+      null,
+      0,
+      most,
+      null,
+    ])
+  })
+  it('Shut the box: from the box shut to every tile still up, and nothing past it', () => {
+    expect(allUp).toBe(45)
+    expect([shutAt(-1), shutAt(0), shutAt(allUp), shutAt(allUp + 1)]).toEqual([
+      null,
+      0,
+      allUp,
+      null,
+    ])
+  })
+  it('Yacht: more points wins', () => {
+    expect(outcome({ ...yacht, points: 213 }, yacht)).toBe('beat')
+    expect(outcome({ ...yacht, points: 212 }, yacht)).toBe('level')
+    expect(outcome({ ...yacht, points: 211 }, yacht)).toBe('short')
+    expect(outcome({ ...yacht, seed: 5, points: 297 }, yacht)).toBeNull()
+  })
+  it('Shut the box: fewer left wins, and a shut box can only be levelled', () => {
+    expect(outcome({ ...shut, left: 6 }, shut)).toBe('beat')
+    expect(outcome({ ...shut, left: 7 }, shut)).toBe('level')
+    expect(outcome({ ...shut, left: 8 }, shut)).toBe('short')
+    const closed: Beat = { ...shut, left: 0 }
+    expect(outcome(closed, closed)).toBe('level')
+    expect(outcome({ ...shut, left: 1 }, closed)).toBe('short')
+  })
+  it('Yacht: the banner, the invitation and the reply say it as the toy does', () => {
+    expect(bannerText(yacht)).toEqual({
+      lead: 'A game to beat:',
+      body: 'this link says 212 points. Same dice for the same keeps — more points wins.',
+    })
+    expect(beatMessage(yacht, 'L')).toBe(
+      '🏁 Beat my game at Yacht: 212 points. Same dice for the same keeps:\nL',
+    )
+    expect(beatMessage({ ...yacht, points: 230 }, 'L', yacht)).toBe(
+      '🏆 I beat the link at Yacht: 230 points — it said 212 points. Same dice for the same keeps, your go:\nL',
+    )
+    expect(verdict({ ...yacht, points: 200 }, yacht)).toBe(
+      ' The link says 212 points — not this time.',
+    )
+  })
+  it('Shut the box: the banner, the invitation and the reply say it as the toy does', () => {
+    expect(bannerText(shut)).toEqual({
+      lead: 'A turn to beat:',
+      body: 'this link says 7 left. Same dice for the same choices — fewer left wins.',
+    })
+    expect(beatMessage({ ...shut, left: 0 }, 'L')).toBe(
+      '🏁 Beat my turn at Shut the box: 0 left — the box shut. Same dice for the same choices:\nL',
+    )
+    expect(beatMessage({ ...shut, left: 9 }, 'L', shut)).toBe(
+      '🏁 My go at Shut the box: 9 left — the link I was sent said 7 left. Same dice for the same choices, your go:\nL',
+    )
+    expect(verdict({ ...shut, left: 0 }, shut)).toBe(' You beat the link’s 7 left!')
+  })
+})
 /* ── g2 cases ── */
 /* ── g3 cases ── */
 /* ── g4 cases ── */

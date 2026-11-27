@@ -173,6 +173,28 @@ export const ARMS = {
     says: (b) => `10,000 in ${b.turns} turns`,
   }),
   /* ── g1 arms ── */
+  yacht: arm({
+    name: 'Yacht',
+    noun: 'game',
+    same: 'Same dice for the same keeps',
+    goal: 'more points wins',
+    // 297 is the most twelve boxes hold; beat.test.ts works it out from every throw of five dice
+    fields: { seed: SEED, points: whole('points', 0, 297) },
+    board: ['seed'],
+    rank: (b) => [-b.points],
+    says: (b) => `${b.points} points`,
+  }),
+  shut: arm({
+    name: 'Shut the box',
+    noun: 'turn',
+    same: 'Same dice for the same choices',
+    goal: 'fewer left wins',
+    // 45 is every tile still up; beat.test.ts adds up the box's own tiles
+    fields: { seed: SEED, left: whole('left', 0, 45) },
+    board: ['seed'],
+    rank: (b) => [b.left],
+    says: (b) => (b.left ? `${b.left} left` : '0 left — the box shut'),
+  }),
   /* ── g2 arms ── */
   /* ── g3 arms ── */
   /* ── g4 arms ── */

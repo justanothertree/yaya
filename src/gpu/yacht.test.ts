@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { rng } from './bricks'
+import { beatHash, dealRand, readBeat } from '../lab/beat'
 import {
   CATS,
   EMPTY,
   FULL,
+  countsOf,
   PAR,
   bestBox,
   chooseKeep,
@@ -21,6 +23,7 @@ import {
   total,
   type Card,
   type Cat,
+  type Game,
   type Saved,
 } from './yacht'
 
@@ -212,5 +215,96 @@ describe('what is kept', () => {
     ]
     expect(most.reduce((s, d, i) => s + score(d, CATS[i]), 0)).toBe(297)
     expect(readSaved('{"best":297}').best).toBe(297)
+  })
+})
+
+/* ── a game alone sent as a "beat my game" link (src/lab/beat.ts). Every roll of a game alone comes
+   from the game's seed: roll k of turn t, where t is how many boxes are filled — the very call
+   YachtDemo's rollMine makes, written out again here. The browser readback (two pages, one link)
+   is the check on the room; this is the check on the luck. */
+const aloneRoll = (g: Game, seed: number) =>
+  roll(g, dealRand(seed, 12 - open(g.cards[0]).length, 3 - g.rolls))
+/** a game alone with a fixed way of choosing: keep the face there is most of (the higher on a tie)
+ *  and fill the first open box — every roll it saw, and its total */
+function scripted(seed: number) {
+  let g = soloGame()
+  const rolls: number[][] = []
+  while (!g.over) {
+    g = aloneRoll(g, seed)
+    rolls.push([...g.dice])
+    while (g.rolls > 0) {
+      const c = countsOf(g.dice)
+      let f = 6
+      for (let x = 6; x >= 1; x--) if (c[x] > c[f]) f = x
+      g = aloneRoll(
+        hold(
+          g,
+          g.dice.map((d) => d === f),
+        ),
+        seed,
+      )
+      rolls.push([...g.dice])
+    }
+    g = fill(g, open(g.cards[0])[0])
+  }
+  return { rolls, points: total(g.cards[0]) }
+}
+const sha256 = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+describe('a game alone from a link', () => {
+  it('deals the same 36 rolls it always has: the dice of a seed are pinned', async () => {
+    /* measured identical in node v22.23.4 and bun 1.4.4 (27 Nov 2026), for seeds both sides of
+       2^31 up to 2^32 − 1; a change here changes every Yacht link already sent */
+    const game = scripted(4_279_824_600)
+    expect(game.rolls).toHaveLength(36)
+    expect(game.rolls[0]).toEqual([5, 3, 4, 5, 4])
+    expect(await sha256(game.rolls)).toBe(
+      'f03c8d659113b1dca62dd9e97bf738fb5422a11d299b193fcd8a2383b6e8186c',
+    )
+  })
+  it('the seed a link carries deals the game the sender played', () => {
+    const link = readBeat(beatHash({ game: 'yacht', seed: 4_279_824_600, points: 212 }))
+    expect(scripted(link!.seed)).toEqual(scripted(4_279_824_600))
+  })
+  it('the same keeps get the same dice, played twice', () => {
+    for (const seed of [1, 2_147_483_647, 2_147_483_648, 4_294_967_295])
+      expect(scripted(seed)).toEqual(scripted(seed))
+  })
+  it('keeping one die more takes the first of the same new dice, in every turn and roll', () => {
+    let checked = 0
+    for (const seed of [7, 3_000_000_001])
+      for (let t = 0; t < 12; t++) {
+        const card: Card = Object.fromEntries(CATS.slice(0, t).map((k) => [k, 0]))
+        const first = aloneRoll({ ...soloGame(), cards: [card, FULL] }, seed)
+        for (let g = first; g.rolls > 0; g = aloneRoll(g, seed)) {
+          // what the dice not kept show after the roll, in order, keeping none and keeping each set
+          const fresh = (mask: number) => {
+            const kept = g.dice.map((_, i) => ((mask >> i) & 1) === 1)
+            const next = aloneRoll(hold(g, kept), seed)
+            return next.dice.filter((_, i) => !kept[i])
+          }
+          const all = fresh(0)
+          for (let mask = 1; mask < 32; mask++) {
+            const n = fresh(mask).length
+            expect(fresh(mask), `turn ${t}, ${3 - g.rolls}, kept ${mask}`).toEqual(all.slice(0, n))
+            checked++
+          }
+        }
+      }
+    expect(checked).toBe(2 * 12 * 2 * 31)
+  })
+  it('another seed, or another turn, is other dice', () => {
+    expect(scripted(4_279_824_600).rolls).not.toEqual(scripted(4_279_824_601).rolls)
+    const g = soloGame()
+    expect(aloneRoll(g, 9).dice).not.toEqual(
+      aloneRoll({ ...g, cards: [{ ones: 0 }, FULL] }, 9).dice,
+    )
   })
 })

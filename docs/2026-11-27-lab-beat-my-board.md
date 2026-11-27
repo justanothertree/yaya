@@ -184,3 +184,113 @@ at once. Measure the Leave button directly. It was 161×36 at 375 and 165×39 at
   - Picking another toy writes `#lab?demo=dice` with no beat parameters.
   - No sideways scroll at 375 or 1440.
 - **Not reachable from here:** Firefox and Safari. They need a look.
+
+## Group g1: Yacht and Shut the box
+
+Both toys already had a game alone, scored and recorded, and both rolled it with `Math.random`. A
+game alone is now dealt from a seed, so any finished one can be sent, and a link opens the toy alone
+on the sender's seed.
+
+### What a link carries
+
+| Toy          | Link                                   | Wins             | Says                                 |
+| ------------ | -------------------------------------- | ---------------- | ------------------------------------ |
+| Yacht        | `#lab?demo=yacht&seed=…&points=0..297` | more points      | "212 points"                         |
+| Shut the box | `#lab?demo=shut&seed=…&left=0..45`     | fewer tiles left | "7 left", or "0 left — the box shut" |
+
+- The seed is beat.ts's `SEED`, 1 to 2^32 − 1. A score is a claim, as everywhere in this file.
+- 297 is the most twelve boxes can hold. beat.test.ts works it out from every throw of five dice,
+  and the room's own "of 297 possible" is asserted against the same figure.
+- 45 is every tile up. beat.test.ts adds up the box's own tiles.
+- A box shut, 0 left, can only be levelled.
+
+### The luck
+
+- **Yacht:** roll k of turn t comes from `dealRand(seed, t, k)`, where t is how many boxes are
+  filled. The dice not kept draw in position order, so the same keeps get the same dice, and keeping
+  one die more takes the first values of the same draw. yacht.test.ts checks that for every one of
+  the 31 ways to keep dice, in every turn and both re-rolls, on two seeds (1,488 cases).
+- **Shut the box:** the k-th roll of a turn alone comes from `dealRand(seed, k, 0)`. A one-die roll
+  is the first die of the same two, so choosing one die never shifts the dice. A `rollNo` ref counts
+  the rolls and `fresh` resets it.
+- Against the computer, both toys keep `Math.random`, the computer's rolls included. There is no
+  link for those games.
+
+### The room
+
+- A link opens the toy **Alone** on the link's seed, with the banner at the top. A link clicked
+  while the toy is already up does the same.
+- **"↻ New game" (Yacht) and "↻ New turn" (Shut) replay the link's seed while a link is up.** That
+  is a retry, as Ten thousand's race and Stackfall's "Play again" already do. It departs from R3,
+  which lists New board among the controls that leave; the Yacht spec asked for the replay, and
+  Shut follows it so the two dice toys behave alike.
+- "Against the computer" leaves the link first. Leave deals a new game alone on a `newSeed()`.
+- **Back also takes the link's game with it.** A link clicked in the site's chat while the Lab is
+  open pushes a history entry. Before this, Back to `#lab?demo=yacht` cleared the challenge but left
+  the game running on the link's seed, so finishing it would have recorded a best on a board the
+  reader may have learned by heart. Now, when the challenge leaves the address some other way than
+  Leave, a game on its seed is replaced, exactly as Leave replaces it. Stackfall and Ten thousand
+  have the same gap; they are the base's, so it is noted here rather than changed.
+- A match (`lm.id`) ignores the link, and neither the banner nor the share appears in one.
+
+### What a link game may write
+
+Nothing. Neither toy has a daily, so a link game is always practice.
+
+- **Yacht:** `saved.best` is not written, and the "Best alone" figure no longer shows a link game's
+  total as a best.
+- **Shut the box:** `turns`, `shut` and `best` are not written.
+
+The result line gets the verdict instead of "your best": "All twelve boxes filled: 56 points. You
+beat the link's 41 points!"
+
+### Tests
+
+- **beat.test.ts:** two FIXTURE rows, `{ seed: 4_279_824_600, points: 212 }` and
+  `{ seed: 3_000_000_001, left: 7 }`, which run every generic test. Six g1 cases add each bound at
+  lo − 1, lo, hi and hi + 1, outcome better, level and worse, and the banner, the invitation and a
+  reply pinned verbatim for each toy.
+- **yacht.test.ts and shut.test.ts:** a scripted game with a fixed way of choosing, pinned. Yacht's
+  36 rolls are pinned by SHA-256 of their JSON; Shut's six rolls are pinned verbatim. The pins were
+  computed in node v22.23.4 and bun 1.4.4 and agree, for seven seeds from 1 to 4,294,967,295 on both
+  sides of 2^31 (18:28 EST). The link's seed deals the sender's game, the same choices played twice
+  get the same dice, and another seed gets other dice.
+- The pins use SHA-256 rather than md5 because the tests are browser-typed: WebCrypto is typed
+  there and has no md5, and `node:crypto` is not typed there.
+- **Failing once:** 16 of 16 mutations turned at least one test red. They were each bound one past
+  the toy's figure, each rank's sign flipped, each field dropped from an arm, Yacht's board emptied,
+  Shut's box-shut wording, Yacht's seed bound back to 2^31 − 1, each pin's literal changed, Yacht's
+  `roll` drawing for kept dice too, Shut's one die taken from the second draw, and `dealRand`'s mix.
+- **Failing once in the browser:** with Shut's `rollNo` left unreset, B's replay no longer matched
+  A's dice. With the record guard inverted, both toys' records changed (Yacht's best went 5 to 94;
+  Shut's turns went 31 to 34). With the Back guard removed, the dice stayed on screen after Back.
+
+### Browser, 27 Nov 2026 (Playwright, Chromium)
+
+A sent a game alone. B opened it in a fresh context with records already kept, then played it
+three ways. C opened B's reply.
+
+- **Same board:** B's first roll matched A's, and B's replay with A's own choices matched all of A's
+  rolls (36 for Yacht).
+- **Verdicts:** beat, level and "not this time" were all reached in both toys (Shut's "not this
+  time" at 375).
+- **Records:** B's stored records were unchanged after three link games. After Leave, the next game
+  recorded: at 1440, Yacht's best went 5 to 32 and Shut's best went 44 to 34.
+- **Replies:** B's reply carried A's seed and B's score, and C's banner showed B's score.
+- **Leave:** the address became `#lab?demo=yacht` or `#lab?demo=shut`, the banner went, and the new
+  game's first roll differed from A's.
+- **Warm opens:** from another toy, and from the same toy against the computer, a link switched to
+  Alone with the banner. On the same toy, the first roll matched A's.
+- **Back:** after a warm open, Back gave `#lab?demo=<toy>`, no banner, and a fresh game.
+- **Malformed:** `seed=4294967296`, a missing score, `points=298` and `left=46` opened the toy
+  against the computer with no banner.
+- **Tour:** picking another toy from the picker wrote `#lab?demo=<other>` with no beat parameters.
+- **Layout:** no sideways scroll at 375, 820 or 1440; `mobileAudit` clean with the banner and share
+  up, after naming an injected 16×16 control in the share. Leave measured 161×36 at 375, 162×37 at
+  820 with the 41 `(pointer: coarse)` blocks applied, and 165×39 at 1440. The share buttons measured
+  222 to 235 wide by the same heights.
+- Yacht at 1440, 18:38 EST; Yacht at 375, 18:39; Shut at 1440, 18:40; Shut at 375, 18:40 and
+  18:41; 820, 18:43. The three browser mutations ran 18:41 to 18:43.
+
+**Not reachable from here:** Firefox and Safari need a look. Both toys' dice are integer maths
+over `seeded`.
