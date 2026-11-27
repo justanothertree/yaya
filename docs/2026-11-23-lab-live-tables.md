@@ -692,12 +692,21 @@ two frames as before: the sentence, then a close.
   which is the second review's making-way hole again. An account is the one thing here that a
   stranger cannot make more of.
 - An honest member never meets it: four tabs at two tables, all knocking while the door is slow,
-  are all let in, and so is a tab reloaded while it waited. The door gives out the same places as
-  before. What changes is when an account over them hears so: a non-friend's sockets past four used
-  to hear `not-friends` in turn, and now hear `too-many-places` at once, which is also true.
-- Cy's wait is now bounded by the places of the accounts ahead of him, at most four checks each.
-  Thirty-two accounts with one socket each, as many places as eight members have between them,
-  held him 4,214 ms (18:40 EST).
+  are all let in, and so is a tab reloaded while it waited. What changes is when an account over
+  its places hears so: a non-friend's sockets past four used to hear `not-friends` in turn, and now
+  hear `too-many-places` at once, which is also true.
+- A knock that will fail still holds its place while its answer is out, so for the length of one
+  check an account can be refused a place b8d0f537 would have given. Measured by the independent
+  verify (19:23 EST, Eve's answer held 800 ms): Ann with three tabs let in at one table and a
+  fourth knocking at a table where Eve is no friend had a fifth tab refused at once, where
+  b8d0f537 let it in; the same with one tab let in and a knock at a second table, for a third
+  table. Each time Ann was over 4 sockets or 2 tables counting the knock, and the refusal lasts
+  only until that knock is answered.
+- Cy's wait is now bounded by the places of the accounts ahead of him: at most five checks each,
+  the four an account may hold plus one already in its round trip whose socket was closed to free
+  a place (the independent verify, 19:12 EST: with 1 s answers Cy waited 5,862 ms, 5.9 round
+  trips, behind one account's 5 checks). Thirty-two accounts with one socket each, as many places
+  as eight members have between them, held him 4,214 ms (18:40 EST).
 
 **2. A token's yes is kept no longer than the token lives.** `keepYes`
 (`server/lib/supabaseAnswer.mjs`, pure) is the minute, or `exp` minus now if the token carries a
