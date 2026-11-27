@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ArtThumb } from '../draw/ArtThumb'
+import { DraftOffer } from '../drafts/DraftOffer'
+import { useKeptDraft } from '../drafts/useKeptDraft'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import {
   loopFrames,
@@ -21,6 +23,7 @@ import {
 import {
   cropToInk,
   MAX_PIECES,
+  readMapDoc,
   worldOf,
   type Door,
   type Life,
@@ -510,6 +513,43 @@ export function MapMaker() {
         : null,
     [name, palette, pieces, inkDoc, spawn, block, doors],
   )
+
+  /** Put a whole map on the board to work on — a kept one, or an unsaved one brought back. */
+  const openDoc = (d: MapDoc) => {
+    setName(d.name)
+    setPalette(d.palette)
+    setPieces(d.pieces)
+    setGround(d.ground?.strokes ?? [])
+    setSpawn(d.spawn)
+    cells.current = readZone(d.block) ?? blankZone()
+    setBlockTick((n) => n + 1)
+    setDoors(d.doors)
+    /* ⚠️ a different map is a different history. Keeping it would let Undo put a piece of the
+       last map into this one, which is the worst thing an undo can do: quietly mix two
+       documents. */
+    setHist(emptyHistory<Step>())
+    setErasing(false)
+  }
+
+  /**
+   * ⚠️ THE MAP BEING MADE OUTLIVES A RELOAD AND ✕ CLOSE (drafts/useKeptDraft). It was React state
+   * here and nothing else until ⬇ Keep, so closing the maker, leaving Paint, a reload or a
+   * pull-down on a phone threw a map away — the way a whole minion was lost in this same room on
+   * 27 Nov 2026. It goes through readMapDoc on the way back, the reader a stranger's map comes
+   * through, and is offered rather than put back because it replaces the board.
+   */
+  const wip = useKeptDraft<MapDoc | null>({
+    kind: 'map',
+    value: doc,
+    isEmpty: (d) => !d,
+    parse: readMapDoc,
+    restore: (d) => {
+      if (!d) return
+      openDoc(d)
+      setSaid(`Brought back "${d.name}", not kept yet.`)
+    },
+    offer: true,
+  })
   /**
    * ⚠️ THE PARK IS THE SIZE IT IS, AND THIS SAID OTHERWISE. It read out worldOf — how
    * big a world would hold everything placed — as though that were the size you get, so
@@ -1235,6 +1275,7 @@ export function MapMaker() {
        */
       const yes = signedInNow ?? (await signedIn())
       const cloud = yes ? await saveMapToAccount(doc) : null
+      if (cloud?.ok || local) wip.markSaved()
       if (cloud?.ok) {
         /* ⚠️ it is safe at this point whatever the browser did, so the sentence says the thing
            that is true rather than the thing that happened most recently */
@@ -1269,6 +1310,14 @@ export function MapMaker() {
 
   return (
     <section className="card map-maker">
+      {wip.offered && (
+        <DraftOffer
+          draft={wip.offered}
+          what="map"
+          onBringBack={wip.bringBack}
+          onStartFresh={wip.startFresh}
+        />
+      )}
       <div className="map-bar">
         <label className="sr-only" htmlFor="map-name">
           What to call it
@@ -1771,19 +1820,15 @@ export function MapMaker() {
                 className="map-kept-open"
                 title={`Work on ${m.name}`}
                 onClick={() => {
-                  setName(m.doc.name)
-                  setPalette(m.doc.palette)
-                  setPieces(m.doc.pieces)
-                  setGround(m.doc.ground?.strokes ?? [])
-                  setSpawn(m.doc.spawn)
-                  cells.current = readZone(m.doc.block) ?? blankZone()
-                  setBlockTick((n) => n + 1)
-                  setDoors(m.doc.doors)
-                  /* ⚠️ a different map is a different history. Keeping it would let Undo put a
-                     piece of the last map into this one, which is the worst thing an undo can
-                     do: quietly mix two documents. */
-                  setHist(emptyHistory<Step>())
-                  setErasing(false)
+                  /* ⚠️ it replaces the board, and what is on it may be the only copy */
+                  if (
+                    wip.unsaved &&
+                    !window.confirm(`Open "${m.name}" instead of the map you have not kept?`)
+                  )
+                    return
+                  openDoc(m.doc)
+                  /* a kept map, so not unsaved until it is changed */
+                  wip.markSaved()
                   setSaid(`Working on "${m.doc.name}".`)
                 }}
               >

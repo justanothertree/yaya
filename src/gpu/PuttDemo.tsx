@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { CopyLink } from '../lab/CopyLink'
+import { DraftOffer } from '../drafts/DraftOffer'
+import { useKeptDraft } from '../drafts/useKeptDraft'
 import { hashParam, here } from '../lab/links'
 import { CanvasStage } from './CanvasStage'
 import {
@@ -16,10 +18,12 @@ import {
   pack,
   playHole,
   readHole,
+  readHoleDraft,
   readSaved,
   roll,
   writeHole,
   type Hole,
+  type HoleDraft,
   type Level,
   type Pt,
   type Saved,
@@ -165,6 +169,25 @@ export function PuttDemo() {
   const [editing, setEditing] = useState<number | null>(null)
   const [cursor, setCursor] = useState(5 * W + 5)
   const [removing, setRemoving] = useState<number | null>(null)
+  /**
+   * ⚠️ THE HOLE BEING BUILT OUTLIVES A RELOAD (drafts/useKeptDraft). It lived in this state and
+   * nowhere else until ★ Keep, so a refresh, a tap on another toy or a pull-down on a phone threw it
+   * away — the way a whole minion was lost in Paint on 27 Nov 2026. It is offered back rather than
+   * put back, because bringing it back replaces the hole on the board.
+   */
+  const building = useMemo<HoleDraft>(() => ({ draft, editing }), [draft, editing])
+  const kept = useKeptDraft<HoleDraft>({
+    kind: 'putt',
+    value: building,
+    isEmpty: (v) => v.draft === BLANK,
+    parse: readHoleDraft,
+    restore: (v) => {
+      setDraft(v.draft)
+      setEditing(v.editing)
+      setMode('build')
+    },
+    offer: true,
+  })
 
   /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts), on the
      toy's own course. It takes the green over whatever else was showing; leaving it puts the toy
@@ -661,6 +684,7 @@ export function PuttDemo() {
       return { ...s, holes: holes.slice(0, MAX_HOLES) }
     })
     if (editing === null) setEditing(Math.min(saved.holes.length, MAX_HOLES - 1))
+    kept.markSaved()
   }
   const full = editing === null && saved.holes.length >= MAX_HOLES
   const mine = saved.holes
@@ -784,6 +808,14 @@ export function PuttDemo() {
 
   return (
     <div className={`lab-keys pt-room is-${saved.theme}`}>
+      {kept.offered && (
+        <DraftOffer
+          draft={kept.offered}
+          what="hole"
+          onBringBack={kept.bringBack}
+          onStartFresh={kept.startFresh}
+        />
+      )}
       {inMatch && <MatchBar lm={lm} sides={['the first ball', 'the second ball']} />}
       {!inMatch && (
         <div className="lab-controls">
@@ -1199,6 +1231,8 @@ export function PuttDemo() {
                         setDraft(hText)
                         setEditing(i)
                         setRemoving(null)
+                        /* a kept hole, so not unsaved until it is changed */
+                        kept.markSaved()
                       }}
                     >
                       ✎ Edit

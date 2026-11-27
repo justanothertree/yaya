@@ -40,7 +40,7 @@ export type Draft<T> = {
 }
 
 /** Which editor a draft belongs to. One per editor, so one never restores as another. */
-export type DraftKind = 'paint'
+export type DraftKind = 'paint' | 'chat' | 'putt' | 'wallpaper' | 'map' | 'journal' | 'sitting-note'
 
 /** The account a draft belongs to when nobody is signed in. */
 export const SIGNED_OUT = 'signed-out'
@@ -257,4 +257,15 @@ export function idbBackend(): DraftBackend {
         () => true,
       ).then((r) => r === true),
   }
+}
+
+/**
+ * When a draft was kept, as an offer says it: a time if it was today, a date and a time if not.
+ * `now` is passed so a test can stand on either side of midnight.
+ */
+export function whenKept(at: number, now: number = Date.now()): string {
+  const d = new Date(at)
+  return d.toDateString() === new Date(now).toDateString()
+    ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }

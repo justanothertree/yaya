@@ -11767,6 +11767,28 @@ a.cz-msg-author:focus-visible {
   justify-content: center;
   gap: 0.5rem;
 }
+
+/**
+ * The same offer for every other builder (drafts/DraftOffer.tsx): a card where the work goes, said
+ * the same way Paint says it. A card rather than an overlay because a builder's work area varies
+ * from a canvas to a grid of controls, and the builder hides its work area while this is up.
+ */
+.draft-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.7rem;
+  margin: 0 0 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--accent, #7c6af7);
+  border-radius: 10px;
+}
+.draft-offer-do {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
 .paint-pet-guide .muted {
   font-size: 0.8rem;
   max-width: 46rem;

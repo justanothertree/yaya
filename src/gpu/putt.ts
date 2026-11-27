@@ -397,6 +397,32 @@ export function playHole(
 export const PUTT_KEY = 'lab_putt_v1'
 export const THEMES = ['links', 'night', 'candy'] as const
 export const MAX_HOLES = 9
+
+/**
+ * A hole being built and not yet kept, as the builder holds it: the tiles as text, and which kept
+ * hole it is an edit of (null for a new one). See drafts/useKeptDraft — this is the shape kept on
+ * the device across a reload.
+ */
+export type HoleDraft = { draft: string; editing: number | null }
+
+/**
+ * A kept builder draft back, or null.
+ *
+ * ⚠️ ONLY THE PLAIN FORM, AND ANY TILES, NOT ONLY A PLAYABLE HOLE. The builder holds a hole
+ * half-made — two tees, no cup — and that is exactly the work worth bringing back, so this checks
+ * the alphabet and the size rather than asking readHole whether it can be played. The edit index
+ * is believed only when it could name a kept hole.
+ */
+export function readHoleDraft(raw: unknown): HoleDraft | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  if (typeof o.draft !== 'string' || !/^[xgswto]+$/.test(o.draft) || o.draft.length !== W * H)
+    return null
+  const e = o.editing
+  const editing =
+    Number.isInteger(e) && (e as number) >= 0 && (e as number) < MAX_HOLES ? (e as number) : null
+  return { draft: o.draft, editing }
+}
 export type Tally = { won: number; lost: number; tied: number; best: number }
 export type Saved = {
   level: Level
