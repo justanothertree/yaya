@@ -561,7 +561,9 @@ export function DiceDemo() {
           ))}
         </ul>
       )}
-      {mode === 'race' && lastRace && winner !== null && <BeatShare beat={lastRace} />}
+      {mode === 'race' && lastRace && winner !== null && (
+        <BeatShare beat={lastRace} answering={challenge} />
+      )}
       <p className="sun-reading">
         <span className="muted">
           {mode === 'race' ? (

@@ -150,22 +150,25 @@ export function StackDemo() {
     if (g.mode === 'solo') {
       const time = Math.round(a.time * 10) / 10
       const vs = challengeRef.current
-      const against =
-        vs && vs.seed === g.seed
-          ? beatsStack(vs, time, a.lines)
-            ? ` You beat the link’s ${clock(vs.time)}!`
-            : ` The link says ${clock(vs.time)} with ${vs.lines} lines — not this time.`
-          : ''
+      /* ⚠️ A LINK'S RUN IS PRACTICE, NOT A RECORD. "Play again" replays the link's seed every
+         time, so a longest run kept from it could be built on a piece order learned by heart. */
+      const onLink = vs !== null && vs.seed === g.seed
+      const against = onLink
+        ? beatsStack(vs, time, a.lines)
+          ? ` You beat the link’s ${clock(vs.time)}!`
+          : ` The link says ${clock(vs.time)} with ${vs.lines} lines — not this time.`
+        : ''
       setSaid(
         `Topped out at ${clock(a.time)} — ${a.lines} lines, ${a.score.toLocaleString()} points.${against}`,
       )
       setLastRun({ game: 'stack', seed: g.seed, time, lines: a.lines })
-      setSaved((s) => ({
-        ...s,
-        longest: Math.max(s.longest, Math.round(a.time * 10) / 10),
-        lines: Math.max(s.lines, a.lines),
-        score: Math.max(s.score, a.score),
-      }))
+      if (!onLink)
+        setSaved((s) => ({
+          ...s,
+          longest: Math.max(s.longest, Math.round(a.time * 10) / 10),
+          lines: Math.max(s.lines, a.lines),
+          score: Math.max(s.score, a.score),
+        }))
     } else if (g.mode === 'bot') {
       const won = b.over && !a.over
       setSaid(
@@ -410,7 +413,7 @@ export function StackDemo() {
           </button>
         )}
       </div>
-      {!playing && mode === 'solo' && lastRun && <BeatShare beat={lastRun} />}
+      {!playing && mode === 'solo' && lastRun && <BeatShare beat={lastRun} answering={challenge} />}
       <p className="sun-reading" aria-live="polite">
         {said && <strong>{said} </strong>}
         <span className="muted">{record}</span>

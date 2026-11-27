@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { dropBeat, fromHash, type Beat } from './beat'
+import { dropBeat, fromHash, type Beat, type Game } from './beat'
 
 /**
  * The challenge in the address for one game, kept in step with it: a link clicked while the Lab is
- * already open changes only the hash, so this listens rather than reading once.
+ * already open changes only the hash, so this listens rather than reading once. Leaving puts the
+ * address back on the toy alone (`#lab?demo=<game>`), so a call still knows where you are.
  */
-export function useChallenge<G extends Beat['game']>(game: G) {
+export function useChallenge<G extends Game>(game: G) {
   type Mine = Extract<Beat, { game: G }>
   const read = () => {
     const b = fromHash()
@@ -20,7 +21,7 @@ export function useChallenge<G extends Beat['game']>(game: G) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const leave = () => {
-    dropBeat()
+    dropBeat(game)
     setBeat(null)
   }
   return [beat, leave] as const
