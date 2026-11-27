@@ -8,6 +8,18 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from 'react'
+import { createPortal } from 'react-dom'
+import { drafts } from '../drafts/device'
+import { makeAutosave, type Draft } from '../drafts/drafts'
+import {
+  contentSig,
+  EMPTY_SIG,
+  offerFor,
+  packPaintDraft,
+  readPaintDraft,
+  type PaintDraft,
+} from '../draw/paintDraft'
+import { useNoPullToRefresh } from '../hooks/useNoPullToRefresh'
 import { ShadePad } from '../theme/ColorField'
 import { loadLastKit, saveLastKit } from '../draw/paintKit'
 import {
@@ -1647,6 +1659,148 @@ export function PaintRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokes, petStep])
 
+  /**
+   * ── Unsaved work, and a reload ─────────────────────────────────────────────────────────────
+   *
+   * ⚠️ A WHOLE MINION WAS LOST TO A PULL-TO-REFRESH, on 27 Nov 2026: built on a phone, the page
+   * pulled down while looking for Save, everything gone. The picture lived in draw/session.ts,
+   * which survives walking between rooms and nothing else. So, from here down:
+   *
+   * - what is UNSAVED is the page's content against the last thing saved or opened (contentSig);
+   * - unsaved work is kept as a DRAFT on this device, per person (drafts/), and dropped once saved;
+   * - a draft the page does not already show is OFFERED back on arrival — never applied over the
+   *   page, and the autosave is paused until it is answered, so the empty page cannot overwrite
+   *   the very thing being offered;
+   * - leaving with unsaved work asks first, and pull-to-refresh is off while the room is open;
+   * - on a phone, Save minion is pinned above the nav (the bar at the end of the room).
+   */
+  const sig = useMemo(
+    () => contentSig({ strokes, bg, layerNames, fps, hits, acts, poses, spells }),
+    [strokes, bg, layerNames, fps, hits, acts, poses, spells],
+  )
+  /* the committed render's signature, for effects that must read the page AFTER it changed */
+  const sigRef = useRef(sig)
+  sigRef.current = sig
+  const [baseline, setBaseline] = useState(() => paintSession.baseline() ?? EMPTY_SIG)
+  /**
+   * Bumped to say "what is about to land on the page is already kept": a picture opened from the
+   * gallery, or a minion handed over from the Minions room. The baseline is then read from the
+   * page AFTER it has landed, by the same contentSig, rather than recomputed from the source —
+   * which spells some fields differently from the room and would read as unsaved on arrival.
+   */
+  const [cleanAsk, setCleanAsk] = useState(() => (paintSession.arrivedSaved() ? 1 : 0))
+  useEffect(() => paintSession.arrivalSeen(), [])
+  useEffect(() => {
+    if (cleanAsk) setBaseline(sigRef.current)
+  }, [cleanAsk])
+  useEffect(() => paintSession.setBaseline(baseline), [baseline])
+  const unsaved = strokes.length > 0 && sig !== baseline
+
+  const [draftRefused, setDraftRefused] = useState(false)
+  const [autosave] = useState(() =>
+    makeAutosave<unknown>(
+      { write: (b) => drafts.write('paint', b), drop: () => drafts.drop('paint') },
+      600,
+      (ok) => setDraftRefused(!ok),
+    ),
+  )
+  const [offer, setOffer] = useState<Draft<PaintDraft> | null>(null)
+  useEffect(() => {
+    let live = true
+    autosave.pause()
+    void drafts.read('paint', readPaintDraft).then((d) => {
+      if (!live) return
+      if (offerFor(d?.body ?? null, sigRef.current)) setOffer(d)
+      else autosave.resume()
+    })
+    return () => {
+      live = false
+    }
+  }, [autosave])
+  /* ⚠️ paintSession.restore() is the session the keep effect above wrote in this same commit —
+     effects run in the order they are declared — so the draft and the in-memory copy are one
+     object and cannot disagree about what the picture is */
+  useEffect(() => {
+    const now = paintSession.restore()
+    autosave.change(unsaved && now ? packPaintDraft(now, wizardOn) : null)
+  }, [autosave, unsaved, sig, hidden, shapeAr, docName, wizardOn])
+  /* the way a phone leaves a page is to hide it, so that is when the last change is written */
+  useEffect(() => {
+    const out = () => void autosave.flush()
+    const whenHidden = () => {
+      if (document.visibilityState === 'hidden') out()
+    }
+    window.addEventListener('pagehide', out)
+    document.addEventListener('visibilitychange', whenHidden)
+    return () => {
+      window.removeEventListener('pagehide', out)
+      document.removeEventListener('visibilitychange', whenHidden)
+      out()
+    }
+  }, [autosave])
+  useEffect(() => {
+    if (!unsaved) return
+    const ask = (e: BeforeUnloadEvent) => {
+      void autosave.flush()
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [unsaved, autosave])
+  useNoPullToRefresh()
+
+  /** Kept for real: what is on the page is the new baseline, and its draft goes now, not later. */
+  const markSaved = () => {
+    setBaseline(sig)
+    paintSession.setBaseline(sig)
+    autosave.change(null)
+    void autosave.flush()
+  }
+
+  const bringBack = () => {
+    if (!offer) return
+    const { session: s, minion } = offer.body
+    /* ⚠️ UNDOABLE, because the page may not have been empty — see offerFor */
+    mark('bringing back what was not saved')
+    setSel([])
+    setBg(s.bg)
+    setHidden(s.hidden)
+    setLayer(0)
+    setLayerNames(s.layerNames)
+    setFps(s.fps ?? 8)
+    setHits(s.hits ?? {})
+    setActs(s.acts ?? {})
+    setPoses(s.poses ?? {})
+    setSpells(s.spells ?? {})
+    setFreeAr(s.ratio ?? null)
+    /* so keeping it again updates the picture it was an edit of, rather than making a second */
+    setDocName(s.name ?? '')
+    setStrokes(s.strokes)
+    /* ⚠️ AND THE GUIDE, AT ITS LAST STEP. What was lost was a minion, and a picture without the
+       guide leaves somebody looking for the button that makes it one — how they lost it */
+    if (minion) setPetStep({ phase: 'pick' })
+    setOffer(null)
+    autosave.resume()
+  }
+  const startFresh = () => {
+    if (!offer) return
+    const what = offer.body.minion ? 'minion' : 'drawing'
+    if (!window.confirm(`Throw away the unsaved ${what}? It cannot be brought back.`)) return
+    setOffer(null)
+    void drafts.drop('paint').then(() => autosave.resume())
+  }
+  const offerWhen = offer
+    ? new Date(offer.at).toDateString() === new Date().toDateString()
+      ? new Date(offer.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : new Date(offer.at).toLocaleString([], {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+    : ''
+
   const finishPet = () => {
     /* ⚠️ offered back, so keeping an edited creature under its own name updates it */
     const name = window.prompt('What is your minion called?', docName)?.trim() ?? ''
@@ -1662,6 +1816,8 @@ export function PaintRoom() {
      */
     const kept = saveArt(art)
     const made = savePet(name, art)
+    /* the minion holds the drawing, so a kept minion is a kept picture: its draft can go */
+    if (made) markSaved()
     setPetStep(null)
     setNote(
       !made
@@ -3152,7 +3308,8 @@ export function PaintRoom() {
            lay the panel out are all `.paint-wrap X .paint-tools-panel`. A class on the panel
            alone loses to every one of them on specificity and reads as doing nothing. */
         (making ? ' is-mapping' : '') +
-        (isFull ? ' is-full' : '')
+        (isFull ? ' is-full' : '') +
+        (petStep && !inWindow ? ' has-savebar' : '')
       }
       ref={wrap}
     >
@@ -4287,8 +4444,15 @@ export function PaintRoom() {
                     </span>
                   ))}
                 </span>
-                <button className="btn" disabled={!strokes.length} onClick={finishPet}>
-                  ✓ That is everything
+                {/* ⚠️ "SAVE", BECAUSE THAT IS THE WORD SOMEBODY LOOKS FOR. It said "✓ That is
+                    everything", and the minion that was lost was lost while looking for Save.
+                    On a phone this one is hidden and the pinned bar stands in for it. */}
+                <button
+                  className="btn paint-pet-done"
+                  disabled={!strokes.length}
+                  onClick={finishPet}
+                >
+                  ✓ Save minion
                 </button>
               </>
             )}
@@ -4662,6 +4826,8 @@ export function PaintRoom() {
                           /* so keeping it again updates this picture rather than making a second */
                           setDocName(a.name)
                           setStrokes(a.art.strokes)
+                          /* a kept picture, so not unsaved — read once it has landed */
+                          setCleanAsk((n) => n + 1)
                         }}
                         title="Open this, replacing what is on the board"
                       >
@@ -4701,6 +4867,7 @@ export function PaintRoom() {
             if (!name) return
             setDocName(name)
             const item = saveArt({ ...drawingRef.current, name })
+            if (item) markSaved()
             /**
              * ⚠️ WHICH WALL, RATHER THAN JUST "NO". A keep can now fail three ways and
              * they want three different things done about them — draw something, simplify it,
@@ -4938,6 +5105,37 @@ export function PaintRoom() {
           onPointerCancel={onUp}
           onContextMenu={(e) => e.preventDefault()}
         />
+        {/**
+         * ⚠️ OVER THE PAPER, SO NOTHING IS DRAWN UNDER A QUESTION. Bringing a draft back replaces
+         * the page, so a stroke made while it is being asked would be thrown away by the answer.
+         * Covering only the paper leaves every other control where it was.
+         */}
+        {offer && (
+          <div className="paint-offer" role="group" aria-label="Unsaved work">
+            <ArtThumb
+              art={{
+                v: 1,
+                name: offer.body.session.name ?? '',
+                ratio: offer.body.session.ratio ?? 1,
+                bg: offer.body.session.bg,
+                layers: offer.body.session.layerNames,
+                strokes: offer.body.session.strokes,
+              }}
+              w={96}
+              h={72}
+            />
+            <strong>Your unsaved {offer.body.minion ? 'minion' : 'drawing'}</strong>
+            <span className="muted">from {offerWhen}</span>
+            <span className="paint-offer-do">
+              <button className="btn" onClick={bringBack}>
+                Bring it back
+              </button>
+              <button className="btn btn-ghost" onClick={startFresh}>
+                Start fresh
+              </button>
+            </span>
+          </div>
+        )}
         {hitGuide && (
           <span className="paint-reach" aria-hidden>
             <i className="paint-reach-mid" style={{ left: `${hitGuide.cx * 100}%` }} />
@@ -4989,6 +5187,31 @@ export function PaintRoom() {
           somebody drawing a cat has to know. The sentence they might actually want is the last
           one. */}
       <p className="muted paint-note">Nothing here is uploaded.</p>
+      {/**
+       * ⚠️ PINNED ABOVE THE NAV ON A PHONE, WHERE A THUMB ALREADY IS. The guide's own Save sits
+       * at the bottom of a box that scrolls inside the page, so on a phone it was under the fold of
+       * a scroller under the fold — and the drag that goes looking for it is the same drag that,
+       * at the top of the page, refreshes it. CSS shows this bar only below the 700px rail, and
+       * hides the guide's button there so there is one Save, not two.
+       *
+       * ⚠️ PORTALLED TO <body>, because a fixed box inside a transformed ancestor is fixed to the
+       * ancestor: rooms reveal with a transform, which would carry this bar off its anchor.
+       */}
+      {petStep &&
+        !inWindow &&
+        createPortal(
+          <div className="paint-savebar" role="region" aria-label="Save your minion">
+            <button className="btn" disabled={!strokes.length} onClick={finishPet}>
+              ✓ Save minion
+            </button>
+            {unsaved && (
+              <span className="muted">
+                {draftRefused ? 'Not kept on this device — save soon' : 'Draft kept on this device'}
+              </span>
+            )}
+          </div>,
+          document.body,
+        )}
     </section>
   )
 }
