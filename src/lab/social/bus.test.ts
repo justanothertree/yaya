@@ -4454,3 +4454,115 @@ describe('a party that does anything, in any order: nobody is left on a tour nob
       expect(bad).toEqual([])
     })
 })
+
+describe('a stray tour does not answer a hello for another (askers)', () => {
+  /* ⚠️ A HOLDER FORGOT WHO WAS ASKING ON HEARING ANY STATE, including a stray tour's that it ignored
+     as weaker — so when who is here changed, it had nobody left to hand its own tour back to. The
+     shape the verify found: Ann's page crashes and lingers until the sweep, so she is first in Cy's
+     answering order for both hellos; Bo and Dee reload together; Dee presses the Start she is
+     offered inside the retry's gap, and Bo's new page takes that tour. Once Ann is swept, the four
+     riders' tour must be back on every screen still here, with somebody deciding it */
+  for (const hopOff of [true, false])
+    it(`Dee's press in the retry's gap${hopOff ? ', then Hop off,' : ''} does not lose the four riders' tour`, () => {
+      const ids = ['p01', 'p02', 'p03', 'p04']
+      const net = party(ids, { paced: true, lat: () => 150 })
+      net.run(2000)
+      net.start('p01')
+      net.flush()
+      rollAndPick(net, seeded(5))
+      expect(net.runUntil(() => net.bus('p04').phase === 'ready')).toBe(true)
+      for (const id of ['p02', 'p03', 'p04']) net.ready(id, true)
+      expect(net.runUntil(() => net.bus('p03').stops.length === 1, 30_000)).toBe(true)
+      net.run(2000)
+      const tour = net.bus('p03').tour
+      expect(
+        net
+          .bus('p03')
+          .riders.filter((r) => r.on)
+          .map((r) => r.id)
+          .sort(),
+      ).toEqual(ids)
+      /* Ann's page crashes: no bye, so she stays on everybody's Lab and roster until the sweep */
+      net.get('p02').listening = false
+      net.run(500)
+      for (const id of ['p01', 'p04']) {
+        net.roster.delete(id)
+        net.here.delete(id)
+        net.get(id).listening = false
+      }
+      net.run(300)
+      net.join('p01')
+      net.join('p04')
+      const back = net.now
+      net.run(2500)
+      /* the gap itself is documented and left (Evan's call): Start is offered here */
+      expect(canStart(net.bus('p04'), net.ctx('p04'))).toBe(true)
+      net.start('p04')
+      net.flush()
+      if (hopOff) {
+        net.run(300)
+        net.press('p04', { t: 'off' })
+        net.flush()
+      }
+      /* the party's sweep takes Ann off everybody's Lab */
+      net.run(back + 17_000 - net.now)
+      net.here.delete('p02')
+      net.run(back + 25_000 - net.now)
+      for (const id of ['p01', 'p03', 'p04']) {
+        expect([id, net.bus(id).tour, net.bus(id).phase !== 'end']).toEqual([id, tour, true])
+        expect(net.leaders().filter((x) => net.bus(x).tour === tour)).not.toEqual([])
+      }
+    })
+})
+
+describe('a hello once answered stays answered (askers)', () => {
+  /* ⚠️ EVERY SCREEN HOLDING THE TOUR KEEPS WHO IS ASKING, AND ANSWERS FROM THAT LIST WHEN THE ORDER
+     MOVES. So the list must empty on every screen once the tour has been heard — handed back at its
+     count, or moved on in the same second — or the next screen in line answers a page that already
+     has its tour, at each change of who is here, and the page left on the list is passed over as
+     an answerer by everybody but itself */
+  const setUp = () => {
+    const ids = ['p01', 'p02', 'p03', 'p04']
+    const net = party(ids, { paced: true, lat: () => 150 })
+    net.run(2000)
+    net.start('p01')
+    net.flush()
+    rollAndPick(net, seeded(5))
+    expect(net.runUntil(() => net.bus('p04').phase === 'ready')).toBe(true)
+    return net
+  }
+  /* the one who answered goes; nobody else hands the page its tour again */
+  const quietAfter = (net: Net) => {
+    const tour = net.bus('p01').tour
+    expect(net.bus('p05').tour).toBe(tour)
+    const held = net.bus('p03').seq
+    expect(net.bus('p02').seq).toBe(held)
+    const from = net.log.length
+    for (const id of ['p01']) {
+      net.roster.delete(id)
+      net.here.delete(id)
+      net.get(id).listening = false
+    }
+    net.run(1000)
+    const again = net.log.slice(from).filter((e) => e.m.t === 'state' && e.m.seq === held)
+    expect(again.map((e) => e.from)).toEqual([])
+  }
+  it('handed back at its count, by the screen that published it', () => {
+    const net = setUp()
+    /* just after the host's last state, so the hand-back cannot fold into a count that moves */
+    const n = net.log.length
+    expect(net.runUntil(() => net.log.slice(n).some((e) => e.m.t === 'state'), 10_000)).toBe(true)
+    net.run(200)
+    net.join('p05')
+    net.run(1500)
+    quietAfter(net)
+  })
+  it('answered by the tour moving on in the same second', () => {
+    const net = setUp()
+    net.run(3000)
+    net.join('p05')
+    net.ready('p02', true)
+    net.run(1500)
+    quietAfter(net)
+  })
+})

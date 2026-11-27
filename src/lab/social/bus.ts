@@ -1487,9 +1487,16 @@ function answers(bus: Bus, ctx: Ctx, from: string) {
 }
 
 /** a state off the wire: my tour if it is newer, another if it beats mine, or a stale host's repair */
-function onState(held: Bus, ctx: Ctx, from: string, s: State): Step {
-  /* whoever was asking has been answered: a page that holds nothing takes any state it hears */
-  const bus = held.askers.length ? { ...held, askers: [] } : held
+function onState(bus: Bus, ctx: Ctx, from: string, s: State): Step {
+  /* ⚠️ WHOEVER WAS ASKING HAS BEEN ANSWERED ONLY BY A STATE OF THE TOUR I HOLD, or by one I take.
+     A page that holds nothing takes any state it hears — including a stray tour's, started by a
+     press in the retry's gap — and once it holds that, it asks nobody again; so a holder that
+     forgot its askers on hearing the stray, and ignored it as the weaker tour, had nobody left to
+     hand its own tour back to when who is here changed (tick's re-ask). Measured in the verify's
+     checker: Ann's page crashed and lingered, Bo and Dee reloaded together, Dee pressed the Start
+     offered 2.5 s in; Cy kept the four riders' tour with nobody deciding it, and at the stall
+     everybody moved to Dee's tour of one, and the four riders' tour was lost. So the askers stay
+     until the tour they were asking about is heard or something else replaces it here */
   if (holds(bus) && s.tour === bus.tour) {
     /* any state of my tour at a seq of mine or later is the tour as it is: I may lead from it */
     const b = s.seq >= bus.seq ? { ...bus, heard: true, asking: false } : bus
@@ -1498,7 +1505,9 @@ function onState(held: Bus, ctx: Ctx, from: string, s: State): Step {
        it is the bus I hold, and taken as a new publisher it would have every yes asked again */
     const rides = s.riders.some(([id, on]) => id === from && on === 1)
     if (newer(s.seq, from, bus.seq, bus.from) && (s.seq > bus.seq || rides))
-      return none(adopt(b, s, from, ctx))
+      return none({ ...adopt(b, s, from, ctx), ...handed })
+    /* my tour as it stands, heard by everybody: whoever was asking for it has it */
+    if (s.seq >= bus.seq) return none({ ...b, ...handed })
     /* ⚠️ A HOST LEADING FROM A STALE BUS IS ANSWERED BY ITS DEPUTY: a host back from a hidden tab
        whose hello went unanswered publishes from what it last had, which everybody else ignores
        as older — and it never hears the newer bus, because nobody sends one until something
@@ -1513,7 +1522,7 @@ function onState(held: Bus, ctx: Ctx, from: string, s: State): Step {
      only decider has moved on to another is not live any more, whatever its last state said */
   const live = holds(bus) && bus.phase !== 'end' && !abandoned(bus, ctx) && !leftBy(bus, ctx, from)
   if (live && (s.phase === 'end' || !beats(s, bus))) return none(bus)
-  const next = adopt(bus, s, from, ctx)
+  const next = { ...adopt(bus, s, from, ctx), ...handed }
   /* ⚠️ A PAGE THAT COMES TO DRIVE A TOUR IT DID NOT HOLD SAYS SO AT ONCE — a rider back from a
      reload, handed its tour (answerers). What it was handed never moved the count, so every screen
      holding the tour is still counting towards STALL_MS, and one that has given it up is offering
