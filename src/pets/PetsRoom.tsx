@@ -519,18 +519,22 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
                     className="btn btn-ghost"
                     title={`Open ${chosen.name}'s drawing in Paint`}
                     onClick={() => {
-                      paintSession.keep({
-                        strokes: chosen.art.strokes,
-                        bg: chosen.art.bg,
-                        hidden: [],
-                        layerNames: chosen.art.layers ?? [],
-                        /* its own proportions, or Paint re-shapes it to whatever this window is */
-                        ratio: chosen.art.ratio,
-                        /* and its own name, or keeping it again makes a second creature */
-                        name: chosen.name,
-                        /* and its own rate, or an animated one comes back at the default */
-                        fps: chosen.art.fps,
-                      })
+                      paintSession.keep(
+                        {
+                          strokes: chosen.art.strokes,
+                          bg: chosen.art.bg,
+                          hidden: [],
+                          layerNames: chosen.art.layers ?? [],
+                          /* its own proportions, or Paint re-shapes it to whatever this window is */
+                          ratio: chosen.art.ratio,
+                          /* and its own name, or keeping it again makes a second creature */
+                          name: chosen.name,
+                          /* and its own rate, or an animated one comes back at the default */
+                          fps: chosen.art.fps,
+                        },
+                        /* a kept creature, so Paint does not read it as unsaved work */
+                        { saved: true },
+                      )
                       window.location.hash = '#paint'
                     }}
                   >

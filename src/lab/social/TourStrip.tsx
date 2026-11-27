@@ -10,10 +10,8 @@ import {
   type RefObject,
 } from 'react'
 import { usePartyHere } from '../../party/whereEveryone'
-import { currentRoute, hueFor, party, type PartyHere } from '../../party/party'
+import { currentRoute, party, type PartyHere } from '../../party/party'
 import { myPeerId, voiceSession } from '../../voice/voiceSession'
-import { cursorMark, type CursorSkin } from '../../ui/cursorSkin'
-import { hslToHex } from '../../theme/customTheme'
 import { useMediaQuery } from '../../ui/media'
 import { labSocial } from './social'
 import { sharingNow } from './where'
@@ -29,9 +27,12 @@ import {
   tourOf,
   whyWords,
   type FollowStep,
-  type Place,
   type Shadow,
 } from './tour'
+import { Token } from './Token'
+import { useBus } from './useBus'
+import { BusPanel, FOCUS_NEXT } from './BusPanel'
+import { followOffWords } from './busWords'
 
 /**
  * The tour strip: everybody on your call, as a token on the Lab's board — who is on which toy,
@@ -62,6 +63,10 @@ const onVisible = (fn: () => void) => {
   return () => document.removeEventListener('visibilitychange', fn)
 }
 const tabHidden = () => document.visibilityState !== 'visible'
+const roomNow = () => voiceSession.getState().roomId
+/* the strip's own two bus buttons, pressed through the same path as the panel's */
+const START = { act: 'start', label: '🚌 Start a party tour' } as const
+const OFF = { act: 'off', label: 'Hop off' } as const
 /** viewing a saved match: the address carries `&match=`, and a move would rebuild it without */
 const inMatchNow = () => !!hashParam('match')
 
@@ -75,6 +80,7 @@ export function TourStrip({
   filter,
   kindOf,
   rollable,
+  onShow,
 }: {
   /** the toy on your screen */
   current: string
@@ -92,11 +98,14 @@ export function TourStrip({
   kindOf: (toy: string) => string | undefined
   /** the toys listed for everybody — never one the owner hid, even on an admin's screen */
   rollable: readonly string[]
+  /** open a toy WITHOUT a follow of its own: the party tour's hop, which has already ended one */
+  onShow: (toy: string) => void
 }) {
   const byRoute = usePartyHere()
   const verdict = useSyncExternalStore(labSocial.subscribe, labSocial.get, labSocial.get)
   const sharing = useSyncExternalStore(party.subscribe, sharingNow, sharingNow)
   const call = useSyncExternalStore(voiceSession.subscribe, callNow, callNow)
+  const room = useSyncExternalStore(voiceSession.subscribe, roomNow, roomNow)
   const route = useSyncExternalStore(onHash, currentRoute, currentRoute)
   const wide = useMediaQuery('(min-width: 700px)')
   const [open, setOpen] = useState(false)
@@ -142,10 +151,14 @@ export function TourStrip({
 
   const toyName = (t: string) => toys.get(t) ?? t
   /* names of everybody seen on this call, kept after they go: "Ann left the call" is said about
-     somebody who is, by then, no longer on the roster */
+     somebody who is, by then, no longer on the roster — and a rider who left is still on the bus */
   const seenNames = useRef(new Map<string, string>())
-  for (const p of roster) seenNames.current.set(p.id, p.name)
+  for (const p of roster) seenNames.current.set(p.id, p.name.slice(0, 40))
   const leaderName = (following && seenNames.current.get(following)) || 'your friend'
+  /* ⚠️ ONE STATUS REGION FOR THE FOLLOW AND THE BUS, THE LATEST SENTENCE WINNING. Two regions
+     would each be read out, in whichever order the screen reader takes them, and the bus ending a
+     follow is one event that both of them would want to describe. */
+  const [said, say] = useState('')
   const statusRef = useRef<HTMLParagraphElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const noteRef = useRef<HTMLParagraphElement>(null)
@@ -156,7 +169,7 @@ export function TourStrip({
       noteRef.current?.focus({ preventScroll: true })
     heldFocusRef.current = false
   }, [why])
-  const { step, said, follow } = useFollow({
+  const { step, follow } = useFollow({
     inCall: call !== '',
     onLabPage: route === 'lab',
     following,
@@ -171,11 +184,39 @@ export function TourStrip({
     people: roster.length + 1,
     leaderName,
     statusRef,
+    say,
   })
+  const bus = useBus({
+    inCall: call !== '',
+    room,
+    onLabPage: route === 'lab',
+    gateOpen: verdict.allowed,
+    sharing,
+    me: myPeerId(),
+    lab: byRoute.lab,
+    roster,
+    current,
+    toys,
+    rollable,
+    kindOf,
+    filter,
+    name: (id) => seenNames.current.get(id) ?? null,
+    following,
+    leaderName,
+    show: onShow,
+    onGo,
+    endFollow: (words) => follow(null, words),
+    say,
+  })
+  const riding = !!bus.model?.riding
 
   /* what a screen reader hears: the follow starting, moving, offering and stopping — never the
-     waits, which change as the leader wanders and would talk over the call. Rendered with the
-     sentence as well as the strip, because the gate shutting is one of the things it announces. */
+     waits, which change as the leader wanders and would talk over the call.
+     ⚠️ THE FIRST CHILD OF THE WRAP IN EVERY BRANCH, SO IT IS ONE ELEMENT FOR AS LONG AS THE STRIP IS
+     ON SCREEN. It was inside each branch, so the gate shutting — one of the things it announces —
+     unmounted it and mounted a new one already holding the sentence: no live region changed,
+     which is the change a screen reader reliably reads, and the stale sentence came back in yet
+     another new region when the tour did. */
   const live = (
     <p className="sr-only" role="status">
       {said}
@@ -194,19 +235,21 @@ export function TourStrip({
     const words = whyWords(tour.why, tour.names)
     return (
       <div className="lab-tour-wrap" ref={wrapRef}>
+        {live}
         {words && (
           <p className="lab-tour-note" tabIndex={-1} ref={noteRef}>
             {words}
           </p>
         )}
-        {live}
       </div>
     )
   }
 
   const quiet = tour.people.every((p) => p.place.at === 'quiet')
-  /* 🎲: a pick like the picker's, so it ends your own follow, and anybody following you comes */
-  const dice = (
+  /* 🎲: a pick like the picker's, so it ends your own follow, and anybody following you comes.
+     ⚠️ NOT WHILE YOU RIDE: the bus's own 🎲 is the roll then, and two dice side by side — one
+     taking the call somewhere, one taking only you — is a choice nobody should have to read */
+  const dice = !riding && (
     <button
       className="btn btn-ghost lab-tour-dice"
       onClick={() => {
@@ -216,6 +259,36 @@ export function TourStrip({
     >
       🎲 Surprise us
     </button>
+  )
+  /* the party tour starts here, once this browser has listened long enough to find one already
+     going — before that the button is absent, not disabled, so nobody starts a second by accident */
+  const noTour = !bus.model || (bus.model.view.bus.phase === 'end' && bus.model.closed)
+  const startTour = bus.canStart && noTour && (
+    <button
+      className="btn btn-ghost lab-tour-dice lab-bus-start"
+      data-focus-next={FOCUS_NEXT}
+      onClick={() => bus.act(START)}
+    >
+      🚌 Start a party tour
+    </button>
+  )
+  const hopOff = riding && (
+    <button
+      className="btn btn-ghost lab-tour-dice"
+      data-focus-next={FOCUS_NEXT}
+      onClick={() => bus.act(OFF)}
+    >
+      Hop off
+    </button>
+  )
+  const panel = (
+    <BusPanel
+      model={bus.model}
+      act={bus.act}
+      wide={wide}
+      sayRef={bus.sayRef}
+      firstFaceRef={bus.firstFaceRef}
+    />
   )
   const n = tour.people.length
   const list = (
@@ -234,7 +307,17 @@ export function TourStrip({
           toyName={toyName}
           onGo={onGo}
           followed={following === p.id}
-          onFollow={() => follow(following === p.id ? null : p.id)}
+          onFollow={() => {
+            if (following === p.id) return follow(null)
+            /* ⚠️ FOLLOW STAYS WHILE YOU RIDE, AND PRESSING IT IS GETTING OFF: a follow and a seat on
+               the bus would each move you, to different places. It says so, rather than leaving
+               the bus behind without a word */
+            if (riding) {
+              bus.hopOff()
+              return follow(p.id, followOffWords(p.name))
+            }
+            follow(p.id)
+          }}
         />
       ))}
     </ul>
@@ -253,12 +336,14 @@ export function TourStrip({
   if (wide)
     return (
       <div className="lab-tour-wrap" ref={wrapRef}>
+        {live}
         <section className="lab-tour" aria-labelledby={headId} ref={watch}>
           <div className="lab-tour-head">
             <h3 className="fw-h lab-tour-title" id={headId}>
               👥 In the Lab with the call
             </h3>
             <span className="lab-tour-acts">
+              {startTour}
               {dice}
               <CallChatButton />
             </span>
@@ -269,9 +354,9 @@ export function TourStrip({
               press 🫱 in the call bar.
             </p>
           )}
+          {panel}
           {row}
           {list}
-          {live}
         </section>
       </div>
     )
@@ -282,6 +367,7 @@ export function TourStrip({
      because a closed fold hides its contents where no computed style can see it (CLAUDE.md §2). */
   return (
     <div className="lab-tour-wrap" ref={wrapRef}>
+      {live}
       <section className="lab-tour is-phone" aria-labelledby={headId} ref={watch}>
         <h3 className="sr-only" id={headId}>
           In the Lab with the call
@@ -296,27 +382,44 @@ export function TourStrip({
           <span className="lab-tour-line">
             {following ? `👣 Following ${leaderName}` : summaryOf(tour.people, toyName)}
           </span>
-          <button
-            className="btn btn-ghost lab-tour-toggle"
-            aria-expanded={open}
-            aria-controls={listId}
-            aria-label={open ? 'Hide who is where' : `Show ${n} — who is where in the call`}
-            onClick={() => setOpen((o) => !o)}
-          >
-            {open ? 'Hide' : `Show ${n}`}
-          </button>
+          {/* the two buttons are one group, so when the row is too narrow for both beside the
+              line they move to a row of their own together, rather than crushing the line to a
+              word (mobileAudit, measured with three 20-character names at 375) */}
+          <span className="lab-tour-sum-acts">
+            {bus.canStart && noTour && (
+              /* the visible word is inside the name, so a voice user can say "Tour" */
+              <button
+                className="btn btn-ghost lab-tour-toggle lab-bus-start"
+                aria-label="Tour: start a party tour"
+                data-focus-next={FOCUS_NEXT}
+                onClick={() => bus.act(START)}
+              >
+                🚌 Tour
+              </button>
+            )}
+            <button
+              className="btn btn-ghost lab-tour-toggle"
+              aria-expanded={open}
+              aria-controls={listId}
+              aria-label={open ? 'Hide who is where' : `Show ${n} — who is where in the call`}
+              onClick={() => setOpen((o) => !o)}
+            >
+              {open ? 'Hide' : `Show ${n}`}
+            </button>
+          </span>
         </div>
+        {panel}
         {row}
         {open && (
           <div className="lab-tour-head">
             <span className="lab-tour-acts">
               {dice}
+              {hopOff}
               <CallChatButton />
             </span>
           </div>
         )}
         {list}
-        {live}
       </section>
     </div>
   )
@@ -476,13 +579,14 @@ function useFollow(a: {
   people: number
   leaderName: string
   statusRef: RefObject<HTMLParagraphElement | null>
+  /** the strip's one status region, shared with the party tour */
+  say: (text: string) => void
 }) {
   const { inCall, onLabPage, following, onRoster, gateOpen, sharing, current, toys, people } = a
   const held = useSyncExternalStore(heldSeat.subscribe, heldSeat.get, heldSeat.get)
   const inMatch = useSyncExternalStore(onHash, inMatchNow, inMatchNow)
   const hidden = useSyncExternalStore(onVisible, tabHidden, tabHidden)
   const [step, setStep] = useState<FollowStep | null>(null)
-  const [said, setSaid] = useState('')
   const [tick, setTick] = useState(0)
   /* kept between asks, never rendered: the press itself; the last press inside the toy; the toy
      already offered this move, and the offer as first made (so its reason stays on screen); the
@@ -503,6 +607,8 @@ function useFollow(a: {
      ended by a toy you picked yourself (GpuLab's pick, or a link) can say so */
   const was = useRef<string | null>(null)
   const endedHere = useRef(false)
+  /* what the press itself said, when its first sentence is somebody else's (the bus's) */
+  const opening = useRef<string | null>(null)
   /* the latest callbacks and names, read by the effect without making it re-run on every render */
   const latest = useRef(a)
   latest.current = a
@@ -541,6 +647,7 @@ function useFollow(a: {
   }, [inCall])
 
   useEffect(() => {
+    const setSaid = latest.current.say
     if (!following) {
       if (!inCall) setSaid('')
       else if (was.current && !endedHere.current)
@@ -593,8 +700,10 @@ function useFollow(a: {
       left: left.current,
       goesFirst: (myPeerId() ?? '') < following,
     })
-    /* the press is spent on its first ask, whatever that answered */
+    /* the press is spent on its first ask, whatever that answered, and so are its words */
     first.current = false
+    const firstWords = opening.current
+    opening.current = null
     const { leaderName: name, onFollow, onLead, statusRef } = latest.current
     const toyName = (t: string) => toys.get(t) ?? t
     if (s.do === 'stop') {
@@ -618,7 +727,7 @@ function useFollow(a: {
       if (offered.current !== s.toy) {
         offered.current = s.toy
         lastOffer.current = s
-        setSaid(`${name} went to ${toyName(s.toy)}. You stayed.`)
+        setSaid(firstWords ?? `${name} went to ${toyName(s.toy)}. You stayed.`)
       }
       return
     }
@@ -635,10 +744,10 @@ function useFollow(a: {
         statusRef.current?.focus({ preventScroll: true })
       left.current = { toy: current, at: now }
       onLead(s.toy)
-      setSaid(`Following ${name} to ${toyName(s.toy)}.`)
+      setSaid(firstWords ?? `Following ${name} to ${toyName(s.toy)}.`)
       return
     }
-    if (started) setSaid(`Following ${name}.`)
+    if (started) setSaid(firstWords ?? `Following ${name}.`)
     if (s.at !== undefined) {
       const t = window.setTimeout(() => setTick((n) => n + 1), Math.max(0, s.at - now) + 5)
       return () => window.clearTimeout(t)
@@ -661,53 +770,20 @@ function useFollow(a: {
     tick,
   ])
 
-  /** start or stop following: the press itself goes at once (followStep's `first`) */
-  const follow = (id: string | null) => {
+  /**
+   * Start or stop following: the press itself goes at once (followStep's `first`). `words`, when
+   * something else ended or began it — the bus — is said instead of the follow's own sentence.
+   */
+  const follow = (id: string | null, words?: string) => {
     first.current = id !== null
     offered.current = null
     lastOffer.current = null
+    opening.current = id ? (words ?? null) : null
     if (!id) {
       endedHere.current = true
-      setSaid("You've stopped following.")
+      a.say(words ?? "You've stopped following.")
     }
     a.onFollow(id)
   }
-  return { step, said, follow }
-}
-
-/**
- * Somebody's token: their colour (hueFor — the colour of their cursor, their ring on the nav and
- * their dot on the picker), their initial, and their cursor's shape in the corner, exactly as
- * PartyCursors draws it. Filled when they are with you, tinted when they are elsewhere, dashed
- * when they are saying nothing; you are a hollow ring. Talking is a ring AND a word in the chip,
- * never colour alone, and it does not move — there is nothing for reduced motion to flatten.
- */
-function Token({
-  id,
-  name,
-  skin,
-  place,
-  speaking,
-  me = false,
-}: {
-  id: string
-  name: string
-  skin?: CursorSkin
-  place: Place
-  speaking: boolean
-  me?: boolean
-}) {
-  const h = hueFor(id)
-  const mark = skin ? cursorMark(skin, hslToHex({ h, s: 0.85, l: 0.58 })) : null
-  const state = me ? 'me' : place.at === 'with' ? 'with' : place.at === 'quiet' ? 'quiet' : 'away'
-  return (
-    <span
-      className={`lab-tour-token is-${state}${speaking ? ' is-talking' : ''}`}
-      style={{ ['--h' as string]: h }}
-      aria-hidden
-    >
-      {!me && (name.trim().charAt(0).toUpperCase() || '?')}
-      {mark && <img className="lab-tour-skin" src={mark} alt="" width={12} height={12} />}
-    </span>
-  )
+  return { step, follow }
 }
