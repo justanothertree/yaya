@@ -124,9 +124,9 @@ of 15 puzzles the same in both engines. The fix changes every seed's puzzle, tod
 - **Mechanism:** `src/lab/beat.ts` (`beatHash`, `readBeat`, `dealRand`), `BeatShare` and
   `useChallenge`, as Stackfall and Ten thousand use today.
 - **First piece:** widen `readBeat`'s seed bound from 2^31−1 to 32 bits (`beat.ts:23`, `:49`).
-  `daySeedOf` returns a full 32-bit number (`bricks.ts:102`). Measured 27 Nov 2026: 444 of 730 daily
-  seeds over the next year are refused, today's Golf seed (4,279,824,600) among them. A "beat my
-  board" link on a daily board would open nothing on most days.
+  `daySeedOf` returns a full 32-bit number (`bricks.ts:102`). Measured 27 Nov 2026: 430 of the next
+  730 days' seeds are refused (222 of the next 365), today's Golf seed (4,279,824,600) among them.
+  A "beat my board" link on a daily board would open nothing on most days.
 - **A shape question:** eleven arms is the point to ask whether `beat.ts`'s hand-written union
   should become a table of arms. Two arms already took 117 lines there.
 
