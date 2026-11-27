@@ -14,7 +14,12 @@
  * gallery has a packer for putting one on disk on purpose — and quietly writing every stroke to
  * a 5MB quota on every change is how a paint app starts silently failing to save at the exact
  * moment somebody has drawn something worth keeping. This survives navigation and the canvas
- * toggle, which is what was asked for. Surviving a reload is what ⬇ Save is for.
+ * toggle, which is what was asked for.
+ *
+ * ⚠️ AND A RELOAD IS NOW drafts/drafts.ts's JOB, NOT THIS FILE'S. This used to end "surviving a
+ * reload is what ⬇ Save is for", and on 27 Nov 2026 that cost somebody a whole minion: a phone's
+ * pull-to-refresh is a reload nobody chose. The quota argument above still stands, which is why
+ * the draft lives in IndexedDB rather than here or in localStorage.
  *
  * ⚠️ Held whole rather than diffed, because a stroke list is already the smallest form of itself:
  * points in 0–1 space, no pixels. Copying the array reference costs nothing.
@@ -72,11 +77,42 @@ export type PaintSession = {
 }
 
 let held: PaintSession | null = null
+/** the content the last save or open left on the page — see contentSig in paintDraft.ts */
+let base: string | null = null
+let arrivedSaved = false
 
 export const paintSession = {
-  /** Remember where the room got to. Called as the picture changes, never on every pointer move. */
-  keep(next: PaintSession) {
+  /**
+   * Remember where the room got to. Called as the picture changes, never on every pointer move.
+   *
+   * ⚠️ `saved: true` WHEN THE PICTURE IS ALREADY KEPT SOMEWHERE — a minion handed over from the
+   * Minions room to be edited. Without it the room would read a creature nobody has touched as
+   * unsaved work: warn on leaving, and keep a draft of something that is not a draft.
+   */
+  keep(next: PaintSession, opts?: { saved?: boolean }) {
     held = next
+    if (opts?.saved) arrivedSaved = true
+  },
+  /** Whether the picture now held arrived already saved. Read on mount; see arrivalSeen. */
+  arrivedSaved(): boolean {
+    return arrivedSaved
+  },
+  /* ⚠️ separate from the read, so a StrictMode double-run initializer cannot consume it twice */
+  arrivalSeen() {
+    arrivedSaved = false
+  },
+  /**
+   * What "unsaved" is measured against, across a remount.
+   *
+   * ⚠️ HELD HERE BECAUSE THE PICTURE IS. Walking to Games and back keeps the strokes; if it did
+   * not keep this too, a picture saved before the walk would come back reading as unsaved, and
+   * one left unsaved would come back reading as saved.
+   */
+  baseline(): string | null {
+    return base
+  },
+  setBaseline(sig: string) {
+    base = sig
   },
   /** What the room should come back to, or null on a genuinely fresh start. */
   restore(): PaintSession | null {

@@ -35,6 +35,7 @@ import { PetCompanion } from './pets/PetCompanion'
 import { PartyCursors } from './party/PartyCursors'
 import { AudioDock } from './audio/AudioDock'
 import { useReveal } from './hooks/useReveal'
+import { useNoPullToRefresh } from './hooks/useNoPullToRefresh'
 import { useNotifications, type Notice } from './hooks/useNotifications'
 import { useVoicePresence } from './voice/useVoicePresence'
 import { armRingtone, playCallSound } from './voice/ringtone'
@@ -1377,16 +1378,11 @@ export default function App() {
    * Done here rather than in CSS because the bounce belongs to the document element, and
    * `data-page` lives on a div inside body — a descendant selector can't reach up to <html>.
    * Scoped to chat so the rest of the site keeps pull-to-refresh.
+   *
+   * ⚠️ THROUGH THE SHARED COUNT now that Paint turns it off too — see useNoPullToRefresh for why
+   * two owners each restoring "the old value" leave the page in the wrong state.
    */
-  useEffect(() => {
-    if (active !== 'chat') return
-    const el = document.documentElement
-    const prev = el.style.overscrollBehavior
-    el.style.overscrollBehavior = 'none'
-    return () => {
-      el.style.overscrollBehavior = prev
-    }
-  }, [active])
+  useNoPullToRefresh(active === 'chat')
 
   /**
    * Keep the message box above the on-screen keyboard.
