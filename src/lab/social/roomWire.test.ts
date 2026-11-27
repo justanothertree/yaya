@@ -78,7 +78,7 @@ function play(): Row[] {
   }
   /** `id`'s toy mounts: its room opens, says hello and sees who is here */
   const opens = (id: string, here: string[]) => {
-    take(id, openRoom(rules, 'fourrow', id))
+    take(id, openRoom(rules, 'fourrow', id, now))
     take(id, present(rules, rooms.get(id)!, here, now))
   }
   /** every open toy in `ids` hears that `here` are on it (where.ts's roster, every 5 s) */

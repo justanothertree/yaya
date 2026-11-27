@@ -16,14 +16,17 @@
  * lowest id carries on from the last state it had. A newcomer's `hello` is answered by the host as
  * it was before they arrived, or by whoever published the room we hold (answersHello): a newcomer
  * with a lower id is host the moment they are present, and holds nothing yet. Should that answer
- * never go out, whoever holds the room hands it on (owes). Should it go out and reach everybody
- * but the newcomer, nobody knows it is owed, and the first move made against the room they lack
- * makes them ask again (receive).
+ * never go out, whoever holds the room and heard the hello from their new host hands it on (owes);
+ * a tab the hello reached before the newcomer's `where` saw somebody else as host, and owes
+ * nothing. Should it go out and reach everybody but the newcomer, nobody knows it is owed, and in
+ * a game played by turns the first move made against the room they lack makes them ask again
+ * (receive). docs/2026-11-23-lab-live-tables.md (Step 1, Left) has what neither covers.
  *
  * ⚠️ WHOLE STATE, NOT MOVES. A board game is under a kilobyte, so each change sends the room
- * entire. A lost message is then repaired by the next one, a repeated or late one is recognised by
- * its older `seq` and ignored, and somebody arriving says `hello` and is sent the room. No log to
- * replay and no gap to fill.
+ * entire. A lost message is then repaired by the next one, when there is one (the doc's Left has a
+ * loss after which nobody has a move to make), a repeated or late one is recognised by its older
+ * `seq` and ignored, and somebody arriving says `hello` and is sent the room. No log to replay and
+ * no gap to fill.
  *
  * ⚠️ THE RULES ARE THE TOY'S OWN. A move is checked by the toy's pure module (fourrow.ts's drop,
  * and so on): the host refuses anything not legal, from anyone but the player whose turn it is,
@@ -131,6 +134,13 @@ export type Room<G> = {
    * then, and when paid.
    */
   hostBehind?: number
+  /**
+   * When (this tab's clock) this room last said hello: as it opened, and as a move showed it
+   * behind (receive). For OWE_MS after, that hello's answer is on its way, and asking again
+   * would cost a hello and a whole room for nothing. Absent in a room nothing opened, which may
+   * ask at once.
+   */
+  asked?: number
 }
 
 /** what goes out on the wire, as the body of a party `lab` message */
@@ -169,7 +179,8 @@ export const OWE_MS = 1000
 
 type Step<G> = { room: Room<G>; out: Wire[] }
 
-export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string): Step<G> {
+/** a room as a toy mounts, at time `now` (this tab's clock, as `receive`'s): it says hello */
+export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string, now: number): Step<G> {
   const room: Room<G> = {
     sub,
     me,
@@ -182,6 +193,7 @@ export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string): Ste
     game: rules.fresh('versus'),
     present: [],
     missing: {},
+    asked: now,
   }
   return { room, out: [{ sub, t: 'hello' }] }
 }
@@ -258,7 +270,11 @@ export const answersHello = (
  * else heard it and so owes nothing — the same when what is owed is itself lost on the way to the
  * host and reaches everybody else. The host is then behind everybody, nobody knows it, and a quiet
  * host says nothing. What tells it is the next move: made against a board newer than the host's,
- * it is refused, and the host says hello again (receive), which everybody answers as a newcomer's.
+ * it is refused, and the host says hello again (receive), which everybody answers as a newcomer's
+ * — once a second at most, counting the hello its toy opened with, whose answer is on its way
+ * then. Two hosts are never told (the doc's Left, both older than this rule): Lamps', whose moves
+ * are not refused for their board, and one whose only player waits for somebody gone, who
+ * cannot move at all.
  *
  * Two older rooms say nothing. A newcomer's own empty one (seq 0) is its hello again, and it can
  * come more than once, as their roster fills: counted, each could land after the answer and cost a
@@ -578,10 +594,17 @@ export function receive<G, M>(
     if (move === null) return none
     if (b.at !== room.seq && rules.turn(room.game) !== 'any') {
       /* made against a board newer than mine: I host without the room everybody else holds, and
-         nobody knows it (owes says why), so I ask for it as a newcomer does. Older than mine is
-         a mover a state behind, which the state on its way to them mends */
-      return typeof b.at === 'number' && b.at > room.seq
-        ? { room, out: [{ sub: room.sub, t: 'hello' }] }
+         nobody may know it (owes says why), so I ask for it as a newcomer does. Older than mine
+         is a mover a state behind, which the state on its way to them mends.
+
+         ⚠️ NOT WITHIN OWE_MS OF MY LAST HELLO (third verification of 27 Nov 2026). A host whose
+         toy has just opened, or reopened, is behind until its hello is answered, and everybody
+         knows that: a press in that hop said hello again, and cost a hello and a whole room for
+         every press, with nothing lost. A move then is refused as it always was. Once a second at
+         most, too, whoever sends the moves */
+      const behind = typeof b.at === 'number' && b.at > room.seq
+      return behind && (room.asked === undefined || now - room.asked >= OWE_MS)
+        ? { room: { ...room, asked: now }, out: [{ sub: room.sub, t: 'hello' }] }
         : none
     }
     return decide(rules, room, from, { t: 'move', move })

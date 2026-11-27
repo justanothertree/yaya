@@ -38,7 +38,7 @@ function party(ids: string[]) {
   const wire: { from: string; body: Wire }[] = []
   let now = 0
   for (const id of ids) {
-    const s = openRoom(race, 'race', id)
+    const s = openRoom(race, 'race', id, now)
     rooms.set(id, s.room)
     wire.push(...s.out.map((body) => ({ from: id, body })))
   }
@@ -83,6 +83,8 @@ function party(ids: string[]) {
       send(id, s.out)
     },
     at: (ms: number) => (now = ms),
+    /** this network's clock, for a toy that mounts now */
+    time: () => now,
     agree: (ids2: string[] = [...rooms.keys()]) => {
       const first = net.get(ids2[0])
       return ids2.every((id) => {
@@ -225,7 +227,7 @@ describe('a room for two players, with anyone else watching', () => {
     n.flush()
     n.do('ann', { t: 'move', move: 2 })
     n.flush()
-    const s = openRoom(race, 'race', 'dee')
+    const s = openRoom(race, 'race', 'dee', 0)
     n.rooms.set('dee', s.room)
     n.wire.push(...s.out.map((body) => ({ from: 'dee', body })))
     n.see()
@@ -353,7 +355,7 @@ describe('when somebody goes', () => {
       m.do(id, { t: 'sit', seat: 0 })
       m.flush()
       m.rooms.delete(id)
-      const o = openRoom(race, 'race', '00')
+      const o = openRoom(race, 'race', '00', 0)
       m.rooms.set('00', o.room)
       m.wire.push(...o.out.map((body) => ({ from: '00', body })))
       m.flush()
@@ -398,10 +400,19 @@ describe('somebody else’s message', () => {
     n.flush()
     const r = n.get('ann')
     expect(r.seq).toBe(2)
-    const move = (at: number) => receive(race, r, 'bo', { sub: 'race', t: 'move', at, move: 1 }, 0)
-    expect(move(1)).toEqual({ room: r, out: [] })
-    expect(move(3)).toEqual({ room: r, out: [{ sub: 'race', t: 'hello' }] })
-    expect(move(2).room.seq).toBe(3)
+    const move = (at: number, ms: number, room = r) =>
+      receive(race, room, 'bo', { sub: 'race', t: 'move', at, move: 1 }, ms)
+    const hello = [{ sub: 'race', t: 'hello' }]
+    expect(move(1, OWE_MS)).toEqual({ room: r, out: [] })
+    expect(move(2, OWE_MS).room.seq).toBe(3)
+    /* third verification of 27 Nov 2026: Ann said hello as her room opened, at 0, and within
+       OWE_MS of a hello its answer is on its way, so a move against a newer board says nothing */
+    expect(move(3, OWE_MS - 1)).toEqual({ room: r, out: [] })
+    const asked = move(3, OWE_MS)
+    expect(asked.out).toEqual(hello)
+    // and the same again: nothing for OWE_MS after the hello it made, and then it asks again
+    expect(move(3, 2 * OWE_MS - 1, asked.room)).toEqual({ room: asked.room, out: [] })
+    expect(move(3, 2 * OWE_MS, asked.room).out).toEqual(hello)
   })
 })
 
@@ -444,7 +455,7 @@ describe('somebody with a lower id joining a game in progress', () => {
   }
   /** `x`'s toy mounts: its room opens, says hello and sees who is here, with nothing delivered */
   const mounts = (n: Net, x: string, here: string[]) => {
-    const o = openRoom(race, 'race', x)
+    const o = openRoom(race, 'race', x, n.time())
     n.wire.push(...o.out.map((body) => ({ from: x, body })))
     const s = present(race, o.room, here, 0)
     n.rooms.set(x, s.room)
@@ -501,7 +512,7 @@ describe('somebody with a lower id joining a game in progress', () => {
     /* Cy heard Ann's hello and then Bo's answer to it; and Ann announces her empty room again as
        her roster fills, after that answer (seen on a dev call, 26 Nov 2026). Nobody owes anybody
        at the next tick */
-    n.wire.push({ from: 'ann', body: stateOf(openRoom(race, 'race', 'ann').room) })
+    n.wire.push({ from: 'ann', body: stateOf(openRoom(race, 'race', 'ann', 0).room) })
     n.flush()
     for (const id of ['ann', 'bo', 'cy'])
       expect(present(race, n.get(id), ['ann', 'bo', 'cy'], 5000).out, id).toEqual([])
@@ -739,6 +750,59 @@ describe('somebody with a lower id joining a game in progress', () => {
     expect(cyMoves(n)).toBe(false)
     expect(n.agree()).toBe(true)
     expect(cyMoves(n)).toBe(true)
+  })
+  it('a move on its way as the lowest id opens the toy: nothing lost, and the host asks once', () => {
+    /* third verification of 27 Nov 2026 (R2-D3B-REDUNDANT-HELLO). The move made against a board
+       newer than the host's said hello again whenever it reached a host whose own hello, as its
+       toy opened, was still being answered: Al arriving at Bo and Cy's game, and Al, who hosts
+       and watches, reopening his toy. Nothing is lost in either, and every tab already knew Al
+       lacked the room, so the second hello cost a hello and a whole room for each press in that
+       hop. The press is refused as it always was: Al does not hold the board it was made on */
+    const all = ['al', 'bo', 'cy']
+    const arrival = () => {
+      const n = playing()
+      arrives(n, 'al')
+      return n
+    }
+    const reload = () => {
+      const n = party(all)
+      n.see()
+      n.flush()
+      n.do('bo', { t: 'sit', seat: 0 })
+      n.do('cy', { t: 'sit', seat: 1 })
+      n.flush()
+      n.do('bo', { t: 'move', move: 2 })
+      n.flush()
+      n.rooms.delete('al')
+      return n
+    }
+    for (const [name, made] of [
+      ['arrival', arrival],
+      ['reload', reload],
+    ] as const)
+      for (const presses of [1, 3]) {
+        const n = made()
+        const seq = n.get('cy').seq
+        const said: string[] = []
+        const push = n.wire.push.bind(n.wire)
+        n.wire.push = (...xs) => {
+          for (const x of xs) said.push(`${x.from}:${x.body.t}`)
+          return push(...xs)
+        }
+        n.at(30_000)
+        mounts(n, 'al', all)
+        // Cy presses before anything Al said has reached anybody
+        for (let i = 0; i < presses; i++) n.do('cy', { t: 'move', move: 1 })
+        n.flush()
+        const cy = Array<string>(presses).fill('cy:move')
+        // Al's hello, his empty room as his roster fills, Cy's presses, and Bo's answer: no more
+        expect(said, `${name} ${presses}`).toEqual(['al:hello', 'al:state', ...cy, 'bo:state'])
+        expect(n.get('al').seq, `${name} ${presses}`).toBe(seq)
+        expect(n.agree(), `${name} ${presses}`).toBe(true)
+        // nobody owes anybody a tick on, and Cy's next press lands everywhere
+        for (const id of all) expect(tick(n, id, all, 35_000), `${name} ${id}`).toEqual([])
+        expect(cyMoves(n), `${name} ${presses}`).toBe(true)
+      }
   })
   it('somebody whose hello arrives before their where is handed the room as before', () => {
     const n = playing()
