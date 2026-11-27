@@ -315,6 +315,46 @@ describe('when somebody goes', () => {
     n.flush(['ann', 'bo'])
     expect(n.get('bo').seats).toEqual(['bo', 'ann'])
   })
+  it("a seat is freed a minute on whatever its player's id is, the names of an object's own keys included", () => {
+    /* review of 26 Nov 2026: `missing` was a plain object, so an id that names one of
+       Object.prototype's keys read back an inherited value and its seat was held for ever. Only a
+       modified client can be called that, and it is the same minute as anybody's */
+    for (const id of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      /* '00' hosts and watches, below every name here, and '01' plays the other seat */
+      const n = party(['00', id, '01'])
+      n.see()
+      n.flush()
+      n.do(id, { t: 'sit', seat: 0 })
+      n.do('01', { t: 'sit', seat: 1 })
+      n.flush()
+      expect(n.get('00').seats, id).toEqual([id, '01'])
+      for (const ms of [0, HOLD_MS]) {
+        n.at(ms)
+        n.see(['00', '01'])
+        n.flush(['00', '01'])
+      }
+      expect(n.get('01').seats, id).toEqual([null, '01'])
+      /* and a newcomer handed the room before their first look at who is here, so the `missing`
+         they start from is openRoom's own: they become host and free it a minute on */
+      const m = party(['01', id])
+      m.see()
+      m.flush()
+      m.do(id, { t: 'sit', seat: 0 })
+      m.flush()
+      m.rooms.delete(id)
+      const o = openRoom(race, 'race', '00')
+      m.rooms.set('00', o.room)
+      m.wire.push(...o.out.map((body) => ({ from: '00', body })))
+      m.flush()
+      expect(m.get('00').seats, id).toEqual([id, null])
+      for (const ms of [1, HOLD_MS + 1]) {
+        m.at(ms)
+        m.see(['00', '01'])
+        m.flush()
+      }
+      expect(m.get('01').seats, id).toEqual([null, null])
+    }
+  })
 })
 
 describe('somebody else’s message', () => {
@@ -384,6 +424,28 @@ describe('somebody with a lower id joining a game in progress', () => {
     n.wire.push(...s.out.map((body) => ({ from: x, body })))
     n.flush()
   }
+  /**
+   * Ann's where lands and her toy mounts, but Bo, who hosted before her, has closed his before her
+   * hello reaches him: answersHello made it his to answer
+   */
+  const unanswered = () => {
+    const n = playing()
+    arrives(n, 'ann')
+    n.rooms.delete('bo')
+    opens(n, 'ann', ['ann', 'bo', 'cy'])
+    return n
+  }
+  /** a room as a state on the wire, at its own seq or another */
+  const stateOf = (r: Room<G>, seq = r.seq): Wire => ({
+    sub: 'race',
+    t: 'state',
+    seq,
+    seats: r.seats,
+    mode: r.mode,
+    level: r.level,
+    next: r.next,
+    game: r.game,
+  })
   /** Cy moves: does it land, on everybody's board? */
   const cyMoves = (n: Net) => {
     const before = n.get('cy').game.total
@@ -398,6 +460,13 @@ describe('somebody with a lower id joining a game in progress', () => {
     opens(n, 'ann', ['ann', 'bo', 'cy'])
     expect(n.get('ann').seq).toBe(n.get('bo').seq)
     expect(n.get('ann').game.total).toBe(2)
+    /* Cy heard Ann's hello and then Bo's answer to it; and Ann announces her empty room again as
+       her roster fills, after that answer (seen on a dev call, 26 Nov 2026). Nobody owes anybody
+       at the next tick */
+    n.wire.push({ from: 'ann', body: stateOf(openRoom(race, 'race', 'ann').room) })
+    n.flush()
+    for (const id of ['ann', 'bo', 'cy'])
+      expect(present(race, n.get(id), ['ann', 'bo', 'cy'], 5000).out, id).toEqual([])
     expect(cyMoves(n)).toBe(true)
   })
   it('two arriving together, in either order their toys open', () => {
@@ -424,6 +493,113 @@ describe('somebody with a lower id joining a game in progress', () => {
     opens(n, 'ann', ['ann', 'cy'])
     expect(n.get('ann').game.total).toBe(2)
     expect(n.agree()).toBe(true)
+  })
+  it('the host before them goes before their hello reaches him: whoever holds the room hands it on at the next tick', () => {
+    /* review of 26 Nov 2026 (R1-room): Cy sees Bo still hosting when Ann's hello lands, so by
+       answersHello it is Bo's to answer, and Bo has gone. Bo closing the toy, whose `where` then
+       reaches Cy by the next tick, and Bo's tab crashing, whose presence lingers for HERE_STALE_MS */
+    for (const gone of ['closed', 'crashed']) {
+      const n = unanswered()
+      // nobody has answered her: she leads from an empty board, and Cy holds the game
+      expect(n.get('ann').seq, gone).toBe(0)
+      // where.ts's next tick, five seconds on
+      const here = gone === 'closed' ? ['ann', 'cy'] : ['ann', 'bo', 'cy']
+      for (const id of ['ann', 'cy']) {
+        const t = present(race, n.get(id), here, 5000)
+        n.rooms.set(id, t.room)
+        n.wire.push(...t.out.map((body) => ({ from: id, body })))
+      }
+      n.flush()
+      expect(n.get('ann').game.total, gone).toBe(2)
+      expect(n.agree(), gone).toBe(true)
+      // and the game goes on under her: Bo's seat is freed a minute after she saw him gone, she
+      // sits in it, and it is Cy's move
+      for (const ms of [6000, 6000 + HOLD_MS])
+        for (const id of ['ann', 'cy']) {
+          const t = present(race, n.get(id), ['ann', 'cy'], ms)
+          n.rooms.set(id, t.room)
+          n.wire.push(...t.out.map((body) => ({ from: id, body })))
+          n.flush()
+        }
+      n.do('ann', { t: 'sit', seat: 0 })
+      n.flush()
+      expect(n.get('cy').seats, gone).toEqual(['ann', 'cy'])
+      expect(cyMoves(n), gone).toBe(true)
+      expect(n.get('ann').game.total, gone).toBe(3)
+    }
+  })
+  it('what is owed is paid by that room, or a newer one, reaching me from anybody else', () => {
+    const tick = (n: Net) => present(race, n.get('cy'), ['ann', 'cy'], 5000).out
+    expect(tick(unanswered())).toHaveLength(1)
+    // the same room, from somebody else who held it (Dee, whose tick came first)
+    const same = unanswered()
+    same.wire.push({ from: 'dee', body: stateOf(same.get('cy')) })
+    same.flush(['cy'])
+    expect(tick(same)).toEqual([])
+    // a newer one, which Cy takes
+    const newer = unanswered()
+    newer.wire.push({ from: 'dee', body: stateOf(newer.get('cy'), newer.get('cy').seq + 1) })
+    newer.flush(['cy'])
+    expect(newer.get('cy').from).toBe('dee')
+    expect(tick(newer)).toEqual([])
+  })
+  it('a host carrying on from a room that missed the last state is handed it at the next tick', () => {
+    /* Al hosts and watches; the room after Cy's move reaches Cy and is lost on its way to Bo, and
+       Al leaves. Bo hosts from the room before it, and says so; Cy holds Al's newer room and owes
+       it him. Until now Bo's next room tied Al's at its seq and lost to Al's lower id at Cy, so
+       the two of them played on two boards */
+    const n = party(['al', 'bo', 'cy'])
+    n.see()
+    n.flush()
+    n.do('bo', { t: 'sit', seat: 0 })
+    n.do('cy', { t: 'sit', seat: 1 })
+    n.flush()
+    n.do('bo', { t: 'move', move: 2 })
+    n.flush()
+    n.do('cy', { t: 'move', move: 1 })
+    n.flush(['al', 'cy'])
+    n.wire.length = 0
+    n.rooms.delete('al')
+    n.see(['bo', 'cy'])
+    n.flush()
+    expect(n.get('bo').game.total).toBe(2)
+    n.see(['bo', 'cy'])
+    n.flush()
+    expect(n.get('bo').game.total).toBe(3)
+    expect(n.agree()).toBe(true)
+    n.do('bo', { t: 'move', move: 2 })
+    n.flush()
+    expect(n.get('cy').game.total).toBe(5)
+  })
+  it('owing the host and then hosting it: the announcement pays, and nothing goes out again', () => {
+    const n = unanswered()
+    // Cy owes Ann the game, and Ann closes the toy too before Cy's tick: Cy hosts, and says so
+    n.rooms.delete('ann')
+    const hosting = present(race, n.get('cy'), ['cy'], 5000)
+    expect(hosting.out.map((w) => w.t)).toEqual(['state'])
+    // somebody lower's where lands: Cy is not host now, and has nothing left to send
+    expect(present(race, hosting.room, ['al', 'cy'], 6000).out).toEqual([])
+  })
+  it('a late room is not a host behind: the host’s own earlier one, or anybody else’s, costs nothing', () => {
+    const n = party(['ann', 'bo', 'cy'])
+    n.see()
+    n.flush()
+    n.do('bo', { t: 'sit', seat: 0 })
+    n.flush()
+    const early = n.get('cy')
+    n.do('cy', { t: 'sit', seat: 1 })
+    n.flush()
+    n.do('bo', { t: 'move', move: 2 })
+    n.flush()
+    // a copy of Ann's own earlier room, late, from Ann the host; and the same from Bo, who is not
+    for (const from of ['ann', 'bo']) {
+      n.wire.push({ from, body: stateOf(early) })
+      n.flush(['cy'])
+      n.wire.length = 0
+      const s = present(race, n.get('cy'), ['ann', 'bo', 'cy'], 5000)
+      n.rooms.set('cy', s.room)
+      expect(s.out, from).toEqual([])
+    }
   })
   it('somebody whose hello arrives before their where is handed the room as before', () => {
     const n = playing()

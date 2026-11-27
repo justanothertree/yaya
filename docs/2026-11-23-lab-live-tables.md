@@ -116,6 +116,60 @@ it. The ids differ in the first digit, the last and the middle, and use the lett
     canvas's centre sits under the fixed call dock, so a press there lands on the dock. The probe
     now scrolls the grid into view and refuses to press unless the canvas is what is under the point.
 
+### What review found, 26 Nov 2026
+
+Two faults in room.ts, both older than this step, which the refactor kept exactly as they were (the
+golden says so). They are fixed here because chairs.ts imports the same hello rule, and a fix made
+once in room.ts keeps the two kinds of table from drifting apart.
+
+- **A newcomer whose hello nobody answers led from an empty board for good.** Bo hosts a game with
+  Cy, and Ann, a lower id, arrives: she is host at once, and `answersHello` names Bo, the host before
+  her, to hand her the room. If Bo closes the toy, or his tab hangs, before her hello reaches him,
+  Cy does not answer either, because Bo was still the host before Ann when the hello landed at Cy.
+  Ann's empty room was older than everybody's and ignored, every move was asked of her and refused,
+  and Bo's seat was never freed. So now a tab that hears **a hello from its new host that somebody
+  else is to answer** owes that host its room, and so does a tab whose host **shows it a room older
+  than the one it holds**: a host carrying on from a room that missed the last state before the old
+  host left. The owed room goes at the tab's next `present`, every five seconds on where.ts's roster
+  and whenever somebody comes or goes, unless that room or a newer one reaches it first from
+  anybody. The wait keeps an arrival at its cost, because the answer the rule names arrives within
+  the same hop and pays what everybody else owed.
+  - **The first draft owed on the newcomer's empty room (seq 0) as well, and a dev call caught it
+    costing a room.** A newcomer announces its empty room each time its roster grows, so the second
+    announcement landed at Cy after Bo's answer and set the debt again, and Cy sent the game at her
+    next tick for nothing. An empty room is now never a debt; the hello it follows is.
+  - A late copy of the host's own earlier room, to a tab holding a newer room the host published,
+    says only that it was late, and costs nothing.
+- **A seat whose player's id names one of Object.prototype's keys was held for ever.** `missing`
+  was a plain object, so `'constructor'` read back `Object`, `now - Object` is NaN, and NaN is never
+  past `HOLD_MS`. Only a modified client can be called that. `missing` is built with no prototype
+  and read with `Object.hasOwn`, because a room handed to a newcomer before their first `present`
+  still holds openRoom's plain `{}`.
+
+Measured, 26 Nov 2026, 19:30–20:05 EST:
+
+- Every test was red first: the newcomer test (the board stayed at seq 0, two cases: Bo closing
+  the toy, and Bo's tab hanging with his presence still listed), the host-behind test (Ann and Cy
+  on two boards for good), and the prototype test (the seat still held after `HOLD_MS`).
+- **Mutations of room.ts, 14, each made once and put back with its md5 checked, red counted over
+  `src/lab/social`.** Every one went red. Never owing on a hello, 2; never owing on an older room,
+  1; never sending what is owed, 3; sending it at once rather than at the next tick, 3, the golden
+  among them (the answer the rule names would cost a room every time); an equal or newer room not
+  paying, 2; adopting a newer room not paying, 1; an empty room counted as a debt, 1; a late copy of
+  the host's own room counted, 1; owing anybody rather than the host, 1; owing with nothing to give
+  (seq 0), 4 in roomModes.test.ts; a new host keeping its debt, 1; and the three ways of getting
+  `missing` wrong (a plain object read with `??`, with `hasOwn`, and no prototype read with `??`),
+  1 each.
+- **roomWire.test.ts's recording is byte for byte unchanged**, and room.test.ts's arrival counts
+  hold: 3 sends for a higher id joining, 10 for a fresh toy filling.
+- **The dev call** (Playwright's headless Chromium, the dev server on :5400 with placeholder
+  Supabase values, ids Al …0001, Bo …0002, Cy …0003). Bo and Cy dropped three discs, then Al
+  arrived. With Bo there: Al was handed the board by Bo alone, Cy sent nothing in the seven seconds
+  after, past where.ts's tick, and Cy's next disc landed on all three tabs, published by Al. With
+  Bo's `lab` messages stopped at his tab, so that he stayed present and said nothing: Al was handed
+  the board by Cy, once, 10.9 s after his tab opened. With the hello's debt taken out of room.ts on
+  disk, the same run left Al at "Take a seat to play" with no discs after 17 s.
+
 ### Left
 
 - After the Pages deploy, Evan plays one move of Four in a row on a call (the plan's §8). Nothing in

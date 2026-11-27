@@ -15,7 +15,8 @@
  * `state` — the whole room: seats, a sequence number and the game. When the host leaves, the next
  * lowest id carries on from the last state it had. A newcomer's `hello` is answered by the host as
  * it was before they arrived, or by whoever published the room we hold (answersHello): a newcomer
- * with a lower id is host the moment they are present, and holds nothing yet.
+ * with a lower id is host the moment they are present, and holds nothing yet. Should that answer
+ * never come, whoever holds the room hands it on (owes).
  *
  * ⚠️ WHOLE STATE, NOT MOVES. A board game is under a kilobyte, so each change sends the room
  * entire. A lost message is then repaired by the next one, a repeated or late one is recognised by
@@ -122,6 +123,11 @@ export type Room<G> = {
   present: string[]
   /** since when (ms) each seated player has been missing */
   missing: Record<string, number>
+  /**
+   * The host has shown me an older room than mine, and nobody has put mine on the wire since: my
+   * next `present` sends it (owes, below). Absent until then.
+   */
+  hostBehind?: boolean
 }
 
 /** what goes out on the wire, as the body of a party `lab` message */
@@ -216,6 +222,39 @@ export const answersHello = (
   const before = present.filter((id) => id !== from)
   return lowest(me, before) === me || (seq > 0 && lastFrom === me)
 }
+
+/**
+ * Whether what `from` just said shows my host without the room I hold, which I then owe it.
+ *
+ * ⚠️ answersHello NAMES WHO ANSWERS A NEWCOMER, AND THEY CAN BE GONE BEFORE THE HELLO REACHES THEM
+ * (review of 26 Nov 2026). Bo hosts a game with Cy; Ann, a lower id, arrives and is host at once;
+ * Bo closes the toy, or his tab hangs, before her hello reaches him. Cy still saw Bo as the host
+ * before her when it landed, so it was not Cy's to answer, and Ann led from an empty board for
+ * good: her room older than everybody's and ignored, Bo's seat never freed, Cy's game stopped.
+ * Everybody kept the rule, and nobody spoke again.
+ *
+ * So a hello from my new host that somebody else is to answer leaves me owing it my room, and so
+ * does my host showing me a room older than mine: a host who carries on from a room that missed
+ * the last state before the old host left. What is owed goes at my next `present` (where.ts's
+ * roster, every five seconds and whenever somebody comes or goes), unless that room or a newer one
+ * reaches me first, from anybody: the host has heard it too. The wait keeps an arrival at its
+ * cost, because the answer the rule names comes within the same hop and pays what everybody else
+ * owed, so roomWire.test.ts's recording is byte for byte unchanged.
+ *
+ * Two older rooms say nothing. A newcomer's own empty one (seq 0) is its hello again, and it can
+ * come more than once, as their roster fills: counted, each could land after the answer and cost a
+ * room nobody needed (measured on a dev call, 26 Nov 2026). And a late copy of the host's own
+ * earlier room, to somebody holding a newer one the host published, says only that it was late.
+ */
+const owes = (room: Room<unknown>, from: string, heard: 'a hello not mine' | { seq: number }) =>
+  !room.hostBehind &&
+  room.seq > 0 &&
+  from === hostOf(room) &&
+  (heard === 'a hello not mine' || (heard.seq > 0 && room.from !== from))
+
+/** the room with nothing owed to its host */
+const paid = <G>(room: Room<G>): Room<G> =>
+  room.hostBehind ? { ...room, hostBehind: false } : room
 
 /** a newer state wins; at an equal seq (two hosts for a moment), the lower sender's */
 export const newer = (seq: number, from: string, heldSeq: number, heldFrom: string) =>
@@ -480,13 +519,25 @@ export function receive<G, M>(
       return none
     if (mode === null || level === null || !isSeat(b.next)) return none
     if (!(rules.modes ?? ['versus']).includes(mode)) return none
-    if (!newer(b.seq, from, room.seq, room.from)) return none
-    return { room: { ...room, seq: b.seq, from, seats, mode, level, next: b.next, game }, out: [] }
+    if (!newer(b.seq, from, room.seq, room.from)) {
+      // somebody has my room, or a newer one, on the wire: the host has heard it too
+      if (b.seq >= room.seq) return room.hostBehind ? { room: paid(room), out: [] } : none
+      return owes(room, from, { seq: b.seq })
+        ? { room: { ...room, hostBehind: true }, out: [] }
+        : none
+    }
+    return {
+      room: { ...paid(room), seq: b.seq, from, seats, mode, level, next: b.next, game },
+      out: [],
+    }
   }
-  if (b.t === 'hello')
-    return answersHello(room.me, room.present, from, room.seq, room.from)
-      ? { room, out: [stateOf(rules, room)] }
+  if (b.t === 'hello') {
+    if (answersHello(room.me, room.present, from, room.seq, room.from))
+      return { room, out: [stateOf(rules, room)] }
+    return owes(room, from, 'a hello not mine')
+      ? { room: { ...room, hostBehind: true }, out: [] }
       : none
+  }
   if (!isHost(room)) return none
   if (b.t === 'sit')
     return isSeat(b.seat) ? decide(rules, room, from, { t: 'sit', seat: b.seat }) : none
@@ -520,11 +571,19 @@ export function present<G, M>(
   const others = [...new Set(ids)].filter((id) => id !== room.me).sort()
   const wasHost = isHost(room)
   const here = new Set([room.me, ...others])
-  const missing: Record<string, number> = {}
-  for (const s of room.seats) if (s && !here.has(s)) missing[s] = room.missing[s] ?? now
-  const next: Room<G> = { ...room, present: others, missing }
+  /* keyed by whatever id a seat holds, so nothing may be inherited: on a plain object
+     'constructor' reads back Object, `now - Object` is NaN, and that seat is held for ever */
+  const missing: Record<string, number> = Object.create(null)
+  for (const s of room.seats)
+    if (s && !here.has(s)) missing[s] = Object.hasOwn(room.missing, s) ? room.missing[s] : now
+  const seen: Room<G> = { ...room, present: others, missing }
+  if (!isHost(seen))
+    return seen.hostBehind
+      ? { room: paid(seen), out: [stateOf(rules, seen)] }
+      : { room: seen, out: [] }
+  // a host owes nobody its room: it goes out with the announcement or the next change
+  const next = paid(seen)
   const out: Wire[] = []
-  if (!isHost(next)) return { room: next, out }
   // freed seats, for anybody gone too long
   const gone = next.seats.map((s) =>
     s && missing[s] !== undefined && now - missing[s] >= HOLD_MS ? s : null,
