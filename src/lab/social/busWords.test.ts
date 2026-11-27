@@ -9,6 +9,7 @@ import {
   NO_STAR_NOT_ON_BUS,
   PENDING,
   SHARING_OFF,
+  STALLED,
   arrivedWords,
   busLine,
   capReachedWords,
@@ -637,11 +638,47 @@ describe('leaving and pausing', () => {
     expect(SHARING_OFF).toBe(
       'You stopped sharing, so the party tour is hidden. Your place on the bus is kept.',
     )
+    /* nobody on the bus here: Dee alone on the Lab, as tick has it whenever quietSince runs */
+    const alone = { present: new Set([DEE]) }
     const quiet = { quietSince: NOW - 5000 }
-    expect(text(view(DEE, quiet))).toBe('The bus is waiting for Ann.')
-    const gone = view(DEE, { quietSince: NOW - KNOBS.ABANDON_MS })
+    expect(text(view(DEE, quiet, alone))).toBe('The bus is waiting for Ann.')
+    const gone = view(DEE, { quietSince: NOW - KNOBS.ABANDON_MS }, alone)
     expect(text(gone)).toBe('Nobody on the bus is here right now.')
     expect(labels(gone)).toEqual(['🚌 Start a party tour'])
+    expect(busLine(gone)).toBeNull()
+  })
+  it('a tour nobody is moving on says so, with Start, whoever is here (bus.ts’s backstop)', () => {
+    expect(STALLED).toBe('The bus has stalled: nobody is driving it.')
+    /* given up while nobody was here, and Ann back on a page that holds nothing: she is here, so
+       "Nobody on the bus is here" would be untrue */
+    const back = view(DEE, { quietSince: NOW - KNOBS.ABANDON_MS })
+    expect(text(back)).toBe(STALLED)
+    expect(labels(back)).toEqual(['🚌 Start a party tour'])
+    /* a window ABANDON_MS past its end with nothing heard of it since it opened, Ann here */
+    const window = (due: number, stateAt: number) =>
+      view(DEE, {
+        phase: 'ready',
+        toy: 'fourrow',
+        ready: [0],
+        readyAt: due - KNOBS.READY_MS,
+        due,
+        stateAt,
+      })
+    const dead = window(NOW - KNOBS.ABANDON_MS, NOW - KNOBS.ABANDON_MS - KNOBS.READY_MS)
+    expect(text(dead)).toBe(STALLED)
+    expect(labels(dead)).toEqual(['🚌 Start a party tour'])
+    expect(busLine(dead)).toBeNull()
+    /* a moment before, it is still the window, about to leave */
+    const nearly = window(NOW - KNOBS.ABANDON_MS + 1, NOW - KNOBS.ABANDON_MS - KNOBS.READY_MS)
+    expect(text(nearly)).toBe(
+      'Next stop: Four in a row. The bus is about to leave… Press Take me there to come along.',
+    )
+    /* and a state heard since — somebody answering a host's hello — is a tour still held */
+    expect(text(window(NOW - KNOBS.ABANDON_MS, NOW - 1000))).toContain(ABOUT_TO_LEAVE)
+    /* nobody on the bus here either: the plainer sentence, which is true */
+    expect(text(view(DEE, dead.bus, { present: new Set([DEE]) }))).toBe(
+      'Nobody on the bus is here right now.',
+    )
   })
 })
 
@@ -706,6 +743,8 @@ describe('every phase, every role, has words', () => {
       { phase: 'end' },
       { quietSince: NOW - 1 },
       { quietSince: NOW - KNOBS.ABANDON_MS },
+      /* stalled: the window long out and nothing heard of it (bus.ts's backstop) */
+      { phase: 'ready', toy: 'fourrow', ready: [], readyAt: NOW - 60_000, due: NOW - 30_000 },
     ]
     let seen = 0
     for (const p of phases)

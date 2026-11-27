@@ -40,6 +40,7 @@ import {
   rideStep,
   rollFaces,
   sitNow,
+  stallsAt,
   startTour,
   tick,
   tourIdFrom,
@@ -471,6 +472,9 @@ export function useBus(a: BusInputs): BusApi {
         holdUntil: b.holdUntil + by,
         freeAt: b.freeAt + by,
         leaveAt: b.leaveAt + by,
+        /* the backstop's clock moves with the others: a pause is not silence (bus.ts's stalled) */
+        stateAt: b.stateAt + by,
+        askers: [],
         heard: true,
         asking: false,
         syncAt: L.bus.syncAt,
@@ -633,6 +637,8 @@ export function useBus(a: BusInputs): BusApi {
         if (holdOn(b, { now, present: inp().present })) every(b.holdUntil, 60_000)
         if (b.guideAway !== null) add(b.guideAway + k.GUIDE_GONE_MS)
         if (b.quietSince !== null) add(b.quietSince + k.ABANDON_MS)
+        /* the moment nobody deciding it would leave it abandoned here: Start is drawn then */
+        add(stallsAt(b, k))
       }
       add(L.box.dueAt())
       if (L.hop) {

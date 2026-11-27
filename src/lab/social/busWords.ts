@@ -13,10 +13,12 @@
  */
 
 import {
+  abandoned,
   holdOn,
   holds,
   landedAt,
   podium,
+  stalled,
   upNext,
   type Bus,
   type Consent,
@@ -231,6 +233,8 @@ export const startedAtOnceWords = (v: View, starter: string) =>
  * holds until the bus moves: nothing about it changes by the second, so it is read once.
  */
 export const ABOUT_TO_LEAVE = 'The bus is about to leave…'
+/** a tour given up on (bus.ts's abandoned) with somebody on it here, and nothing moving it on */
+export const STALLED = 'The bus has stalled: nobody is driving it.'
 /** "The bus leaves in 12 s." while the window is open, then what is true once it is not */
 const leavesWords = (v: View) =>
   v.now < v.bus.due ? `The bus leaves in ${secs(v.bus.due - v.now)} s.` : ABOUT_TO_LEAVE
@@ -493,15 +497,18 @@ export function phaseLine(v: View): Line | null {
   const b = v.bus
   if (!holds(b)) return null
   if (b.phase === 'end') return { text: finaleWords(v), buttons: finaleButtons }
-  /* nobody on the bus is here: the bus waits, and after a while anybody may start another */
-  if (b.quietSince !== null) {
-    if (v.now - b.quietSince < v.k.ABANDON_MS)
-      return { text: `The bus is waiting for ${nameOf(v, guideId(b))}.`, buttons: [] }
+  /* nobody on the bus is here, or nobody is moving it on (bus.ts's abandoned): after a while
+     anybody may start another. ⚠️ SAID FROM WHO IS HERE, NOT FROM WHICH RULE GAVE IT UP: a rider
+     back on a page that holds nothing is here, and "Nobody on the bus is here" would be untrue */
+  if (abandoned(b, v)) {
+    const here = b.riders.some((r) => r.on && v.present.has(r.id))
     return {
-      text: 'Nobody on the bus is here right now.',
+      text: here ? STALLED : 'Nobody on the bus is here right now.',
       buttons: [button('start', '🚌 Start a party tour')],
     }
   }
+  if (b.quietSince !== null)
+    return { text: `The bus is waiting for ${nameOf(v, guideId(b))}.`, buttons: [] }
   if (b.phase === 'choose') {
     const faces = b.faces!
     const by = roller(v)
@@ -530,7 +537,7 @@ export function phaseLine(v: View): Line | null {
  */
 export function busLine(v: View): Line | null {
   const b = v.bus
-  if (!holds(b) || b.phase === 'end' || b.quietSince !== null) return null
+  if (!holds(b) || b.phase === 'end' || b.quietSince !== null || stalled(b, v)) return null
   const i = myIndex(b)
   if (b.phase === 'ready') {
     const toy = b.toy!
