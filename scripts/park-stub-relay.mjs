@@ -11,10 +11,20 @@
  * first minute — a friend's cast could never damage the boss you were running — after seventeen
  * commits of "only a second machine can check this". It could not, and it was not true.
  *
- * ⚠️ WHAT IT DELIBERATELY DOES NOT DO. No vouching, and no clamping. The real server's clamps
- * have their own round-trip tests and a double that re-implemented them would only be testing
- * itself; what is under test here is the CLIENT — its decoders, its peer rendering, and who is
- * allowed to take health off what.
+ * ⚠️ WHAT IT DELIBERATELY DOES NOT DO, IN A PARK. No vouching, and no clamping. The real
+ * server's clamps have their own round-trip tests and a double that re-implemented them would only
+ * be testing itself; what is under test here is the CLIENT — its decoders, its peer rendering, and
+ * who is allowed to take health off what.
+ *
+ * ⚠️ A LAB TABLE IS DIFFERENT: IT RUNS THE REAL DOOR. A `lab:` room here makes every decision
+ * through server/lib/labDoor.mjs — the same file the relay imports — so the silence, the windows,
+ * the chain and the friends rule are the relay's own and not a copy. What it cannot have is
+ * Supabase, so the three answers are stubbed and nothing else is:
+ *   - the token and the standing are 'yes' once a socket sends `stub-who {uid, friends}`, which a
+ *     dev tab sends in place of the `auth` it has no session for;
+ *   - the friends answer is 'yes' only when each side's `stub-who` lists the other, so a dev call's
+ *     `stranger=1` and `unfriend=` reach this door as a no without any rule copied here.
+ * The real relay never hears `stub-who`: kindAllowed refuses it there.
  *
  * ⚠️ AND IT REFUSES TO START WITHOUT BEING ASKED TWICE, so it can never be the thing running
  * by accident when somebody believes they are testing the real door.
@@ -22,9 +32,34 @@
  *   PARK_STUB_RELAY=yes node scripts/park-stub-relay.mjs
  *   # then point .env.local at it: VITE_WS_URL=ws://localhost:8080
  *   # open two tabs on #dev-park, walk both in
+ *
+ *   STUB_LAG=60      every frame it sends arrives 60 ms late
+ *   STUB_WAKE=40000  every socket opened in its first 40 s waits until then to open — a free relay
+ *                    waking. Whether Render's proxy really holds an upgrade like this is unverified
+ *   STUB_KILL_AT=ms  it exits once, that long after starting — a deploy mid-game, for reconnecting
+ *   STUB_ASK=200     every Lab friends answer takes 200 ms, as a round trip to Supabase does. At 0 a
+ *                    door here never has two checks waiting, so its queue, and the bound on what
+ *                    one account may have in it, cannot be seen at all
  */
+import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import { MAX_MSG_BYTES } from '../server/lib/frameCap.mjs'
+import {
+  LAB,
+  SAY,
+  charge,
+  doorFor,
+  forgetSpent,
+  helloAgain,
+  helloFrames,
+  isLabId,
+  kindAllowed,
+  leaveFrames,
+  looksLab,
+  reachesAnother,
+  readLab,
+  vouchTimerCloses,
+} from '../server/lib/labDoor.mjs'
 
 if (process.env.PARK_STUB_RELAY !== 'yes') {
   console.error(
@@ -43,11 +78,35 @@ const PORT = Number(process.env.PORT || 8080)
  * time" over a real relay are 20 to 80ms apart, not one. STUB_LAG=60 makes that reproducible.
  */
 const LAG = Number(process.env.STUB_LAG || 0)
+const WAKE = Number(process.env.STUB_WAKE || 0)
+const KILL_AT = Number(process.env.STUB_KILL_AT || 0)
+const ASK = Number(process.env.STUB_ASK || 0)
+const started = Date.now()
+/**
+ * ⚠️ A WAKING RELAY IS IMITATED AT THE UPGRADE, not at the socket. A socket that opens and then
+ * says nothing looks like a relay that is up and broken; one that does not open yet looks like a
+ * relay that is not up — which is what the client's "waking" line has to be tested against.
+ */
+const server = createServer((req, res) => {
+  res.writeHead(426)
+  res.end()
+})
 /* ⚠️ THE PIPE IS AS WIDE AS THE REAL ONE, imported rather than copied. A frame size is the
    transport's rule, not a check on what the park says, so it is the one refusal this double keeps:
    without it a client frame the relay would close with 1009 would sail through here, and the
    first anybody heard of it would be on the live site. */
-const wss = new WebSocketServer({ port: PORT, maxPayload: MAX_MSG_BYTES })
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MSG_BYTES })
+server.on('upgrade', (req, socket, head) => {
+  const go = () => wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
+  const wait = started + WAKE - Date.now()
+  if (wait > 0) setTimeout(go, wait)
+  else go()
+})
+if (KILL_AT > 0)
+  setTimeout(() => {
+    console.log('[stub] STUB_KILL_AT — exiting, as a deploy would')
+    process.exit(1)
+  }, KILL_AT).unref()
 /** roomId -> Map<clientId, { ws, look, name }> */
 const rooms = new Map()
 /** roomId -> { by, name, art } */
@@ -67,10 +126,141 @@ const send = (ws, o) => {
   if (LAG > 0) setTimeout(go, LAG)
   else go()
 }
+/** a close after whatever was sent before it, lag included */
+const closeAfter = (ws) => setTimeout(() => ws.close(1008), LAG)
+
+/**
+ * Lab tables: roomId -> { clients: Map<id, { ws, uid, sentAuth, vouched, times, timer }>, door,
+ * times }. Every decision is labDoor's; this is only the bookkeeping the relay keeps in its
+ * own rooms map.
+ */
+const labs = new Map()
+/** uid -> the friends its tab said it has, from `stub-who` — the stub's whole Supabase */
+const said = new Map()
+let labTimes = []
+/** uid -> that account's window, as the relay keeps one (LAB.personHz), forgotten once spent */
+const personTimes = new Map()
+const labVouched = (room) => [...room.clients.values()].filter((c) => c.vouched).map((c) => c.uid)
+const labElsewhere = (room) => [...labs.values()].filter((r) => r !== room).map(labVouched)
+/** and each of those doors' arrivals still being checked: what an arrival's places count against */
+const labHeldElsewhere = (room) =>
+  [...labs.values()].filter((r) => r !== room).map((r) => r.door.held(labVouched(r)))
+const mutual = (a, b) => (said.get(a)?.has(b) && said.get(b)?.has(a) ? 'yes' : 'no')
+/** the friends answer, a round trip late if STUB_ASK says so, and read when it lands */
+const answer = (a, b) =>
+  ASK > 0 ? new Promise((r) => setTimeout(() => r(mutual(a, b)), ASK)) : mutual(a, b)
+
+function labLeave(roomId, id) {
+  const room = labs.get(roomId)
+  const me = room?.clients.get(id)
+  if (!me) return
+  clearTimeout(me.timer)
+  room.clients.delete(id)
+  if (me.vouched) forgetSpent(personTimes, Date.now())
+  if (room.clients.size === 0) labs.delete(roomId)
+  else
+    for (const frame of leaveFrames(id, me.vouched))
+      for (const c of room.clients.values()) if (c.vouched) send(c.ws, frame)
+}
 
 wss.on('connection', (ws) => {
   const id = 'p' + next++
   let roomId = null
+  /** the Lab id this socket first knocked with: it knocks nowhere else, as at the relay */
+  let labTable = null
+
+  /* ⚠️ OUT OF A LAB ROOM, NEVER OUT OF A PARK: a park socket refused at a Lab hello is still in
+     its park until the close, and the close is what tells the park — `over`, as at the relay */
+  const labRefuse = (code) => {
+    send(ws, { type: 'error', code, message: SAY[code] })
+    if (roomId && labs.has(roomId)) {
+      labLeave(roomId, id)
+      roomId = null
+    }
+    closeAfter(ws)
+  }
+
+  function labHello(want) {
+    if (!isLabId(want)) return labRefuse('bad-room')
+    let room = labs.get(want)
+    if (!room) labs.set(want, (room = { clients: new Map(), door: doorFor(), times: [] }))
+    const me = { ws, uid: null, sentAuth: false, vouched: false, times: [], timer: null }
+    room.clients.set(id, me)
+    roomId = want
+    for (const frame of helloFrames(id)) send(ws, frame)
+    me.timer = setTimeout(() => {
+      if (labs.get(want)?.clients.get(id) === me && vouchTimerCloses(me)) labRefuse('members-only')
+    }, LAB.vouchMs)
+    console.log(`[stub] ${id} at a lab table (${room.clients.size} here)`)
+  }
+
+  function labWho(room, me, msg) {
+    const uid = typeof msg.uid === 'string' ? msg.uid.slice(0, 64) : ''
+    if (!uid || me.sentAuth || me.vouched) return
+    const friends = Array.isArray(msg.friends) ? msg.friends.slice(0, 64) : []
+    said.set(uid, new Set(friends.filter((f) => typeof f === 'string')))
+    /* the token and the standing, stubbed: a tab that says who it is has a good session, so the
+       door goes straight to the friends question — through labDoor, as the relay's does */
+    me.sentAuth = true
+    const here = () => labs.get(roomId) === room && room.clients.get(id) === me
+    void room.door
+      .check({
+        uid,
+        vouched: () => labVouched(room),
+        elsewhere: () => labElsewhere(room),
+        heldElsewhere: () => labHeldElsewhere(room),
+        ask: (other) => answer(uid, other),
+        gone: () => !here(),
+        enter: () => {
+          me.vouched = true
+          me.uid = uid
+          clearTimeout(me.timer)
+          const who = []
+          for (const [cid, c] of room.clients)
+            if (cid !== id && c.vouched) who.push({ from: cid, uid: c.uid })
+          send(ws, { type: 'labin', who })
+          for (const [cid, c] of room.clients)
+            if (cid !== id && c.vouched) send(c.ws, { type: 'lab-here', from: id, uid })
+        },
+      })
+      .then((verdict) => {
+        if (verdict && verdict !== 'admit' && here()) labRefuse(verdict)
+        console.log(`[stub] ${id} at the lab door: ${verdict ?? 'gone'}`)
+      })
+  }
+
+  function labMessage(msg) {
+    const room = labs.get(roomId)
+    const me = room?.clients.get(id)
+    if (!me) return
+    if (msg.type === 'stub-who') return labWho(room, me, msg)
+    if (!kindAllowed(msg.type)) return
+    /* `auth` is the real relay's; a dev tab with a session sends it too, and there is nobody here
+       to check it with — the stub-who beside it is what this door reads */
+    if (msg.type === 'auth' || !me.vouched) return
+    const m = readLab(msg, labVouched(room))
+    if (!m) return
+    /* reaching nobody but the sender's own tabs, it is charged nothing — as at the relay */
+    const to = [...room.clients].filter(
+      ([cid, c]) => cid !== id && c.vouched && (!m.to || c.uid === m.to),
+    )
+    const uids = to.map(([, c]) => c.uid)
+    if (!reachesAnother(me.uid, uids)) return
+    const c = charge(
+      [
+        [me.times, LAB.socketHz],
+        [personTimes.get(me.uid) ?? [], LAB.personHz],
+        [room.times, LAB.roomHz],
+        [labTimes, LAB.globalHz],
+      ],
+      Date.now(),
+    )
+    let mine
+    ;[me.times, mine, room.times, labTimes] = c.times
+    personTimes.set(me.uid, mine)
+    if (!c.ok) return
+    for (const [, o] of to) send(o.ws, { type: 'lab', from: id, uid: me.uid, d: m.d })
+  }
 
   ws.on('message', (raw) => {
     let msg
@@ -79,6 +269,18 @@ wss.on('connection', (ws) => {
     } catch {
       return
     }
+    if (!msg || typeof msg !== 'object') return
+
+    if (msg.type === 'hello') {
+      const want = String(msg.room || '').trim()
+      /* a Lab table is a socket's first room and its only one, as at the relay */
+      const again = helloAgain(labTable, want, roomId !== null)
+      if (again === 'same') return
+      if (looksLab(want)) labTable ??= want
+      if (again) return labRefuse(again)
+      if (looksLab(want)) return labHello(want)
+    }
+    if (roomId && labs.has(roomId)) return labMessage(msg)
 
     if (msg.type === 'hello') {
       roomId = String(msg.room || '')
@@ -124,11 +326,11 @@ wss.on('connection', (ws) => {
       }
     }
     /**
-     * ⚠️ NO OWNER CHECK HERE, AND THAT IS NOT WHAT THE REAL ONE SHOULD DO. The relay is the only
-     * place a host can be established, because it is the only place a socket is tied to a
-     * verified account — this double has no Supabase config and no accounts at all, so it
-     * forwards whoever speaks. See docs/2026-10-09-park-lobby-design.md: until the real relay
-     * drops a scene from a non-owner, the host's word is advisory.
+     * ⚠️ NO OWNER CHECK HERE, AND THE REAL ONE HAS ONE. The relay is the only place a host can be
+     * established, because it is the only place a socket is tied to a verified account — this
+     * double has no Supabase config and no accounts at all, so it forwards whoever speaks. The
+     * real relay drops a scene from anybody but the park's owner (its `scene` case asks
+     * park_rooms), so a guest's scene that works here does nothing there.
      */
     if (msg.type === 'scene') {
       const at = typeof msg.at === 'number' ? msg.at : null
@@ -169,6 +371,7 @@ wss.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
+    if (roomId && labs.has(roomId)) return labLeave(roomId, id)
     const room = rooms.get(roomId)
     if (!room) return
     room.delete(id)
@@ -193,4 +396,9 @@ wss.on('connection', (ws) => {
   ws.on('error', () => {})
 })
 
-console.log(`[stub] doorless park relay on :${PORT} — development only`)
+/* the port actually bound, so PORT=0 works — scripts/relay-harness.mjs reads this line */
+server.listen(PORT, () => {
+  console.log(
+    `[stub] doorless park relay listening on :${server.address().port} — development only`,
+  )
+})

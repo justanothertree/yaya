@@ -316,6 +316,15 @@ that render nothing at zero first**.
   with `PARK_STUB_RELAY=yes` (it refuses otherwise), point `VITE_WS_URL` at it, open two tabs
   on `#dev-park` and walk both in. The first minute of the first run found a friend's cast
   landing for nothing on the host's boss — a flag shared with their swing, dead for weeks.
+  ⚠️ **ITS `lab:` ROOMS ARE NOT DOORLESS, AND MUST NEVER GROW A DOOR OF THEIR OWN.** A Lab
+  table on the stub makes every decision through `server/lib/labDoor.mjs`, the file the relay
+  imports, and stubs only Supabase's three answers: a dev tab sends `stub-who {uid, friends}` in
+  place of the session it has no token for, and two people are friends only when each one's
+  list names the other. So `stranger=1` and `unfriend=` are refused by the relay's own rule, and
+  `scripts/park-stub-relay.test.mjs` reads the stub's source to keep it that way.
+  `STUB_WAKE=ms` holds every socket opened in that first stretch, as a free relay asleep does;
+  `STUB_KILL_AT=ms` exits once, as a deploy does. The door against a real Supabase is
+  `scripts/lab-door-probe.mjs`, on the local stack above.
 - **A faithful double is the hard part, and an unfaithful one looks exactly like a product
   bug.** Three of the four "bugs" that first run turned up were mine: the roster keyed peers by
   `id` where `readSomeone` reads `from`, it did not carry the room's boss the way the relay's
