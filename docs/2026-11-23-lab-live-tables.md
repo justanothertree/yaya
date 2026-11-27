@@ -1496,7 +1496,8 @@ that failed first on c54b15f9.
   still read as begun by nobody, so a leaver in that second re-minted it, and the tabs playing
   round 1 had its code changed under them. Hearing a state of the round this table holds now counts
   as its having begun. What is left, when the one holding the start never hears the other's, is
-  under Left.
+  under Left. ⚠️ _Corrected by the third verification below: a state of that round on this
+  table's code. One on another code had stopped a re-mint a leaver called for._
 - **A host whose toy reopened before anybody sat left two codes on the call for good.** Its old
   table and its new one were both "seq 1 by" it, so neither was later than the other. The lower
   code now wins, on every tab.
@@ -1538,7 +1539,8 @@ host whose roster lags can re-mint for nobody, and `by` can name one id that a f
   | a late copy by publisher alone (as it was); by code alone       | 1; 2  |
 
   The one that stays green matters only when somebody on the call at the first hand-over has left
-  by the second and their own count of the code was lost too. No test reaches it.
+  by the second and their own count of the code was lost too. No test reaches it. ⚠️ _Corrected by
+  the third verification below: a table that keeps present's contract reaches it, and it is red._
 
 - **The verification's own probes, run unchanged on this tree.** Gone: Z1's four timings of the
   captain's change and the friend joining (round 1 kept at both); Z2's three (B, C and D); Z4's
@@ -1566,7 +1568,10 @@ host whose roster lags can re-mint for nobody, and `by` can name one id that a f
   from the other side: a newer table that started a round, taken over an older one that had only
   sat people down. Code or chair changed while on rose in the wire-alone config, all of it inside
   two-host windows: with fewer rounds undone, more of them meet another host's round at the same
-  point. That is the window the plan accepts (4.5).
+  point. That is the window the plan accepts (4.5). ⚠️ _Corrected by the third verification below:
+  true of these seeds, where outside two-host windows it went from 4 seeds to 3, and not of 4,000
+  fresh ones, where code changed while on went from 2 seeds to 6 outside them and chair changed
+  from 2 to 4._
 
 - Arrivals cost what they did: 3 sends for a higher id, 10 for four filling a fresh table, 4 for a
   lower id new to the call (4.9).
@@ -1580,6 +1585,91 @@ host whose roster lags can re-mint for nobody, and `by` can name one id that a f
   control, is found. The GpuLab chunk holds `hostBehind`, room.ts's, which 8b4d87ea's build does
   not.
 
+### What a third verification found, 27 Nov 2026
+
+An independent verification of ce952359 confirmed two faults in the table, both brought in by its
+fixes, and one gap in the tests: the mutation the section above left green. Each fault is fixed
+with a test that failed first on ce952359's chairs.ts (e97f3db1's is the same file, md5
+8e2e9554…), and the gap is closed by a test that goes red under that mutation.
+
+- **A start heard on another code stopped a re-mint.** `told` was credited from any state of the
+  round this table holds, whatever its code. Bo and Ann hosted for a moment, and Eve, who had heard
+  code K, hung up; Ann's roster had it first, and she re-minted. Cy pressed Start and both hosts
+  took it, Bo holding his on K for the pace. Ann's start, on her new code, reached Bo before his
+  roster lost Eve and counted as round 1 begun, so Bo's start went out on K, and round 1 was played
+  on a code somebody who had hung up holds. Whoever had taken Ann's start changed code to K
+  mid-round. Nothing was lost, only late. A start on another code is one whoever took it leaves
+  when my state reaches them, whatever I do, so it has begun nothing of mine: the credit now needs
+  my code.
+- **A host whose toy reopened and was handed its own code back stayed split from a tab holding
+  its late start, through any number of changes.** Ann pressed Start and Bo's state for it was
+  slow. Bo's toy reopened, Ann answered his hello with the table before the start, on his own code,
+  and the start then landed at Ann and Cy. Every later state of Bo's was by him, on that code, and
+  not as far into its rounds, so `later` never took it, and the late-copy rule read each one as a
+  late copy of his own: 30 changes on, Bo was at #31 with no round, Ann and Cy at #4 with round 1
+  on, and Ann's report of its end was refused, with Start blocked for her as captain. A late copy
+  is now a state the host published at a seq below mine, or one it handed on from somebody else.
+  The first draft asked the seq alone, which made a copy the host had relayed at my seq, before it
+  took its own table, into a debt: one state nobody needed, found at seed 41461 of the drop config
+  below. A test asks each case at one state.
+- **The mutation left green, a second hand-over on one code forgetting the first, is reached** by
+  a table that keeps present's contract (nobody on a toy who is off that tab's call). Cy hosts with
+  Dee and hands Bo, the lowest id, the code, and Bo's own count of it is lost; Ann's `where` lands,
+  Bo hangs up, Cy answers Ann's hello too, and Ann closes the toy. With the mutation, Cy hosts
+  round 1 on the code Bo heard. The verification's own route kept Bo in Ann's toy view after he
+  had left her call, which useLabRoom never does.
+
+**What said more than the code does**, each corrected above or under Left: Left's "2 changes for
+one", which was untrue of a late start; the fuzz paragraph's "all of it inside two-host windows";
+the section above's "hearing a state of the round this table holds"; and Left's "needs a lost
+message", where a late one is enough.
+
+**Measured, 27 Nov 2026, 17:08–17:16 EST:**
+
+- **Red first.** On ce952359's chairs.ts, 3 of the 4 new tests, each for the reason its name gives:
+  Bo's held start out on K with Eve gone; Bo with no round and Ann with round 1 after the change;
+  and the one-state test's first case, no debt for the host's own table at my seq. The fourth, the
+  second hand-over, passes there and is red under the mutation. chairs.test.ts holds 198 (194
+  before) and liveWords.test.ts 26.
+- **Mutations of chairs.ts, each made once and put back with its md5 checked, red counted over
+  `src/lab/live`.** Every one went red. The credit from a start on any code, 1; a late copy without
+  its seq (as it was), 2; with `<=` rather than `<`, 2; by its seq alone (the first draft), 1; a
+  second hand-over on one code forgetting the first, 1, where it was 0.
+- **The verification's own probes, run unchanged on this tree.** Its first case re-mints (#7 by Bo,
+  on a new code, `knew` without Eve), its second heals at the first change with round 1 kept and
+  its end taken, and its third re-mints. Its timing of the late start, landing 0.5 to 6 s after
+  the reopen, with step 6's hello retry and without: all 10 agree with round 1 kept, against 3 of
+  10 on ce952359, which needed the retry and a landing within 2.5 s. c54b15f9 agrees in all 10 and
+  loses the round in 7. A late sit still heals at the second change.
+- **The review's fuzzer** (zqconv, kept outside the repository), ce952359's chairs.ts against this
+  one, on the 2,000 seeds a config above (40001–42000) and on the verification's 4,000 (600001–
+  604000). Seeds with each finding, its two-host and other cases added together:
+
+  | Finding (2,000 seeds / 4,000)      | Realistic | Out of order, harsh | Wire alone          | Harsh, 8% dropped |
+  | ---------------------------------- | --------- | ------------------- | ------------------- | ----------------- |
+  | round lost at quiet                | 0 / 2     | 13 / 45             | 25 / 56 → 52        | 24 / 51           |
+  | split when quiet                   | 1 / 4     | 55 → 54 / 147 → 146 | 71 → 69 / 172 → 170 | 111 / 268 → 266   |
+  | code or chair changed while on     | 0 / 1     | 11 / 34             | 22 / 37 → 35        | 10 / 23 → 22      |
+  | of those, outside two-host windows | 0 / 1     | 3 / 5               | 3 / 10 → 9          | 0 / 1             |
+  | round started twice                | 0 / 0     | 4 / 19              | 14 / 24 → 23        | 6 / 19            |
+  | start on a code a leaver heard     | 1 / 2     | 16 / 37             | 4 / 12              | 19 / 42 → 43      |
+
+  An arrow is ce952359 to this tree, and a figure without one is the same on both. The rest of the
+  fuzzer's findings move by a seed or two either way, which is what a run looks like once one
+  message more or less goes out: the seeded network draws differently from there on (seed 41461's
+  draft-only finding was that). Of the verification's three wire seeds, 600582, the 80 s split on
+  one code, is gone; 602364 and 602622 are a different shape, under Left.
+
+- Arrivals cost what they did: 3 sends for a higher id, 10 for four filling a fresh table, 4 for a
+  lower id new to the call (4.9).
+- **Gates on the final tree, 17:19–17:24 EST:** `npm run typecheck`, `npm run lint` and
+  `npm run build` passed. `npm run test` passed 417 files, 6,717 tests, 6 skipped: step 1's 415
+  files and 6,493 tests with its third verification merged in, and these two files' 224.
+  `node scripts/lab-move-bundle.mjs --check` passed with no rebuild, the bundle's md5 unchanged
+  (3d2b8570…). `prettier --check` passed on every changed file. None of the chunks in
+  `dist/assets` holds any of three sentences only liveWords.ts has, while two of busWords', as a
+  control, are found. The GpuLab chunk holds room.ts's new window (`asked===void 0`).
+
 ### Left
 
 - Nothing to check on a call until step 6 wires the table. The plan's §8 checks for live tables
@@ -1588,7 +1678,9 @@ host whose roster lags can re-mint for nobody, and `by` can name one id that a f
   is paid for by whoever holds the table only when it lands after its sender is that tab's host. A
   hello that lands first, before the newcomer's presence or while an old host below them is still
   listed, is owed by nobody, and the retry is then the only repair. The newcomer's own next change
-  does raise a debt, but the table handed back for it replaces the one the change was made on.
+  does raise a debt, but the table handed back for it replaces the one the change was made on. A
+  reopened host handed its own code back, with its last start landing late, no longer needs the
+  retry: its first change is owed the round (the third verification, above).
 - A debt is owed to whoever the tab sees as host when the earlier state arrives. A new host whose
   announcement lands before the receiving tab's presence has made it host is owed nothing. The tab
   ahead then keeps the departed host's last table, on a code the leaver holds and with a round on
@@ -1603,17 +1695,35 @@ host whose roster lags can re-mint for nobody, and `by` can name one id that a f
   at once let a stale table start a round (seed 246, above).
 - **Two hosts each taking one start, where the one holding it for the pace never hears the other's
   start, and somebody who heard the code leaves in that second:** the held start still goes out on
-  a new code, and the tabs already playing the other's start change code mid-round. It needs a lost
-  message as well as two hosts at once. Never re-minting a held start would bring back what review
-  found, a leaver holding the round's code, which needs only one host and a leaver in that second.
+  a new code, and the tabs already playing the other's start change code mid-round. It needs a
+  message lost or late as well as two hosts at once. Never re-minting a held start would bring back
+  what review found, a leaver holding the round's code, which needs only one host and a leaver in
+  that second. A start heard on another code now counts as unheard here, because whoever took it
+  changes code when the held start reaches them either way.
 - Two hosts each taking the same start from different tables, Bo's with a sit in it: round 1 is
   on everywhere, but its starters can change once, when Bo's state lands.
 - A host whose toy reopens while states from its last session are still on their way can be
   handed one older than what it published, by the publisher half of `answersHello`. Each late
-  state that lands after it ties the host's next change at one seq, one publisher and one code, so
-  the table heals one change later for every late state: 2 changes for one, 4 for three. That needs
-  out-of-order delivery across a remount. A reopened host whose hello nobody answers is now owed
-  its table at its first change, because the new code tells its states from a late copy.
+  state that lands after it, and is no further into its rounds, ties the host's next change at one
+  seq, one publisher and one code, so the table heals one change later for every late state: 2
+  changes for one, 4 for three. A late start is further on, and its tabs are owed at the host's
+  first change, which keeps the round (the third verification, above). That needs out-of-order
+  delivery across a remount. A reopened host whose hello nobody answers is owed its table at its
+  first change too, because the new code tells its states from a late copy.
+- **A start from a host's closed session, landing after the table has moved on without it, is
+  taken over the living table**, because it is further into its rounds, and with it the old
+  session's chairs: a code or a chair changes while a round is on. Two seeds in the verification's
+  4,000 of the wire-alone config (602364 and 602622), the same on ce952359 and on this tree. It is
+  the price of rounds before seq, and needs out-of-order delivery across a remount.
+- **A round started while the newcomer handed the code still hosts is played on a code a friend
+  who has gone heard.** `relayed` counts who heard a code from the tab that handed it on, and only
+  that tab, once it hosts. Cy hosts with Dee and hands Bo, the lowest id, the code; Bo's own count
+  is lost; Ann arrives, Bo hangs up, and Cy answers Ann's hello too. Ann now hosts, and her `knew`
+  never had Bo, who was gone from her roster before her toy opened, so Cy's Start plays round 1 on
+  the code Bo heard: the verification's probe, reproduced on this tree. It needs a lost fold and a
+  second hand-over inside one arrival, and the relay's door still asks Bo to be friends with
+  everybody in the room. Proposal, for step 6: a tab whose `relayed` names somebody the host's
+  `knew` lacks asks the host to count them, a request of its own on the wire.
 - A state the host hears, rather than sends, opens no roster-lag window: the fold on hearing counts
   the roster as it stands then.
 - A debt owed to a host that stops being host before it is paid still goes: one state nobody

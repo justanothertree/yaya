@@ -1948,6 +1948,210 @@ describe('what verification found (27 Nov 2026)', () => {
   })
 })
 
+describe('what a third verification found (27 Nov 2026)', () => {
+  it('two hosts each taking one start on different codes: the one held is re-minted when somebody who heard its code leaves', () => {
+    /* chairs:D1. Bo hosts for everybody but Ann, whose view of him lags, so she hosts too. Eve,
+       who heard code K, hangs up; Ann's roster has it first, and she re-mints K. Cy presses Start
+       and both hosts take it, Bo holding his on K for the pace. Ann's start, on her new code,
+       reaches Bo before his roster loses Eve, and Bo counted it as round 1 begun: his held start
+       went out on K, and round 1 was played on a code somebody who had hung up holds. Whoever
+       took Ann's start changes code when Bo's state reaches them whatever happens, so a start on
+       another code has begun nothing of Bo's */
+    const t = table(cards, [ANN, CY, DEE], [ANN, CY, DEE, EVE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    t.later(5000)
+    expect(t.get(ANN).knew).toContain(EVE)
+    t.call([ANN, BO, CY, DEE, EVE])
+    t.look(ANN, [ANN, CY, DEE])
+    t.open(BO)
+    t.look(BO, [ANN, BO, CY, DEE])
+    for (const id of [CY, DEE]) t.look(id, [ANN, BO, CY, DEE])
+    t.flush()
+    const K = t.get(BO).code
+    expect(t.get(ANN).code).toBe(K)
+    t.later(3000)
+    // Eve hangs up: Ann's roster has it first, and her re-mint is on its way
+    t.call([ANN, BO, CY, DEE])
+    t.look(ANN, [ANN, CY, DEE])
+    const remint = t.wire.splice(0)
+    expect(t.get(ANN).code).not.toBe(K)
+    const K2 = t.get(ANN).code
+    // a change only Bo decides, slow to reach Ann: Bo a seq ahead of her, his pace begun
+    t.later(100)
+    t.do(CY, { t: 'cpu', chair: 1, level: 0 })
+    const ask = [...t.wire]
+    t.flush([BO, CY, DEE])
+    const slow = [...ask, lastState(t, BO)]
+    expect(t.get(BO).roster).toContain(EVE)
+    // Cy presses Start: Ann and Bo both take it and hold it for the pace
+    t.later(100)
+    t.do(CY, { t: 'start', n: 1 })
+    t.flush([ANN, BO])
+    expect(t.get(BO)).toMatchObject({ code: K, round: { n: 1, phase: 'on' } })
+    expect(t.get(ANN)).toMatchObject({ code: K2, round: { n: 1, phase: 'on' } })
+    expect(dueAt(t.get(BO))).not.toBeNull()
+    t.wire.push(...remint)
+    t.flush()
+    // Ann's start goes out first and reaches everybody, Bo included
+    t.later(810)
+    t.tick([ANN])
+    t.flush()
+    expect(t.get(BO)).toMatchObject({ code: K, round: { n: 1, phase: 'on' } })
+    t.wire.push(...slow)
+    t.flush([ANN])
+    // Bo's roster loses Eve while his start is still held
+    t.later(50)
+    t.look(BO, [ANN, BO, CY, DEE])
+    t.flush()
+    t.later(100)
+    t.tick([BO])
+    t.flush()
+    t.see([ANN, BO, CY, DEE])
+    for (let i = 0; i < 4; i++) t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(CY).round).toMatchObject({ n: 1, phase: 'on' })
+    // round 1 is not played on the code Eve, who has hung up, holds
+    expect(t.get(CY).code).not.toBe(K)
+    expect(t.get(CY).knew).not.toContain(EVE)
+  })
+  it('a host whose toy reopens and is handed its own code back, its last start landing after: the next change heals the table, round and all', () => {
+    /* chairs:D2. Ann presses Start and Bo's state for it is slow to reach anybody; Bo's toy
+       reopens, and Ann answers his hello with the table before the start, on Bo's own code. The
+       start then lands at Ann and Cy. Every later state of Bo's was on that code, by Bo and not
+       as far into its rounds as round 1, so nobody took it, and the late-copy rule read each one
+       as a late copy of his own: Ann and Cy kept round 1 for good, Bo hosted a table with none,
+       and Ann's report of the round's end was refused. A late copy is behind the table I hold in
+       its seq as well; Bo's were ahead of it */
+    const t = table(cards, [BO, ANN, CY])
+    t.see()
+    t.settle()
+    t.do(ANN, { t: 'sit', chair: 0 })
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.later(5000)
+    const K = t.get(BO).code
+    t.do(ANN, { t: 'start', n: 1 })
+    t.flush([BO])
+    const start = lastState(t, BO)
+    expect(start.body).toMatchObject({ code: K, round: { n: 1, phase: 'on' } })
+    // Bo's toy reopens, and Ann answers his hello with what she holds
+    t.later(300)
+    t.tabs.delete(BO)
+    t.open(BO)
+    t.look(BO, [BO, ANN, CY])
+    t.flush()
+    expect(t.get(BO)).toMatchObject({ code: K, round: { n: 0 } })
+    // the start from his last session lands at Ann and Cy
+    t.wire.push(start)
+    t.flush([ANN, CY])
+    expect(t.get(ANN)).toMatchObject({ from: BO, code: K, round: { n: 1, phase: 'on' } })
+    // the captain changes the table, which Bo, holding no round, takes: one change heals it
+    t.do(ANN, { t: 'opts', o: { target: 500 } })
+    for (let i = 0; i < 4; i++) t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(BO)).toMatchObject({ code: K, round: { n: 1, phase: 'on' } })
+    // and the round's end is taken, everywhere
+    t.do(ANN, { t: 'over', n: 1, result: RESULT })
+    for (let i = 0; i < 3; i++) t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(CY).round).toMatchObject({ n: 1, phase: 'over', result: RESULT })
+  })
+  it("at my seq, the host's own table not as far on shows it lacks mine; a copy it handed on says only that it was late", () => {
+    /* chairs:D2 at one state. What the reopened host's first change looks like at a tab holding
+       its late start, and what a copy of somebody else's table, which the host handed on before it
+       took its own, looks like at the same seq (the review's fuzzer, drop config, seed 41461) */
+    const t = seated()
+    const before = t.get(BO)
+    t.do(CY, { t: 'start', n: 1 })
+    t.settle()
+    const held = t.get(DEE)
+    expect(held).toMatchObject({ from: BO, round: { n: 1, phase: 'on' } })
+    const hear = (c: Chairs<Opts>) => receive(cards, held, BO, wireOf(c), t.now()).table
+    // the host's own table at my seq, before the round: it lacks the round I hold
+    expect(dueAt(hear({ ...before, seq: held.seq }))).not.toBeNull()
+    // and below my seq, a late copy of its own
+    expect(dueAt(hear({ ...before, seq: held.seq - 1 }))).toBeNull()
+    // a table by somebody else at my seq, handed on by the host: late, and owed nothing
+    expect(dueAt(hear({ ...held, from: ANN, round: before.round }))).toBeNull()
+  })
+  it('a tab that hands one code on twice still counts who heard it the first time', () => {
+    /* chairs:D3: the one mutation of the last verification that stayed green, a second hand-over
+       on one code forgetting the first, killed by a table that keeps present's contract (nobody
+       on a toy who is off that tab's call). Cy hosts with Dee. Bo, the lowest id, arrives and Cy
+       answers his hello, handing him code K; Bo's own count of it is lost. Ann's where lands, Bo
+       hangs up, and Ann's toy opens: Cy, who published the table we hold, answers her too, which
+       is the second hand-over. Ann closes the toy and Cy hosts again: the next round must not be
+       played on the code Bo heard */
+    const t = table(cards, [CY, DEE])
+    let onCall = [CY, DEE]
+    const look = (id: string, here: string[]) => {
+      expect(
+        here.filter((x) => !onCall.includes(x)),
+        `${id} sees only the call`,
+      ).toEqual([])
+      t.look(id, here)
+    }
+    const call = (ids: string[]) => {
+      onCall = ids
+      t.call(ids)
+    }
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    const K = t.get(CY).code
+    // Bo joins the call; his where lands before his toy has a table
+    call([CY, DEE, BO])
+    for (const id of [CY, DEE]) look(id, [CY, DEE, BO])
+    t.flush()
+    t.open(BO)
+    look(BO, [CY, DEE, BO])
+    t.flush([CY, DEE])
+    t.wire.push(lastState(t, CY))
+    t.flush([BO])
+    expect(t.get(BO).code).toBe(K)
+    t.wire.length = 0 // Bo's fold of himself into `knew`, lost
+    expect(t.get(CY).knew).not.toContain(BO)
+    // Ann joins the call; her where lands at Cy and Dee
+    t.later(500)
+    call([CY, DEE, BO, ANN])
+    for (const id of [CY, DEE]) look(id, [CY, DEE, BO, ANN])
+    t.flush()
+    // Bo hangs up, off the call and the toy together
+    t.later(500)
+    t.tabs.delete(BO)
+    call([CY, DEE, ANN])
+    for (const id of [CY, DEE]) look(id, [CY, DEE, ANN])
+    t.flush()
+    // Ann's toy opens, and Cy answers her hello
+    t.later(500)
+    t.open(ANN)
+    look(ANN, [CY, DEE, ANN])
+    t.flush()
+    expect(t.get(ANN).code).toBe(K)
+    // Ann closes the toy and stays on the call: Cy hosts again
+    t.later(500)
+    t.tabs.delete(ANN)
+    for (const id of [CY, DEE]) look(id, [CY, DEE])
+    for (let i = 0; i < 3; i++) t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(CY).code).not.toBe(K)
+    t.do(CY, { t: 'start', n: 1 })
+    t.settle()
+    expect(t.get(DEE)).toMatchObject({ code: t.get(CY).code, round: { n: 1, phase: 'on' } })
+    // `relayed` is this tab's own record, and never goes on the wire
+    expect(t.log.filter((m) => JSON.stringify(m.body).includes('relayed'))).toEqual([])
+  })
+})
+
 describe('the host sends at most one state a second, and only changes wait', () => {
   it('three changes within a second go out as one state, a second after the last one sent', () => {
     const t = table(cards, [BO, ANN, CY, DEE])

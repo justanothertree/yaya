@@ -77,7 +77,8 @@
  * - **Re-minted between rounds when anybody who heard it has left the call**, never mid-round, so a
  *   round is never cut off from its own room. A start still held for the pace has begun for
  *   nobody, so a leaver in that second re-mints too (betweenRounds) — unless this tab has heard
- *   the same round started by another host, which has begun it for whoever took that.
+ *   the same round started by another host on this code, which has begun it for whoever took
+ *   that.
  * - ⚠️ `knew` IS EVERYONE WHO HAS HEARD THIS CODE, AS FAR AS THE HOST CAN TELL — NOT ONLY THOSE ON
  *   THE CALL WHEN IT WAS MINTED, which is what the plan wrote. Somebody who joined the call
  *   afterwards heard the code in the next state just the same, and the plan's rule would let them
@@ -691,13 +692,24 @@ export function readChairs<O>(rules: LiveRules<O>, body: unknown): Read<O> | nul
  * was a late copy, and a tab holding the old table owed nothing until the new seq passed its own,
  * however many changes that took. A reopened toy mints a new code; a late copy carries the one I
  * hold, unless the code changed between, and then what goes out is one state nobody needed.
+ *
+ * ⚠️ AND "AT A SEQ BELOW MINE" (third verification of 27 Nov 2026). A reopened toy handed its old
+ * table is on my code too: Ann answered Bo's hello with the table before his start, and his start
+ * then landed at her. Every later state of Bo's was on that code, by him and not as far into its
+ * rounds, so `later` never took it and the late-copy rule owed him nothing, however many changes
+ * there were: Ann held round 1, Bo hosted none, and her report of its end was refused. So a late
+ * copy is a state the host published at a seq below mine, or one it handed on from somebody else
+ * (a copy it relayed at my seq, before it took its own, says only that it was late). What a
+ * publisher's seq going back (`later`) makes of a real late copy at a seq above mine is one state
+ * nobody needed.
  */
 const owesHost = (c: Chairs<unknown>, from: string, heard: 'a hello not mine' | Read<unknown>) =>
   c.hostBehind === null &&
   c.seq > 0 &&
   from === hostOf(c) &&
   (heard === 'a hello not mine' ||
-    (!(heard.seq === 1 && heard.from === from) && !(c.from === from && heard.code === c.code)))
+    (!(heard.seq === 1 && heard.from === from) &&
+      !(c.from === from && heard.code === c.code && (heard.from !== from || heard.seq < c.seq))))
 
 /** somebody else's message, off the wire — everything in it checked before it is believed */
 export function receive<O>(
@@ -723,8 +735,13 @@ export function receive<O>(
     /* the round this table holds, begun on somebody's screen though I did not take their state
        (one taken is told already): two hosts for a moment, each with one start, and mine held for
        the pace. It has begun for them, so it is not between rounds for me either, and is never
-       re-minted under them (betweenRounds; verification of 27 Nov 2026) */
-    if (next.told < s.round.n) next = { ...next, told: s.round.n }
+       re-minted under them (betweenRounds; verification of 27 Nov 2026).
+
+       ⚠️ ON MY CODE (third verification of 27 Nov 2026). A start on another code is one whoever
+       took it leaves when my state reaches them, whatever I do, so it has begun nothing of mine:
+       credited, it stopped the re-mint a leaver called for, and round 1 was played on a code
+       somebody who had hung up holds */
+    if (next.told < s.round.n && s.code === next.code) next = { ...next, told: s.round.n }
     /* that state went to the whole call: as host, everybody on it has now heard the code it
        carries, though I did not send it — the one way a newcomer with the lowest id is handed it.
        Said at once, as a hello's answer is: held for PACE_MS, it is lost if I leave within it */
