@@ -1043,14 +1043,17 @@ in at 555, 876, 621 and 250 ms, with the same outcomes for the 390.
   cleared, and the new hello sets another beside it. It is older than this branch: on main the
   same hello skipped the same step and no leaving cleared the timer at all. No client sends a
   second hello to a room it is in, and park behaviour is not changed here.
-- **150 a second across the relay is three accounts' worth, and it is still open.** Any three
+- **150 a second across the relay is three accounts' worth — kept at 150 for now (Evan, 27 Nov
+  2026).** His answer: keep `LAB.globalHz` at 150 and revisit it with measurements once step 5 has
+  real game traffic. So the figures below stand as the case for that later look, not as an open
+  ask. Any three
   accounts that each reach somebody else at a live table fill it, and so do four honest players
   near the forty a second the client's outbox stays under. A table none of them is at loses its
   moves while they do: 0 to 2 of 20 heard against three accounts, and 4 to 7 of 20 lost to four
   honest players, in every run so far. The second review's verification (above) has the
   measurements, with what 300 and 600 change, and why splitting the same 150 more fairly only moves
-  the loss. What the relay may cost is Evan's call, best asked with step 5's client, the first thing
-  that sends at real rates. Nothing is at stake before then, because no client opens a Lab table.
+  the loss. The revisit belongs with step 5's client, the first thing that sends at real rates;
+  nothing is at stake before then, because no client opens a Lab table.
 - **At the relay's 500 rooms, a hello is an existence test.** A new code gets `too-many-rooms`
   and a used one gets `welcome` (measured with `MAX_ROOMS=3`). Getting there means holding 500
   rooms open, which locks Snake and the park out as well. This is older than the Lab and is not
