@@ -36,10 +36,10 @@ which takes a whole room, and the host-before half of `answersHello` again, of p
 newcomer. The refactor itself (d0546785) changes nothing that goes on the wire, and the golden and
 the measurements below are how that is known rather than believed.
 
-⚠️ **The fixes that follow it DO change what clients send** (58e46345, from review, and the commit
-after it, from verification). A tab now hands its host the room it holds when the host shows it
-lacks it, and a host shown a move made against a board newer than its own says `hello` again. Both
-are in room.ts, which every live call game runs on (Four in a row, Reversi, Chess, Lamps and the
+⚠️ **The fixes that follow it DO change what clients send** (58e46345, from review, and the two
+commits after it, from two verifications). A tab now hands its host the room it holds when the host
+shows it lacks it, and a host shown a move made against a board newer than its own says `hello`
+again, at most once a second and not in the second after its own toy opened. Both are in room.ts, which every live call game runs on (Four in a row, Reversi, Chess, Lamps and the
 rest of `src/gpu/*Room.ts`), so both reach production when this branch merges. Neither reaches the
 relay or lab-move.
 
@@ -208,6 +208,8 @@ the wire changes. Each fault has a test that failed first.
   more to do, so the newcomer hosted an empty board and refused every move. That stall is older
   than these branches: 8b4d87ea and origin/main stall the same way. The rule above covers it too,
   from the first move made against it, and the header now says which repair covers which case.
+  ⚠️ _Corrected by the third verification below: in a game played by turns, and only when somebody
+  can move. Lamps, and a player waiting for somebody gone, are under Left._
 - **This section's lead said nothing on the wire changes**, and so did the 35-test line and the
   `present()` line. All three were true of d0546785 alone, and now say so; Left names the change.
 
@@ -258,26 +260,148 @@ Measured, 27 Nov 2026, 05:34–06:01 EST:
   (3d2b8570…), because room.ts reaches lab-move as types only. `prettier --check` passed on every
   changed file. The built GpuLab chunk holds `hostBehind`, which 8b4d87ea's room.ts does not have.
 
+### What a third verification found, 27 Nov 2026
+
+An independent verification of f74103d1 confirmed one fault that it brought in, reached two ways;
+a bound it lacked; two costs of a call that straddles the deploy; and five stalls older than these
+branches, three of which room.ts's comments or this section said were covered. The fault is fixed
+with a test that failed first. The rest is written down below and under Left, because old code
+cannot be changed, or because a fix would be a redesign of a file every live call game runs on.
+
+- **The host's second hello fired with nothing lost.** A host whose toy has just opened, or
+  reopened, holds an empty board until its hello is answered, and every tab knows it: the ones not
+  to answer owe it the room until the answer pays. A press in that hop reached the host as a move
+  made against a board newer than its own, and the host said `hello` again, so whoever answered
+  sent the whole room a second time. Ann pressing as Bo, the lowest id, opened the toy cost 6
+  messages where production sends 4, and three impatient presses cost 12 where it sends 6, because
+  a toy does not lock after a press. Nothing on screen differed, every tab ended on the same room,
+  and the press was refused in both, as it always was. In the verification's model of friends
+  arriving while two others press every 0.6–1.5 s, 435 of 2,000 arrivals over one relay had a
+  second hello. **A host now says hello again only `OWE_MS` or more after its last hello**,
+  counting the one its toy opened with: `openRoom` takes the clock, as `receive` and `present` do,
+  and the room keeps when it asked (`asked`). Within that second a move against a newer board is
+  refused quietly, as production refuses it.
+- **Nothing bounded the second hello.** Anybody on the call, seated or not, could send moves with
+  a large `at`, and for each the host broadcast a hello and the next lowest id a whole room: 100
+  forged moves in 10 s drew 100 of each. The rule above bounds it at one hello a second, whoever
+  sends the moves. It was the same order as an abuse that already exists (any newer state from
+  anybody replaces the room), on a channel the gate keeps to friends.
+
+**What said more than the code does**, each corrected in room.ts or under Left:
+
+- The header said that should a newcomer's answer never go out, whoever holds the room hands it
+  on. A tab the hello reached before the newcomer's `where` saw somebody else as host, and owes
+  nothing.
+- owes' comment, the header and the section above said the move made against the room covers the
+  lost answer, "from the first move made against it". It does in a game played by turns, when
+  somebody can move. Lamps never says hello again, and a table whose only player waits for
+  somebody gone has nobody who can move.
+- Left said a call with everybody present never reaches the change, and that the second hello
+  needs a message lost. A press in the hop around an arrival or a reload reached it with nothing
+  lost. With this fix it needs a loss again, or an answer slower than `OWE_MS`.
+- Left's first stall named a state lost on its way to every player. Lost to the next mover alone,
+  it stops a game of three as surely, and nobody presses at all.
+
+Measured, 27 Nov 2026, 16:54–17:00 EST:
+
+- **Red first.** On f74103d1's room.ts (e0a9af85's is the same file, md5 0c056367…), 2 tests: the
+  new arrival-and-reload test in "somebody with a lower id joining", which got Al's hello, his
+  empty room, Cy's move and Bo's answer, then a second hello and a second answer, 6 where it asks
+  for 4; and the move test in "somebody else's message", which now asks that a move against a
+  newer board within `OWE_MS` of the room's own hello says nothing.
+- **Mutations of room.ts, each made once and put back with its md5 checked, red counted over
+  `src/lab/social`.** Every one went red. No window, 2; `openRoom` not keeping the time, 2; a
+  second hello not restarting the window, 1; the window ending a millisecond late, 1; never asking
+  again once the toy is open, 3: the move test and both repairs the second hello is for (the lost
+  answer and the lost repair).
+- **roomWire.test.ts's recording is byte for byte unchanged**, and room.test.ts's arrival counts
+  hold: 3 sends for a higher id joining, 10 for a fresh toy filling.
+- **The verification's own models, rebuilt against this room.ts** with the mount's clock passed to
+  `openRoom`. A model that does not pass it gets f74103d1's behaviour, which is why the clock is
+  not optional:
+  - the adversary's arrivals, 2,000 runs a delivery order: second hellos 417, 416 and 435 to 0, 0
+    and 0; states on the wire over one relay 56,444 to 56,009, which is 58e46345's figure exactly;
+    no owed room sent and no run disagreeing, before or after;
+  - the refutation's single-relay sweep of Cy's press: 17 of 46 press times to 0; and 4,000 random
+    sessions on each of two seeds, 455 and 460 second hellos to 0, Bo's rooms 2,280 and 2,277 to
+    1,825 and 1,817, which are 8b4d87ea's;
+  - the forged moves: 100 hellos and 100 rooms to 9 hellos and 11 rooms, every room unchanged;
+  - the mixed table under Left: unchanged, a hello and a room for each of 61 presses, because the
+    presses are a second apart.
+- **The dev call**, 16:59–17:00 EST, the verification's own script (Playwright's headless
+  Chromium, the dev server on :5401 from this tree with placeholder Supabase values, ids Bo …01,
+  Ann …02, Cy …03). Ann and Cy dropped four discs, Bo opened the toy with his `lab` messages
+  leaving his tab 5 s late, and Ann pressed 262 ms later. 5 messages: Ann's move, Bo's hello,
+  Ann's answer and Bo's empty room twice, production's 5, where f74103d1 sent 7 with a second hello
+  at +5,084 ms and a second answer. No page errors.
+- **Gates on this tree, 17:02–17:06 EST:** `npm run typecheck`, `npm run lint` and `npm run build`
+  passed. `npm run test` passed 415 files, 6,493 tests, 6 skipped: e0a9af85's and this one.
+  `node scripts/lab-move-bundle.mjs --check` passed with no rebuild, the bundle's md5 unchanged
+  (3d2b8570…), because room.ts reaches lab-move as types only. `prettier --check` passed on every
+  changed file. The built GpuLab chunk holds the window (`asked===void 0` beside the second
+  hello), which e0a9af85's room.ts has no field for.
+
 ### Left
 
 - After the Pages deploy, Evan plays one move of Four in a row on a call (the plan's §8). That
   reaches the refactor and nothing the fixes change.
 - ⚠️ **The fixes change what every live call game's clients send, and a call with everybody present
-  never reaches the change.** One check by hand comes close: the friend with the lowest id on the
-  call reloads the toy mid-game, and the next move lands on every tab. The others owe that friend
-  the room from their hello until somebody's answer pays it, so nothing more should be sent. The
-  room handed on for a debt, and the host's second hello, need a message lost on its way to one
-  tab, which nobody can arrange on a real call. They were checked on the dev calls above and in
-  room.test.ts. Nothing in this step reaches the relay or lab-move.
+  never reaches the change while every answer comes within `OWE_MS`.** One check by hand comes
+  close: the friend with the lowest id on the call reloads the toy mid-game, and the next move lands
+  on every tab. The others owe that friend the room from their hello until somebody's answer pays
+  it, and a press in that hop is refused quietly, so nothing more should be sent. The room handed
+  on for a debt, and the host's second hello, need a message lost on its way to one tab, which
+  nobody can arrange on a real call, or an answer slower than a second. They were checked on the
+  dev calls above and in room.test.ts. Nothing in this step reaches the relay or lab-move.
+- ⚠️ **While a call straddles the deploy, its tabs run two room.ts files**, until each reloads, and a
+  rollback makes the same mix the other way round. Two things only a mixed table does, both found
+  by the verification and both ended by the stuck tabs reloading. Neither can be fixed here: old
+  code cannot be changed, and a tab cannot tell which build its host runs.
+  - A host on this build, behind players on production's who alone hold the newer room, asks again
+    on every press and is never handed it, because production's room.ts hands a host a room only
+    when it is the one to answer. Each press costs a hello and a room, about what a press that
+    lands costs, at most once a second. Production freezes the same table silently.
+  - A host on production's build cannot ask. A watcher on this build hands it the room it owes,
+    and if that is lost on its way to the host alone, the players move ahead of a host that never
+    says hello again: all-old and all-new tables carry on from the same three losses, and this one
+    stops until a sit, a stand, a new game or the host's reload. 0.12% of the verification's
+    light-loss runs, about the rate at which the two builds' own runs differ.
 - **Older than these branches, in production now, and not fixed here:**
-  - A host's state lost on its way to every player leaves the host ahead of everybody, and every
-    move is refused as made against an older board. It mends at the next change only the host can
-    make: a sit, a stand, a new game, or somebody arriving.
+  - A host's state lost on its way to the player whose move it now is leaves that player's room
+    saying it is the other's move, and the other's saying it is theirs, so nobody presses and
+    nothing goes on the wire: 20 of 20 seeds froze on main and on this branch, a game of three.
+    Lost to every player, the one who moved last presses against an older board and is refused.
+    Either mends at the next change only the host can make, or at a reload: a sit, a stand, a new
+    game, or somebody arriving. Nothing tells the players to do that. A host re-announcing a
+    quiet room now and then would end it, at a room a table each time, which is a decision about
+    traffic rather than a fix to this rule.
   - A host whose toy reopens and is handed an older room than the one it published is read as late
     by every tab holding the room it published, because the late-copy rule cannot tell a new
     session from a late copy. A sit, stand or new game it decides on the older room says nothing
-    to them. A move made against the newer room now makes it ask again (the lost-repair test is
-    this case).
+    to them. A move made against the newer room now makes it ask again, in a game played by turns
+    (the lost-repair test is this case).
+  - **A hello that reaches a tab before the newcomer's `where` does is owed by nobody.** owes asks
+    whether the hello came from my host, and until the `where` lands my host is the one before
+    them. If he hangs or closes the toy before the hello reaches him, nobody hands the room on:
+    Ann hosts an empty board and Cy waits for Bo. 348 of the verification's 525 hello-first runs
+    never recovered, on 58e46345 and on this tree alike, against 0 of 475 with the `where` first.
+    It needs no jitter: arriving by the Lab's nav link with this game as the last toy sends the
+    hello first, because the toy's room says hello before GpuLab says where. Production stalls in
+    both orders. Ann sitting mends it, and so does Cy's move while Bo is still listed, when it is
+    hers. Proposal: a hello from somebody not yet present is remembered, and owed once their
+    `where` makes them my host.
+  - **Lamps, whose turn is 'any', never tells a host it is behind.** A move there is not refused
+    for its board, only because the host's empty room seats nobody, so the second hello never
+    fires and the table stays split until the host leaves or reopens the toy. Production does the
+    same, in every game. Proposal: ask on a move made against a newer board before the 'any'
+    exemption, still deciding it as now; the verification's copy mended all five scenes it tried,
+    with one hello each.
+  - **The second hello needs a move, and a player waiting for somebody gone cannot make one.** Al
+    hosts and watches, Cy closes the toy mid-game, and Al's toy remounts; Ann's answer to it is
+    lost on its way to him. Ann waits for Cy, whose seat only Al can free, and Al holds an empty
+    board: 30 roster ticks over 150 s send nothing, on production and on this tree. Ann keeps
+    "Carry on against the computer" while Cy is gone. It ends when Al's toy reopens and the answer
+    arrives, or Ann's does. No small change covers it.
 
 ## Step 2: a Supabase outage is not a refusal, and /health says which build is running
 
