@@ -5,7 +5,8 @@
  *     prints the build stamp of server/ — the working tree's, or a git revision's
  *
  *   RELAY_URL=<the relay's address> node scripts/relay-smoke.mjs [--ref <rev>] [--wait <seconds>]
- *     waits for /health to report that stamp, then sends a park hello and checks what comes back
+ *     waits for /health to report that stamp, then sends a park hello and checks what comes back;
+ *     and, if that build has a Lab table door, knocks on one table without a token
  *
  * ⚠️ TWO DIFFERENT QUESTIONS, TWO CHECKS — the rule CLAUDE.md §2 learnt from the edge functions.
  * The stamp proves the code answering is THIS code: /health's `build` is computed by the relay
@@ -26,11 +27,18 @@
  * the public park, and a hello there would show up as a presence change on people's screens) and
  * never a uuid (which would be somebody's hosted map). Nothing is authenticated and nothing is
  * kept: the socket hears its frames and closes, and the empty room goes with it.
+ *
+ * ⚠️ SO IS THE LAB TABLE, AND IT ASKS THE DOOR TO REFUSE IT. A fresh random code, no token: the
+ * socket must hear its `welcome` and nothing else, `list` must not show the table, and at the
+ * silent-socket timer the door must say its sentence and close. That sentence is in this build's
+ * labDoor.mjs and in no older relay, so hearing it is the deployment speaking — the same move as
+ * asking an edge function to refuse you (CLAUDE.md §2). It takes the timer's twelve seconds.
  */
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { stampOf, stampOfServer, stamped } from '../server/lib/buildStamp.mjs'
+import { serverFiles, stampOf, stamped } from '../server/lib/buildStamp.mjs'
+import { LAB, SAY } from '../server/lib/labDoor.mjs'
 import { openSocket, sleep, until } from './relay-harness.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -58,9 +66,15 @@ for (let i = 0; i < args.length; i++) {
 if (opt.ref !== null && (!opt.ref || opt.ref.startsWith('-'))) usage('not a revision')
 if (!Number.isFinite(opt.wait) || opt.wait < 0) usage('--wait needs a number of seconds')
 
-/** The stamp of server/ on disk, or at a git revision — the same files, by the same rule. */
-function stampAt(ref) {
-  if (!ref) return stampOfServer(SERVER)
+/**
+ * The stamp of server/ on disk, or at a git revision — the same files, by the same rule — and
+ * the names of those files, which say what that build should be able to do.
+ */
+function buildAt(ref) {
+  if (!ref) {
+    const files = serverFiles(SERVER)
+    return { stamp: stampOf(files), names: files.map((f) => f.name) }
+  }
   const git = (...a) =>
     execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
   const names = git('ls-tree', '-r', '--name-only', ref, '--', 'server/')
@@ -69,10 +83,12 @@ function stampAt(ref) {
     .map((p) => p.slice('server/'.length))
     .filter(stamped)
   if (!names.includes('ws-server.js')) usage(`no server/ws-server.js at ${ref}`)
-  return stampOf(names.map((name) => ({ name, text: git('show', `${ref}:server/${name}`) })))
+  const files = names.map((name) => ({ name, text: git('show', `${ref}:server/${name}`) }))
+  return { stamp: stampOf(files), names }
 }
 
-const want = stampAt(opt.ref)
+const target = buildAt(opt.ref)
+const want = target.stamp
 if (opt.stamp) {
   console.log(want)
   process.exit(0)
@@ -146,6 +162,44 @@ async function parkHello() {
   }
 }
 
+/**
+ * A Lab table nobody was sent, knocked on without a token: what the socket hears, whether `list`
+ * shows it, and whether the door then refuses it in its own words and closes.
+ */
+async function labKnock() {
+  const room = `lab:${randomBytes(16).toString('base64url')}`
+  const s = openSocket(origin.ws, { ms: 15_000 })
+  const lister = openSocket(origin.ws, { ms: 15_000 })
+  const fail = (why) => ({ ok: false, why })
+  try {
+    await s.opened
+    s.send({ type: 'hello', room, create: true })
+    await until(() => s.inbox.length > 0, 10_000)
+    await sleep(300)
+    const first = s.inbox.map((f) => f?.type)
+    if (JSON.stringify(first) !== '["welcome"]')
+      return fail(`a Lab hello heard ${first.join(', ') || 'nothing'}, not welcome alone`)
+    await lister.opened
+    lister.send({ type: 'list' })
+    await until(() => lister.inbox.some((f) => f?.type === 'rooms'), 10_000)
+    const rooms = lister.inbox.find((f) => f?.type === 'rooms')?.items
+    if (!Array.isArray(rooms)) return fail('list did not answer')
+    if (rooms.some((r) => String(r?.id).startsWith('lab:'))) return fail('list shows a Lab table')
+    const closed = await until(() => s.ws.readyState === 3, LAB.vouchMs + 8000)
+    const said = s.inbox.slice(1)
+    const want = [{ type: 'error', code: 'members-only', message: SAY['members-only'] }]
+    if (JSON.stringify(said) !== JSON.stringify(want))
+      return fail(`at the timer it heard ${JSON.stringify(said)}`)
+    if (!closed) return fail('the door spoke and did not close the socket')
+    return { ok: true, why: 'welcome alone, not listed, then the door’s sentence and a close' }
+  } catch (e) {
+    return fail(`no socket: ${e?.message}`)
+  } finally {
+    s.close()
+    lister.close()
+  }
+}
+
 const build = await waitForBuild()
 if (!build.ok) {
   console.error(`FAIL: after ${opt.wait}s the relay is not running build ${want}: ${build.seen}`)
@@ -157,6 +211,15 @@ console.log(`  park hello: ${park.seen.join(', ') || 'nothing'}`)
 if (!park.ok) {
   console.error('FAIL: a park hello should hear welcome, host, presence, settings — and only those')
   process.exit(1)
+}
+if (target.names.includes('lib/labDoor.mjs')) {
+  console.log(`  lab table: knocking without a token (about ${LAB.vouchMs / 1000} s)…`)
+  const lab = await labKnock()
+  console.log(`  lab table: ${lab.why}`)
+  if (!lab.ok) {
+    console.error('FAIL: a Lab table must say nothing but welcome to a stranger, then refuse it')
+    process.exit(1)
+  }
 }
 console.log('ok')
 process.exit(0)

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
-import { sureOf } from './supabaseAnswer.mjs'
+import { keepYes, sureOf } from './supabaseAnswer.mjs'
 
 /**
  * Asked with what `fetch` actually produces, not with labels for it: a status number from a
@@ -50,5 +50,56 @@ describe('sureOf: did Supabase answer, or could it not be asked?', () => {
     const refused = await fetch(`http://127.0.0.1:${port}/`).catch((e) => e)
     expect(refused).toBeInstanceOf(TypeError)
     expect(sureOf(refused)).toBe('unsure')
+  })
+})
+
+/**
+ * A token shaped as GoTrue issues one: three base64url parts, the middle one a JSON payload. The
+ * signature is junk on purpose, because nothing here may depend on it — the relay reads `exp` to
+ * forget sooner, never to believe anything.
+ */
+const jwt = (payload) =>
+  [{ alg: 'HS256', typ: 'JWT' }, payload]
+    .map((part) => Buffer.from(JSON.stringify(part)).toString('base64url'))
+    .concat('not-a-signature')
+    .join('.')
+
+describe('keepYes: how long Supabase’s yes about a token may be kept', () => {
+  const now = 1_790_000_000_000
+  const TTL = 60_000
+
+  it('a token that expires inside the minute is kept until it expires, and not a moment longer', () => {
+    expect(keepYes(jwt({ sub: 'ann', exp: now / 1000 + 30 }), now, TTL)).toBe(30_000)
+    expect(keepYes(jwt({ sub: 'ann', exp: now / 1000 + 0.25 }), now, TTL)).toBe(250)
+  })
+
+  it('a token already expired, or expiring now, is not kept at all', () => {
+    expect(keepYes(jwt({ exp: now / 1000 }), now, TTL)).toBe(0)
+    expect(keepYes(jwt({ exp: now / 1000 - 1 }), now, TTL)).toBe(0)
+    expect(keepYes(jwt({ exp: 0 }), now, TTL)).toBe(0)
+  })
+
+  it('never longer than the minute, however long the token says it lives', () => {
+    expect(keepYes(jwt({ exp: now / 1000 + 3600 }), now, TTL)).toBe(TTL)
+    expect(keepYes(jwt({ exp: Number.MAX_SAFE_INTEGER }), now, TTL)).toBe(TTL)
+  })
+
+  it('a token with no exp it can read is kept the minute, as every token was', () => {
+    for (const token of [
+      'tok-ann',
+      '',
+      'a.b',
+      'a.b.c.d',
+      `x.${Buffer.from('not json').toString('base64url')}.y`,
+      jwt({ sub: 'ann' }),
+      jwt({ exp: String(now / 1000 + 30) }),
+      jwt({ exp: null }),
+      jwt({ exp: NaN }),
+      jwt(null),
+      jwt(42),
+      `x.${Buffer.from('{"exp":Infinity}').toString('base64url')}.y`,
+    ])
+      expect(keepYes(token, now, TTL), token).toBe(TTL)
+    expect(keepYes(undefined, now, TTL)).toBe(TTL)
   })
 })
