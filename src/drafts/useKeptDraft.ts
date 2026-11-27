@@ -18,8 +18,9 @@ import { makeAutosave, type Draft, type DraftKind } from './drafts'
  * - Leaving with unsaved work asks first.
  *
  * ⚠️ "UNSAVED" IS AGAINST THE LAST SAVE, NOT AGAINST EMPTY. A builder still shows its hole after
- * Keep, and a hole on screen is not unsaved work. `markSaved()` makes what is on screen the
- * baseline; `sig` is how two values are compared (JSON by default — give one when key order can
+ * Keep, and a hole on screen is not unsaved work. `markSaved(saved)` makes what was SAVED the
+ * baseline — see the note on it below — and `markSaved()` with nothing makes what lands on screen
+ * next the baseline, for a kept thing being opened; `sig` is how two values are compared (JSON by default — give one when key order can
  * differ between the doors a value comes in by, as Paint's contentSig does).
  *
  * ⚠️ `kind` AND `scope` ARE READ ONCE. Key the component by its scope, the way Chat keys its
@@ -30,8 +31,20 @@ export type KeptDraft<T> = {
   offered: Draft<T> | null
   bringBack(): void
   startFresh(): void
-  /** what is on screen is now kept for real: it is the baseline, and its draft goes now */
-  markSaved(): void
+  /**
+   * Something is now kept for real.
+   *
+   * `markSaved(saved)`, after a Keep or a Send: `saved` is the value that was stored, captured when
+   * the save began. ⚠️ NOT WHAT IS ON SCREEN WHEN THE SAVE ANSWERS. A save that waits on the network
+   * lets somebody go on editing, and taking the board at the answer as "saved" marked those edits
+   * saved and deleted their only copy — found in review of the map maker's Keep. So the draft is
+   * dropped only if the screen still IS what was saved; otherwise the newer work stays unsaved and
+   * is written as usual.
+   *
+   * `markSaved()`, after opening something already kept: the baseline is read once the opened
+   * value has landed, because the state it replaces has not changed yet when this is called.
+   */
+  markSaved(saved?: T): void
   /** something is on screen that the last save did not keep */
   unsaved: boolean
 }
@@ -144,8 +157,12 @@ export function useKeptDraft<T>({
       setOffered(null)
       void drafts.drop(kind, scope).then(() => autosave.resume())
     },
-    markSaved() {
-      setCleanAsk((n) => n + 1)
+    markSaved(...args: [T?]) {
+      if (args.length) {
+        const s = sig(args[0] as T)
+        setBaseline(s)
+        if (s !== live.current.now) return
+      } else setCleanAsk((n) => n + 1)
       autosave.change(null)
       void autosave.flush()
     },

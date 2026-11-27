@@ -403,7 +403,17 @@ export const MAX_HOLES = 9
  * hole it is an edit of (null for a new one). See drafts/useKeptDraft — this is the shape kept on
  * the device across a reload.
  */
-export type HoleDraft = { draft: string; editing: number | null }
+export type HoleDraft = {
+  draft: string
+  editing: number | null
+  /**
+   * The kept hole's text when the edit began. ⚠️ AN INDEX ALONE IS NOT WHICH HOLE: holes are
+   * removed and the rest move up, so a draft brought back days later could point at a different
+   * hole and Keep would overwrite it (found in review). The builder trusts `editing` only while
+   * the hole there still says this.
+   */
+  was: string | null
+}
 
 /**
  * A kept builder draft back, or null.
@@ -421,7 +431,12 @@ export function readHoleDraft(raw: unknown): HoleDraft | null {
   const e = o.editing
   const editing =
     Number.isInteger(e) && (e as number) >= 0 && (e as number) < MAX_HOLES ? (e as number) : null
-  return { draft: o.draft, editing }
+  const was =
+    typeof o.was === 'string' && /^[xgswto]+$/.test(o.was) && o.was.length === W * H ? o.was : null
+  /* an edit is only an edit of something: no hole to compare against means a new one */
+  return editing !== null && was !== null
+    ? { draft: o.draft, editing, was }
+    : { draft: o.draft, editing: null, was: null }
 }
 export type Tally = { won: number; lost: number; tied: number; best: number }
 export type Saved = {

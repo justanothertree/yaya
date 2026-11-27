@@ -29,7 +29,7 @@ import {
   type Saved,
 } from './putt'
 import { motionReduced as reduced } from '../ui/motion'
-import { useKept } from './kept'
+import { useKept, writeKept } from './kept'
 import { puttRules, replay, totals, type PuttGame } from './puttRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
@@ -169,25 +169,10 @@ export function PuttDemo() {
   const [editing, setEditing] = useState<number | null>(null)
   const [cursor, setCursor] = useState(5 * W + 5)
   const [removing, setRemoving] = useState<number | null>(null)
-  /**
-   * ⚠️ THE HOLE BEING BUILT OUTLIVES A RELOAD (drafts/useKeptDraft). It lived in this state and
-   * nowhere else until ★ Keep, so a refresh, a tap on another toy or a pull-down on a phone threw it
-   * away — the way a whole minion was lost in Paint on 27 Nov 2026. It is offered back rather than
-   * put back, because bringing it back replaces the hole on the board.
-   */
-  const building = useMemo<HoleDraft>(() => ({ draft, editing }), [draft, editing])
-  const kept = useKeptDraft<HoleDraft>({
-    kind: 'putt',
-    value: building,
-    isEmpty: (v) => v.draft === BLANK,
-    parse: readHoleDraft,
-    restore: (v) => {
-      setDraft(v.draft)
-      setEditing(v.editing)
-      setMode('build')
-    },
-    offer: true,
-  })
+  /* the kept hole's text when an edit of it began — see HoleDraft.was */
+  const [was, setWas] = useState<string | null>(null)
+  /* a Keep the browser refused, said under the builder — see keep() */
+  const [keepNote, setKeepNote] = useState<string | null>(null)
 
   /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts), on the
      toy's own course. It takes the green over whatever else was showing; leaving it puts the toy
@@ -198,6 +183,34 @@ export function PuttDemo() {
   const inMatch = !!lm.id
   const signedIn = useSignedIn()
   const matchGame = inMatch ? (lm.shown as PuttGame | null) : null
+
+  /**
+   * ⚠️ THE HOLE BEING BUILT OUTLIVES A RELOAD (drafts/useKeptDraft). It lived in this state and
+   * nowhere else until ★ Keep, so a refresh, a tap on another toy or a pull-down on a phone threw it
+   * away — the way a whole minion was lost in Paint on 27 Nov 2026. It is offered back rather than
+   * put back, because bringing it back replaces the hole on the board.
+   */
+  const building = useMemo<HoleDraft>(() => ({ draft, editing, was }), [draft, editing, was])
+  const kept = useKeptDraft<HoleDraft>({
+    kind: 'putt',
+    value: building,
+    isEmpty: (v) => v.draft === BLANK,
+    parse: readHoleDraft,
+    restore: (v) => {
+      /* ⚠️ still an edit of that hole only if that hole is still there, unchanged */
+      const same = v.editing !== null && saved.holes[v.editing] === v.was
+      setDraft(v.draft)
+      setEditing(same ? v.editing : null)
+      setWas(same ? v.was : null)
+      setMode('build')
+    },
+    offer: true,
+    /* a match takes the green over, and nothing is built in one */
+    on: !inMatch,
+  })
+  /** ask before something replaces a hole that is not kept: its draft goes with it */
+  const mayReplace = () =>
+    !kept.unsaved || window.confirm('Replace the hole you have not kept? It will be gone.')
 
   /* ── the call's round: the course, seat 0 putting each hole out first; it travels as putts */
   const [opp, setOpp] = useState<Opponent>('bot')
@@ -677,14 +690,23 @@ export function PuttDemo() {
   const draftHole = readHole(draft, 'Your hole')
   const keep = () => {
     if (!draftHole) return
-    setSaved((s) => {
-      const holes = [...s.holes]
-      if (editing !== null && editing < holes.length) holes[editing] = draft
-      else holes.push(draft)
-      return { ...s, holes: holes.slice(0, MAX_HOLES) }
-    })
-    if (editing === null) setEditing(Math.min(saved.holes.length, MAX_HOLES - 1))
-    kept.markSaved()
+    const holes = [...saved.holes]
+    const at = editing !== null && editing < holes.length ? editing : holes.length
+    holes[at] = draft
+    const next: Saved = { ...saved, holes: holes.slice(0, MAX_HOLES) }
+    /* ⚠️ WRITTEN HERE, BEFORE ANYTHING SAYS KEPT, because a keep now also clears the draft. The
+       store's own write comes later and swallows a full browser, which would have cleared the only
+       copy of a hole the list showed as kept (found in review; Wallpaper's keep is the same). */
+    try {
+      writeKept(PUTT_KEY, JSON.stringify(next))
+    } catch {
+      return setKeepNote('Not kept: this browser is out of room. Remove a hole, or copy its link.')
+    }
+    setKeepNote(null)
+    setSaved(next)
+    setEditing(at)
+    setWas(draft)
+    kept.markSaved({ draft, editing: at, was: draft })
   }
   const full = editing === null && saved.holes.length >= MAX_HOLES
   const mine = saved.holes
@@ -806,16 +828,26 @@ export function PuttDemo() {
   const r = saved.record[saved.level]
   const canPutt = mode === 'play' && vPhase === 'aim'
 
-  return (
-    <div className={`lab-keys pt-room is-${saved.theme}`}>
-      {kept.offered && (
+  /**
+   * ⚠️ ONLY THE QUESTION UNTIL IT IS ANSWERED. While a draft is offered nothing new is kept — or
+   * the empty builder would write over the thing being offered — so a builder left usable under
+   * the card let somebody build a hole that no reload would bring back, and then Bring it back
+   * replaced it without asking (found in review). One press either way, and the toy is back.
+   */
+  if (kept.offered)
+    return (
+      <div className={`lab-keys pt-room is-${saved.theme}`}>
         <DraftOffer
           draft={kept.offered}
           what="hole"
           onBringBack={kept.bringBack}
           onStartFresh={kept.startFresh}
         />
-      )}
+      </div>
+    )
+
+  return (
+    <div className={`lab-keys pt-room is-${saved.theme}`}>
       {inMatch && <MatchBar lm={lm} sides={['the first ball', 'the second ball']} />}
       {!inMatch && (
         <div className="lab-controls">
@@ -1160,9 +1192,10 @@ export function PuttDemo() {
       {mode === 'build' && (
         <>
           <p className="mc-line" aria-live="polite">
-            {draftHole
-              ? 'This hole can be played. Try it, keep it, or send it.'
-              : 'The cup cannot be reached from the tee yet: open a way through.'}
+            {keepNote ??
+              (draftHole
+                ? 'This hole can be played. Try it, keep it, or send it.'
+                : 'The cup cannot be reached from the tee yet: open a way through.')}
           </p>
           <div className="lab-controls">
             <button
@@ -1185,8 +1218,10 @@ export function PuttDemo() {
             <button
               className="btn btn-ghost"
               onClick={() => {
+                if (!mayReplace()) return
                 setDraft(BLANK)
                 setEditing(null)
+                setWas(null)
               }}
             >
               ＋ New blank hole
@@ -1197,9 +1232,10 @@ export function PuttDemo() {
                 value=""
                 onChange={(e) => {
                   const h = COURSE[Number(e.target.value)]
-                  if (h) {
+                  if (h && mayReplace()) {
                     setDraft(writeHole(h))
                     setEditing(null)
+                    setWas(null)
                   }
                 }}
               >
@@ -1228,8 +1264,10 @@ export function PuttDemo() {
                     <button
                       className="btn btn-ghost"
                       onClick={() => {
+                        if (!mayReplace()) return
                         setDraft(hText)
                         setEditing(i)
+                        setWas(hText)
                         setRemoving(null)
                         /* a kept hole, so not unsaved until it is changed */
                         kept.markSaved()
@@ -1241,10 +1279,18 @@ export function PuttDemo() {
                       className="btn btn-ghost"
                       onClick={() => {
                         if (removing !== i) return setRemoving(i)
+                        /* moving the index of a kept hole is not an edit of it */
+                        const clean = !kept.unsaved
                         setSaved((s) => ({ ...s, holes: s.holes.filter((_, k) => k !== i) }))
                         setRemoving(null)
-                        if (editing === i) setEditing(null)
-                        else if (editing !== null && editing > i) setEditing(editing - 1)
+                        if (editing === i) {
+                          /* what is on the board is no longer a copy of anything kept */
+                          setEditing(null)
+                          setWas(null)
+                        } else if (editing !== null && editing > i) {
+                          setEditing(editing - 1)
+                          if (clean) kept.markSaved()
+                        }
                       }}
                     >
                       {removing === i ? 'Really remove?' : '✕ Remove'}

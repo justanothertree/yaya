@@ -37,7 +37,7 @@ describe('Putt: a hole half-built', () => {
 
   it('comes back tile for tile, with the kept hole it was an edit of', async () => {
     expect(tiles).toHaveLength(150)
-    const body: HoleDraft = { draft: tiles, editing: 4 }
+    const body: HoleDraft = { draft: tiles, editing: 4, was: tiles.replace('w', 'g') }
     const { back, stranger } = await reload('putt', body, readHoleDraft)
     expect(back).toEqual(body)
     expect(stranger).toBeNull()
