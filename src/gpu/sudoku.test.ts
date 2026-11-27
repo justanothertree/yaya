@@ -11,6 +11,7 @@ import {
   reason,
   type Grid,
 } from './sudoku'
+import { daySeedOf } from './bricks'
 
 describe('the grid', () => {
   it('27 houses of nine, and every cell sees twenty others', () => {
@@ -52,6 +53,31 @@ describe('making puzzles', () => {
   it('the same seed makes the same puzzle', () => {
     expect(make('steady', 7).puzzle).toEqual(make('steady', 7).puzzle)
   })
+  // ⚠️ the test above asks one engine twice, so it could not see that Chrome and Safari were
+  // handed different "today's puzzles": the shuffles were `sort(() => rand() - 0.5)`, which leaves
+  // the order to the engine's sort. So ask with a different sort: an insertion sort is correct for
+  // any honest comparator and asks it different questions from V8's, as JavaScriptCore's and
+  // SpiderMonkey's sorts do. A puzzle that depends on none of them does not move.
+  it('the puzzle is the same however the browser sorts', () => {
+    const seeds = [daySeedOf(2026, 11, 27), daySeedOf(2027, 2, 14), 7]
+    const made = () => seeds.map((s) => make('steady', s).puzzle.join(''))
+    const before = made()
+    const real = Array.prototype.sort
+    const insertion = function <T>(this: T[], cmp?: (a: T, b: T) => number) {
+      const order =
+        cmp ?? ((a: T, b: T) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0))
+      for (let i = 1; i < this.length; i++)
+        for (let j = i; j > 0 && order(this[j - 1], this[j]) > 0; j--)
+          [this[j - 1], this[j]] = [this[j], this[j - 1]]
+      return this
+    }
+    Array.prototype.sort = insertion as typeof real
+    try {
+      expect(made()).toEqual(before)
+    } finally {
+      Array.prototype.sort = real
+    }
+  }, 30000)
 })
 
 /**
