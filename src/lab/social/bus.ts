@@ -30,28 +30,33 @@
  *
  * NEWCOMERS, AND HOSTS COMING BACK
  *
- * Nothing is periodic: with no tour, the bus sends nothing at all. A browser that starts listening
- * with somebody else on the Lab says `hello` (once more after HELLO_RETRY_MS), and the host as it
- * was before it arrived, or whoever published the bus we hold, answers — room.ts's answersHello,
- * asked of the riders — and a host alone on its tour, back from a reload with nothing, is answered
- * by the lowest here and takes its tour back (hostAlone), its old page's answer left out of the
- * window (adopt). ⚠️ NOBODY LEADS BEFORE LISTENING: a browser may neither lead nor offer
- * Start until it has heard the tour or listened for SYNC_MS, so somebody arriving finds a tour
- * already going rather than starting a second, and a host back from a hidden tab does not lead
- * from a bus everybody else has moved past. When one leads stale anyway, its deputy answers it.
+ * With no tour, the bus sends nothing at all. A browser that starts listening with somebody else on
+ * the Lab says `hello` (once more after HELLO_RETRY_MS), and the lowest here who holds the tour
+ * answers — a rider on it before anybody else, and never a page still asking itself (`answerers`);
+ * a retry goes to the next one along. A rider back from a reload takes its tour back that way, its
+ * old page's answer left out of the window (adopt). ⚠️ NOBODY LEADS BEFORE LISTENING: a browser
+ * may neither lead nor offer Start until it has heard the tour or listened for SYNC_MS, so
+ * somebody arriving finds a tour already going rather than starting a second, and a host back from
+ * a hidden tab does not lead from a bus everybody else has moved past. When one leads stale
+ * anyway, its deputy answers it.
  *
  * Two tours at once — two Starts in the same moment, or a call that split — settle on the one with
  * more riders, then more stops, then the lower starter's id. An ended or abandoned tour gives way
  * to anything, and so does one whose only decider sends a state of another (`leftBy`: it ended
  * there, and its end never came); a live one never to an ended one.
  *
- * ⚠️ AND UNDER ALL OF IT, THE BACKSTOP (`stalled`): a tour ABANDON_MS past its own deadline with
- * nothing heard of it in that time is one nobody is deciding, whoever is here, and it is abandoned
- * on every screen that holds it. The rules above say who answers whom; this is what is left when
- * every one of them has missed, and it asks nothing of anybody.
+ *
+ * THE LIVENESS BOUND
+ *
+ * ⚠️ UNDER ALL OF IT, ONE CLOCK (`stalled`). Whoever decides a live tour says it again when it has
+ * said nothing for BEAT_MS (tick) — the bus's one heartbeat, from one browser, and only into
+ * silence. So a tour no state of which has moved its count on here for STALL_MS is one nobody is
+ * driving, in every phase, whoever is here, and it is abandoned on every screen that holds it:
+ * Start is offered there. The rules above say who answers whom; this is what is left when every
+ * one of them has missed, and it asks nothing of anybody.
  */
 
-import { answersHello, newer, readSeats, type Seats } from './room'
+import { newer, readSeats, type Seats } from './room'
 import { isToyId } from './gate'
 import { ROOM_TOYS, mayStopAt, sendsFor } from './tour'
 
@@ -82,6 +87,22 @@ export type Knobs = {
   TOUR_IDLE_MS: number
   /** the host: at most one state a second, leading and trailing */
   STATE_GAP_MS: number
+  /**
+   * Whoever decides a live tour says it again — the bus as it stands, one count on — once this long
+   * has gone by with no state of it heard or sent, so that a screen can tell a quiet decider from a
+   * gone one (`stalled`). The party's own `here` beat is five seconds (party.ts's HERE_MS), so this
+   * costs one browser on the call what every browser already sends. A rate, so never paced.
+   */
+  BEAT_MS: number
+  /**
+   * THE LIVENESS BOUND: no state of a tour that moved its count on, heard or sent here, for this
+   * long, and nobody is driving it — in every phase (`stalled`). ⚠️ LONGER THAN A TAKEOVER: a
+   * decider gone silent (no bye) just before its beat is on everybody's Lab until the party's
+   * sweep (16 s stale, a 2 s sweep), and the next host's first state then goes at once — BEAT_MS +
+   * 18 s + a second's wait in the Outbox + two links, under 24.5 s, so the takeover lands first
+   * with five seconds to spare. Never paced: the sweep it outlasts never is.
+   */
+  STALL_MS: number
   /** everyone: at most one request a second; later presses coalesce, the latest of each kind */
   ASK_GAP_MS: number
   /** ready requests per person per window (a skipped one included); further presses stay local */
@@ -113,6 +134,8 @@ export const KNOBS: Knobs = {
   ABANDON_MS: 20_000,
   TOUR_IDLE_MS: 600_000,
   STATE_GAP_MS: 1_000,
+  BEAT_MS: 5_000,
+  STALL_MS: 30_000,
   ASK_GAP_MS: 1_000,
   READY_SENDS: 3,
   SIT_SENDS: 2,
@@ -265,13 +288,16 @@ export type Bus = {
    */
   quietSince: number | null
   /**
-   * When a state of the tour held here was last heard, or sent from here — the only sign there is
-   * that somebody holds it to decide or hand on. The backstop reads it (`stalled`).
+   * When a state of the tour held here last moved its count on — heard, or published here as its
+   * decider — or when this page took the tour up. The only sign there is that somebody is driving
+   * it, and the liveness bound reads it (`stalled`). ⚠️ A STATE AT THE COUNT ALREADY HELD IS NOT
+   * ONE: that is the bus handed on, to a hello or a stale host, and says nothing about a driver.
    */
   stateAt: number
   /**
-   * Who has said hello since anybody last sent a state: pages listening afresh, which hold nothing
-   * to hand back, so the lowest of them is passed over when a host is answered (hostAlone).
+   * Every hello since anybody last sent a state, by sender, a retry beside the first: pages
+   * listening afresh, which hold nothing to hand back, so they are passed over when a hello is
+   * answered — and a retry is answered by the next one along (answerers).
    */
   askers: string[]
   /**
@@ -466,33 +492,36 @@ export function holdOn(bus: Bus, ctx: Pick<Ctx, 'now' | 'present'>): boolean {
   return bus.busy.some((i) => ctx.present.has(bus.riders[i]?.id))
 }
 
-/** when a tour nobody moves on stops: ABANDON_MS past its deadline and past the last state heard */
-export const stallsAt = (bus: Pick<Bus, 'due' | 'stateAt'>, k: Pick<Knobs, 'ABANDON_MS'>) =>
-  Math.max(bus.due, bus.stateAt) + k.ABANDON_MS
+/** when a tour nobody drives stops, on this screen: STALL_MS after the last state that moved it */
+export const stallsAt = (bus: Pick<Bus, 'stateAt'>, k: Pick<Knobs, 'STALL_MS'>) =>
+  bus.stateAt + k.STALL_MS
 
 /**
- * THE BACKSTOP: a tour whose phase is ABANDON_MS past its own deadline, with no state of it heard
- * or sent here in that time, is one nobody is deciding — and it is abandoned on this screen.
+ * THE LIVENESS BOUND: a tour no state of which has moved its count on here — heard, or published
+ * here as its decider — for STALL_MS is one nobody is driving, in every phase, and it is abandoned
+ * on this screen: Start is offered, and the next state of any other tour is taken (as `leftBy`).
  *
- * ⚠️ ONE RULE FOR A FAMILY FIXED CASE BY CASE UNTIL NOW. Every way so far of leaving a friend on
- * a tour nobody could move — a host's end folded away (leftBy), a lone host back from a reload
- * holding nothing (hostAlone), the lowest friend's page new while the host was away, the host back
- * just as a friend pressed Start — was found one at a time, by a person, on the dev call, and
- * fixed as a case. Each fix was right and each left the next shape open, because they all asked
- * "who answers whom", and a page that holds nothing answers nobody. This asks what every one of
- * them had in common instead: the tour's clock ran out and nothing moved it. Whoever decides a tour acts on
- * its own at `due` (the dice choose, the bus leaves or skips, the tour ends for want of requests)
- * and says so in a state — so `due` long gone with nothing heard means nobody holds it to decide.
- * Then this screen offers Start and takes the next state of any other tour, as `leftBy` does.
+ * ⚠️ IT IS NOT JUDGED BY `due`, AND THE BACKSTOP THAT WAS COULD WAIT TEN MINUTES. It gave a tour up
+ * ABANDON_MS past its own deadline, on the reasoning that whoever decides acts at `due` and says
+ * so — true, and between stops `due` is TOUR_IDLE_MS away. Measured: both deciders reloading at
+ * once in a dwell (C), or the two lowest riders (D), left friends on a tour nobody drove, with no
+ * Start, for 619 s. A quiet decider and a gone one looked the same because the bus had no
+ * heartbeat. Now it has one: whoever decides says the bus again after BEAT_MS with nothing heard or
+ * sent (tick), so silence for STALL_MS means nobody is there to say it — whatever the phase. The
+ * deadline rule is gone rather than kept beside this as a faster path: it was faster only inside a
+ * window, by at most ten seconds, and at the dev call's pace it gave a window up before a silent
+ * host's sweep let anybody take it over. One clock, one bound.
  *
- * ⚠️ ABANDON_MS PAST THE DEADLINE, NOT A MOMENT PAST IT. A host gone silent (no bye) stays on
- * everybody's Lab until the party's sweep, three missed heartbeats and up to one sweep later — 18 s
- * at most — and only then does the next host take its window over (claims). ABANDON_MS is longer,
- * so at the real pace the backstop never fires on a tour somebody is about to take over. And it
- * never fires on its decider's own screen: that browser acts at `due` and its state sets `stateAt`.
- * Between stops `due` is TOUR_IDLE_MS away, so a tour nobody decides there reads as waiting for its
- * guide for that long; a quiet decider and a gone one look the same with no heartbeat, and the bus
- * has none (silence, 3.17).
+ * ⚠️ ONLY A STATE THAT MOVES THE COUNT ON COUNTS. A beat is a publish, one seq on, so it is newer
+ * than what every holder has; a hand-back — the bus repeated to answer a hello, or to repair a
+ * stale host — is at a count everybody already holds, and does not count (adopt), and neither does
+ * a state readBus refuses (a Gust stop from an older build, an unknown toy) or one from somebody
+ * off the call's roster: none of them reach here. Otherwise every newcomer answered would keep a
+ * dead tour standing on every screen for another STALL_MS.
+ * ⚠️ AND IT NEVER FIRES ON A TOUR SOMEBODY IS ABOUT TO TAKE OVER: a decider gone silent (no bye)
+ * just before its beat stays on everybody's Lab until the party's sweep, and the next host's first
+ * state then goes at once, its last having been BEAT_MS ago (the arithmetic is on STALL_MS). Nor on
+ * its decider's own screen, which beats. Never paced, so at the dev call's pace it is 30 s too.
  */
 export const stalled = (bus: Bus, ctx: Pick<Ctx, 'now' | 'k'>) =>
   holds(bus) && bus.phase !== 'end' && ctx.now >= stallsAt(bus, ctx.k)
@@ -517,8 +546,14 @@ function publish(bus: Bus, ctx: Ctx, patch: Partial<Bus>): Step {
   const next = clocked({ ...bus, ...patch, seq: bus.seq + 1, from: bus.me, ...sent(ctx) }, ctx)
   return { bus: next, out: [{ t: 'state' }] }
 }
-/** a state going out from here: the tour is heard of now, and everybody asking is answered */
+/** a state going out from here as its decider: the tour is driven now, and every asker has it */
 const sent = (ctx: Pick<Ctx, 'now'>) => ({ stateAt: ctx.now, askers: [] as string[] })
+/**
+ * The bus as it stands going out from here to hand it on — to a hello, or a stale host. ⚠️ IT SAYS
+ * NOTHING ABOUT WHO DRIVES IT: its count does not move, so no holder counts it (`stalled`), and
+ * neither does this screen. Everybody asking has it.
+ */
+const handed = { askers: [] as string[] }
 
 /**
  * `freeAt`, when any rider may roll for an idle guide: IDLE_MS after the roll opened, or after the
@@ -774,8 +809,9 @@ function settle(bus: Bus, ctx: Ctx, from: string, q: Req): Step {
 
 /**
  * The clock: the host's timed transitions, and everyone's own bookkeeping. Silent unless the bus
- * changed — ⚠️ A TICK THAT PUBLISHED EVERY TIME WOULD BE A HEARTBEAT, and the bus has none: with no
- * change, nothing is sent.
+ * changed, or whoever decides it has said nothing for BEAT_MS — ⚠️ THE BUS'S ONE HEARTBEAT, from
+ * the one browser deciding a live tour, and only into silence: a tour being moved along sends
+ * nothing more, and with no tour, or one over, nothing is sent at all.
  */
 export function tick(bus: Bus, ctx: Ctx): Step {
   const { k, now } = ctx
@@ -822,6 +858,21 @@ export function tick(bus: Bus, ctx: Ctx): Step {
     const turn = b.phase === 'pick' || b.phase === 'choose'
     const guideAway = turn && (!g.on || !ctx.present.has(g.id)) ? (b.guideAway ?? now) : null
     if (guideAway !== b.guideAway) b = { ...b, guideAway }
+  }
+  /* ⚠️ A HELLO NOBODY COULD ANSWER IS ASKED AGAIN AT EVERY CHANGE OF WHO IS HERE. Its retry goes
+     to the next one along (answerers), which is enough while one page ahead of the first who
+     holds the tour has crashed — but two crashed at once (no bye, both on everybody's Lab until
+     the party's sweep) took the hello and its retry between them, and the page asking had no
+     third: measured in the property, a rider's new page offered Start beside a friend holding its
+     tour until that tour stalled. The sweep that takes either away moves the order on, so whoever
+     is now the one to answer does — no more hellos, and at most one state, once */
+  if (holds(b) && b.askers.length) {
+    const asking = b.askers.filter((id) => ctx.roster.has(id))
+    if (asking.length !== b.askers.length) b = { ...b, askers: asking }
+    if (asking.some((id) => answers(b, ctx, id))) {
+      b = { ...b, ...handed }
+      said.push({ t: 'state' })
+    }
   }
   /* ⚠️ A HOP OFF STANDS UNTIL SOMEBODY WHO DECIDES HAS HEARD IT, as a yes does (askAgain). A host
      who hops off stops deciding at once, but the state saying so waits out its second in that
@@ -904,7 +955,11 @@ export function tick(bus: Bus, ctx: Ctx): Step {
   if (w.phase === 'pick' && now >= w.due) change({ phase: 'end', toy: null, faces: null })
   if (!changed) {
     const c = clocked(w, ctx)
-    if (c === w) return { bus: w, out: said }
+    /* ⚠️ THE BEAT: the bus said again, one count on, once BEAT_MS has gone by with no state of it
+       heard or sent. The bus had no heartbeat, so a quiet decider and a gone one looked the same
+       between stops for TOUR_IDLE_MS (stalled). Silent otherwise — and with no tour, or a tour
+       that is over, nothing at all */
+    if (c === w && now - w.stateAt < k.BEAT_MS) return { bus: w, out: said }
     w = c
   }
   const p = publish(w, ctx, {})
@@ -1343,7 +1398,9 @@ function adopt(bus: Bus, s: State, from: string, ctx: Ctx): Bus {
     /* the clock is about one guide: the turn passing starts it again */
     guideAway: same && s.guide === bus.guide ? bus.guideAway : null,
     quietSince: same ? bus.quietSince : null,
-    stateAt: now,
+    /* ⚠️ THE LIVENESS CLOCK MOVES ONLY WITH THE COUNT: a tour taken up here, or a state of mine one
+       count on. The same count again is the bus handed on (stalled) */
+    stateAt: same && s.seq <= bus.seq ? bus.stateAt : now,
     /* ⚠️ A CLOCK RUN OUT IS SENT AS NOUGHT, so only a roll the first state of it shows came while
        `freeAt` was still ahead is known to be the guide's; whatever this browser knew of the same
        roll, by the same guide, stands */
@@ -1381,53 +1438,52 @@ export const deputyOf = (bus: Bus, ctx: Pick<Ctx, 'present'>): string | null =>
   hostSet(bus, ctx.present)[1] ?? null
 
 /**
- * Whether I answer a newcomer's hello: room.ts's rule asked of the riders here. ⚠️ A WATCHER IS
- * NEVER "HOST BEFORE THEY ARRIVED", whatever its id, so only the host as it was, or whoever
- * published the bus we hold, answers — once, however many hold it — and, when the hello is the
- * host's own with no other rider here, the lowest here (hostAlone). And only from a bus I have
- * heard: one I may be leading from stale would hand a newcomer the wrong tour.
+ * Who answers a hello from `from`, in the order they answer it: everybody here but `from` and
+ * anybody else still asking (`askers`) — the riders on the tour first, then everybody else, each
+ * lowest id first. The first answers the first hello, the next the retry. Everybody here hears
+ * every hello and every state, so everybody holding the tour reckons the same order while they see
+ * the same people here; when they do not, two answer, or the retry does.
+ *
+ * ⚠️ NOT ONLY THE RIDERS, AND NOT ONLY THE PUBLISHER. Riders answered one another (room.ts's
+ * answersHello), a watcher only for a host alone on its tour, and a page that holds nothing
+ * answers nobody — so when every rider who could answer was a new page at once, nobody did, and
+ * the friends holding the tour held it with nobody driving it: measured, both deciders reloading
+ * together in a dwell (C), or the two lowest riders (D), left Bo and Ann, or Dee, on it for 619 s,
+ * while the pages that came back were offered Start beside them. Anybody here who holds the tour
+ * can hand it back, so the first of them does: a returning rider's page has its tour back in about
+ * a round trip whenever anybody here holds it. Still one state, from one browser, a hello.
+ * ⚠️ RIDERS FIRST, because a rider pressed for this tour, so its browser knows the bus and holds the
+ * tour unless its page is new — and a new page says hello, and is passed over. A watcher may be a
+ * tab that has never heard of the bus.
+ * ⚠️ AND THE RETRY GOES TO THE NEXT ONE. A page that crashed sends no bye, and stays on everybody's
+ * Lab until the party's sweep — up to 18 s holding the duty to answer, which it cannot: measured in
+ * the verify's checker, a rider's new page offered Start for that long beside friends holding its
+ * tour, and pressing it. A second hello from the same page with no state heard in between means
+ * the first answer never came, so the next one along answers it, HELLO_RETRY_MS later — and when
+ * that one is gone too, the order moves on at the sweep of either (tick).
  */
-function answers(bus: Bus, ctx: Ctx, from: string) {
-  if (!holds(bus) || !ctx.meLive || !bus.heard) return false
-  const set = hostSet(bus, ctx.present)
-  if (set.includes(bus.me)) return answersHello(bus.me, set, from, bus.seq, bus.from)
-  /* ⚠️ A TOUR NOBODY DECIDES GOES BACK ONLY TO ITS HOST. Handed to a newcomer it would be a dead
-     tour on one more screen, and every holder hearing the answer would count it as heard of
-     (stalled), so each arrival would keep it standing another ABANDON_MS */
-  if (abandoned(bus, ctx)) return hostAlone(bus, ctx, from)
-  return (bus.seq > 0 && bus.from === bus.me) || hostAlone(bus, ctx, from)
+export function answerers(bus: Bus, present: ReadonlySet<string>, from: string): string[] {
+  const asked = new Set(bus.askers)
+  const holders = [...present].filter((id) => id !== from && !asked.has(id)).sort()
+  const on = new Set(bus.riders.filter((r) => r.on).map((r) => r.id))
+  return [...holders.filter((id) => on.has(id)), ...holders.filter((id) => !on.has(id))]
 }
 
 /**
- * Whether `from` is the host of the live tour I hold and nobody else on it is here — so its hello
- * is answered by whoever is here and lowest, rider or not, and I am that one.
- *
- * ⚠️ A HOST'S OWN HELLO WAS ANSWERED BY NOBODY WHEN IT RODE ALONE. Riders answer one another
- * (answersHello), and a watcher never answers — so a host alone on its tour that reloaded, or left
- * the call and came back, came back holding nothing, and nobody held the tour to hand back: its
- * two hellos went unanswered, and the friends holding it were left on its last state for good.
- * Measured on the dev call: Bo and Ann on "Next stop: Strut. The bus is about to leave…" with
- * Take me there at 3, 15 and 40 s, and no Start; and a host who left for 7 s, after which Bo and
- * Ann were rightly offered Start, took it away again by merely coming back. So the tour goes back
- * to its host: the lowest here answers with the state it holds, and the host takes it up and moves
- * it on. A hello says nothing of what its sender holds, so this answers a host back from a hidden
- * tab too — which is no harm: a bus as new as its own changes nothing there. One state, from one
- * browser, once a return.
- *
- * ⚠️ AND THE LOWEST HERE MAY HOLD NOTHING EITHER. A page new while the host was away — Bo reloaded,
- * or first arrived — said hello and was answered by nobody (nobody on the tour was here), so the
- * lowest here was a page with nothing to hand back: measured on the dev call, Dee's hellos went
- * unanswered and Ann kept "The bus is about to leave…" with Take me there at 3, 15 and 40 s. A page
- * that says hello holds nothing until it hears a state, and everybody hears both (`askers`), so it
- * is passed over and the next lowest answers: still one state, from one browser.
+ * Whether I answer `from`'s hello — its first since anybody's state, or its retry. Only from a bus I
+ * have heard: one I may be leading from stale would hand a newcomer the wrong tour.
  */
-function hostAlone(bus: Bus, ctx: Ctx, from: string) {
-  if (bus.phase === 'end') return false
-  /* a hello is sent only while live, so its sender is here, whether or not its `where` has come */
-  const set = hostSet(bus, new Set([...ctx.present, from]))
-  if (set.length !== 1 || set[0] !== from) return false
-  const holders = [...ctx.present].filter((id) => id !== from && !bus.askers.includes(id))
-  return holders.sort()[0] === bus.me
+function answers(bus: Bus, ctx: Ctx, from: string) {
+  if (!holds(bus) || !ctx.meLive || !bus.heard) return false
+  /* ⚠️ A TOUR NOBODY DRIVES GOES BACK ONLY TO WHOEVER WOULD DRIVE IT — the lowest rider here, once
+     `from` is counted (a hello is sent only while live, so its sender is here whether or not its
+     `where` has come). Handed to anybody else it would be a dead tour on one more screen for
+     another STALL_MS, from the moment it arrived there */
+  const drives = () => hostSet(bus, new Set([...ctx.present, from]))[0] === from
+  if (abandoned(bus, ctx) && (bus.phase === 'end' || !drives())) return false
+  /* its first hello, or its retry: a page that reloads again says hello afresh, and is a retry */
+  const nth = Math.min(1, bus.askers.filter((id) => id === from).length - 1)
+  return answerers(bus, ctx.present, from)[Math.max(0, nth)] === bus.me
 }
 
 /** a state off the wire: my tour if it is newer, another if it beats mine, or a stale host's repair */
@@ -1435,17 +1491,21 @@ function onState(held: Bus, ctx: Ctx, from: string, s: State): Step {
   /* whoever was asking has been answered: a page that holds nothing takes any state it hears */
   const bus = held.askers.length ? { ...held, askers: [] } : held
   if (holds(bus) && s.tour === bus.tour) {
-    /* any state of my tour at a seq of mine or later is the tour as it is: I may lead from it,
-       and somebody holds it to decide or to hand on (stalled) */
-    const b = s.seq >= bus.seq ? { ...bus, heard: true, asking: false, stateAt: ctx.now } : bus
-    if (newer(s.seq, from, bus.seq, bus.from)) return none(adopt(b, s, from, ctx))
+    /* any state of my tour at a seq of mine or later is the tour as it is: I may lead from it */
+    const b = s.seq >= bus.seq ? { ...bus, heard: true, asking: false } : bus
+    /* ⚠️ A STATE AT MY OWN COUNT REPLACES MINE ONLY FROM A RIDER: two deciders for a moment, the
+       lower one's wins (`newer`). A watcher at my count is handing the bus on to somebody else —
+       it is the bus I hold, and taken as a new publisher it would have every yes asked again */
+    const rides = s.riders.some(([id, on]) => id === from && on === 1)
+    if (newer(s.seq, from, bus.seq, bus.from) && (s.seq > bus.seq || rides))
+      return none(adopt(b, s, from, ctx))
     /* ⚠️ A HOST LEADING FROM A STALE BUS IS ANSWERED BY ITS DEPUTY: a host back from a hidden tab
        whose hello went unanswered publishes from what it last had, which everybody else ignores
        as older — and it never hears the newer bus, because nobody sends one until something
        changes. The deputy sends it, at most once every HELLO_REPAIR_MS. */
     const stale = s.seq < bus.seq && from === hostOf(bus, ctx) && deputyOf(bus, ctx) === bus.me
     if (stale && ctx.meLive && ctx.now - b.answerAt >= ctx.k.HELLO_REPAIR_MS)
-      return { bus: { ...b, answerAt: ctx.now, ...sent(ctx) }, out: [{ t: 'state' }] }
+      return { bus: { ...b, answerAt: ctx.now, ...handed }, out: [{ t: 'state' }] }
     return none(b)
   }
   /* ⚠️ AN ENDED TOUR NEVER REPLACES A LIVE ONE, and a fresh one only by having more riders or
@@ -1454,10 +1514,15 @@ function onState(held: Bus, ctx: Ctx, from: string, s: State): Step {
   const live = holds(bus) && bus.phase !== 'end' && !abandoned(bus, ctx) && !leftBy(bus, ctx, from)
   if (live && (s.phase === 'end' || !beats(s, bus))) return none(bus)
   const next = adopt(bus, s, from, ctx)
-  /* a tour taken back by its host, with its old page's answer out of the window: said at once, so
-     every screen counts who can actually go (adopt) */
-  const dropped = next.ready !== s.ready || next.no !== s.no
-  return dropped && leads(next, ctx) ? publish(next, ctx, {}) : none(next)
+  /* ⚠️ A PAGE THAT COMES TO DRIVE A TOUR IT DID NOT HOLD SAYS SO AT ONCE — a rider back from a
+     reload, handed its tour (answerers). What it was handed never moved the count, so every screen
+     holding the tour is still counting towards STALL_MS, and one that has given it up is offering
+     Start; and its old page's answer, which `adopt` left out of the window, is out of it on every
+     screen too, so everybody counts who can actually go. It is the first beat, said now rather
+     than BEAT_MS from now: one state a return, and a screen that had given the tour up has it
+     back in a round trip. ⚠️ ONLY A LIVE ONE: an ended tour has no driver to come back, and one
+     count on would open the finale's card again on every screen that closed it (closedFor) */
+  return next.phase !== 'end' && leads(next, ctx) ? publish(next, ctx, {}) : none(next)
 }
 
 /**
@@ -1476,7 +1541,7 @@ function onState(held: Bus, ctx: Ctx, from: string, s: State): Step {
  * 0 s." with Take me there for as long as anybody watched, and never saw Dee's new tour. The fold
  * is right — a second's states are the bus as it stands at the end of it — and an end can go
  * unsent other ways (a host that reloads comes back holding nothing, and when nobody here holds the
- * tour to hand back — hostAlone — its next Start is the first anybody hears from it), so it is
+ * tour to hand back — answerers — its next Start is the first anybody hears from it), so it is
  * read here: the decider's next state is the end of mine.
  * ⚠️ NEVER WHILE I DECIDE IT, nor while anybody else here does: a publisher who is not the host
  * leaving takes nothing, the host carries on.
@@ -1509,14 +1574,13 @@ export function receive(bus: Bus, ctx: Ctx, from: string, m: Msg): Step {
     /* ⚠️ EVERYBODY STILL ASKING, NOT ONLY THIS ONE. Until somebody's state is heard a page that
        said hello holds nothing to hand on, so a hello can make me the one to answer an earlier
        one: Dee's and Bo's pages new at once, Dee's hello first, and Bo — lowest, so the one to
-       answer her — asking himself a moment later (hostAlone). Answered then, not at her retry. */
-    const asking = [...bus.askers.filter((id) => id !== from && ctx.roster.has(id)), from]
+       answer her — asking himself a moment later (answerers). Answered then, not at her retry.
+       Each hello is kept, a retry beside the first, so a retry goes to the next one along */
+    const asking = [...bus.askers.filter((id) => ctx.roster.has(id)), from]
     const b = { ...bus, askers: asking }
     if (asking.some((id) => answers(b, ctx, id)))
-      return { bus: { ...b, ...sent(ctx) }, out: [{ t: 'state' }] }
-    const same =
-      asking.length === bus.askers.length && asking.every((id) => bus.askers.includes(id))
-    return none(same ? bus : b)
+      return { bus: { ...b, ...handed }, out: [{ t: 'state' }] }
+    return none(b)
   }
   if (holds(bus) && m.tour === bus.tour)
     return leads(bus, ctx) ? decide(bus, ctx, from, m) : none(bus)

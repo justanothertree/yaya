@@ -477,7 +477,7 @@ export function useBus(a: BusInputs): BusApi {
         holdUntil: b.holdUntil + by,
         freeAt: b.freeAt + by,
         leaveAt: b.leaveAt + by,
-        /* the backstop's clock moves with the others: a pause is not silence (bus.ts's stalled) */
+        /* the liveness clock moves with the others: a pause is not silence (bus.ts's stalled) */
         stateAt: b.stateAt + by,
         askers: [],
         heard: true,
@@ -643,8 +643,12 @@ export function useBus(a: BusInputs): BusApi {
         if (holdOn(b, { now, present: inp().present })) every(b.holdUntil, 60_000)
         if (b.guideAway !== null) add(b.guideAway + k.GUIDE_GONE_MS)
         if (b.quietSince !== null) add(b.quietSince + k.ABANDON_MS)
-        /* the moment nobody deciding it would leave it abandoned here: Start is drawn then */
+        /* the moment nobody driving it would leave it abandoned here: Start is drawn then */
         add(stallsAt(b, k))
+        /* ⚠️ AND, DECIDING IT, THE BEAT (bus.ts's tick): asked for nothing else, the clock may not
+           wake again before the tour's next deadline, ten minutes off between stops — and every
+           screen holding it would give it up in STALL_MS */
+        if (leads(b, ctx())) add(b.stateAt + k.BEAT_MS)
       }
       add(L.box.dueAt())
       if (L.hop) {
