@@ -129,7 +129,9 @@ describe('what the relay says about itself', () => {
       const s = openSocket(relay.url)
       await s.opened
       s.send({ type: 'hello', room, create: true })
-      expect(await until(() => s.inbox.some((f) => f.type === 'settings'), 5000)).toBe(true)
+      /* a Lab table says welcome and nothing else; every other room ends its hello with settings */
+      const last = room.startsWith('lab:') ? 'welcome' : 'settings'
+      expect(await until(() => s.inbox.some((f) => f.type === last), 5000)).toBe(true)
       socks.push(s)
     }
     const config = async (token) => {
@@ -143,8 +145,11 @@ describe('what the relay says about itself', () => {
       await join('park:answers-count')
       await join('park:answers-count')
       await join('fight:answers-count')
+      /* two sockets nobody has let in, at one table: a Lab room, and not a live one */
+      await join('lab:answersCountTable00000')
+      await join('lab:answersCountTable00000')
       /* the parks the cases above opened close on their own clock, so wait for them to go */
-      const want = { snake: 1, park: 1, bout: 1 }
+      const want = { snake: 1, park: 1, bout: 1, lab: 1, labLive: 0 }
       let last
       for (const end = Date.now() + 5000; Date.now() < end; await sleep(50)) {
         last = await config(ADMIN)
@@ -153,7 +158,7 @@ describe('what the relay says about itself', () => {
       expect(last.status).toBe(200)
       expect(last.body.rooms).toEqual(want)
       /* counts and nothing else: not one room id */
-      expect(JSON.stringify(last.body)).not.toMatch(/answers-/)
+      expect(JSON.stringify(last.body)).not.toMatch(/answers-|lab:|answersCount/)
 
       expect((await config(null)).status).toBe(403)
       const stranger = await config('tok-not-admin')

@@ -30,3 +30,34 @@ export function sureOf(statusOrError) {
   if (statusOrError === 401 || statusOrError === 403) return 'no'
   return 'unsure'
 }
+
+/**
+ * How long Supabase's 'yes' about an access token may be kept: `ttl`, or until the token's own
+ * `exp` if that comes sooner — never negative, so 0 is "do not keep it".
+ *
+ * ⚠️ A CACHE THAT OUTLIVES THE TOKEN IS A TOKEN NOBODY ELSE BELIEVES. The relay kept every yes for
+ * a minute, so a token said yes to in its last minute was believed here after it had expired, and
+ * every question asked with it afterwards was a 401 that the relay paid a round trip to hear.
+ *
+ * ⚠️ READ, NEVER BELIEVED. The payload is not verified here — Supabase verified the token, and is
+ * asked again once this lapses — so what it says can only make the relay forget SOONER: a token
+ * claiming to live for ever is kept `ttl`, as every token was, and one with no `exp` that reads as
+ * a number (no payload, not JSON, not a JWT at all) is kept `ttl` too.
+ */
+export function keepYes(token, now, ttl) {
+  const exp = expOf(token)
+  return exp === null ? ttl : Math.max(0, Math.min(ttl, exp * 1000 - now))
+}
+
+/** A JWT's `exp`, in seconds, if it has one that is a finite number; otherwise null. */
+function expOf(token) {
+  if (typeof token !== 'string') return null
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const exp = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))?.exp
+    return typeof exp === 'number' && Number.isFinite(exp) ? exp : null
+  } catch {
+    return null
+  }
+}
