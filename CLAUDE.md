@@ -113,7 +113,8 @@ that render nothing at zero first**.
   presence, cursors, call-table games and the tour — as a call between tabs of one browser
   (`src/dev/labCall.ts`). Open one tab per person; `kind=` (dm, circuit, profile, lounge),
   `stranger=1`, `unfriend=Cy` (one side is enough: the list travels with the tab, so the
-  friendship is broken both ways), `meter=1` and `id=` are in its header. No audio and no
+  friendship is broken both ways), `meter=1`, `id=` and `pace=` (the party tour's timers, 0 < pace
+  ≤ 1, the same on every tab) are in its header. No audio and no
   Supabase: it carries exactly the `party` envelopes a real call does, so `speaking` is always
   false and real Realtime latency is not in it. ⚠️ ITS ROSTER MUST CHANGE THE WAY A REAL CALL'S
   DOES — on a `bye` and never on silence, because a crashed peer stays on a real roster for the

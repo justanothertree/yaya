@@ -215,7 +215,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     return DEMOS.filter((d) => ids.has(d.id))
   }, [visible])
 
-  /** show a toy: what the picker does, and what a follow does when the friend it follows moves */
+  /** show a toy: what the picker does, what a follow does when the friend it follows moves, and the
+      party tour's hop (useBus), which ends no follow because taking the bus already did */
   const show = useCallback((id: DemoId) => {
     setDemo(id)
     try {
@@ -276,7 +277,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const kindOf = useCallback((id: string) => META[id]?.category, [])
   /* ⚠️ WHAT THE DICE MAY LAND ON IS WHAT EVERYBODY CAN OPEN. An admin's picker lists the toys the
      owner hid, and a roll is a pick the whole call is taken to: landing on a hidden one would send
-     anybody following to "a toy that isn't in your Lab", and leave them behind. */
+     anybody following to "a toy that isn't in your Lab", and leave them behind. Gust is listed
+     here and left out by the dice themselves (tour.ts's NEVER_A_STOP: never a tour stop). */
   const rollable = useMemo(() => all.filter((e) => listed(e, false)).map((e) => e.id), [all])
   /* every toy this Lab lists, by id — the only ones the tour's Go may open */
   const toys = useMemo(() => new Map(shownDemos.map((d) => [d.id, d.name])), [shownDemos])
@@ -303,6 +305,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         filter={filter}
         kindOf={kindOf}
         rollable={rollable}
+        onShow={show}
       />
       <div className="lab-filter" role="group" aria-label="Show which kind">
         <button
