@@ -22,6 +22,7 @@ import { r2Operations, r2Storage } from './lib/r2ops.mjs'
 import { clientAddr, makeConnGate } from './lib/connGate.mjs'
 /* "did Supabase answer, or could it not be asked", and how long to keep a yes: see tokenAnswer */
 import { keepYes, sureOf } from './lib/supabaseAnswer.mjs'
+import { OWNER_RETRY_MS, makeParkHosts, ownerOfRoom } from './lib/parkHost.mjs'
 import { stampOfServer } from './lib/buildStamp.mjs'
 /* the largest frame read from a client, and why it is that size — see the header of that file */
 import { MAX_MSG_BYTES } from './lib/frameCap.mjs'
@@ -152,17 +153,6 @@ let labTimes = []
 const labPersonTimes = new Map()
 
 /**
- * Who owns a hosted park, if it is one.
- *
- * ⚠️ THE RELAY IS THE ONLY PLACE A HOST CAN BE ESTABLISHED, because it is the only place a
- * socket is tied to an account Supabase has verified. A client saying "I am the host" is a
- * client saying anything it likes; the room's owner is a row, and this is the only code that
- * can read the row and the socket's identity at the same time.
- *
- * ⚠️ THE ROOM ID IS THE ROW ID, so an answer can be kept for ever — park_rooms.id never changes
- * hands. A miss is cached as null too, or a room that is not a hosted map asks on every message.
- */
-/**
  * Keep a Map bounded by dropping its OLDEST entries.
  *
  * ⚠️ THREE CACHES HERE USED `.clear()` AT CAPACITY, which empties the whole thing. That is not
@@ -185,25 +175,24 @@ function capMap(map, max) {
   }
 }
 
-const parkHosts = new Map()
+/**
+ * Who owns a hosted park, if it is one — see server/lib/parkHost.mjs, which holds the rule for
+ * what may be remembered: an answer for good, a failure for PARK_OWNER_RETRY_MS. Shortened by the
+ * environment for a test, never lengthened, as OUTBOUND_TIMEOUT_MS is.
+ */
+const PARK_OWNER_RETRY_MS = Math.min(
+  OWNER_RETRY_MS,
+  Number(process.env.PARK_OWNER_RETRY_MS) || OWNER_RETRY_MS,
+)
+const parkHosts = makeParkHosts({
+  ask: (id) => ownerOfRoom(createSupabaseServiceClient(), id, OUTBOUND_TIMEOUT_MS),
+  retryMs: PARK_OWNER_RETRY_MS,
+})
 async function hostOfParkRoom(roomId) {
   if (!isPark(roomId)) return null
   const id = roomId.slice(PARK_PREFIX.length + 1)
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null
-  if (parkHosts.has(id)) return parkHosts.get(id)
-  const sb = createSupabaseServiceClient()
-  if (!sb) return null
-  let owner = null
-  try {
-    const { data } = await sb.from('park_rooms').select('owner').eq('id', id).maybeSingle()
-    owner = data?.owner ?? null
-  } catch {
-    owner = null
-  }
-  /* bounded, because a room id is whatever anybody typed into a hello */
-  parkHosts.set(id, owner)
-  capMap(parkHosts, 500)
-  return owner
+  return parkHosts(id)
 }
 const carriesArt = (roomId) => isPark(roomId) || isBout(roomId)
 /**
