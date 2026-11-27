@@ -456,12 +456,31 @@ html:has(.lab) {
   width: 12px;
   height: 12px;
 }
-/* a phone's one row: up to four tokens, a line saying where everybody is, and Show */
+/* a phone's one row: up to four tokens, a line saying where everybody is, and Show — with 🚌 Tour
+   beside it while there is no tour to find. ⚠️ THE LINE KEEPS ROOM TO BE READ: it grows from 110px
+   and the buttons, kept together, take a row of their own before it would shrink past that —
+   squeezed beside both, three long names read "Barthol…" */
 .lab-tour-sum {
-  display: grid;
-  grid-template-columns: auto minmax(64px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+}
+.lab-tour-sum .lab-tour-line {
+  flex: 1 1 110px;
+  min-width: 64px;
+  /* ⚠️ AND ITS TEXT NEVER WIDENS THE PAGE. In a wrapping row a one-line text's min-content is the
+     whole of it, and the grids above take a child's min-content as a floor: measured at 375, three
+     long names took the page 258px past the screen. Contained, it counts as its 110px basis */
+  contain: inline-size;
+}
+.lab-tour-sum-acts {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.lab-tour-sum-acts .btn {
+  white-space: nowrap;
 }
 .lab-tour-stack {
   display: inline-flex;
@@ -484,11 +503,169 @@ html:has(.lab) {
 .lab-tour-line {
   font-size: 0.85rem;
 }
+/* ── the party tour, "the bus" (src/lab/social/BusPanel.tsx): a block under the strip's header on
+   a wide screen, one row under the summary on a phone. Sizes in px where they are a target or a
+   floor, as above. */
+.lab-bus {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid color-mix(in oklab, var(--accent), transparent 55%);
+}
+.lab-bus-head {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+/* the riders in turn order: a 64px floor under every name, so a long one ellipses instead of
+   vanishing, and the row wraps rather than running off the card */
+.lab-bus-riders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lab-bus-rider {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.85rem;
+}
+.lab-bus-rider .lab-tour-token {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+/* the floor is 64px, or the name's own width when that is less: a short name ("You") would
+   otherwise sit in 64px with a gap before its 🎲. --len is the name in characters (BusPanel) */
+.lab-bus-rider-name {
+  min-width: min(64px, calc(var(--len, 99) * 1ch));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lab-bus-rolls,
+.lab-bus-stars,
+.lab-bus-note {
+  flex: none;
+}
+.lab-bus-note {
+  color: var(--muted);
+}
+.lab-bus-rider.is-off .lab-bus-rider-name {
+  color: var(--muted);
+}
+/* what is happening, and what you can do: the words take the room, the buttons wrap under them */
+.lab-bus-now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+}
+.lab-bus-say {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.lab-bus-say:focus {
+  outline: none;
+}
+.lab-bus-say:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lab-bus-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lab-bus-btn {
+  min-height: 36px;
+  padding: 0.3rem 0.8rem;
+}
+/* the 3-2-1, large and for the eyes: each number arrives with a pulse */
+.lab-bus-count {
+  flex: none;
+  min-width: 1.4em;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  animation: lab-bus-pulse 0.9s ease-out both;
+}
+@keyframes lab-bus-pulse {
+  from {
+    transform: scale(1.4);
+    opacity: 0.35;
+  }
+}
+/* the roll's three faces: a card each, side by side while there is room for 180px, one per row on
+   a phone. A toy's name can be a long one, so it wraps anywhere rather than spilling the card */
+.lab-bus-faces {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lab-bus-face {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  min-height: 36px;
+  height: 100%;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  animation: lab-bus-drop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+div.lab-bus-face {
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+}
+.lab-bus-face-name {
+  overflow-wrap: anywhere;
+}
+.lab-bus-face-kind {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+/* the faces drop in, flat: a slide and a fade, never a turn in depth */
+@keyframes lab-bus-drop {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}
+/* a phone's bus row sits with the summary and the follow row, so it is lighter than the block */
+.lab-bus.is-phone {
+  padding: 0.35rem 0.5rem;
+  border-color: var(--border);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lab-bus-count,
+  .lab-bus-face {
+    animation: none;
+  }
+}
 @media (max-width: 640px), (pointer: coarse) {
   .lab-tour-go,
   .lab-tour-follow,
   .lab-tour-dice,
-  .lab-tour-toggle {
+  .lab-tour-toggle,
+  .lab-bus-btn,
+  .lab-bus-face {
     min-height: 44px;
   }
   .lab-tour-one {
