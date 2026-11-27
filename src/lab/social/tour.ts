@@ -1,7 +1,8 @@
 /**
  * The Lab tour: friends on the same call seeing each other on the Lab's toys, the way players see
  * each other on a board. Pure, so tour.test.ts can ask it without a call or a page —
- * docs/2026-11-22-lab-tour.md has the plan, and why none of it adds a message to the wire.
+ * docs/2026-11-22-lab-tour.md has the plan: everything here is a new reading of messages the call
+ * already carries, and only the party tour (bus.ts) adds a kind of its own, `bus`.
  */
 
 import type { PartyHere } from '../../party/party'
@@ -226,6 +227,28 @@ export const ROOM_TOYS: ReadonlySet<string> = new Set([
   'ultimate',
 ])
 /**
+ * The toys a tour never stops at, each with its reason — the one rule every way a tour lands on a
+ * toy asks: 🎲 Surprise us (surprise, below), the bus's dice (bus.ts's rollFaces), and so the
+ * dice's own choice and the guide's pick, which are only ever a face; the host refuses a roll that
+ * names one, and every reader a state that does (bus.ts's facesFit and readState).
+ *
+ * Evan, 27 Nov 2026: "Gust is not a tour stop; keep it out of online play." Its other online
+ * surfaces never had it: no call table (ROOM_TOYS, held to the sources by tour.test.ts) and no
+ * match by turns (matches/games.ts, and lab-move's own list).
+ *
+ * ⚠️ TAKING ONE OUT AGAIN IS A WIRE CHANGE: a tab on an older build refuses any state naming it, so
+ * a tour that stopped there would stall on that tab until it reloads.
+ */
+export const NEVER_A_STOP: ReadonlyMap<string, string> = new Map([
+  [
+    'gust',
+    'its puck lives on the GPU and its fluid differs by graphics card, so two machines would each see a different game',
+  ],
+])
+/** whether a tour may stop at this toy: everywhere but NEVER_A_STOP */
+export const mayStopAt = (toy: string) => !NEVER_A_STOP.has(toy)
+
+/**
  * What one move onto a toy puts on the call, in sends. A plain toy: the `where` any pick sends. A
  * toy with a call table: that, the room's `hello`, and the host's `state` on seeing you arrive and
  * again in answer to the hello — measured on the dev call on 23 Nov 2026 as one `where`, a `hello`
@@ -346,9 +369,9 @@ export function followStep(a: {
 
 /**
  * 🎲 Surprise us: a toy chosen at random for the call to go to — any toy your Lab lists except the
- * one on screen, from the kind brought forward when a filter is set, or from all of them when that
- * kind has nothing else. Null when there is nowhere else to go. `rand` is a parameter so a test can
- * seed it; the button passes Math.random.
+ * one on screen and the ones a tour never stops at (NEVER_A_STOP), from the kind brought forward
+ * when a filter is set, or from all of them when that kind has nothing else. Null when there is
+ * nowhere else to go. `rand` is a parameter so a test can seed it; the button passes Math.random.
  *
  * It is a pick like any other, so it ends your own follow and anybody following you comes along —
  * which is the point: the dice are how a leader takes the call somewhere nobody chose.
@@ -360,7 +383,7 @@ export function surprise(
   filter: string,
   rand: () => number,
 ): string | null {
-  const others = ids.filter((id) => id !== current)
+  const others = ids.filter((id) => id !== current && mayStopAt(id))
   if (!others.length) return null
   const kind = filter === 'all' ? others : others.filter((id) => kindOf(id) === filter)
   const pool = kind.length ? kind : others
