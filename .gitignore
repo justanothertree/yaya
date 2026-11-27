@@ -62,8 +62,9 @@ supabase/.temp/
 *.key
 yaya-db-*/
 # and the rest of an opened bundle, by name, wherever it was opened
-auth-user-ids.txt
-auth-user-ids.before.txt
+auth-users.tsv
+auth-users.before.tsv
+auth-users.after.tsv
 extras.tsv
 manifest.tsv
 manifest.before.tsv

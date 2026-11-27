@@ -25,10 +25,10 @@
 #   db-backup.sh open IN IDENTITY DIR          decrypt and unpack a bundle into an empty DIR
 #   db-backup.sh prepare-plain-target [DIR]    give a PLAIN Postgres what a Supabase project has,
 #                                              and every role the bundle in DIR grants to
-#   db-backup.sh restore DIR                   preflight, neutralise-defaults, load-auth-ids,
+#   db-backup.sh restore DIR                   preflight, neutralise-defaults, load-auth-users,
 #                                              pg-restore and verify, in that order
 #   db-backup.sh after-restore DIR             print the SQL that puts back what no dump carries
-#   db-backup.sh preflight [DIR] | neutralise-defaults | load-auth-ids DIR | pg-restore DIR | verify DIR
+#   db-backup.sh preflight [DIR] | neutralise-defaults | load-auth-users DIR | pg-restore DIR | verify DIR
 #                                              the same steps one at a time
 set -euo pipefail
 umask 077
@@ -202,12 +202,14 @@ check_role() {
   echo "    reading as a role that can only read"
 }
 
-# through the one function scripts/db-backup/backup-role.sql makes for it: the backup's role
-# cannot be given USAGE on schema auth by anybody it can be created by
-auth_ids() {
-  [ "$(one "select to_regprocedure('backup.auth_user_ids()') is not null")" = t ] ||
-    die "this database has no backup.auth_user_ids(); run scripts/db-backup/backup-role.sql on it first"
-  q -At -c 'copy (select * from backup.auth_user_ids()) to stdout'
+# Each account's id and email, as COPY text: tab separated, a missing email written \N, and any
+# tab or backslash inside a value escaped — so the load's COPY reads back exactly what this wrote.
+# Through the one function scripts/db-backup/backup-role.sql makes for it: the backup's role cannot
+# be given USAGE on schema auth by anybody it can be created by.
+auth_users() {
+  [ "$(one "select to_regprocedure('backup.auth_users()') is not null")" = t ] ||
+    die "this database has no backup.auth_users(); run scripts/db-backup/backup-role.sql on it first"
+  q -At -c 'copy (select id, email from backup.auth_users()) to stdout'
 }
 
 # ── dump ───────────────────────────────────────────────────────────────────────────────────────
@@ -230,14 +232,15 @@ dump() {
   [ "$(awk -F'\t' '$1 == "rows" && $2 == "table"' "$dir/manifest.before.tsv" | wc -l)" -gt 0 ] ||
     die "the manifest names no tables, so there is nothing here to back up"
 
-  # ⚠️ auth IS NOT DUMPED, BUT ITS IDS ARE — read BEFORE and AFTER pg_dump, and kept as the union.
-  # Fifty-one foreign keys point from member rows into auth.users, and every one is re-checked when
-  # the restore adds it back, so a member row whose id is missing fails the whole restore. pg_dump
-  # reads its rows from a snapshot taken as it starts; an account deleted while it runs is in that
-  # snapshot and gone from a later read. Any id that existed at the snapshot existed before it.
-  # Only the id travels: no email, no password hash, no token. Who a member is, is in profiles.
-  say "keeping the auth user ids the member rows point at"
-  auth_ids >"$dir/auth-user-ids.before.txt"
+  # ⚠️ auth IS NOT DUMPED, BUT EACH ACCOUNT'S ID AND EMAIL ARE — read BEFORE and AFTER pg_dump,
+  # and kept as the union. Fifty-one foreign keys point from member rows into auth.users, and every
+  # one is re-checked when the restore adds it back, so a member row whose id is missing fails the
+  # whole restore. pg_dump reads its rows from a snapshot taken as it starts; an account deleted
+  # while it runs is in that snapshot and gone from a later read. Any id that existed at the
+  # snapshot existed before it. The email is what lets a member claim that id again afterwards.
+  # Nothing else travels: no password hash, no token, no identity, no session.
+  say "keeping each account's id and email, which the member rows need"
+  auth_users >"$dir/auth-users.before.tsv"
 
   # ⚠️ PRIVILEGES ARE KEPT. The first version passed --no-privileges, which drops every GRANT and
   # REVOKE: functions restore executable by PUBLIC (and so by anon) and tables restore with no
@@ -247,8 +250,11 @@ dump() {
   pgtool pg_dump --schema=public --schema=finance --strict-names \
     --no-owner --format=custom --compress=9 --file="$dir/yaya.dump"
 
-  auth_ids | sort -u - "$dir/auth-user-ids.before.txt" >"$dir/auth-user-ids.txt"
-  rm -f "$dir/auth-user-ids.before.txt"
+  # one line per id: the later reading's email where there is one (an address changed during the
+  # dump is the newer address), the earlier one's for an account deleted meanwhile
+  auth_users >"$dir/auth-users.after.tsv"
+  awk -F'\t' '!seen[$1]++' "$dir/auth-users.after.tsv" "$dir/auth-users.before.tsv" | sort >"$dir/auth-users.tsv"
+  rm -f "$dir/auth-users.before.tsv" "$dir/auth-users.after.tsv"
 
   say "reading the source's account of itself again"
   q -At -F $'\t' -f "$SQL/manifest.sql" >"$dir/manifest.tsv"
@@ -256,16 +262,17 @@ dump() {
   comm -13 <(awk -F'\t' '$1 == "rows"' "$dir/manifest.before.tsv" | sort) \
     <(awk -F'\t' '$1 == "rows"' "$dir/manifest.tsv" | sort) | cut -f3 | sort -u >"$dir/moved.txt"
 
-  local tables entries ids
+  local tables entries ids emails
   tables="$(awk -F'\t' '$1 == "rows" && $2 == "table"' "$dir/manifest.tsv" | wc -l | tr -d ' ')"
   entries="$(pgtool pg_restore --list "$dir/yaya.dump" | grep -c ' TABLE DATA ' || true)"
-  ids="$(grep -c . "$dir/auth-user-ids.txt" || true)"
+  ids="$(grep -c . "$dir/auth-users.tsv" || true)"
+  emails="$(awk -F'\t' '$2 != "\\N"' "$dir/auth-users.tsv" | wc -l | tr -d ' ')"
   [ "$entries" = "$tables" ] || die "the dump carries data for $entries tables and the source has $tables"
-  [ "$ids" -gt 0 ] || die "no auth user ids were read, so member rows could not be restored"
+  [ "$ids" -gt 0 ] || die "no member accounts were read, so member rows could not be restored"
   if public_log; then
-    echo "    $tables tables, member ids kept"
+    echo "    $tables tables, member accounts kept"
   else
-    echo "    $tables tables, $(wc -c <"$dir/yaya.dump") bytes, $ids member ids, $(grep -c . "$dir/moved.txt" || true) moved during the dump"
+    echo "    $tables tables, $(wc -c <"$dir/yaya.dump") bytes, $ids member accounts ($emails with an email), $(grep -c . "$dir/moved.txt" || true) moved during the dump"
   fi
 }
 
@@ -285,7 +292,7 @@ seal() {
   case "$recipient" in *AGE-SECRET-KEY-*) die "that is an age PRIVATE key, not a recipient; it is not repeated here" ;; esac
   [[ "$recipient" =~ ^age1[02-9ac-hj-np-z]{58}$ ]] || die "the recipient is not an age public key (age1 and 58 more characters)"
   local f
-  for f in yaya.dump auth-user-ids.txt manifest.tsv extras.tsv moved.txt; do
+  for f in yaya.dump auth-users.tsv manifest.tsv extras.tsv moved.txt; do
     [ -f "$dir/$f" ] || die "$dir has no $f, so it is not a whole bundle"
   done
   say "encrypting the bundle to the recipient"
@@ -410,12 +417,20 @@ neutralise_defaults() {
   echo "    this role's default grants to the API roles are off for the length of the restore"
 }
 
+# Each account's id and email, as rows of auth.users, so the member rows have somebody to point at
+# and each member has an address to ask for a password reset with.
+#
 # ⚠️ A ROW GoTrue CAN READ. Its token columns have no default, and it reads them into strings that
 # cannot be NULL — a bare (id) row breaks the user list for the whole project and the password
 # reset for that member. So every such column this auth.users has is given '', and the row the
-# fields a confirmed email user has. On the stand-in most of these columns do not exist.
-load_auth_ids() {
-  local dir="${1:?load-auth-ids DIR}" before after cols vals
+# fields an email user has. On the stand-in most of these columns do not exist.
+#
+# ⚠️ AN EMAIL IS UNIQUE ON A REAL PROJECT (GoTrue's users_email_partial_key), so if somebody signed
+# up to the new project before the restore, their address is already taken by a new id and the
+# load stops — in one transaction, so nothing is half loaded. The database's message names the
+# address; with a public log it goes to restore-errors.txt like every other.
+load_auth_users() {
+  local dir="${1:?load-auth-users DIR}" before after cols vals
   require_empty_target
   read -r cols vals < <(one "select coalesce(string_agg(quote_ident(attname), ',' order by attname), ''),
                                     coalesce(string_agg(case attname
@@ -430,17 +445,17 @@ load_auth_ids() {
                                                 'email_change', 'phone_change', 'phone_change_token', 'reauthentication_token')" | tr '|' ' ')
   before="$(one 'select count(*) from auth.users')"
   {
-    echo 'create temp table restore_ids (id uuid primary key) on commit drop;'
-    echo 'copy restore_ids from stdin;'
-    cat "$dir/auth-user-ids.txt"
+    echo 'create temp table restore_users (id uuid primary key, email text) on commit drop;'
+    echo 'copy restore_users from stdin;'
+    cat "$dir/auth-users.tsv"
     echo '\.'
-    echo "insert into auth.users (id${cols:+,$cols}) select id${vals:+,$vals} from restore_ids on conflict (id) do nothing;"
+    echo "insert into auth.users (id, email${cols:+,$cols}) select id, email${vals:+,$vals} from restore_users on conflict (id) do nothing;"
   } | quietly "$dir" q -1
   after="$(one 'select count(*) from auth.users')"
   if public_log; then
-    echo "    member ids loaded"
+    echo "    member accounts loaded"
   else
-    echo "    $((after - before)) auth user ids added, $before were already there"
+    echo "    $((after - before)) member accounts added with their emails, $before were already there"
   fi
 }
 
@@ -556,8 +571,8 @@ restore() {
   preflight "$dir"
   say "turning off the target's default grants"
   neutralise_defaults
-  say "loading the auth user ids"
-  load_auth_ids "$dir"
+  say "loading each account's id and email"
+  load_auth_users "$dir"
   say "restoring"
   pg_restore_step "$dir"
   say "comparing the restore with the source's account of itself"
@@ -575,7 +590,7 @@ case "$cmd" in
   prepare-plain-target) prepare_plain_target "$@" ;;
   preflight) preflight "$@" ;;
   neutralise-defaults) neutralise_defaults "$@" ;;
-  load-auth-ids) load_auth_ids "$@" ;;
+  load-auth-users) load_auth_users "$@" ;;
   pg-restore) pg_restore_step "$@" ;;
   verify) verify "$@" ;;
   after-restore) after_restore "$@" ;;

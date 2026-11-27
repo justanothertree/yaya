@@ -6,12 +6,12 @@
 -- dumps as the role it makes, so a grant missing here fails a pull request rather than a Sunday.
 -- Safe to run twice.
 --
--- ⚠️ WHY A FUNCTION FOR THE MEMBER IDS, AND NOT A GRANT. postgres holds USAGE on schema auth
--- WITHOUT the grant option (measured 26 Nov 2026: auth's ACL gives postgres `U`, not `U*`), so
--- `grant usage on schema auth to …` does not fail — Postgres answers it with a WARNING and grants
--- nothing, and the SQL editor shows success. The ids are read instead through a SECURITY DEFINER
--- function owned by postgres, in a schema of its own that the API does not expose and the backup
--- does not dump, executable by this role alone.
+-- ⚠️ WHY A FUNCTION FOR THE MEMBERS' ACCOUNTS, AND NOT A GRANT. postgres holds USAGE on schema
+-- auth WITHOUT the grant option (measured 26 Nov 2026: auth's ACL gives postgres `U`, not `U*`),
+-- so `grant usage on schema auth to …` does not fail — Postgres answers it with a WARNING and
+-- grants nothing, and the SQL editor shows success. Each account's id and email are read instead
+-- through a SECURITY DEFINER function owned by postgres, in a schema of its own that the API does
+-- not expose and the backup does not dump, executable by this role alone.
 
 do $$
 begin
@@ -31,15 +31,18 @@ alter default privileges for role postgres in schema public grant select on sequ
 alter default privileges for role postgres in schema finance grant select on tables to yaya_backup;
 alter default privileges for role postgres in schema finance grant select on sequences to yaya_backup;
 
--- the member ids, and nothing else of auth
+-- each account's id and email, and nothing else of auth: no password hash, no token, no identity.
+-- The id is what member rows point at; the email is how a member gets that id back after a
+-- restore, by asking for a password reset. (`::text` because GoTrue's column is varchar(255) and
+-- the test's stand-in is text: the cast makes the two return the same thing.)
 create schema if not exists backup;
 revoke all on schema backup from public;
 grant usage on schema backup to yaya_backup;
-create or replace function backup.auth_user_ids() returns setof uuid
+create or replace function backup.auth_users() returns table (id uuid, email text)
 language sql stable security definer set search_path = ''
-as $$ select id from auth.users order by id $$;
-revoke all on function backup.auth_user_ids() from public, anon, authenticated, service_role;
-grant execute on function backup.auth_user_ids() to yaya_backup;
+as $$ select u.id, u.email::text from auth.users u order by u.id $$;
+revoke all on function backup.auth_users() from public, anon, authenticated, service_role;
+grant execute on function backup.auth_users() to yaya_backup;
 
 -- optional, if pg_cron is installed: its job definitions, kept inside the ciphertext
 do $$
@@ -54,9 +57,9 @@ end $$;
 select r.rolcanlogin as can_log_in,
        r.rolbypassrls as sees_every_row,
        not (r.rolsuper or r.rolcreaterole or r.rolcreatedb) as administers_nothing,
-       has_function_privilege('yaya_backup', 'backup.auth_user_ids()', 'execute') as reads_member_ids,
-       not has_function_privilege('anon', 'backup.auth_user_ids()', 'execute')
-         and not has_function_privilege('authenticated', 'backup.auth_user_ids()', 'execute') as nobody_else_does,
+       has_function_privilege('yaya_backup', 'backup.auth_users()', 'execute') as reads_member_accounts,
+       not has_function_privilege('anon', 'backup.auth_users()', 'execute')
+         and not has_function_privilege('authenticated', 'backup.auth_users()', 'execute') as nobody_else_does,
        (select count(*) = 0 from pg_class c join pg_namespace n on n.oid = c.relnamespace
          where n.nspname in ('public', 'finance') and c.relkind in ('r', 'p', 'S')
            and not has_table_privilege('yaya_backup', c.oid, 'select')) as reads_every_table,

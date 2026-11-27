@@ -7,7 +7,8 @@
 # REQUEST. The source is built from the repository's own baseline, the seed, and the speed
 # tidy-up's fixtures: four members in auth.users and rows that point at them across the schema,
 # plus scripts/db-backup/test-source-extras.sql — a probe of awkward values, a dropped column
-# before a commented one, and the things production has that the 4 Nov baseline does not. Then
+# before a commented one, two more accounts (one with no email, one with an email built to break
+# a careless round trip), and the things production has that the 4 Nov baseline does not. Then
 # scripts/db-backup/backup-role.sql, the SAME file Evan runs, makes the backup's role, and the
 # source is dumped AS THAT ROLE — sealed and opened with a throwaway age key, and restored, by
 # scripts/db-backup.sh: the subcommands the weekly job runs.
@@ -159,13 +160,49 @@ as_backup postgres bash "$BK" dump "$WORK/bundle"
 kinds="$(cut -f1 "$WORK/bundle/extras.tsv" | sort | uniq -c | awk '{ printf "%s=%s ", $2, $1 }')"
 echo "    kept beside the dump: $kinds"
 [ "$kinds" = "cron=2 policy=2 publication=2 trigger=1 " ] || fail "extras.tsv did not capture 2 cron jobs, 2 policies, 2 publication entries and 1 trigger: $kinds"
-[ "$(grep -c . "$WORK/bundle/auth-user-ids.txt")" = 4 ] || fail "the bundle does not carry the source's four member ids"
+# every account, id and email, exactly as the source holds them — asked of auth.users directly, as
+# postgres, not through the backup's function
+src "$PSQL" -X -At -c 'copy (select id, email from auth.users order by id) to stdout' >"$WORK/source-accounts.tsv"
+diff "$WORK/source-accounts.tsv" "$WORK/bundle/auth-users.tsv" >/dev/null ||
+  fail "the bundle's accounts are not the source's: $(diff "$WORK/source-accounts.tsv" "$WORK/bundle/auth-users.tsv" | head -6 | tr '\n' ' ')"
+[ "$(grep -c . "$WORK/bundle/auth-users.tsv")" = 6 ] || fail "the bundle does not carry the source's six accounts"
+[ "$(grep -c '\\N$' "$WORK/bundle/auth-users.tsv")" = 1 ] || fail "the bundle does not carry the one account with no email as one"
+
+# ⚠️ AN EMAIL IN A PUBLIC LOG IS A LEAK, and every public log below is asked about every address the
+# source holds — as the database prints it and as COPY wrote it into the bundle, which differ for
+# the one with a backslash in it. The check is made to see an address first, on every run.
+src "$PSQL" -X -At -c 'select email from auth.users where email is not null' >"$WORK/emails.txt"
+cut -f2 "$WORK/bundle/auth-users.tsv" | grep -vxF '\N' >>"$WORK/emails.txt"
+leaks() { grep -ciF -f "$WORK/emails.txt" "$1" || true; }
+no_leaks() {
+  local f n
+  for f in "$@"; do
+    n="$(leaks "$f")"
+    [ "$n" = 0 ] || fail "$(basename "$f") printed a member's email, on $n line(s)"
+  done
+}
+[ "$(grep -c . "$WORK/emails.txt")" = 10 ] || fail "expected five addresses, each in two spellings, to look for"
+printf 'a line that quotes %s\n' "$(tail -1 "$WORK/emails.txt")" >"$WORK/leak-probe.log"
+[ "$(leaks "$WORK/leak-probe.log")" = 1 ] || fail "the email check cannot see an address it was handed"
+
+# the same dump and seal with the weekly job's public log, kept for the public restore below
+say "backing up again, as the weekly job's public log does"
+as_backup postgres env DB_BACKUP_PUBLIC_LOG=1 bash "$BK" dump "$WORK/public-bundle" >"$WORK/public-dump.log" 2>&1 || {
+  cat "$WORK/public-dump.log" >&2
+  fail "the dump with a public log failed"
+}
 
 age-keygen -o "$WORK/throwaway.key" 2>/dev/null
 RECIPIENT="$(age-keygen -y "$WORK/throwaway.key")"
 bash "$BK" seal "$WORK/bundle" "$RECIPIENT" "$WORK/yaya-db.tar.age"
 bash "$BK" open "$WORK/yaya-db.tar.age" "$WORK/throwaway.key" "$WORK/opened"
 diff -r "$WORK/bundle" "$WORK/opened" >/dev/null || fail "the bundle that came out of the ciphertext is not the one that went in"
+DB_BACKUP_PUBLIC_LOG=1 bash "$BK" seal "$WORK/public-bundle" "$RECIPIENT" "$WORK/public.tar.age" >>"$WORK/public-dump.log" 2>&1 ||
+  fail "the seal with a public log failed"
+no_leaks "$WORK/public-dump.log"
+grep -qE '[0-9]+ (member accounts|with an email|bytes)' "$WORK/public-dump.log" &&
+  fail "the public dump's log printed a count: $(grep -E '[0-9]+ (member accounts|with an email|bytes)' "$WORK/public-dump.log")"
+grep -q 'member accounts kept' "$WORK/public-dump.log" || fail "the public dump's log did not say the member accounts were kept"
 # a copy for each run that writes into its bundle (the public log keeps its errors there)
 copy_bundle() {
   rm -rf "$WORK/$1"
@@ -175,9 +212,9 @@ copy_bundle() {
 # ── the dump's own refusals ────────────────────────────────────────────────────────────────────
 say "breaking the dump on purpose"
 refused "a dump as the owner, not the backup's role" 'read-only role, and this one is: superuser' -- src bash "$BK" dump "$WORK/as-owner"
-sq -c "revoke execute on function backup.auth_user_ids() from yaya_backup"
-refused "a backup role missing one of its grants" 'permission denied for function auth_user_ids' -- as_backup postgres bash "$BK" dump "$WORK/no-grant"
-sq -c "grant execute on function backup.auth_user_ids() to yaya_backup"
+sq -c "revoke execute on function backup.auth_users() from yaya_backup"
+refused "a backup role missing one of its grants" 'permission denied for function auth_users' -- as_backup postgres bash "$BK" dump "$WORK/no-grant"
+sq -c "grant execute on function backup.auth_users() to yaya_backup"
 refused "a dump into a directory inside the checkout" 'inside a git checkout' -- as_backup postgres bash "$BK" dump "$ROOT/.restore-test-bundle"
 rmdir "$ROOT/.restore-test-bundle" 2>/dev/null || true
 
@@ -202,7 +239,7 @@ sq -c "drop database if exists thin_noids with (force)" -c "create database thin
 sqd thin_noids -f supabase/tests/plain-postgres/00-platform.sql
 sqd thin_noids -c "create schema finance" -c "create table public.t (id int primary key)" -c "insert into public.t values (1)"
 sqd thin_noids -f scripts/db-backup/backup-role.sql >/dev/null
-refused "a source with no member ids" 'no auth user ids were read' -- as_backup thin_noids bash "$BK" dump "$WORK/thin-noids"
+refused "a source with no member accounts" 'no member accounts were read' -- as_backup thin_noids bash "$BK" dump "$WORK/thin-noids"
 
 # ── the gate, with made-up values: none of these connects to anything ──────────────────────────
 say "breaking the gate on purpose"
@@ -290,17 +327,34 @@ PGUSER=zz_restorer PGPASSWORD=restore-test-only dst restored_other bash "$BK" re
   fail "a restore run by a role other than postgres did not match its source"
 }
 
-# ⚠️ AND THE SAME RESTORE WITH THE WEEKLY JOB'S PUBLIC LOG: no count of anything, and it still
-# succeeds. (The moved-table checks below reuse this copy.)
-say "restoring again, as the weekly job's public log does"
-copy_bundle public-bundle
+# ⚠️ AND THE PUBLIC DUMP RESTORED WITH THE WEEKLY JOB'S PUBLIC LOG: no count of anything, no
+# address, and it still succeeds. (The moved-table checks below reuse this bundle.)
+say "restoring the public dump, as the weekly job's public log does"
 fresh_project restored_public "$WORK/public-bundle"
 DB_BACKUP_PUBLIC_LOG=1 dst restored_public bash "$BK" restore "$WORK/public-bundle" >"$WORK/public.log" 2>&1 || {
   cat "$WORK/public.log" >&2
   fail "the restore with a public log failed"
 }
-grep -qE '[0-9]+ (auth user ids|member ids|bytes)' "$WORK/public.log" && fail "the public log printed a count: $(grep -E '[0-9]+ (auth user ids|member ids|bytes)' "$WORK/public.log")"
-grep -q 'member ids loaded' "$WORK/public.log" || fail "the public log did not say the member ids were loaded"
+grep -qE '[0-9]+ (member accounts|with an email|bytes)' "$WORK/public.log" && fail "the public log printed a count: $(grep -E '[0-9]+ (member accounts|with an email|bytes)' "$WORK/public.log")"
+grep -q 'member accounts loaded' "$WORK/public.log" || fail "the public log did not say the member accounts were loaded"
+no_leaks "$WORK/public.log"
+
+# ⚠️ EVERY ACCOUNT CAME BACK WITH ITS OWN EMAIL, in all three restores — asked of auth.users, by id,
+# with a missing email kept apart from an empty one. And the question is made to tell first: one
+# address changed only in case must read as a different answer.
+ACCOUNTS="select count(*) || ' accounts, ' || count(email) || ' with an email, ' ||
+                 md5(coalesce(string_agg(id::text || ' ' || quote_nullable(email), E'\n' order by id), ''))
+            from auth.users"
+accounts_src="$(src "$PSQL" -X -At -c "$ACCOUNTS")"
+echo "    accounts in the source: $accounts_src"
+case "$accounts_src" in "6 accounts, 5 with an email, "*) ;; *) fail "the source should hold six accounts, five with an email" ;; esac
+for db in restored restored_other restored_public; do
+  [ "$(dst "$db" "$PSQL" -X -At -c "$ACCOUNTS")" = "$accounts_src" ] ||
+    fail "$db does not hold the source's accounts and emails: $(dst "$db" "$PSQL" -X -At -c "$ACCOUNTS")"
+done
+dq restored_other -c "update auth.users set email = upper(email) where email = 'owner@example.test'"
+[ "$(dst restored_other "$PSQL" -X -At -c "$ACCOUNTS")" != "$accounts_src" ] ||
+  fail "an address changed in case reads the same as the source's: the accounts check cannot tell"
 
 # ⚠️ AND AGAIN THROUGH A PATH THAT SHARES NO CODE WITH THE MANIFEST. verify compares aclexplode()
 # text; this asks has_*_privilege() of every table, sequence, function and schema, for every API
@@ -345,9 +399,6 @@ echo "                                               restored $asked_dst"
   fail "anon can call a service-only function after the restore"
 [ "$(dst restored "$PSQL" -X -At -c "select has_table_privilege('anon', 'public.profile_blocks', 'TRUNCATE')")" = f ] ||
   fail "anon can TRUNCATE a deny-all table after the restore"
-ids_file="$(grep -c . "$WORK/opened/auth-user-ids.txt")"
-ids_db="$(dst restored "$PSQL" -X -At -c 'select count(*) from auth.users')"
-[ "$ids_file" = "$ids_db" ] || fail "auth.users holds $ids_db ids after the restore and the bundle carries $ids_file"
 
 # ── what no dump carries, put back ─────────────────────────────────────────────────────────────
 # after-restore's SQL is RUN against the restored target here, with stand-ins for Realtime's table
@@ -405,7 +456,7 @@ say "breaking the restore on purpose"
 fresh_project no_grants
 dst no_grants bash "$BK" preflight >/dev/null
 dst no_grants bash "$BK" neutralise-defaults >/dev/null
-dst no_grants bash "$BK" load-auth-ids "$WORK/opened" >/dev/null
+dst no_grants bash "$BK" load-auth-users "$WORK/opened" >/dev/null
 "$PGRESTORE" --list "$WORK/opened/yaya.dump" |
   grep -vE '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - public ' |
   grep -vE ' DEFAULT ACL [^ ]+ DEFAULT PRIVILEGES FOR [A-Z ]+ supabase_admin$' >"$WORK/toc.keep"
@@ -420,7 +471,7 @@ echo "    asked directly, the restore without its grants: $nogrants"
 
 fresh_project kept_defaults
 dst kept_defaults bash "$BK" preflight >/dev/null
-dst kept_defaults bash "$BK" load-auth-ids "$WORK/opened" >/dev/null
+dst kept_defaults bash "$BK" load-auth-users "$WORK/opened" >/dev/null
 dst kept_defaults bash "$BK" pg-restore "$WORK/opened" >/dev/null
 refused "restored into a project's default grants" 'catalog\trelation\tpublic\.zz_restore_probe|catalog\tfunction\tpublic\.zz_restore_probe_count' -- dst kept_defaults bash "$BK" verify "$WORK/opened"
 kept="$(dst kept_defaults "$PSQL" -X -At -c "$ASK")"
@@ -441,10 +492,30 @@ copy_bundle quiet-bundle
 refused "restored without the auth ids, in a public log" 'failed at: ALTER TABLE ONLY [^ ]+ ADD CONSTRAINT [^ ]+ FOREIGN KEY.*restore-errors.txt' -- dst no_ids_public env DB_BACKUP_PUBLIC_LOG=1 bash "$BK" pg-restore "$WORK/quiet-bundle"
 while read -r id; do
   grep -qF "$id" "$WORK/fault.log" && fail "the public log printed a member id: the database's own message got through"
-done <"$WORK/opened/auth-user-ids.txt"
+done < <(cut -f1 "$WORK/opened/auth-users.tsv")
+no_leaks "$WORK/fault.log"
 grep -q 'DETAIL' "$WORK/fault.log" && fail "the public log printed the database's DETAIL line"
 grep -q 'is not present in table' "$WORK/quiet-bundle/restore-errors.txt" 2>/dev/null ||
   fail "the database's own message was not kept in restore-errors.txt inside the bundle"
+
+# ⚠️ AN ADDRESS ALREADY TAKEN, with the weekly job's public log. A real project keeps emails unique
+# (GoTrue's users_email_partial_key; here a plain unique index stands in for it), so somebody who
+# signed up to the new project before the restore holds their address under a new id. The load
+# must stop, leave nothing half loaded, and keep the database's message — which quotes the
+# address — out of the log and inside the bundle.
+fresh_project email_taken
+dq email_taken -c "create unique index on auth.users (email)" \
+  -c "insert into auth.users (id, email) values (gen_random_uuid(), 'owner@example.test')"
+dst email_taken bash "$BK" preflight >/dev/null
+dst email_taken bash "$BK" neutralise-defaults >/dev/null
+copy_bundle taken-bundle
+refused "an address already taken in the target, in a public log" 'failed\. The database.s own message quotes rows.*restore-errors\.txt' -- dst email_taken env DB_BACKUP_PUBLIC_LOG=1 bash "$BK" load-auth-users "$WORK/taken-bundle"
+no_leaks "$WORK/fault.log"
+grep -q 'DETAIL' "$WORK/fault.log" && fail "the public log printed the database's DETAIL line about an address"
+grep -q 'Key (email)=' "$WORK/taken-bundle/restore-errors.txt" 2>/dev/null ||
+  fail "the database's message about the taken address was not kept in restore-errors.txt"
+[ "$(dst email_taken "$PSQL" -X -At -c 'select count(*) from auth.users')" = 1 ] ||
+  fail "a refused load left some of the accounts behind"
 
 fresh_project global_default
 dq global_default -c "alter default privileges for role postgres grant select on tables to anon"
@@ -461,7 +532,7 @@ refused "a dump with no CREATE SCHEMA public to leave out" 'expected exactly 1 C
 
 refused "a restore aimed at a database that already has tables" 'already has [0-9]+ tables' -- dst restored bash "$BK" preflight
 refused "neutralise-defaults aimed at a database that already has tables" 'already has [0-9]+ tables' -- dst restored bash "$BK" neutralise-defaults
-refused "load-auth-ids aimed at a database that already has tables" 'already has [0-9]+ tables' -- dst restored bash "$BK" load-auth-ids "$WORK/opened"
+refused "load-auth-users aimed at a database that already has tables" 'already has [0-9]+ tables' -- dst restored bash "$BK" load-auth-users "$WORK/opened"
 
 dq postgres -c "drop database if exists real_project with (force)" -c "create database real_project"
 dq real_project -c "create schema auth" -c "create table auth.users (id uuid primary key, is_sso_user boolean not null default false)"
@@ -509,4 +580,4 @@ if [ ${#failures[@]} -gt 0 ]; then
   printf '  - %s\n' "${failures[@]}" >&2
   exit 1
 fi
-say "restore verified: rows, definitions and grants, with member data and its auth ids; and every fault refused"
+say "restore verified: rows, definitions and grants, with member data and its accounts' ids and emails; and every fault refused"

@@ -39,6 +39,14 @@ create policy zz_restore_probe_own on public.zz_restore_probe for select to auth
 comment on table public.zz_restore_probe is 'the restore test''s probe';
 comment on column public.zz_restore_probe.note is 'awkward on purpose';
 
+-- two accounts beyond the seed's four, for the emails the bundle now carries: one with none (as a
+-- phone sign-up has) and one an exact round trip has to work for — capitals, a plus, an apostrophe,
+-- non-ASCII, and a backslash, which COPY's text format escapes on the way out and must unescape on
+-- the way back in
+insert into auth.users (id, email) values
+  ('00000000-0000-4000-a000-000000000005', null),
+  ('00000000-0000-4000-a000-000000000006', E'"Ada\\O''Neil"+Backup@Exämple.TEST');
+
 -- grants that differ by role, down to a single column, so a restore that loses or widens one shows
 revoke all on public.zz_restore_probe from public, anon, authenticated, service_role;
 grant select on public.zz_restore_probe to authenticated;

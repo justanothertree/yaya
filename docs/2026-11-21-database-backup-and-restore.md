@@ -13,8 +13,11 @@ backup there is.** Nothing else in this doc is as important as that sentence.
 - The dump now **keeps its grants**. The first version passed `--no-privileges`, so a restore came
   back with every function executable by anon and no member grants on any table. Measured in the
   restore test: 273 functions anon could call where the source has 9.
-- It **carries the auth user ids** that member rows point at. Without them, a restore of real data
-  fails on the first of 51 foreign keys into `auth.users`.
+- It **carries every account's id** that member rows point at. Without them, a restore of real
+  data fails on the first of 51 foreign keys into `auth.users`.
+- **27 Nov: and each account's email**, so a member can get their id back after a restore by
+  asking for a password reset. The restore test proves every email comes back exactly, and that
+  none reaches a public log.
 - The restore **turns off a fresh project's default grants** first. Without that, it reopens every
   deny-all table: measured, 54 tables `TRUNCATE`-able by anon.
 - **Every backup is restored and compared** with production's own account of itself before it is
@@ -42,7 +45,7 @@ and so is the workflow's log**. Three rules follow, and each one is enforced in 
   - It removes a half-written file.
   - The upload waits for it.
 - **The weekly log names no value** (`DB_BACKUP_PUBLIC_LOG=1`):
-  - no row count, no member count, no size, and no input;
+  - no row count, no member count, no size, no email, and no input;
   - a mismatch names the table or object, never what it holds.
   - Postgres's own error messages quote the row they choked on ("Key (user_id)=(…) is not
     present"). So in that log they go to `restore-errors.txt` **inside the sealed bundle**, and
@@ -59,14 +62,14 @@ and so is the workflow's log**. Three rules follow, and each one is enforced in 
 One `yaya-db-<run id>-<attempt>` artifact per week, kept 90 days. It is one age file holding a tar
 of:
 
-| file                 | what                                                                                                                                                                                                                         |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yaya.dump`          | `pg_dump` of `public` and `finance`: custom format, `--no-owner`, **privileges kept**, `--strict-names`                                                                                                                      |
-| `auth-user-ids.txt`  | the id of every row in `auth.users`, **and nothing else**: no email, no password hash, no token. Read before and after `pg_dump` and kept as the union, so an account deleted mid-dump cannot leave rows whose id is missing |
-| `manifest.tsv`       | the source's account of itself (`scripts/db-backup/manifest.sql`): every table's rows (count and md5), and every definition and grant. `manifest.before.tsv` is the same, read before the dump                               |
-| `moved.txt`          | tables whose rows changed while `pg_dump` ran, so their rows are not compared                                                                                                                                                |
-| `extras.tsv`         | what the dump cannot carry, for `after-restore` to put back (next section)                                                                                                                                                   |
-| `restore-errors.txt` | only if the weekly restore check failed: the database's own messages, kept here rather than in the public log                                                                                                                |
+| file                 | what                                                                                                                                                                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yaya.dump`          | `pg_dump` of `public` and `finance`: custom format, `--no-owner`, **privileges kept**, `--strict-names`                                                                                                                                   |
+| `auth-users.tsv`     | the id and email of every row in `auth.users`, **and nothing else**: no password hash, no token, no identity. Read before and after `pg_dump` and kept as the union, so an account deleted mid-dump cannot leave rows whose id is missing |
+| `manifest.tsv`       | the source's account of itself (`scripts/db-backup/manifest.sql`): every table's rows (count and md5), and every definition and grant. `manifest.before.tsv` is the same, read before the dump                                            |
+| `moved.txt`          | tables whose rows changed while `pg_dump` ran, so their rows are not compared                                                                                                                                                             |
+| `extras.tsv`         | what the dump cannot carry, for `after-restore` to put back (next section)                                                                                                                                                                |
+| `restore-errors.txt` | only if the weekly restore check failed: the database's own messages, kept here rather than in the public log                                                                                                                             |
 
 As of 26 Nov 2026 the two schemas held **82 tables, 1 view, 366 functions and 7 sequences**, the
 database was **38 MB**, and there were **14 members**. Those are dated figures. Ask rather than
@@ -80,20 +83,20 @@ select pg_size_pretty(pg_database_size(current_database()));
 
 ## What it does not carry, and where each piece lives instead
 
-| not in the bundle                                                                                            | where it is, and what a recovery does about it                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **auth accounts**: emails, password hashes, identities, sessions, MFA                                        | **Nowhere else, on the Free plan.** A restore makes an `auth.users` row per id, so member data still lines up, but nobody can sign in to those rows. `public.profiles.email` holds an address for many members, but not for all. See **Bringing members back**. |
-| **pg_cron's jobs** (6 on 26 Nov)                                                                             | captured in `extras.tsv`, paused or not, if the backup role may read `cron.job`; `after-restore` prints the `cron.schedule` calls                                                                                                                               |
-| **realtime publication membership** (12 tables)                                                              | captured in `extras.tsv`; `after-restore` prints the `alter publication` lines                                                                                                                                                                                  |
-| **the app's policies on Supabase's own tables**: 11 on `realtime.messages`, Realtime's channel authorization | captured in `extras.tsv`; `after-restore` prints the `create policy` statements. Without them, private channels refuse everybody                                                                                                                                |
-| **triggers on Supabase's own tables that call ours**                                                         | captured in `extras.tsv` (there were none on 26 Nov; a profile-on-signup trigger on `auth.users` is the usual one)                                                                                                                                              |
-| **Vault**: one secret, `finnhub_api_key`                                                                     | not captured, on purpose. It is the Finnhub API key the stock-price function reads; without it, stock quotes stop, quietly. Re-create it with `select vault.create_secret('<key>', 'finnhub_api_key');`                                                         |
-| **edge-function secrets** (VAPID, R2 credentials)                                                            | the Supabase dashboard. They aren't in the database                                                                                                                                                                                                             |
-| **R2 objects**: pictures, chat songs                                                                         | Cloudflare R2. The rows that name them are backed up; the files are not                                                                                                                                                                                         |
-| **Supabase Storage** objects                                                                                 | the `storage` schema and its bucket; not dumped                                                                                                                                                                                                                 |
-| **migration history** (`supabase_migrations.schema_migrations`)                                              | the repository: `supabase/migrations/` and `applied.md5` are the record. After a restore, the new project's history is empty. Don't let that invite re-running migrations over a schema that already has them                                                   |
-| **dashboard configuration**: auth URLs, SMTP, providers                                                      | the dashboard                                                                                                                                                                                                                                                   |
-| **extensions** (citext, pgcrypto, pg_cron, pg_net, http, …)                                                  | available on every Supabase project, but a new project has only some of them switched on: enable them first (see **Restoring by hand**). A plain Postgres gets stand-ins for the only two the schema needs                                                      |
+| not in the bundle                                                                                            | where it is, and what a recovery does about it                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **the rest of auth**: password hashes, identities (14 on 27 Nov), sessions, MFA                              | **Nowhere else, on the Free plan.** A restore makes an `auth.users` row per account, with its id and email, so member data lines up and each member has an address to reset a password with. Nobody can sign in until they do. See **Bringing members back**. |
+| **pg_cron's jobs** (6 on 26 Nov)                                                                             | captured in `extras.tsv`, paused or not, if the backup role may read `cron.job`; `after-restore` prints the `cron.schedule` calls                                                                                                                             |
+| **realtime publication membership** (12 tables)                                                              | captured in `extras.tsv`; `after-restore` prints the `alter publication` lines                                                                                                                                                                                |
+| **the app's policies on Supabase's own tables**: 11 on `realtime.messages`, Realtime's channel authorization | captured in `extras.tsv`; `after-restore` prints the `create policy` statements. Without them, private channels refuse everybody                                                                                                                              |
+| **triggers on Supabase's own tables that call ours**                                                         | captured in `extras.tsv` (there were none on 26 Nov; a profile-on-signup trigger on `auth.users` is the usual one)                                                                                                                                            |
+| **Vault**: one secret, `finnhub_api_key`                                                                     | not captured, on purpose. It is the Finnhub API key the stock-price function reads; without it, stock quotes stop, quietly. Re-create it with `select vault.create_secret('<key>', 'finnhub_api_key');`                                                       |
+| **edge-function secrets** (VAPID, R2 credentials)                                                            | the Supabase dashboard. They aren't in the database                                                                                                                                                                                                           |
+| **R2 objects**: pictures, chat songs                                                                         | Cloudflare R2. The rows that name them are backed up; the files are not                                                                                                                                                                                       |
+| **Supabase Storage** objects                                                                                 | the `storage` schema and its bucket; not dumped                                                                                                                                                                                                               |
+| **migration history** (`supabase_migrations.schema_migrations`)                                              | the repository: `supabase/migrations/` and `applied.md5` are the record. After a restore, the new project's history is empty. Don't let that invite re-running migrations over a schema that already has them                                                 |
+| **dashboard configuration**: auth URLs, SMTP, providers                                                      | the dashboard                                                                                                                                                                                                                                                 |
+| **extensions** (citext, pgcrypto, pg_cron, pg_net, http, …)                                                  | available on every Supabase project, but a new project has only some of them switched on: enable them first (see **Restoring by hand**). A plain Postgres gets stand-ins for the only two the schema needs                                                    |
 
 ## The weekly run
 
@@ -119,8 +122,8 @@ select pg_size_pretty(pg_database_size(current_database()));
    - **It refuses a role that could do harm:** a superuser, a role that can create roles or
      databases, a role without `BYPASSRLS` (which would get a partial dump), or one that may write
      a single table it backs up.
-   - It reads the manifest either side of `pg_dump`.
-   - It refuses a dump with no tables, no data, or no ids.
+   - It reads the manifest, and the accounts, either side of `pg_dump`.
+   - It refuses a dump with no tables, no data, or no accounts.
 4. **Restore and compare** (`prepare-plain-target`, then `restore`), in a throwaway Postgres
    started inside this step.
    - The real backup is restored and compared with production's own manifest, line for line.
@@ -157,6 +160,8 @@ fixtures: four members in `auth.users`, with rows pointing at them across the sc
 `scripts/db-backup/test-source-extras.sql` adds:
 
 - a probe table of awkward values;
+- two more accounts: one with no email, and one whose email has capitals, a plus, an apostrophe,
+  non-ASCII and a backslash, so only an exact round trip passes;
 - a column dropped before a commented one, as in production's `circuit_people`;
 - a service-only function and column grants;
 - the things production has that the 4 Nov baseline doesn't:
@@ -177,24 +182,30 @@ into `auth.users` in use.
 
 **The procedure** is the weekly job's own, through the same subcommands:
 
-1. Dump, then seal and open with a throwaway age key.
-2. Restore, once with a private log and once with the weekly job's public one.
+1. Dump, then seal and open with a throwaway age key. Dump and seal again with the weekly job's
+   public log.
+2. Restore three times: with a private log, as a superuser that isn't `postgres`, and the public
+   dump with the public log.
 3. Ask the grants and row counts again with `has_*_privilege()` and `count(*)`, which share no
    code with the manifest. The two different questions must give the same answer.
-4. Run `after-restore`'s SQL against the copy. The policies, trigger, publication and cron jobs
+4. Check that all three restores hold every account with its own email, byte for byte, and that
+   no public log contains any of the source's addresses, written either as the database prints
+   them or as the bundle stores them. Both checks are first made to fail: an address changed only
+   in case must read as different, and a log with an address added must be caught.
+5. Run `after-restore`'s SQL against the copy. The policies, trigger, publication and cron jobs
    must come back identical, every cron command byte for byte.
 
 **Then it breaks the backup on purpose, on every run.** Every check has a fault that must be
 refused, for its own reason, or the run is red. The faults cover:
 
-| part             | faults                                                                                                                                                                                                                                                                     |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| the dump         | as the owner; as the role missing one grant; inside the checkout; with a pg_dump older than the server; with a table's rows left out; from a source with no tables; from a source with no members                                                                          |
-| the gate         | half configured; a private key; a whole key file; a malformed recipient; the direct host; a host that isn't the pooler; no project ref; the owner's user; a password with a newline; a certificate that isn't PEM; secrets on a branch                                     |
-| the seal         | a private key or key file as the recipient (and neither printed); half a bundle; plaintext or a raw dump as the upload; opening inside the checkout                                                                                                                        |
-| the target       | missing the roles the grants name; holding a database-wide default grant; already holding a `finance` schema; already holding tables (for each of the steps that change it); a real project given the stand-ins                                                            |
-| the restore      | without its grants (the first version); into the default grants; without the auth ids (the first version's other gap); the same in a public log, which must name the constraint and print no member id; a dump with no `public` schema to leave out                        |
-| what is compared | a row, a constraint, a grant, a default privilege, a policy, a sequence, a column default, a trigger, a type, a column comment, a function and a schema grant, each changed after a good restore and each named; and the moved-table skip, which must skip only what moved |
+| part             | faults                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the dump         | as the owner; as the role missing one grant; inside the checkout; with a pg_dump older than the server; with a table's rows left out; from a source with no tables; from a source with no accounts                                                                                                                                                                |
+| the gate         | half configured; a private key; a whole key file; a malformed recipient; the direct host; a host that isn't the pooler; no project ref; the owner's user; a password with a newline; a certificate that isn't PEM; secrets on a branch                                                                                                                            |
+| the seal         | a private key or key file as the recipient (and neither printed); half a bundle; plaintext or a raw dump as the upload; opening inside the checkout                                                                                                                                                                                                               |
+| the target       | missing the roles the grants name; holding a database-wide default grant; already holding a `finance` schema; already holding tables (for each of the steps that change it); a real project given the stand-ins                                                                                                                                                   |
+| the restore      | without its grants (the first version); into the default grants; without the accounts (the first version's other gap); the same in a public log, which must name the constraint and print no member id or email; an email already taken in the target, in a public log, which must load nothing and print no address; a dump with no `public` schema to leave out |
+| what is compared | a row, a constraint, a grant, a default privilege, a policy, a sequence, a column default, a trigger, a type, a column comment, a function and a schema grant, each changed after a good restore and each named; and the moved-table skip, which must skip only what moved                                                                                        |
 
 **What it does not prove:**
 
@@ -306,23 +317,24 @@ bash scripts/db-backup.sh restore "$WORK/bundle"
 
 **Bringing members back.** _This is untested._
 
-The ids are restored, so every member's rows still belong to the right id. `load-auth-ids` gives
-each row the empty token columns GoTrue needs to read it, because a row with NULL tokens breaks
-the user list for the whole project. A row with no email can't sign in, though, and a member who
-signs up again gets a new id that owns nothing.
+Every account comes back with its id and its email, so every member's rows still belong to the
+right id and every member has an address. `load-auth-users` also gives each row the empty token
+columns GoTrue needs to read it, because a row with NULL tokens breaks the user list for the whole
+project. No password comes back, so nobody can sign in yet.
 
-The way back is to give the restored row its owner's email, as `postgres`.
-`public.profiles.email` has it for many members:
+The way back is for each member to use "forgot password" with their usual email and set a new
+password. That way they keep their id, and with it everything they made. Two things to know:
 
-```sql
-update auth.users u
-   set email = p.email, email_confirmed_at = now()
-  from public.profiles p
- where p.user_id = u.id and p.email is not null and u.email is null;
-```
+- **A member who signs up again instead gets a new id that owns nothing**, and if they do it
+  before the restore, the restore stops: their email is already taken. Delete that new account
+  (it owns nothing yet) and run `restore` again.
+- **The bundle doesn't say whether an address was confirmed**, and identities aren't carried. If a
+  reset link is refused, marking the restored addresses confirmed, as `postgres`, is the next
+  thing to try:
 
-Then each member uses "forgot password" to set a new one. That way they keep their id, and with
-it everything they made. A member with no address there has to be asked.
+  ```sql
+  update auth.users set email_confirmed_at = now() where email is not null and email_confirmed_at is null;
+  ```
 
 ## Turning it on — the walkthrough, 28 Nov
 
@@ -358,7 +370,8 @@ All of these are yours, and none has been done.
      this proof is the only reliable sign it worked.
    - Delete that query from the editor's history afterwards, since it holds the password.
    - The role can log in, sees every row, can administer nothing, and may write nothing.
-   - It reads the member ids through `backup.auth_user_ids()`, a function only it may call.
+   - It reads each account's id and email through `backup.auth_users()`, a function only it may
+     call.
      `postgres` can't grant access to schema `auth` (measured 26 Nov).
    - Default privileges cover the tables added later.
 
