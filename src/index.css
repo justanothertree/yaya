@@ -11689,6 +11689,83 @@ a.cz-msg-author:focus-visible {
   overflow-y: auto;
   /* the parts row and the move chips wrap; nothing in here wants a sideways scrollbar */
   overflow-x: hidden;
+  /* ⚠️ a scroll that reaches the end of the guide stops there, instead of carrying on into the
+     page — the drag that lost a minion started inside this box (see the save bar below) */
+  overscroll-behavior: contain;
+}
+
+/**
+ * ⚠️ THE MINION'S SAVE, PINNED ABOVE THE NAV ON A PHONE. On 27 Nov 2026 a whole minion was lost
+ * to a pull-to-refresh by somebody looking for Save — which sat at the bottom of the guide above,
+ * a box that scrolls inside a page that scrolls, below the fold of both. Below the 700px rail the
+ * guide's own button gives way to this one, so there is still one Save; above it the guide sits
+ * beside the paper and its button is on screen. Fixed rather than sticky because the room's
+ * ancestors reveal with a transform; PaintRoom portals it to <body> for the same reason.
+ */
+.paint-savebar {
+  display: none;
+}
+@media (max-width: 699.98px) {
+  .paint-savebar {
+    position: fixed;
+    z-index: 40;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: calc(var(--bottom-guard) + var(--kb) + var(--dock-h) + var(--pin-gap));
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--accent, #7c6af7);
+    border-radius: 12px;
+    background: var(--bg);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  }
+  .paint-savebar .btn {
+    flex: 0 0 auto;
+    min-height: 44px;
+    font-weight: 700;
+  }
+  /* a floor in pixels, not rem — the root size is fluid (CLAUDE.md §6) */
+  .paint-savebar .muted {
+    min-width: 80px;
+    font-size: 0.8rem;
+  }
+  .paint-pet-guide .paint-pet-done {
+    display: none;
+  }
+  /* so the last row of the room can still be scrolled out from under the bar */
+  .paint-wrap.has-savebar {
+    padding-bottom: 5.5rem;
+  }
+}
+
+/**
+ * ⚠️ AN UNSAVED DRAFT, OFFERED BACK OVER THE PAPER — never applied over it. It covers the board so
+ * nothing is drawn underneath a question whose answer replaces the page.
+ */
+.paint-offer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 1rem;
+  text-align: center;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+}
+.paint-offer canvas {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.paint-offer-do {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
 }
 .paint-pet-guide .muted {
   font-size: 0.8rem;

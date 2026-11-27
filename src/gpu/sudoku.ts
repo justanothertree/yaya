@@ -95,12 +95,31 @@ export function answers(g: Grid, cap = 2): number {
   return found
 }
 
+const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const
+const CELLS = Array.from({ length: 81 }, (_, i) => i)
+/**
+ * The list in a random order that every browser agrees on. ⚠️ Never `sort(() => rand() - 0.5)`:
+ * that leaves the order to the engine's sort, and Chrome's and Safari's sorts ask the comparator
+ * different questions a different number of times. Measured 27 Nov 2026, ten days of "today's
+ * puzzle" made in V8 and in JavaScriptCore were ten different pairs of puzzles, so a friend on an
+ * iPhone was never solving the same Sudoku as a friend in Chrome. This takes one draw per place,
+ * the same draws everywhere.
+ */
+function shuffled<T>(xs: readonly T[], rand: () => number): T[] {
+  const a = xs.slice()
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 /** a whole solved grid, at random */
 function full(rand: () => number): Grid {
   const g = Array(81).fill(0)
   const go = (i: number): boolean => {
     if (i === 81) return true
-    const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9].sort(() => rand() - 0.5)
+    const digits = shuffled(DIGITS, rand)
     for (const d of digits) {
       if (PEERS[i].some((j) => g[j] === d)) continue
       g[i] = d
@@ -298,7 +317,7 @@ export function make(level: Level, seed: number): { puzzle: Grid; answer: Grid; 
   for (let tries = 0; tries < 30; tries++) {
     const answer = full(rand)
     const puzzle = answer.slice()
-    const order = Array.from({ length: 81 }, (_, i) => i).sort(() => rand() - 0.5)
+    const order = shuffled(CELLS, rand)
     for (const i of order) {
       const keep = puzzle[i]
       puzzle[i] = 0

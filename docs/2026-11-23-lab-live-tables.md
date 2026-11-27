@@ -298,7 +298,9 @@ cannot be changed, or because a fix would be a redesign of a file every live cal
   somebody gone has nobody who can move.
 - Left said a call with everybody present never reaches the change, and that the second hello
   needs a message lost. A press in the hop around an arrival or a reload reached it with nothing
-  lost. With this fix it needs a loss again, or an answer slower than `OWE_MS`.
+  lost. With this fix it needs a loss again, or an answer slower than `OWE_MS` — and a lost answer
+  is now repaired only by a press `OWE_MS` or more after the host's hello, not by the first press
+  (the window's cost, below).
 - Left's first stall named a state lost on its way to every player. Lost to the next mover alone,
   it stops a game of three as surely, and nobody presses at all.
 
@@ -340,6 +342,20 @@ Measured, 27 Nov 2026, 16:54–17:00 EST:
   (3d2b8570…), because room.ts reaches lab-move as types only. `prettier --check` passed on every
   changed file. The built GpuLab chunk holds the window (`asked===void 0` beside the second
   hello), which e0a9af85's room.ts has no field for.
+
+**The window's cost, measured by the recheck of this fix (27 Nov 2026), and kept on purpose.** The
+fixer's figures above are all from lossless models, and the window has a price under loss. Four in
+a row, Al hosting and watching, Ann and Cy seated, Al's toy reopening at 60 s with Ann's answer lost
+on its way to him alone: a press 200 ms or 999 ms after the reopen now sends nothing, the next one
+brings Al's hello and Ann's room and is itself refused, and only a third lands; at 1,000 ms or
+3,000 ms the first press repairs. f74103d1 repaired on the first press at every gap, and production
+never repairs. At scale, 10% dropped and 10% delayed over 9 games × 5 scripts × 200 seeds, every
+tab agreed at quiet in 5,401 of 9,000 sessions against f74103d1's 5,472, and the host was still at
+seq 0 in 978 against 903; once a person pressed at quiet, 503 against 487. Production's figures for
+the same runs are 4,692 and 1,714. The chaos model, whose presses come 0.6–1.5 s apart, shows no
+clear difference (563 stuck runs against 558). It is kept because the second hello it removes came
+with nothing lost, in every arrival with a press in flight, and the repair it slows needs a lost
+answer and two presses inside a second; the next press after the second still repairs.
 
 ### Left
 
