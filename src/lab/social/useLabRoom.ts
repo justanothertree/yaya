@@ -7,9 +7,11 @@ import type { Table } from './table'
 import { keepOnline } from './online'
 import { rosterNow, sharingNow } from './where'
 import { heldSeat } from './held'
+import { gameOver } from './gameOver'
 import {
   act,
   computerTurn,
+  finishedOf,
   idle,
   isHost,
   openRoom,
@@ -39,7 +41,8 @@ import {
  *
  * Two things every toy gets from here rather than writing its own: the HOST'S BROWSER PLAYS THE
  * COMPUTER in a together game, after a pause long enough to see whose move it was, and A FINISHED
- * GAME IS KEPT (online.ts) for each seated player — once, on the move that finished it.
+ * GAME IS KEPT (online.ts) for each seated player — once, on the move that finished it — and told,
+ * with who won, to anything on the page that listens for it (gameOver.ts: the party tour).
  */
 /** a call's room is a table (table.ts): the same seats, line and result words as a saved match */
 export type LabRoom<G, M> = Table<G, M>
@@ -78,12 +81,13 @@ export function useLabRoom<G, M>(sub: string, rules: Rules<G, M>): LabRoom<G, M>
       roomRef.current = next
       setRoom(next)
       for (const body of out) sendParty('lab', body)
-      /* ⚠️ KEPT ON THE MOVE THAT FINISHED IT, NEVER ON SEEING A FINISHED BOARD. Somebody arriving
-         (or coming back) is handed the room as it is, finished game and all; only a state one seq
-         on from a game still going is the end of a game this browser was in. */
-      if (prev && next.seq === prev.seq + 1 && rulesRef.current.turn(prev.game) !== null) {
+      /* ⚠️ KEPT ON THE MOVE THAT FINISHED IT, NEVER ON SEEING A FINISHED BOARD (finishedOf says
+         why). Asked once, and both the record and the party tour read that one answer. */
+      const done = finishedOf(rulesRef.current, prev, next)
+      if (done) {
         const how = outcomeFor(rulesRef.current, next)
         if (how) keepOnline(sub, next.mode, how)
+        gameOver.tell(done)
       }
     },
     [sub],

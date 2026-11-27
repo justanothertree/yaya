@@ -15,7 +15,10 @@ import {
   type Shadow,
 } from './tour'
 import type { Refusal } from './gate'
-import { entries, listed as listedFor } from '../catalog'
+import { rollFaces } from './bus'
+import { CATEGORIES, META, entries, listed as listedFor } from '../catalog'
+import { matchToy } from '../matches/games'
+import registry from '../../sections/labDemos.tsx?raw'
 
 describe('who is on your toy, in words (withWords)', () => {
   it('says nothing about nobody', () => {
@@ -549,5 +552,70 @@ describe('what the dice may land on', () => {
     for (let i = 0; i < 1000; i++)
       fromAdmin.add(surprise(adminList, 'chess', () => 'board', 'all', r))
     expect(fromAdmin.has('secret')).toBe(true)
+  })
+})
+
+describe('Gust is never a tour stop (Evan, 27 Nov 2026)', () => {
+  /*
+   * "Gust is not a tour stop; keep it out of online play." Asked of the Lab as it is: every toy the
+   * registry lists (catalog.test.ts holds META to it), each of its own kind, every kind the picker
+   * can bring forward — and every draw the dice can make from them. A rand that answers u for the
+   * draw it is aimed at lands on every index of any list no longer than the Lab, because u steps by
+   * one over the Lab's length; so "never Gust" below is a sweep, not a sample.
+   */
+  const ids = [...registry.matchAll(/^ {4}id: '([a-z0-9-]+)',$/gm)].map((m) => m[1])
+  const kindOf = (id: string) => META[id]?.category
+  const filters = ['all', ...CATEGORIES.map((c) => c.id)]
+  const grid = Array.from({ length: ids.length }, (_, j) => (j + 0.5) / ids.length)
+  const stop = (toy: string) => ({ toy, cap: 1 as const, games: [], won: [] })
+
+  it('is in the Lab, listed to everybody, and a kind the picker brings forward', () => {
+    expect(ids).toContain('gust')
+    const [gust] = entries([{ id: 'gust', name: 'Gust', line: '' }], new Map())
+    expect(listedFor(gust, false)).toBe(true)
+    expect(kindOf('gust')).toBe('arcade')
+  })
+
+  it('🎲 Surprise us goes anywhere else in the Lab, from any toy and any kind — never Gust', () => {
+    const reached = new Set<string>()
+    for (const filter of filters)
+      for (const current of ids)
+        for (const u of grid) {
+          const got = surprise(ids, current, kindOf, filter, () => u)
+          if (got) reached.add(got)
+        }
+    expect(reached.has('gust')).toBe(false)
+    /* the sweep reaches every other toy, so its no about Gust is about Gust */
+    expect(ids.filter((id) => !reached.has(id))).toEqual(['gust'])
+  })
+
+  it("the bus's dice never show Gust, so neither the guide nor the dice can choose it", () => {
+    const tables = ids.filter((id) => ROOM_TOYS.has(id))
+    /* each kind brought forward with no stop yet, and with every table of that kind already a stop
+       (at most eight, a tour's longest) — so face 1, a table while one is left, comes from the
+       whole kind, Gust's among them */
+    const reached = [new Set<string>(), new Set<string>(), new Set<string>()]
+    for (const filter of filters)
+      for (const gone of [[], tables.filter((t) => filter === 'all' || kindOf(t) === filter)])
+        for (const current of [null, 'swarm', 'hockey', 'chess'])
+          for (let aim = 0; aim < 3; aim++)
+            for (const u of grid) {
+              let n = 0
+              const rand = () => (n++ === aim ? u : 0.5)
+              const bus = { stops: gone.slice(0, 8).map(stop) }
+              rollFaces(ids, bus, current, kindOf, filter, rand)?.forEach((x, i) =>
+                reached[i].add(x),
+              )
+            }
+    for (const r of reached) expect(r.has('gust')).toBe(false)
+    /* face 1 really did come from the whole kind: an arcade toy with no table was face 1 */
+    expect(reached[0].has('hockey')).toBe(true)
+    expect(ids.filter((id) => !reached[1].has(id))).toEqual(['gust'])
+  })
+
+  it('and it is in no online play: no call table, no match by turns', () => {
+    /* ROOM_TOYS is held to the toys whose source opens a room (above); GustDemo opens none */
+    expect(ROOM_TOYS.has('gust')).toBe(false)
+    expect(matchToy('gust')).toBeNull()
   })
 })

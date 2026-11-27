@@ -189,10 +189,21 @@ export const hostOf = (room: Room<unknown>) => [room.me, ...room.present].sort()
  * is "before" the other) and a host who left the room in somebody else's hands. A newcomer who is
  * not host costs nothing more: whoever was host already answered. Measured in room.test.ts on
  * 23 Nov 2026: three sends for a higher id joining, ten for four filling a fresh toy, as before.
+ *
+ * In plain values rather than a room, because the party tour (bus.ts) asks the same question of
+ * a different set: the riders on the Lab, where a room asks everybody on its toy.
  */
-export const answersHello = (room: Room<unknown>, from: string) =>
-  [room.me, ...room.present.filter((id) => id !== from)].sort()[0] === room.me ||
-  (room.seq > 0 && room.from === room.me)
+export const answersHello = (
+  me: string,
+  present: readonly string[],
+  from: string,
+  seq: number,
+  lastFrom: string,
+) => [me, ...present.filter((id) => id !== from)].sort()[0] === me || (seq > 0 && lastFrom === me)
+
+/** a newer state wins; at an equal seq (two hosts for a moment), the lower sender's */
+export const newer = (seq: number, from: string, heldSeq: number, heldFrom: string) =>
+  seq > heldSeq || (seq === heldSeq && from < heldFrom)
 export const isHost = (room: Room<unknown>) => hostOf(room) === room.me
 export const seatOf = (room: Room<unknown>, id = room.me): Seat | null =>
   room.seats[0] === id ? 0 : room.seats[1] === id ? 1 : null
@@ -279,6 +290,57 @@ export function outcomeFor<G, M>(
   if (seat === null || r === null || rules.turn(room.game) !== null) return null
   if (r === 'draw') return 'drawn'
   return r === (room.mode === 'together' ? teamSide(rules) : seat) ? 'won' : 'lost'
+}
+
+/** how a finished game went for the table: a seat's win, a draw, or the computer's win */
+export type Winners = { how: 'win' | 'draw' | 'cpu'; won: string[] }
+
+/**
+ * Who won a finished game, by id, or null while it is going or the toy keeps no result.
+ *
+ * outcomeFor answers for one player; this answers for the table, so the party tour can say "Ann
+ * won" to somebody who was watching. Versus, the winning seat's player. Together, the side is
+ * both players: when it wins they both have — two friends who solve Lamps together have each
+ * solved it — and when it does not, it was the computer, and nobody seated won. A seat that is
+ * empty at the finish wins nothing, because there is nobody to name.
+ */
+export function winnersOf<G, M>(rules: Rules<G, M>, room: Room<G>): Winners | null {
+  const r = rules.result?.(room.game) ?? null
+  if (r === null || rules.turn(room.game) !== null) return null
+  if (r === 'draw') return { how: 'draw', won: [] }
+  const seated = (ids: (string | null)[]) => ids.filter((s): s is string => s !== null)
+  if (room.mode === 'versus') return { how: 'win', won: seated([room.seats[r]]) }
+  return r === teamSide(rules) ? { how: 'win', won: seated(room.seats) } : { how: 'cpu', won: [] }
+}
+
+/** a game that has just finished at a call table, as everyone who saw it finish can tell it */
+export type Finished = Winners & {
+  sub: string
+  /** the seq of the state that finished it: one game, whoever reports it */
+  g: number
+  mode: Mode
+  seats: Seats
+}
+
+/**
+ * The game that `next` finished, or null when it finished nothing.
+ *
+ * ⚠️ ONE SEQ ON FROM A GAME STILL GOING, NEVER A FINISHED BOARD SEEN. Somebody arriving (or coming
+ * back) is handed the room as it is, finished game and all, and a stand or a mode change after
+ * the finish is a new state of the same finished board; only a state one seq on from a game still
+ * going is the end of a game this browser was in. useLabRoom keeps this browser's record from it
+ * (online.ts) and tells the party tour (gameOver.ts), so the two can never disagree about which
+ * states finished a game.
+ */
+export function finishedOf<G, M>(
+  rules: Rules<G, M>,
+  prev: Room<G> | null,
+  next: Room<G>,
+): Finished | null {
+  if (!prev || next.seq !== prev.seq + 1 || rules.turn(prev.game) === null) return null
+  const w = winnersOf(rules, next)
+  if (!w) return null
+  return { sub: next.sub, g: next.seq, mode: next.mode, seats: [...next.seats], ...w }
 }
 
 /** the host's answer to a change: the room one seq on, sent whole */
@@ -371,7 +433,8 @@ export function act<G, M>(rules: Rules<G, M>, room: Room<G>, a: Action<M>): Step
 }
 
 const isSeat = (v: unknown): v is Seat => v === 0 || v === 1
-const readSeats = (v: unknown): Seats | null =>
+/** two seats off the wire: each an id or nobody — the party tour's game reports name them too */
+export const readSeats = (v: unknown): Seats | null =>
   Array.isArray(v) &&
   v.length === 2 &&
   v.every((s) => s === null || (typeof s === 'string' && s.length > 0 && s.length <= 64))
@@ -401,12 +464,13 @@ export function receive<G, M>(
       return none
     if (mode === null || level === null || !isSeat(b.next)) return none
     if (!(rules.modes ?? ['versus']).includes(mode)) return none
-    // a newer room wins; at an equal seq (two hosts for a moment), the lower id's
-    if (b.seq < room.seq || (b.seq === room.seq && from >= room.from)) return none
+    if (!newer(b.seq, from, room.seq, room.from)) return none
     return { room: { ...room, seq: b.seq, from, seats, mode, level, next: b.next, game }, out: [] }
   }
   if (b.t === 'hello')
-    return answersHello(room, from) ? { room, out: [stateOf(rules, room)] } : none
+    return answersHello(room.me, room.present, from, room.seq, room.from)
+      ? { room, out: [stateOf(rules, room)] }
+      : none
   if (!isHost(room)) return none
   if (b.t === 'sit')
     return isSeat(b.seat) ? decide(rules, room, from, { t: 'sit', seat: b.seat }) : none
