@@ -70,6 +70,8 @@ import {
   followEndedWords,
   heading,
   hopWords,
+  leavingSaid,
+  leavingSaidAt,
   lineWith,
   missedWords,
   phaseLine,
@@ -232,6 +234,8 @@ type Local = {
   rolled: Faces | null
   /** my own no to the window open now (`tour:n:toy`), drawn at once (engine.shown) */
   noTo: string | null
+  /** the window whose "about to leave" the status region has had (busWords's leavingSaid) */
+  told: string | null
   /** the tour as it was when listening last stopped, when, and in which call (engine.restore) */
   kept: Kept
   /** a pause said so (GATE_SHUT, SHARING_OFF): what comes back says so too */
@@ -293,6 +297,7 @@ export function useBus(a: BusInputs): BusApi {
     focusFaces: null,
     rolled: null,
     noTo: null,
+    told: null,
     kept: null,
     paused: false,
     listenAt: 0,
@@ -633,6 +638,7 @@ export function useBus(a: BusInputs): BusApi {
         if (b.phase === 'ready') {
           add(b.readyAt + k.READY_MIN_MS)
           every(b.due, 1000)
+          add(leavingSaidAt(b, k))
         }
         if (holdOn(b, { now, present: inp().present })) every(b.holdUntil, 60_000)
         if (b.guideAway !== null) add(b.guideAway + k.GUIDE_GONE_MS)
@@ -665,6 +671,10 @@ export function useBus(a: BusInputs): BusApi {
       }
       hops(c)
       chores(c)
+      /* a window past its time with no departure heard is said once, as the line says it */
+      const leaving = leavingSaid(L.told, shown(c))
+      L.told = leaving.told
+      if (leaving.text) say(leaving.text)
       pump(c.now)
       if (L.pending && c.now >= L.pending.until) L.pending = null
       if (L.flash && c.now >= L.flash.until) L.flash = null
@@ -820,6 +830,7 @@ export function useBus(a: BusInputs): BusApi {
       L.autoNo.clear()
       L.asked = null
       L.noTo = null
+      L.told = null
       L.focusFaces = null
       L.rolled = null
       busNow.clear()

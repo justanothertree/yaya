@@ -238,6 +238,44 @@ export const STALLED = 'The bus has stalled: nobody is driving it.'
 /** "The bus leaves in 12 s." while the window is open, then what is true once it is not */
 const leavesWords = (v: View) =>
   v.now < v.bus.due ? `The bus leaves in ${secs(v.bus.due - v.now)} s.` : ABOUT_TO_LEAVE
+
+/**
+ * When the status region says ABOUT_TO_LEAVE: two state gaps after the zero, the bound knobs()
+ * already puts on how long a state can take to arrive (a gap waiting in the host's Outbox, and a
+ * second for the wire).
+ *
+ * ⚠️ NOT AT THE ZERO. Every viewer but the host reaches the zero before the departure does, and
+ * when the host sent a state in the second before it — a late Take me there — the departure waits
+ * out that gap: measured on the dev call, Dee read "about to leave" for 0.9 s at a departure that
+ * went at its time. Said at the zero, it would be heard at nearly every stop about a bus that was
+ * leaving; said here, it is heard when the bus is late.
+ */
+export const leavingSaidAt = (b: Pick<Bus, 'due'>, k: Pick<Knobs, 'STATE_GAP_MS'>) =>
+  b.due + 2 * k.STATE_GAP_MS
+/**
+ * ABOUT_TO_LEAVE for the status region, once a window. Evan, 27 Nov 2026: "Yes, screen readers
+ * announce 'About to leave…' once." `told` is the window it was last said in, kept by the caller
+ * and handed back; the answer is the `told` to keep, and the sentence to say now or null.
+ *
+ * ⚠️ ONLY WHILE THE LINE SAYS IT, so the status never says what the screen does not: not to a rider
+ * staying here, nor somebody already at the toy, nor once the line says the bus has stalled.
+ * ⚠️ ONCE A WINDOW, NOT ONCE A STATE: a state of the same window heard after the zero carries nought
+ * left and moves `due` to when it arrived, so the window is its tour, departure and toy — as a no
+ * and the presses are kept (useBus, closeWindow) — and forgotten when the phase leaves ready, so the
+ * same toy rolled again at the same departure after a skip is a window of its own.
+ */
+export function leavingSaid(
+  told: string | null,
+  v: View,
+): { told: string | null; text: string | null } {
+  const b = v.bus
+  if (!holds(b) || b.phase !== 'ready' || !b.toy) return { told: null, text: null }
+  const key = `${b.tour}:${b.stops.length + 1}:${b.toy}`
+  if (told === key) return { told, text: null }
+  if (v.now < leavingSaidAt(b, v.k) || !phaseLine(v)?.text.includes(ABOUT_TO_LEAVE))
+    return { told: null, text: null }
+  return { told: key, text: ABOUT_TO_LEAVE }
+}
 /** a button whose request is in flight: at most 3 s, then the button comes back */
 export const PENDING = { roll: 'Rolling…', ready: 'Going…' } as const
 /**

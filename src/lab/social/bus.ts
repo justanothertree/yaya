@@ -53,7 +53,7 @@
 
 import { answersHello, newer, readSeats, type Seats } from './room'
 import { isToyId } from './gate'
-import { ROOM_TOYS, sendsFor } from './tour'
+import { ROOM_TOYS, mayStopAt, sendsFor } from './tour'
 
 /* ── the knobs ─────────────────────────────────────────────────────────────────────────────── */
 
@@ -548,10 +548,10 @@ function mayRoll(bus: Bus, ctx: Ctx, from: string, anyway: boolean) {
   return !anyway && !!r?.on && ctx.present.has(from) && ctx.now >= bus.freeAt
 }
 
-/** three distinct toys, none already a stop */
+/** three distinct toys, none already a stop, and none a toy a tour never stops at (tour.ts) */
 function facesFit(bus: Bus, faces: Faces) {
   const visited = new Set(bus.stops.map((s) => s.toy))
-  return new Set(faces).size === 3 && faces.every((f) => !visited.has(f))
+  return new Set(faces).size === 3 && faces.every((f) => !visited.has(f) && mayStopAt(f))
 }
 
 /** the bus leaves: the riders here who said yes go, and the turn passes */
@@ -1199,7 +1199,7 @@ function readState(x: Record<string, unknown>): State | null {
   if (!Array.isArray(stops) || stops.length > len) return null
   const ss: Stop[] = []
   for (const s of stops) {
-    if (!isObj(s) || !isToyId(s.toy) || !int(s.cap, 1, 3)) return null
+    if (!isObj(s) || !isToyId(s.toy) || !mayStopAt(s.toy) || !int(s.cap, 1, 3)) return null
     const cap = s.cap as Stop['cap']
     if (!Array.isArray(s.games) || s.games.length > cap) return null
     const games: Stop['games'] = []
@@ -1213,11 +1213,13 @@ function readState(x: Record<string, unknown>): State | null {
   }
   const visited = new Set(ss.map((s) => s.toy))
   if (visited.size !== ss.length) return null
-  /* the faces exactly while choosing, the toy exactly while boarding: neither already a stop */
+  /* the faces exactly while choosing, the toy exactly while boarding: neither already a stop, nor
+     anything a stop may never be (tour.ts's NEVER_A_STOP) — so no screen offers one, whoever sent it */
   if ((phase === 'choose') !== (faces !== null)) return null
-  if (faces !== null && (!isFaces(faces) || faces.some((f) => visited.has(f)))) return null
+  if (faces !== null && (!isFaces(faces) || faces.some((f) => visited.has(f) || !mayStopAt(f))))
+    return null
   if ((phase === 'ready') !== (toy !== null)) return null
-  if (toy !== null && (!isToyId(toy) || visited.has(toy))) return null
+  if (toy !== null && (!isToyId(toy) || visited.has(toy) || !mayStopAt(toy))) return null
   if (!indexes(ready, n) || !indexes(no, n) || !indexes(went, n) || !indexes(busy, n)) return null
   if (ready.some((i) => no.includes(i))) return null
   const { left, open, free, hold, leave } = x
@@ -1871,8 +1873,9 @@ export function rideStep(a: {
  * Three faces for the guide to choose from, or null with fewer than three places left to go.
  *
  * Drawn from `rollable` alone — the toys this viewer's friends can see (catalog.ts's `listed` with
- * admin false), never a toy hidden from them — leaving out every stop so far and the toy on
- * screen, from the kind the picker brings forward when it has three, like 🎲 Surprise us.
+ * admin false), never a toy hidden from them — leaving out every stop so far, the toy on screen
+ * and every toy a tour never stops at (tour.ts's NEVER_A_STOP: Gust), from the kind the picker
+ * brings forward when it has three, like 🎲 Surprise us.
  * ⚠️ FACE 1 IS A GAME FOR TWO AT A TABLE whenever one is left: it is the face the dice choose when
  * the guide does not, and a stop with a table is a stop with a game to win.
  */
@@ -1886,7 +1889,7 @@ export function rollFaces(
 ): Faces | null {
   const gone = new Set(bus.stops.map((s) => s.toy))
   if (current) gone.add(current)
-  const base = [...new Set(rollable)].filter((id) => !gone.has(id))
+  const base = [...new Set(rollable)].filter((id) => !gone.has(id) && mayStopAt(id))
   const kind = filter === 'all' ? base : base.filter((id) => kindOf(id) === filter)
   const pool = kind.length >= 3 ? kind : base
   if (pool.length < 3) return null

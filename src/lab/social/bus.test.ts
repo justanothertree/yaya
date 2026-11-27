@@ -2341,6 +2341,33 @@ describe('the host never publishes a bus it could not read back', () => {
   })
 })
 
+describe('Gust is never a stop, whatever the wire says (Evan, 27 Nov 2026)', () => {
+  /* tour.test.ts sweeps the draws; these are the two places a forged or foreign roll could get in */
+  it('the host refuses a roll with Gust on any face, and takes the same roll without it', () => {
+    for (let i = 0; i < 3; i++) {
+      const net = atTable()
+      net.at(net.bus('p01').openAt)
+      const faces: [string, string, string] = ['chess', 'hex', 'paint']
+      faces[i] = 'gust'
+      net.press('p02', { t: 'roll', faces })
+      net.flush()
+      expect([faces, phase(net), net.bus('p03').phase]).toEqual([faces, 'pick', 'pick'])
+      net.press('p02', { t: 'roll', faces: ['chess', 'hex', 'paint'] })
+      net.flush()
+      expect([faces, phase(net)]).toEqual([faces, 'choose'])
+    }
+  })
+  it('a state naming Gust as a face, the next stop or a stop made is refused by everybody', () => {
+    expect(readBus({ ...st, faces: ['go', 'gust', 'paint'] })).toBeNull()
+    expect(readBus({ ...st, phase: 'ready', faces: null, toy: 'gust' })).toBeNull()
+    expect(readBus({ ...st, stops: stopWith({ toy: 'gust' }) })).toBeNull()
+    /* the same three with an arcade toy that may be a stop, so the refusal is about Gust */
+    expect(readBus({ ...st, faces: ['go', 'hockey', 'paint'] })).not.toBeNull()
+    expect(readBus({ ...st, phase: 'ready', faces: null, toy: 'hockey' })).not.toBeNull()
+    expect(readBus({ ...st, stops: stopWith({ toy: 'hockey' }) })).not.toBeNull()
+  })
+})
+
 describe('Come too, twice at once', () => {
   it('two friends pressing it together land one after the other, not on top of each other', () => {
     const net = party(['p01', 'p02', 'p03', 'p04'])

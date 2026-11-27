@@ -22,6 +22,7 @@ import {
   gameWords,
   guideGoneWords,
   heading,
+  leavingSaid,
   hopWords,
   leavingWords,
   lineWith,
@@ -866,5 +867,116 @@ describe('a count that has run out with no departure heard', () => {
     expect(busLine(late(BO, { consent: yes }))?.text).toBe(
       "🚌 You're going to Four in a row: about to leave…",
     )
+  })
+})
+
+describe('"about to leave", said to a screen reader once (Evan, 27 Nov 2026)', () => {
+  /*
+   * "Yes, screen readers announce 'About to leave…' once." The window swept at 250 ms well past its
+   * end, each moment asked twice (a render that changes nothing), with what the hook keeps handed
+   * back each time: the sentences the status region would be given are what is counted.
+   *
+   * ⚠️ NOT AT THE ZERO ITSELF. Every viewer but the host reaches the zero before the departure does:
+   * the state saying the bus left can wait a STATE_GAP_MS in the host's Outbox and then crosses the
+   * wire (bus.test.ts's property runs it at up to 150 ms a link). Said at the zero it would be heard
+   * at nearly every stop, about a bus that is leaving — so it waits until no departure from a host
+   * still sending could be on its way.
+   */
+  const due = NOW + 3000
+  const yes = { tour: 'tour0001', n: 2, toy: 'fourrow', leaves: null }
+  const at =
+    (me: string, v: Partial<View> = {}, over: Partial<Bus> = {}) =>
+    (now: number) =>
+      view(
+        me,
+        {
+          phase: 'ready',
+          toy: 'fourrow',
+          ready: [0],
+          readyAt: due - KNOBS.READY_MS,
+          due,
+          stops: [stop('lamps')],
+          ...over,
+        },
+        { ...v, now },
+      )
+  /** every sentence said and when, relative to the zero, from just before the window ends to `to` */
+  const sweep = (views: (now: number) => View, to = due + 15_000) => {
+    let told: string | null = null
+    const said: [number, string][] = []
+    for (let now = due - 2750; now <= to; now += 250)
+      for (let again = 0; again < 2; again++) {
+        const r = leavingSaid(told, views(now))
+        told = r.told
+        if (r.text) said.push([now - due, r.text])
+      }
+    return said
+  }
+  const LATEST_DEPARTURE = KNOBS.STATE_GAP_MS + 150
+  it('once, to everybody whose line says it, once no departure could still be arriving', () => {
+    const viewers: [string, (now: number) => View][] = [
+      ['the guide, going', at(ANN, { consent: yes })],
+      ['a rider asked', at(BO)],
+      ['a non-rider invited', at(DEE)],
+      ['a rider going, with the host gone quiet', at(BO, { consent: yes }, { ready: [0, 1] })],
+    ]
+    for (const [who, views] of viewers) {
+      const said = sweep(views)
+      expect([who, said.map(([, t]) => t)]).toEqual([who, [ABOUT_TO_LEAVE]])
+      /* after a departure held its whole gap and sent over the slowest wire, and soon after that */
+      expect([who, said[0][0] > LATEST_DEPARTURE]).toEqual([who, true])
+      expect([who, said[0][0] <= 2 * KNOBS.STATE_GAP_MS + 250]).toEqual([who, true])
+      /* and the line said the same words when it was: the status never says what the screen does not */
+      expect([who, text(views(due + said[0][0]))]).toEqual([
+        who,
+        expect.stringContaining(said[0][1]),
+      ])
+    }
+  })
+  it('never to a viewer whose line does not say it', () => {
+    const full = Array.from({ length: KNOBS.MAX_RIDERS }, (_, i) => rider(`r${i}`))
+    for (const [who, views] of [
+      ['staying here this stop', at(BO, {}, { no: [1] })],
+      ['already there', at(DEE, { myToy: 'fourrow' })],
+      ['a toy not in your Lab', at(DEE, {}, { toy: 'secret' })],
+      ['the bus full', at(DEE, {}, { riders: full })],
+    ] as const)
+      expect([who, sweep(views)]).toEqual([who, []])
+  })
+  it('not at all for a window that leaves before its zero, or whose departure arrives in time', () => {
+    const left = (when: number) => (now: number) =>
+      now < due + when
+        ? at(DEE)(now)
+        : view(DEE, { phase: 'pick', stops: [stop('lamps'), stop('fourrow')], went: [0] }, { now })
+    /* Go now, or everybody answered: gone a second before the zero */
+    expect(sweep(left(-1000))).toEqual([])
+    /* the departure held its whole gap in the host's Outbox, then the slowest wire */
+    expect(sweep(left(LATEST_DEPARTURE))).toEqual([])
+  })
+  it('a state of the same window heard after the zero does not say it again', () => {
+    /* a re-sent state has nought left: `due` and `readyAt` move to when it arrived, the window does not */
+    const resent = (now: number) =>
+      now < due + 4000
+        ? at(DEE)(now)
+        : at(DEE, {}, { due: due + 4000, readyAt: due + 4000 - KNOBS.READY_MS, seq: 10 })(now)
+    expect(sweep(resent).map(([, t]) => t)).toEqual([ABOUT_TO_LEAVE])
+  })
+  it('a window of its own each time: the same toy rolled again at the same departure, after a skip', () => {
+    /* the skip, the roll and the pick are separate states — the guide's two requests are a second
+       apart at the least (ASK_GAP_MS) — so a screen sees the phase leave ready between the two */
+    const second = due + 30_000
+    const views = (now: number) =>
+      now < due + 6000
+        ? at(DEE)(now)
+        : now < second - KNOBS.READY_MS
+          ? view(
+              DEE,
+              { phase: 'choose', faces: ['fourrow', 'hex', 'chess'], stops: [stop('lamps')] },
+              { now },
+            )
+          : at(DEE, {}, { due: second, readyAt: second - KNOBS.READY_MS })(now)
+    const said = sweep(views, second + 8000)
+    expect(said.map(([, t]) => t)).toEqual([ABOUT_TO_LEAVE, ABOUT_TO_LEAVE])
+    expect(said[1][0]).toBeGreaterThan(second - due)
   })
 })
