@@ -114,6 +114,13 @@ Sudoku" now.
 `sudoku.test.ts:52` asks one engine twice, so it cannot see this. A Fisher–Yates prototype gave 15
 of 15 puzzles the same in both engines. The fix changes every seed's puzzle, today's included.
 
+✅ **FIXED 27 Nov 2026 by justanothertree/yaya#473** (merge c8ae9e44, live 12:57 PM EST). A seeded
+Fisher–Yates over the integer `rng` replaced both sort shuffles, and a test swaps
+`Array.prototype.sort` for an insertion sort to keep it so. Read off evancook.dev before and after,
+signed out at 1440 and 375: before, Chromium showed today's grid as `057000900…` while the same code
+in JavaScriptCore built `500003020…`; after, Chromium shows `000140000…`, which V8 and
+JavaScriptCore both build from the new code. Firefox and Safari themselves were not measured.
+
 ### The first three batches
 
 **Batch 1: "Beat my board", a link that carries the seed and the score.**
