@@ -9,6 +9,7 @@ import {
   NO_STAR_NOT_ON_BUS,
   PENDING,
   SHARING_OFF,
+  STALLED,
   arrivedWords,
   busLine,
   capReachedWords,
@@ -21,6 +22,7 @@ import {
   gameWords,
   guideGoneWords,
   heading,
+  leavingSaid,
   hopWords,
   leavingWords,
   lineWith,
@@ -34,7 +36,7 @@ import {
   startedWords,
   starLineWords,
   stopLogWords,
-  twoStartsWords,
+  startedAtOnceWords,
   type View,
 } from './busWords'
 
@@ -71,7 +73,7 @@ const stop = (toy: string, over: Partial<Bus['stops'][number]> = {}) => ({
   ...over,
 })
 
-/** a bus as `me` holds it: Ann's tour, three riders, nothing happened yet */
+/** a bus as `me` holds it: Ann's tour, three riders, nothing happened yet, its last state just in */
 function busFor(me: string, over: Partial<Bus> = {}): Bus {
   return {
     ...listen(me, 0),
@@ -86,6 +88,7 @@ function busFor(me: string, over: Partial<Bus> = {}): Bus {
     freeAt: NOW + KNOBS.IDLE_MS,
     due: NOW + KNOBS.TOUR_IDLE_MS,
     heard: true,
+    stateAt: NOW,
     ...over,
   }
 }
@@ -131,10 +134,47 @@ describe('the tour starts (§1.2, 1–2)', () => {
   it('a tour that lost to another started at the same moment', () => {
     const mine = busFor(ANN, { tour: 'tour0002', riders: [rider(ANN)] })
     const v = view(ANN, { riders: [rider(BO)] })
-    expect(saidOf(mine, v)).toBe(twoStartsWords(v, BO))
-    expect(twoStartsWords(v, BO)).toBe(
-      "Two tours started at once; this one is Bo's. Press Take me there at the first stop to ride.",
+    expect(saidOf(mine, v)).toBe(startedAtOnceWords(v, BO))
+    expect(startedAtOnceWords(v, BO)).toBe(
+      "More than one tour started at once; this one is Bo's. Press Take me there at the first stop to ride.",
     )
+  })
+  it('however many tours started at once, nothing said to a starter counts them wrong', () => {
+    const NUMBER: Record<string, number> = { two: 2, three: 3, four: 4, five: 5 }
+    const counted = (s: string) => {
+      const m = /\b(two|three|four|five)\s+tours?\b/i.exec(s)
+      return m ? NUMBER[m[1].toLowerCase()] : null
+    }
+    /* every order the other tours can reach a starter in */
+    const orders = (xs: string[]): string[][] =>
+      xs.length <= 1
+        ? [xs]
+        : xs.flatMap((x, i) => orders(xs.filter((_, j) => j !== i)).map((o) => [x, ...o]))
+    for (const n of [2, 3, 4]) {
+      const starters = [BO, ANN, CY, DEE].slice(0, n)
+      /* each starter's own fresh tour; the lower starter's wins (bus.ts's beats) */
+      const tourOf = (starter: string): Partial<Bus> => ({
+        tour: `tour000${starters.indexOf(starter) + 1}`,
+        from: starter,
+        seq: 1,
+        riders: [rider(starter)],
+      })
+      for (const me of starters) {
+        const said: string[] = []
+        for (const order of orders(starters.filter((s) => s !== me))) {
+          let held = me
+          for (const s of order) {
+            if (s > held) continue
+            const v = view(me, tourOf(s))
+            const words = saidOf(busFor(me, tourOf(held)), v)
+            if (words) said.push(words)
+            held = s
+          }
+        }
+        if (me !== BO) expect(said.length).toBeGreaterThan(0)
+        for (const s of said) expect([n, me, s, counted(s)]).toEqual([n, me, s, counted(s) && n])
+      }
+    }
   })
 })
 
@@ -600,11 +640,50 @@ describe('leaving and pausing', () => {
     expect(SHARING_OFF).toBe(
       'You stopped sharing, so the party tour is hidden. Your place on the bus is kept.',
     )
+    /* nobody on the bus here: Dee alone on the Lab, as tick has it whenever quietSince runs */
+    const alone = { present: new Set([DEE]) }
     const quiet = { quietSince: NOW - 5000 }
-    expect(text(view(DEE, quiet))).toBe('The bus is waiting for Ann.')
-    const gone = view(DEE, { quietSince: NOW - KNOBS.ABANDON_MS })
+    expect(text(view(DEE, quiet, alone))).toBe('The bus is waiting for Ann.')
+    const gone = view(DEE, { quietSince: NOW - KNOBS.ABANDON_MS }, alone)
     expect(text(gone)).toBe('Nobody on the bus is here right now.')
     expect(labels(gone)).toEqual(['🚌 Start a party tour'])
+    expect(busLine(gone)).toBeNull()
+  })
+  it('a tour nobody is driving says so, with Start, in every phase (bus.ts’s liveness bound)', () => {
+    expect(STALLED).toBe('The bus has stalled: nobody is driving it.')
+    /* given up while nobody was here, and Ann back on a page that holds nothing: she is here, so
+       "Nobody on the bus is here" would be untrue */
+    const back = view(DEE, { quietSince: NOW - KNOBS.ABANDON_MS })
+    expect(text(back)).toBe(STALLED)
+    expect(labels(back)).toEqual(['🚌 Start a party tour'])
+    /* no state that moved it on, heard here for STALL_MS, Ann here — whatever its own deadline
+       says: ten minutes off between stops, a few seconds off in a roll or a window, or long gone */
+    const phases: [string, Partial<Bus>][] = [
+      ['between stops', { stops: [stop('lamps')], due: NOW + KNOBS.TOUR_IDLE_MS }],
+      ['a roll', { phase: 'choose', faces: ['fourrow', 'hex', 'chess'], due: NOW + 4000 }],
+      ['a window', { phase: 'ready', toy: 'fourrow', ready: [0], due: NOW + 4000 }],
+      ['a window long out', { phase: 'ready', toy: 'fourrow', ready: [0], due: NOW - 60_000 }],
+    ]
+    const quiet = (over: Partial<Bus>, ms: number) =>
+      view(DEE, { readyAt: (over.due ?? NOW) - KNOBS.READY_MS, ...over, stateAt: NOW - ms })
+    for (const [what, over] of phases) {
+      const dead = quiet(over, KNOBS.STALL_MS)
+      expect([what, text(dead)]).toEqual([what, STALLED])
+      expect([what, labels(dead)]).toEqual([what, ['🚌 Start a party tour']])
+      expect([what, busLine(dead)]).toEqual([what, null])
+      /* a moment before, the tour as it was: no Start, and not the stalled line */
+      const nearly = quiet(over, KNOBS.STALL_MS - 1)
+      expect([what, text(nearly) === STALLED]).toEqual([what, false])
+      expect([what, labels(nearly)?.includes('🚌 Start a party tour')]).toEqual([what, false])
+    }
+    /* a window long out with a state heard a second ago is the bus as somebody drives it: not by due */
+    expect(text(quiet(phases[3][1], 1000))).toBe(
+      'Next stop: Four in a row. The bus is about to leave… Press Take me there to come along.',
+    )
+    /* nobody on the bus here either: the plainer sentence, which is true */
+    expect(
+      text(view(DEE, quiet(phases[0][1], KNOBS.STALL_MS).bus, { present: new Set([DEE]) })),
+    ).toBe('Nobody on the bus is here right now.')
   })
 })
 
@@ -669,6 +748,16 @@ describe('every phase, every role, has words', () => {
       { phase: 'end' },
       { quietSince: NOW - 1 },
       { quietSince: NOW - KNOBS.ABANDON_MS },
+      /* stalled: nothing heard of it for STALL_MS (bus.ts's liveness bound) */
+      {
+        phase: 'ready',
+        toy: 'fourrow',
+        ready: [],
+        readyAt: NOW - 60_000,
+        due: NOW - 30_000,
+        stateAt: NOW - KNOBS.STALL_MS,
+      },
+      { stops: [stop('fourrow')], stateAt: NOW - KNOBS.STALL_MS },
     ]
     let seen = 0
     for (const p of phases)
@@ -790,5 +879,126 @@ describe('a count that has run out with no departure heard', () => {
     expect(busLine(late(BO, { consent: yes }))?.text).toBe(
       "🚌 You're going to Four in a row: about to leave…",
     )
+  })
+})
+
+describe('"about to leave", said to a screen reader once (Evan, 27 Nov 2026)', () => {
+  /*
+   * "Yes, screen readers announce 'About to leave…' once." The window swept at 250 ms well past its
+   * end, each moment asked twice (a render that changes nothing), with what the hook keeps handed
+   * back each time: the sentences the status region would be given are what is counted.
+   *
+   * ⚠️ NOT AT THE ZERO ITSELF. Every viewer but the host reaches the zero before the departure does:
+   * the state saying the bus left can wait a STATE_GAP_MS in the host's Outbox and then crosses the
+   * wire (bus.test.ts's property runs it at up to 150 ms a link). Said at the zero it would be heard
+   * at nearly every stop, about a bus that is leaving — so it waits until no departure from a host
+   * still sending could be on its way.
+   */
+  const due = NOW + 3000
+  const yes = { tour: 'tour0001', n: 2, toy: 'fourrow', leaves: null }
+  const at =
+    (me: string, v: Partial<View> = {}, over: Partial<Bus> = {}) =>
+    (now: number) =>
+      view(
+        me,
+        {
+          phase: 'ready',
+          toy: 'fourrow',
+          ready: [0],
+          readyAt: due - KNOBS.READY_MS,
+          due,
+          stops: [stop('lamps')],
+          ...over,
+        },
+        { ...v, now },
+      )
+  /** every sentence said and when, relative to the zero, from just before the window ends to `to` */
+  const sweep = (views: (now: number) => View, to = due + 15_000) => {
+    let told: string | null = null
+    const said: [number, string][] = []
+    for (let now = due - 2750; now <= to; now += 250)
+      for (let again = 0; again < 2; again++) {
+        const r = leavingSaid(told, views(now))
+        told = r.told
+        if (r.text) said.push([now - due, r.text])
+      }
+    return said
+  }
+  const LATEST_DEPARTURE = KNOBS.STATE_GAP_MS + 150
+  it('once, to everybody whose line says it, once no departure could still be arriving', () => {
+    const viewers: [string, (now: number) => View][] = [
+      ['the guide, going', at(ANN, { consent: yes })],
+      ['a rider asked', at(BO)],
+      ['a non-rider invited', at(DEE)],
+      ['a rider going, with the host gone quiet', at(BO, { consent: yes }, { ready: [0, 1] })],
+    ]
+    for (const [who, views] of viewers) {
+      const said = sweep(views)
+      expect([who, said.map(([, t]) => t)]).toEqual([who, [ABOUT_TO_LEAVE]])
+      /* after a departure held its whole gap and sent over the slowest wire, and soon after that */
+      expect([who, said[0][0] > LATEST_DEPARTURE]).toEqual([who, true])
+      expect([who, said[0][0] <= 2 * KNOBS.STATE_GAP_MS + 250]).toEqual([who, true])
+      /* and the line said the same words when it was: the status never says what the screen does not */
+      expect([who, text(views(due + said[0][0]))]).toEqual([
+        who,
+        expect.stringContaining(said[0][1]),
+      ])
+    }
+  })
+  it('never to a viewer whose line does not say it', () => {
+    const full = Array.from({ length: KNOBS.MAX_RIDERS }, (_, i) => rider(`r${i}`))
+    for (const [who, views] of [
+      ['staying here this stop', at(BO, {}, { no: [1] })],
+      ['already there', at(DEE, { myToy: 'fourrow' })],
+      ['a toy not in your Lab', at(DEE, {}, { toy: 'secret' })],
+      ['the bus full', at(DEE, {}, { riders: full })],
+    ] as const)
+      expect([who, sweep(views)]).toEqual([who, []])
+  })
+  it('not at all for a window that leaves before its zero, or whose departure arrives in time', () => {
+    const left = (when: number) => (now: number) =>
+      now < due + when
+        ? at(DEE)(now)
+        : view(DEE, { phase: 'pick', stops: [stop('lamps'), stop('fourrow')], went: [0] }, { now })
+    /* Go now, or everybody answered: gone a second before the zero */
+    expect(sweep(left(-1000))).toEqual([])
+    /* the departure held its whole gap in the host's Outbox, then the slowest wire */
+    expect(sweep(left(LATEST_DEPARTURE))).toEqual([])
+  })
+  it('a state of the same window heard after the zero does not say it again', () => {
+    /* a re-sent state has nought left: `due` and `readyAt` move to when it arrived, the window does not */
+    const resent = (now: number) =>
+      now < due + 4000
+        ? at(DEE)(now)
+        : at(DEE, {}, { due: due + 4000, readyAt: due + 4000 - KNOBS.READY_MS, seq: 10 })(now)
+    expect(sweep(resent).map(([, t]) => t)).toEqual([ABOUT_TO_LEAVE])
+  })
+  it('a window of its own each time: the same toy rolled again at the same departure, after a skip', () => {
+    /* the skip, the roll and the pick are separate states — the guide's two requests are a second
+       apart at the least (ASK_GAP_MS) — so a screen sees the phase leave ready between the two */
+    const second = due + 30_000
+    /* each a state heard as it began, as the decider's beat would have it (bus.ts's stalled) */
+    const views = (now: number) =>
+      now < due + 6000
+        ? at(DEE)(now)
+        : now < second - KNOBS.READY_MS
+          ? view(
+              DEE,
+              {
+                phase: 'choose',
+                faces: ['fourrow', 'hex', 'chess'],
+                stops: [stop('lamps')],
+                stateAt: due + 6000,
+              },
+              { now },
+            )
+          : at(
+              DEE,
+              {},
+              { due: second, readyAt: second - KNOBS.READY_MS, stateAt: second - KNOBS.READY_MS },
+            )(now)
+    const said = sweep(views, second + 8000)
+    expect(said.map(([, t]) => t)).toEqual([ABOUT_TO_LEAVE, ABOUT_TO_LEAVE])
+    expect(said[1][0]).toBeGreaterThan(second - due)
   })
 })

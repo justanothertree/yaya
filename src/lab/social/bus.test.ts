@@ -9,7 +9,9 @@ import {
   closedFor,
   consentAfter,
   holdOn,
+  holds,
   hopPlan,
+  hostOf,
   knobs,
   leads,
   listen,
@@ -43,6 +45,7 @@ import {
   type State,
   type Step,
 } from './bus'
+import { STALLED, phaseLine, type BusButton, type View } from './busWords'
 import { ROOM_TOYS } from './tour'
 
 /* toys to roll: every call-table toy, and plain ones; nobody starts on any of them */
@@ -86,11 +89,25 @@ type Client = {
  * message this code wrote that readBus refuses fails the test outright. `paced` sends everything
  * through each browser's own Outbox, as useBus will; otherwise a send goes the moment it is made.
  */
-function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean } = {}) {
+function party(
+  ids: string[],
+  opt: {
+    k?: Knobs
+    people?: number
+    paced?: boolean
+    /** each link's delay in ms, from → to; a message then arrives in order on its link */
+    lat?: (from: string, to: string) => number
+  } = {},
+) {
   const k = opt.k ?? KNOBS
   let now = 0
   let tours = 0
   const cs = new Map<string, Client>()
+  /** with `lat`: each delivery in flight, to one page — never to a page that has since reloaded */
+  let flights: { at: number; n: number; to: string; gen: number; from: string; m: Msg }[] = []
+  let flown = 0
+  const linkAt = new Map<string, number>()
+  const gens = new Map<string, number>()
   /** on the Lab and live */
   const here = new Set(ids)
   const roster = new Set(ids)
@@ -100,6 +117,7 @@ function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean
   /** messages lost on the way, asked of each delivery */
   let drops: ((to: string, from: string, m: Msg) => boolean)[] = []
   const join = (id: string) => {
+    gens.set(id, (gens.get(id) ?? 0) + 1)
     cs.set(id, {
       id,
       bus: listen(id, now),
@@ -194,6 +212,7 @@ function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean
     },
     /** deliver everything queued, to everybody listening but its sender, until the wire is quiet */
     flush() {
+      if (opt.lat) return late(opt.lat)
       for (let guard = 0; guard < 20_000; guard++) {
         net.pump()
         if (!wire.length) return
@@ -236,11 +255,14 @@ function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean
         landings.push({ at: h.at, id: c.id, toy: r.toy })
       }
     },
-    /** the clock moves on in steps; every browser ticks, the wire drains, hops land */
+    /** the clock moves on in steps — and to each arrival, with `lat`; every browser ticks, the wire
+        drains, hops land */
     run(ms: number, step = 100) {
       const end = now + ms
       while (now < end) {
-        now = Math.min(end, now + step)
+        let next = Math.min(end, now + step)
+        for (const f of flights) if (f.at > now && f.at < next) next = f.at
+        now = next
         net.tickAll()
         net.flush()
         net.hops()
@@ -298,6 +320,31 @@ function party(ids: string[], opt: { k?: Knobs; people?: number; paced?: boolean
     },
     states: (from?: string) =>
       log.filter((e) => e.m.t === 'state' && (from === undefined || e.from === from)),
+  }
+  /** the wire with latency: what is sent is in flight to each page listening then, on its link */
+  function late(lat: (from: string, to: string) => number) {
+    for (let guard = 0; guard < 20_000; guard++) {
+      net.pump()
+      for (const { from, m } of wire.splice(0)) {
+        const read = readBus(m)
+        if (!read) throw new Error(`readBus refused ${JSON.stringify(m)}`)
+        for (const c of cs.values()) {
+          if (c.id === from || !c.listening) continue
+          const link = `${from}>${c.id}`
+          const at = Math.max(linkAt.get(link) ?? -Infinity, now + lat(from, c.id))
+          linkAt.set(link, at)
+          flights.push({ at, n: flown++, to: c.id, gen: gens.get(c.id)!, from, m: read })
+        }
+      }
+      let f: (typeof flights)[number] | null = null
+      for (const x of flights)
+        if (x.at <= now && (!f || x.at < f.at || (x.at === f.at && x.n < f.n))) f = x
+      if (!f) return
+      flights = flights.filter((x) => x !== f)
+      const c = cs.get(f.to)!
+      if (c.listening && gens.get(c.id) === f.gen && !drops.some((d) => d(c.id, f.from, f.m)))
+        apply(c, receive(c.bus, ctx(c.id), f.from, f.m))
+    }
   }
   return net
 }
@@ -1155,7 +1202,7 @@ describe('a count that has run out stays run out', () => {
   })
 })
 
-describe('silence (3.17)', () => {
+describe('silence (3.17), and the one heartbeat', () => {
   it('a thousand ticks with nothing due send nothing, with a tour and without one', () => {
     const net = atTable()
     const t = net.now
@@ -1173,6 +1220,40 @@ describe('silence (3.17)', () => {
       alone = s.bus
     }
   })
+  it('a live tour nobody moves: one state every BEAT_MS, from its decider alone, the same bus one count on', () => {
+    const net = atTable()
+    const host = net.host()!
+    const before = net.bus(host)
+    const from = net.now
+    const last = net.states().at(-1)!.at
+    net.run(60_000, 100)
+    const sent = net.states().filter((e) => e.at > from)
+    expect(new Set(sent.map((e) => e.from))).toEqual(new Set([host]))
+    /* each BEAT_MS after the one before it, to within a tick: no more, and no less */
+    const gaps = [sent[0].at - last, ...sent.slice(1).map((e, i) => e.at - sent[i].at)]
+    for (const g of gaps) expect(g).toBeGreaterThanOrEqual(KNOBS.BEAT_MS)
+    for (const g of gaps) expect(g).toBeLessThanOrEqual(KNOBS.BEAT_MS + 100)
+    expect(sent.length).toBe(Math.floor((net.now - last) / KNOBS.BEAT_MS))
+    /* and nothing about the tour changed but its count: everybody holds the same bus */
+    const b = net.bus('p01')
+    expect([b.tour, b.phase, b.stops, b.riders, b.guide]).toEqual([
+      before.tour,
+      before.phase,
+      before.stops,
+      before.riders,
+      before.guide,
+    ])
+    expect(b.seq).toBe(before.seq + sent.length)
+    expect(net.agree()).toBe(true)
+  })
+  it('a tour that is over beats nothing: an hour of ticks after the end sends nothing', () => {
+    const net = atTable()
+    net.run(net.k.TOUR_IDLE_MS + 2000, 1000)
+    expect(net.bus('p01').phase).toBe('end')
+    const from = net.log.length
+    net.run(3_600_000, 1000)
+    expect(net.log.slice(from)).toEqual([])
+  })
 })
 
 describe('a tour nobody is on, and one nobody asks anything of (3.21)', () => {
@@ -1188,13 +1269,18 @@ describe('a tour nobody is on, and one nobody asks anything of (3.21)', () => {
     expect(net.bus('p04').tour).not.toBe(old)
     expect(net.bus('p04').riders.map((r) => r.id)).toEqual(['p04'])
   })
-  it('ten minutes between stops with nothing asked: the host ends it, with one state', () => {
+  it('ten minutes between stops with nothing asked: the host ends it, saying nothing else but its beat', () => {
     const net = atTable()
     const from = net.now
     net.run(net.k.TOUR_IDLE_MS + 2000, 500)
     const sent = net.states().filter((e) => e.at > from)
-    expect(sent.length).toBe(1)
-    expect(sent[0].m.t === 'state' && sent[0].m.phase).toBe('end')
+    const host = net.host() ?? sent[0].from
+    expect(new Set(sent.map((e) => e.from))).toEqual(new Set([host]))
+    const last = sent.at(-1)!.m
+    expect(last.t === 'state' && last.phase).toBe('end')
+    /* every state before the end was the beat: the same phase, at most one each BEAT_MS */
+    expect(sent.slice(0, -1).every((e) => e.m.t === 'state' && e.m.phase === 'pick')).toBe(true)
+    expect(sent.length - 1).toBeLessThanOrEqual(Math.ceil(net.k.TOUR_IDLE_MS / net.k.BEAT_MS))
     expect(net.agree()).toBe(true)
   })
 })
@@ -1437,14 +1523,23 @@ describe('a host coming back (3.8)', () => {
   it('the answer lost: it asks once more, and is handed the bus then', () => {
     const { net, stale, from, back } = hostAway('pick')
     back()
+    /* every state lost on its way to p01 until just before its retry: the answer, and the beat of
+       the one deciding while it was away, which would otherwise have handed it the bus first */
     const lift = net.drop((to, _from, m) => to === 'p01' && m.t === 'state')
     net.here.add('p01')
-    net.run(200)
+    const held = net.bus('p02').seq
+    net.run(net.k.HELLO_RETRY_MS - 100)
     lift()
     expect(net.bus('p01').seq).toBeLessThan(net.bus('p02').seq)
     net.run(net.k.HELLO_RETRY_MS)
     expect(hellos(net, 'p01', from)).toBe(2)
-    expect(stale()).toBe(0)
+    /* ⚠️ ITS OLD BUS WAS SAID ONCE, AND MOVED NOBODY: past SYNC_MS with nothing heard it leads what
+       it has, and its beat goes at once — at a count everybody else is past, so refused, and the
+       deputy's answer to it is what would have handed it the bus had that not been lost too */
+    expect(stale()).toBeLessThanOrEqual(1)
+    expect(
+      net.states().filter((e) => e.from === 'p01' && e.m.t === 'state' && e.m.seq > held),
+    ).toEqual([])
     expect(net.agree()).toBe(true)
     net.run(10_000)
     expect(hellos(net, 'p01', from)).toBe(2)
@@ -1462,6 +1557,10 @@ describe('a host coming back (3.8)', () => {
     const tour = net.bus('p01').tour
     net.wire.push({ from: 'p03', m: { v: 1, t: 'sit', tour, n: 1, on: true } })
     net.flush()
+    /* ⚠️ ITS BEAT WENT FIRST: leading from what it last had, p01 said that bus at once (tick), and
+       the deputy's answer to it was lost with the rest — so the sit's stale state waits out
+       HELLO_REPAIR_MS for its answer, and the next stale beat gets it */
+    net.run(net.k.HELLO_REPAIR_MS + net.k.BEAT_MS)
     expect(net.agree()).toBe(true)
     expect(net.bus('p01').stops.length).toBe(2)
   })
@@ -1746,10 +1845,12 @@ describe('who may ask what (3.11)', () => {
   it('somebody not on the Lab cannot board or sit, and nobody takes another’s turn', () => {
     const net = atTable(['p04'])
     net.here.delete('p04')
-    const b = net.bus('p01')
-    const tour = b.tour
+    const tour = net.bus('p01').tour
     net.wire.push({ from: 'p04', m: { v: 1, t: 'sit', tour, n: 1, on: true } })
     net.runUntil(() => net.now >= net.bus('p01').openAt)
+    /* from here no tick runs, so no beat: every count the bus moves on is a request taken */
+    const b = net.bus('p01')
+    expect(b.busy).toEqual([])
     /* p03 is not the guide: no roll before freeAt, no pick, no go; p04 is no rider at all */
     net.wire.push({
       from: 'p03',
@@ -2237,9 +2338,14 @@ describe('the state, there and back (3.20)', () => {
         people: 4,
         k: KNOBS,
       }
-      const got = receive(listen('p02', 0), ctx, 'p03', read!).bus
+      /* a watcher, whom the state says nothing about personally */
+      const got = receive(listen('p05', 0), ctx, 'p03', read!).bus
       expect(asSent(got)).toBe(asSent(bus))
       if (bus.phase === 'ready') expect(got.readyAt).toBe(bus.due - KNOBS.READY_MS)
+      /* a rider whose page is new to the tour: all of it, but the yes an older page of theirs
+         gave (adopt) — p04 does not host, so it is held and not said */
+      const p04 = receive(listen('p04', 0), ctx, 'p03', read!)
+      expect([asSent(p04.bus), p04.out]).toEqual([asSent({ ...bus, ready: [2] }), []])
     })
 })
 
@@ -2286,6 +2392,33 @@ describe('the host never publishes a bus it could not read back', () => {
     net.press('p02', { t: 'roll', faces: ['chess', 'hex', 'paint'] })
     net.flush()
     expect(phase(net)).toBe('choose')
+  })
+})
+
+describe('Gust is never a stop, whatever the wire says (Evan, 27 Nov 2026)', () => {
+  /* tour.test.ts sweeps the draws; these are the two places a forged or foreign roll could get in */
+  it('the host refuses a roll with Gust on any face, and takes the same roll without it', () => {
+    for (let i = 0; i < 3; i++) {
+      const net = atTable()
+      net.at(net.bus('p01').openAt)
+      const faces: [string, string, string] = ['chess', 'hex', 'paint']
+      faces[i] = 'gust'
+      net.press('p02', { t: 'roll', faces })
+      net.flush()
+      expect([faces, phase(net), net.bus('p03').phase]).toEqual([faces, 'pick', 'pick'])
+      net.press('p02', { t: 'roll', faces: ['chess', 'hex', 'paint'] })
+      net.flush()
+      expect([faces, phase(net)]).toEqual([faces, 'choose'])
+    }
+  })
+  it('a state naming Gust as a face, the next stop or a stop made is refused by everybody', () => {
+    expect(readBus({ ...st, faces: ['go', 'gust', 'paint'] })).toBeNull()
+    expect(readBus({ ...st, phase: 'ready', faces: null, toy: 'gust' })).toBeNull()
+    expect(readBus({ ...st, stops: stopWith({ toy: 'gust' }) })).toBeNull()
+    /* the same three with an arcade toy that may be a stop, so the refusal is about Gust */
+    expect(readBus({ ...st, faces: ['go', 'hockey', 'paint'] })).not.toBeNull()
+    expect(readBus({ ...st, phase: 'ready', faces: null, toy: 'hockey' })).not.toBeNull()
+    expect(readBus({ ...st, stops: stopWith({ toy: 'hockey' }) })).not.toBeNull()
   })
 })
 
@@ -2779,6 +2912,31 @@ describe('Close closes the finished tour it was drawn on', () => {
     heard: true,
     ...over,
   })
+  it('a rider back after the end is handed the ended tour and says nothing: a closed card stays closed', () => {
+    /* the tour ends between stops for want of requests, its riders still on it; Ann closes the
+       finale. Bo, the lowest rider, reloads: handed the ended tour, he would decide it if it were
+       live, and a first beat one count on would open Ann's card again (closedFor) */
+    const net = atTable()
+    net.run(net.k.TOUR_IDLE_MS + 2000, 1000)
+    expect(net.bus('p02').phase).toBe('end')
+    const closed = closeOf(net.bus('p02'))
+    expect(closedFor(closed, net.bus('p02'))).toBe(true)
+    net.roster.delete('p01')
+    net.here.delete('p01')
+    net.get('p01').listening = false
+    net.run(300)
+    const states = net.states().length
+    net.join('p01')
+    net.run(5000)
+    expect(net.bus('p01').tour).toBe(net.bus('p02').tour)
+    expect(
+      net
+        .states()
+        .slice(states)
+        .map((e) => e.from),
+    ).toEqual(['p02'])
+    expect(closedFor(closed, net.bus('p02'))).toBe(true)
+  })
   it('Another tour then Close, handled in that order, leaves the new tour on screen', () => {
     /* Dee's two presses, handled one after the other: the new tour is what Close is handled with */
     const net = party(['p01', 'p04'])
@@ -2798,5 +2956,1613 @@ describe('Close closes the finished tour it was drawn on', () => {
     expect(closedFor(shut, anns)).toBe(false)
     /* and the next state of the same tour shows it again, as ever */
     expect(closedFor(shut, ended('p01', { seq: 8 }))).toBe(false)
+  })
+})
+
+describe('a lone host whose page goes, and comes back holding nothing', () => {
+  /*
+   * The verify pass's Dee: alone on her tour and its host (ids sort Bo < Ann < Dee, so neither
+   * friend can host it), she rolls, and the window opens on Bo's and Ann's screens. Then her page
+   * goes — a reload, or Leave and a new tab later — and the page that comes back holds nothing and
+   * has pressed nothing. Bo and Ann hold the tour and are not on it, so nobody here decides it.
+   * The shape of the world once she is back, at every look: each friend holds a tour somebody here
+   * decides, and no window past its end — or is offered Start; and since nobody has pressed Take
+   * me there on a page that still exists, nobody goes anywhere: no stop is made, and Dee is moved
+   * nowhere.
+   */
+  const ids = ['p01', 'p02', 'p04']
+  const loneWindow = (stopsFirst: number) => {
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    const rand = seeded(41 + stopsFirst)
+    for (let s = 0; s < stopsFirst; s++) {
+      rollAndPick(net, rand)
+      expect(net.runUntil(() => net.bus('p01').stops.length === s + 1, 30_000)).toBe(true)
+    }
+    rollAndPick(net, rand)
+    expect(net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'ready'))).toBe(
+      true,
+    )
+    return net
+  }
+  /** what a friend's panel can be: a tour somebody here moves along, or Start */
+  const movable = (net: Net, id: string) => {
+    const b = net.bus(id)
+    if (canStart(b, net.ctx(id))) return 'start'
+    const deciders = net.leaders().filter((x) => net.bus(x).tour === b.tour)
+    /* a window may read past its end for as long as the departure takes to arrive, no longer */
+    const stuck = b.phase === 'ready' && net.now > b.due + 2 * net.k.STATE_GAP_MS
+    return deciders.length && !stuck ? 'moving' : `stuck: ${b.phase}, deciding ${deciders}`
+  }
+  for (const stopsFirst of [0, 1])
+    for (const [how, away] of [
+      ['reloads', 400],
+      ['leaves and comes back after the window', KNOBS.READY_MS + 2000],
+      ['leaves and comes back after Start was offered', KNOBS.ABANDON_MS + 5000],
+    ] as const)
+      it(`${how}, ${stopsFirst} stop(s) made: every friend can move on, and nobody goes`, () => {
+        const net = loneWindow(stopsFirst)
+        const made = net.bus('p01').stops.length
+        /* the page goes: a bye, and nothing of it is left */
+        net.roster.delete('p04')
+        net.here.delete('p04')
+        net.get('p04').listening = false
+        net.run(away)
+        const back = net.now
+        net.join('p04')
+        for (const after of [3000, 15_000, 40_000]) {
+          net.run(back + after - net.now)
+          for (const id of ['p01', 'p02']) {
+            expect([id, after, movable(net, id)]).toEqual([
+              id,
+              after,
+              expect.stringMatching(/^(start|moving)$/),
+            ])
+            expect([id, after, net.bus(id).stops.length]).toEqual([id, after, made])
+          }
+          /* and nobody is counted going, on any screen: no page that exists has said yes */
+          for (const id of ids) {
+            const b = net.bus(id)
+            expect([id, after, b.ready.map((i) => b.riders[i].id)]).toEqual([id, after, []])
+          }
+        }
+        expect(net.landings.filter((l) => l.id === 'p04' && l.at >= back)).toEqual([])
+        expect(net.get('p04').sub).toBe(START)
+        /* what handing it back cost: one state, from the lowest friend here, and none from Ann */
+        const answered = (id: string) => net.states(id).filter((e) => e.at >= back).length
+        expect([answered('p01'), answered('p02')]).toEqual([1, 0])
+      })
+  it('back from a hidden tab instead, she keeps her own yes, and goes', () => {
+    /* a hidden tab keeps listening and keeps its press: the page never went */
+    const net = loneWindow(0)
+    const toy = net.bus('p04').toy
+    net.here.delete('p04')
+    net.run(3000)
+    net.here.add('p04')
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    net.run(5000)
+    expect(net.landings.filter((l) => l.id === 'p04').map((l) => l.toy)).toEqual([toy])
+  })
+})
+
+describe('a Hop off pressed as the host changes', () => {
+  /*
+   * The verify pass's E6: Dee starts, Ann boards at the first stop, so Ann hosts (p02 < p04) and
+   * Dee rides; Bo (p01) never does. At the second window Ann hops off, and Dee hops off a moment
+   * later — while Ann's state saying so still waits its second in Ann's Outbox. Dee's request
+   * reaches a browser that no longer decides anything, and by the time anybody could decide it,
+   * it is Dee. The shape of the world: both pressed Hop off, so nobody is on the bus, on any
+   * screen, and the tour is over.
+   */
+  const ids = ['p01', 'p02', 'p04']
+  const twoAboard = () => {
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    const rand = seeded(31)
+    rollAndPick(net, rand)
+    net.runUntil(() => net.bus('p02').phase === 'ready')
+    net.ready('p02', true)
+    net.flush()
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 60_000)).toBe(true)
+    net.run(1500)
+    rollAndPick(net, rand)
+    net.runUntil(() => net.bus('p01').phase === 'ready')
+    expect(leads(net.bus('p02'), net.ctx('p02'))).toBe(true)
+    return net
+  }
+  const on = (net: Net, holder: string, id: string) =>
+    net.bus(holder).riders.find((r) => r.id === id)?.on
+  for (const w of [0, 100, 400, 900, 1300])
+    it(`Dee hops off ${w} ms after Ann: nobody on the bus anywhere, and the tour over`, () => {
+      const net = twoAboard()
+      net.press('p02', { t: 'off' })
+      net.flush()
+      if (w) net.run(w, 10)
+      /* ⚠️ the case is the one claimed: under a second, Dee has not heard that Ann got off */
+      if (w < 1000) expect(on(net, 'p04', 'p02')).toBe(true)
+      net.press('p04', { t: 'off' })
+      net.flush()
+      net.run(5000)
+      for (const id of ids)
+        expect([id, on(net, id, 'p02'), on(net, id, 'p04'), net.bus(id).phase]).toEqual([
+          id,
+          false,
+          false,
+          'end',
+        ])
+    })
+  for (const w of [0, 400, 900])
+    it(`with Cy riding too, Dee hops off ${w} ms after Ann: asked again of Cy, the host now`, () => {
+      /* Cy (p03) boards as well, so the host after Ann is Cy and not Dee: Dee's Hop off has to
+         reach somebody else, since she never comes to decide it herself */
+      const all = ['p01', 'p02', 'p03', 'p04']
+      const net = party(all, { paced: true })
+      net.run(2000)
+      net.start('p04')
+      net.flush()
+      const rand = seeded(31)
+      rollAndPick(net, rand)
+      net.runUntil(() => net.bus('p02').phase === 'ready')
+      net.ready('p02', true)
+      net.ready('p03', true)
+      net.flush()
+      expect(net.runUntil(() => net.bus('p01').stops.length === 1, 60_000)).toBe(true)
+      net.run(1500)
+      rollAndPick(net, rand)
+      net.runUntil(() => net.bus('p01').phase === 'ready')
+      expect(leads(net.bus('p02'), net.ctx('p02'))).toBe(true)
+      net.press('p02', { t: 'off' })
+      net.flush()
+      if (w) net.run(w, 10)
+      expect(on(net, 'p04', 'p02')).toBe(true)
+      net.press('p04', { t: 'off' })
+      net.flush()
+      net.run(5000)
+      for (const id of all)
+        expect([id, on(net, id, 'p02'), on(net, id, 'p04'), on(net, id, 'p03')]).toEqual([
+          id,
+          false,
+          false,
+          true,
+        ])
+      expect(leads(net.bus('p03'), net.ctx('p03'))).toBe(true)
+    })
+  it('a Hop off taken back by Take me there before anybody decided it is not sent again', () => {
+    const net = twoAboard()
+    net.press('p02', { t: 'off' })
+    net.flush()
+    net.run(100, 10)
+    net.press('p04', { t: 'off' })
+    net.flush()
+    net.run(200, 10)
+    /* still in the window as Dee's own bus has it: her last word is that she is going */
+    net.ready('p04', true)
+    net.flush()
+    net.run(5000)
+    for (const id of ids) expect([id, on(net, id, 'p04')]).toEqual([id, true])
+    expect(net.bus('p01').phase).not.toBe('end')
+  })
+})
+
+describe('two tours at once, decided by two', () => {
+  it('nor for a state of another tour from the host, while the one who published mine still decides it', () => {
+    /* Ann has just boarded Dee's tour: Dee published her on, so Ann is host by everybody's
+       reckoning (p02 < p04), and Dee goes on deciding until Ann publishes (leads). A state of
+       another tour from Ann now, however it came to be sent, is not the end of mine — Dee still
+       decides it — so it is two tours at once, settled as ever: mine has two riders and Ann's one,
+       so mine stands, on Dee's screen and on Bo's */
+    const net = party(['p01', 'p02', 'p04'])
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(3))
+    net.ready('p02', true)
+    net.flush()
+    const mine = net.bus('p04')
+    expect(mine.riders.map((r) => [r.id, r.on])).toEqual([
+      ['p04', true],
+      ['p02', true],
+    ])
+    expect([mine.from, net.bus('p01').from]).toEqual(['p04', 'p04'])
+    expect(leads(mine, net.ctx('p04'))).toBe(true)
+    const other: Bus = {
+      ...listen('p02', net.now),
+      seq: mine.seq + 5,
+      tour: 'zzzz0000',
+      len: 5,
+      riders: [{ id: 'p02', on: true, stars: 0, played: 0 }],
+      phase: 'pick',
+      openAt: net.now,
+      due: net.now + net.k.TOUR_IDLE_MS,
+    }
+    net.wire.push({ from: 'p02', m: wireOf(other, net.here, net.now) })
+    net.flush()
+    for (const id of ['p01', 'p04']) expect([id, net.bus(id).tour]).toEqual([id, mine.tour])
+  })
+})
+
+describe('the host away while the lowest friend’s page is new', () => {
+  /*
+   * The verify of 25119408, defect A: Dee alone on her tour and its host (ids sort Bo < Ann < Dee),
+   * the window open on Bo's and Ann's screens, and Dee's page goes. While she is away Bo's page is
+   * new — he reloaded, or first arrived — and on 25119408 nobody answered his hello, because nobody
+   * on the tour was here. Then Dee was back, holding nothing, and the lowest here was Bo, who held
+   * nothing either: her hellos went unanswered and Ann kept the window past its end, with Take me
+   * there, at 3, 15 and 40 s. Now Ann hands Bo the tour when he arrives (answerers), and Bo hands it
+   * to Dee — or, when both are new at once, Ann hands it to both. The shape of the world afterwards is the host pass's: every friend holds a
+   * tour somebody here moves along, or is offered Start; and since no page that exists has pressed
+   * Take me there, nobody goes anywhere.
+   */
+  const ids = ['p01', 'p02', 'p04']
+  const gone = (net: Net, id: string) => {
+    net.roster.delete(id)
+    net.here.delete(id)
+    net.get(id).listening = false
+  }
+  const loneWindow = (stopsFirst: number) => {
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    const rand = seeded(41 + stopsFirst)
+    for (let s = 0; s < stopsFirst; s++) {
+      rollAndPick(net, rand)
+      expect(net.runUntil(() => net.bus('p01').stops.length === s + 1, 30_000)).toBe(true)
+    }
+    rollAndPick(net, rand)
+    expect(net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'ready'))).toBe(
+      true,
+    )
+    return net
+  }
+  /** what a panel can be: a tour somebody here moves along, or Start — never a window gone by */
+  const movable = (net: Net, id: string) => {
+    const b = net.bus(id)
+    if (canStart(b, net.ctx(id))) return 'start'
+    const deciders = net.leaders().filter((x) => net.bus(x).tour === b.tour)
+    const stuck = b.phase === 'ready' && net.now > b.due + 2 * net.k.STATE_GAP_MS
+    return deciders.length && !stuck ? 'moving' : `stuck: ${b.phase}, deciding ${deciders}`
+  }
+  /** every friend at 3, 15 and 40 s after `back`: movable, no stop made, nobody counted going */
+  const look = (net: Net, back: number, made: number) => {
+    for (const after of [3000, 15_000, 40_000]) {
+      net.run(back + after - net.now)
+      for (const id of ids) {
+        const b = net.bus(id)
+        expect([id, after, movable(net, id)]).toEqual([
+          id,
+          after,
+          expect.stringMatching(/^(start|moving)$/),
+        ])
+        expect([id, after, b.ready.map((i) => b.riders[i].id)]).toEqual([id, after, []])
+        if (b.tour === net.bus('p04').tour && holds(b))
+          expect([id, after, b.stops.length]).toEqual([id, after, made])
+      }
+    }
+    expect(net.landings.filter((l) => l.id === 'p04' && l.at >= back)).toEqual([])
+  }
+  /** the tour back with its host: every screen on Dee's tour, and Dee deciding it */
+  const backWithDee = (net: Net, tour: string) => {
+    expect(net.leaders()).toEqual(['p04'])
+    for (const id of ids) expect([id, net.bus(id).tour]).toEqual([id, tour])
+    expect(net.agree()).toBe(true)
+  }
+
+  for (const stopsFirst of [0, 1])
+    for (const [how, w] of [
+      ['reloads', 1500],
+      ['reloads', 4000],
+      ['reloads, and Dee is back after Start was offered', KNOBS.ABANDON_MS + 5000],
+    ] as const)
+      it(`Bo ${how} while Dee is away (${w} ms), ${stopsFirst} stop(s) made: the tour goes back to Dee`, () => {
+        const net = loneWindow(stopsFirst)
+        const tour = net.bus('p01').tour
+        const made = net.bus('p01').stops.length
+        gone(net, 'p04')
+        net.run(500)
+        gone(net, 'p01')
+        net.run(200)
+        const arrived = net.states().length
+        net.join('p01')
+        net.run(w)
+        /* Bo's new page is handed the tour at once by Ann, the lowest here who holds it: a tour its
+           host is away from is still a tour (answerers). On 25119408 nobody answered him */
+        expect(
+          net
+            .states()
+            .slice(arrived)
+            .map((e) => e.from),
+        ).toEqual(['p02'])
+        expect(net.bus('p01').tour).toBe(tour)
+        const states = net.states().length
+        net.join('p04')
+        const back = net.now
+        /* two state gaps: Dee's state saying she has taken it, then the overdue window closed */
+        net.run(2500)
+        /* handed back at once, by Bo, now the lowest here who holds it — one state */
+        const answers = net.states().slice(states, states + 1)
+        expect(answers.map((e) => [e.from, e.at - back <= 200])).toEqual([['p01', true]])
+        backWithDee(net, tour)
+        look(net, back, made)
+        expect(net.get('p04').sub).toBe(START)
+      })
+
+  for (const stopsFirst of [0, 1])
+    for (const [first, d] of [
+      ['together', 0],
+      ['Bo', 100],
+      ['Bo', 2500],
+      ['Dee', 100],
+      ['Dee', 1000],
+      ['Dee', 4000],
+    ] as const)
+      it(`Dee and Bo reload at once, ${first === 'together' ? 'back together' : `${first} back ${d} ms first`}, ${stopsFirst} stop(s) made: the tour goes back to Dee`, () => {
+        const net = loneWindow(stopsFirst)
+        const tour = net.bus('p01').tour
+        const made = net.bus('p01').stops.length
+        gone(net, 'p04')
+        gone(net, 'p01')
+        net.run(400)
+        const [a, b] = first === 'Dee' ? ['p04', 'p01'] : ['p01', 'p04']
+        net.join(a)
+        if (d) net.run(d, 10)
+        net.join(b)
+        const back = net.now
+        net.run(2500)
+        backWithDee(net, tour)
+        look(net, back, made)
+      })
+
+  for (const stopsFirst of [1, 2])
+    it(`then Bo goes to press Start, ${stopsFirst} stop(s) made: there is none, and nobody is left on a dead window`, () => {
+      /* the verify's second form: on 25119408 Bo, holding nothing, was offered Start, and Ann kept
+         Dee's dead window, whose stops beat Bo's new tour's none */
+      const net = loneWindow(stopsFirst)
+      const tour = net.bus('p01').tour
+      gone(net, 'p04')
+      net.run(500)
+      gone(net, 'p01')
+      net.run(200)
+      net.join('p01')
+      net.run(1500)
+      net.join('p04')
+      net.run(3000)
+      expect(canStart(net.bus('p01'), net.ctx('p01'))).toBe(false)
+      net.start('p01')
+      net.flush()
+      const back = net.now
+      for (const after of [3000, 15_000, 40_000]) {
+        net.run(back + after - net.now)
+        for (const id of ids)
+          expect([id, after, movable(net, id)]).toEqual([
+            id,
+            after,
+            expect.stringMatching(/^(start|moving)$/),
+          ])
+        expect(new Set(ids.map((id) => net.bus(id).tour))).toEqual(new Set([tour]))
+      }
+    })
+})
+
+describe('the host back just as a friend presses Start', () => {
+  /*
+   * The verify of 25119408, defect B: Dee alone on her tour, the window open, and Dee's page goes;
+   * past ABANDON_MS, Bo and Ann are offered Start. Bo presses it as Dee's new page comes back. On
+   * 25119408 Ann's Start went the moment Dee was here, so she refused Bo's tour for Dee's old one —
+   * it had a stop, and Bo's none — and Dee took Bo's: Ann held a window nobody would close at 3,
+   * 15 and 40 s. Afterwards everybody is on one tour, somebody here moves it along, and Dee has
+   * moved nowhere.
+   */
+  const ids = ['p01', 'p02', 'p04']
+  for (const lat of [0, 120])
+    for (const stopsFirst of [0, 1])
+      for (const starter of ['p01', 'p02'])
+        for (const d of [-1000, -300, -80, 0, 80, 300, 1000])
+          it(`${lat} ms apart, ${stopsFirst} stop(s) made, ${starter === 'p01' ? 'Bo' : 'Ann'} presses Start, Dee back ${d} ms after: one tour, moving, on every screen`, () => {
+            const net = party(ids, { paced: true, ...(lat && { lat: () => lat }) })
+            net.run(2000)
+            net.start('p04')
+            net.flush()
+            const rand = seeded(41 + stopsFirst)
+            for (let s = 0; s < stopsFirst; s++) {
+              rollAndPick(net, rand)
+              expect(net.runUntil(() => net.bus('p01').stops.length === s + 1, 30_000)).toBe(true)
+            }
+            rollAndPick(net, rand)
+            expect(
+              net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'ready')),
+            ).toBe(true)
+            net.roster.delete('p04')
+            net.here.delete('p04')
+            net.get('p04').listening = false
+            net.run(net.k.ABANDON_MS + 2000)
+            expect(canStart(net.bus(starter), net.ctx(starter))).toBe(true)
+            if (d < 0) {
+              net.join('p04')
+              net.run(-d, 10)
+              net.start(starter)
+            } else {
+              net.start(starter)
+              if (d) net.run(d, 10)
+              net.join('p04')
+            }
+            const back = net.now
+            for (const after of [3000, 15_000, 40_000]) {
+              net.run(back + after - net.now)
+              const tours = new Set(ids.map((id) => net.bus(id).tour))
+              expect([after, tours.size]).toEqual([after, 1])
+              const deciders = net.leaders().filter((x) => net.bus(x).tour === [...tours][0])
+              for (const id of ids) {
+                const b = net.bus(id)
+                const ok =
+                  canStart(b, net.ctx(id)) ||
+                  (deciders.length > 0 && !(b.phase === 'ready' && net.now > b.due + 2000))
+                expect([id, after, ok]).toEqual([id, after, true])
+              }
+            }
+            expect(net.landings.filter((l) => l.id === 'p04' && l.at >= back)).toEqual([])
+          })
+})
+
+describe('the verify’s two repros, as they were written', () => {
+  /* the independent verify's minimal unit repros of 25119408, unchanged but for the names: red on
+     25119408 and on 8b4d87ea */
+  it('Bo (p01) reloads while Dee (p04) is away; Dee comes back: Ann (p02) is not left on a dead window', () => {
+    const ids = ['p01', 'p02', 'p04']
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(42))
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    rollAndPick(net, seeded(43))
+    expect(net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'ready'))).toBe(
+      true,
+    )
+    const gone = (id: string) => {
+      net.roster.delete(id)
+      net.here.delete(id)
+      net.get(id).listening = false
+    }
+    gone('p04')
+    net.run(500)
+    gone('p01')
+    net.run(200)
+    net.join('p01')
+    net.run(1500)
+    net.join('p04')
+    const back = net.now
+    for (const after of [3000, 15_000, 40_000]) {
+      net.run(back + after - net.now)
+      const ann = net.bus('p02')
+      const deciding = net.leaders().filter((x) => net.bus(x).tour === ann.tour)
+      const dead = ann.phase === 'ready' && net.now > ann.due + 2 * net.k.STATE_GAP_MS
+      expect([after, canStart(ann, net.ctx('p02')) || (deciding.length > 0 && !dead)]).toEqual([
+        after,
+        true,
+      ])
+    }
+  })
+  it('Dee comes back past ABANDON_MS just as Bo presses Start: everybody is on Bo’s tour', () => {
+    const ids = ['p01', 'p02', 'p04']
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(42))
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    rollAndPick(net, seeded(43))
+    expect(net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'ready'))).toBe(
+      true,
+    )
+    net.roster.delete('p04')
+    net.here.delete('p04')
+    net.get('p04').listening = false
+    net.run(net.k.ABANDON_MS + 2000)
+    expect(canStart(net.bus('p01'), net.ctx('p01'))).toBe(true)
+    net.start('p01')
+    net.join('p04')
+    net.run(3000)
+    const bo = net.bus('p01').tour
+    expect(ids.map((id) => net.bus(id).tour)).toEqual([bo, bo, bo])
+  })
+})
+
+/** what `id`'s screen draws from (busWords's View), with every toy in its Lab named by its id */
+function viewOfBus(net: Net, id: string): View {
+  const c = net.get(id)
+  const x = net.ctx(id)
+  return {
+    bus: c.bus,
+    now: x.now,
+    k: x.k,
+    name: (i) => i,
+    toy: (t) => t,
+    title: (t) => t,
+    roster: x.roster,
+    present: x.present,
+    subOf: x.subOf,
+    myToy: c.sub,
+    seated: false,
+    inMatch: false,
+    consent: c.consent,
+    hopAt: c.hop?.at ?? null,
+    people: x.people,
+  }
+}
+
+describe('the liveness bound, and who hands a tour back', () => {
+  /*
+   * bus.ts's `stalled`: a tour no state of which has moved its count on here for STALL_MS is one
+   * nobody is driving, in every phase, and it is abandoned on every screen that holds it — and the
+   * rules that go with it, about who hands a tour back (answerers, receive's hello).
+   *
+   * Dee alone on her tour and its host, one stop made, the window open on Bo's and Ann's screens;
+   * then her page crashes — no bye, so she stays on everybody's Lab and on the roster, a rider here
+   * whom nobody can tell from one still deciding. No rule that asks who is here can give her tour
+   * up; only its clock can.
+   */
+  const ids = ['p01', 'p02', 'p04']
+  const crashed = () => {
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    const rand = seeded(5)
+    rollAndPick(net, rand)
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    rollAndPick(net, rand)
+    expect(net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'ready'))).toBe(
+      true,
+    )
+    net.get('p04').listening = false
+    return net
+  }
+  /** the bound, as the commit that makes it says it: thirty seconds, in every phase */
+  const at = (b: Bus) => b.stateAt + 30_000
+  /** a fresh tour of Cy's, one rider and no stop: it loses to Dee's on stops (`beats`) */
+  const fresh = (net: Net) => ({
+    from: 'p03',
+    m: wireOf(
+      {
+        ...listen('p03', net.now),
+        seq: 1,
+        tour: 'cccc0003',
+        len: 5,
+        riders: [{ id: 'p03', on: true, stars: 0, played: 0 }],
+        phase: 'pick',
+        openAt: net.now,
+        freeAt: net.now + KNOBS.IDLE_MS,
+        due: net.now + KNOBS.TOUR_IDLE_MS,
+      },
+      net.here,
+      net.now,
+    ),
+  })
+
+  it('the bound is thirty seconds at every pace, and outlasts a beat and the longest sweep', () => {
+    for (const k of [KNOBS, knobs(0.25)]) {
+      expect(k.STALL_MS).toBe(30_000)
+      expect(k.BEAT_MS).toBe(5000)
+      /* a decider silent just before its beat, on everybody's Lab for 16 s stale and a 2 s sweep,
+         and the next host's first state through its Outbox and over a 150 ms wire, twice */
+      expect(k.BEAT_MS + 18_000 + k.STATE_GAP_MS + 2 * 150).toBeLessThan(k.STALL_MS)
+    }
+  })
+
+  it('STALL_MS with no state that moved it: Start, and the next state of any tour', () => {
+    const net = crashed()
+    net.join('p03')
+    net.here.delete('p03')
+    const ann = () => net.bus('p02')
+    const dead = at(ann())
+    net.run(dead - 100 - net.now, 10)
+    expect([canStart(ann(), net.ctx('p02')), canStart(net.bus('p01'), net.ctx('p01'))]).toEqual([
+      false,
+      false,
+    ])
+    /* a moment before, a tour that beats nothing is refused, as two tours at once ever are */
+    net.wire.push(fresh(net))
+    net.flush()
+    expect(ann().tour).not.toBe('cccc0003')
+    net.run(200, 10)
+    for (const id of ['p01', 'p02']) {
+      const b = net.bus(id)
+      expect([id, canStart(b, net.ctx(id))]).toEqual([id, true])
+      expect([id, phaseLine(viewOfBus(net, id))]).toEqual([
+        id,
+        { text: STALLED, buttons: [{ act: 'start', label: '🚌 Start a party tour' }] },
+      ])
+    }
+    /* and once it has stopped, any other tour's next state is taken, though it beats nothing */
+    net.wire.push(fresh(net))
+    net.flush()
+    expect([net.bus('p01').tour, ann().tour]).toEqual(['cccc0003', 'cccc0003'])
+    expect(
+      net.landings.filter((l) => l.at > 0 && l.id !== 'p04' && l.toy === net.bus('p04').toy),
+    ).toEqual([])
+  })
+
+  it('between stops too: a tour ten minutes from its own deadline stalls thirty seconds after its last state', () => {
+    /* the shape the deadline-relative backstop missed (C and D): `due` is TOUR_IDLE_MS away */
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(5))
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    net.run(1000)
+    net.get('p04').listening = false
+    const b = net.bus('p02')
+    expect(b.phase).toBe('pick')
+    expect(b.due - net.now).toBeGreaterThan(KNOBS.TOUR_IDLE_MS - 60_000)
+    net.run(at(b) - 100 - net.now, 10)
+    expect(canStart(net.bus('p02'), net.ctx('p02'))).toBe(false)
+    net.run(200, 10)
+    expect(canStart(net.bus('p02'), net.ctx('p02'))).toBe(true)
+    expect(phaseLine(viewOfBus(net, 'p02'))?.text).toBe(STALLED)
+  })
+
+  for (const during of ['pick', 'choose', 'ready'] as const)
+    it(`at the real pace, the decider silent just before its beat (${during}) is taken over first: nobody offered Start at any 100 ms`, () => {
+      /* the worst case for the bound: Bo deciding with Ann and Cy riding goes silent (no bye) 200 ms
+         before his next beat would have gone, and stays on everybody's Lab for the party's longest
+         sweep — 16 s stale and a 2 s sweep, after his last `here` crossed a 150 ms wire. Only then
+         may Ann take the tour over, and she must find it not yet given up anywhere */
+      const lat = 150
+      const net = party(['p01', 'p02', 'p03'], { paced: true, lat: () => lat })
+      net.run(2000)
+      net.start('p01')
+      net.flush()
+      const rand = seeded(17)
+      rollAndPick(net, rand)
+      expect(net.runUntil(() => net.bus('p02').phase === 'ready')).toBe(true)
+      net.ready('p02', true)
+      net.ready('p03', true)
+      expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+      if (during !== 'pick') {
+        expect(net.runUntil(() => net.now >= net.bus('p01').openAt)).toBe(true)
+        const b = net.bus('p01')
+        const guide = b.riders[b.guide].id
+        const faces = rollFaces(TOYS, b, net.get(guide).sub, () => undefined, 'all', rand)!
+        net.press(guide, { t: 'roll', faces })
+        net.flush()
+        if (during === 'ready') {
+          net.press(guide, { t: 'pick', toy: faces[1] })
+          net.flush()
+        }
+        expect(net.runUntil(() => net.bus('p03').phase === during, 5000, 10)).toBe(true)
+      }
+      net.run(1000, 10)
+      const bo = () => net.bus('p01')
+      expect(net.leaders()).toEqual(['p01'])
+      expect(net.runUntil(() => net.now >= bo().stateAt + KNOBS.BEAT_MS - 200, 10_000, 10)).toBe(
+        true,
+      )
+      expect(bo().phase).toBe(during)
+      const seq = net.bus('p03').seq
+      net.drop((_to, from) => from === 'p01')
+      const silent = net.now
+      const offered: string[] = []
+      const watch = (until: number) => {
+        while (net.now < until) {
+          net.run(100, 100)
+          for (const id of ['p02', 'p03'])
+            if (canStart(net.bus(id), net.ctx(id))) offered.push(`${id}@${net.now - silent}`)
+        }
+      }
+      watch(silent + 18_000 + lat)
+      net.here.delete('p01')
+      net.get('p01').listening = false
+      watch(net.now + KNOBS.STALL_MS)
+      expect(offered).toEqual([])
+      expect(net.leaders()).toEqual(['p02'])
+      /* and the tour moved on under Ann: a count on, heard by Cy */
+      expect(net.bus('p03').seq).toBeGreaterThan(seq)
+      expect(net.states('p02').some((e) => e.at > silent + 18_000)).toBe(true)
+    })
+
+  it('a state one count on keeps it; the same bus handed on at its count does not', () => {
+    const net = crashed()
+    const ann = net.bus('p02')
+    const dee = net.bus('p04')
+    expect(ann.seq).toBe(dee.seq)
+    /* a second before the bound, Bo's copy handed on (a hello answered): Ann's count, so nothing */
+    net.run(at(ann) - 1000 - net.now, 10)
+    net.wire.push({ from: 'p01', m: wireOf(net.bus('p01'), net.here, net.now) })
+    net.flush()
+    expect(net.bus('p02').seq).toBe(ann.seq)
+    net.run(1500, 10)
+    expect(canStart(net.bus('p02'), net.ctx('p02'))).toBe(true)
+    /* then a state of Dee's one count on — her beat, late — and the tour is driven again */
+    net.wire.push({ from: 'p04', m: wireOf({ ...dee, seq: dee.seq + 1 }, net.here, net.now) })
+    net.flush()
+    expect(net.bus('p02').seq).toBe(dee.seq + 1)
+    expect(canStart(net.bus('p02'), net.ctx('p02'))).toBe(false)
+    net.run(KNOBS.STALL_MS - 1000, 100)
+    expect(canStart(net.bus('p02'), net.ctx('p02'))).toBe(false)
+    net.run(2000, 100)
+    expect(canStart(net.bus('p02'), net.ctx('p02'))).toBe(true)
+  })
+
+  it('a state this browser refuses is not the tour heard: a stop it may never make keeps nothing standing', () => {
+    /* an older build can still roll Gust (tour.ts's NEVER_A_STOP); every reader here refuses that
+       state whole (readBus), so it never reaches the clock either */
+    const net = crashed()
+    const dee = net.bus('p04')
+    const ann = net.bus('p02')
+    net.run(at(ann) - 1000 - net.now, 10)
+    const gust = {
+      ...wireOf({ ...dee, seq: dee.seq + 1 }, net.here, net.now),
+      phase: 'ready',
+      toy: 'gust',
+    }
+    expect(readBus(JSON.parse(JSON.stringify(gust)))).toBeNull()
+    net.run(1500, 10)
+    expect(canStart(net.bus('p02'), net.ctx('p02'))).toBe(true)
+  })
+
+  it('never on the screen of the one deciding it, though it was given up while she was hidden', () => {
+    /* Dee alone on the call and on her tour: hidden past ABANDON_MS, she gives it up on her own
+       screen too — and back, with nobody to ask, she leads it after SYNC_MS and must not be
+       offered Start, nor told it has stalled, on a tour she is moving along herself */
+    const net = party(['p04'], { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    net.here.delete('p04')
+    net.run(KNOBS.ABANDON_MS + 5000)
+    net.here.add('p04')
+    net.run(3000)
+    const b = net.bus('p04')
+    expect(leads(b, net.ctx('p04'))).toBe(true)
+    expect(canStart(b, net.ctx('p04'))).toBe(false)
+    expect(phaseLine(viewOfBus(net, 'p04'))?.text).not.toBe(STALLED)
+  })
+
+  it('a tour given up goes back only to whoever would drive it: a newcomer is never handed it', () => {
+    /* Ann hosted with Dee riding, hopped off, and published that last — so she answers newcomers
+       while she holds a live tour. Dee's page goes; past ABANDON_MS the tour is given up. Cy
+       arrives: handed the dead tour, he would hold it without Start, and every holder hearing
+       the answer would count it as heard of. Then Dee is back, and gets it back. */
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(9))
+    expect(net.runUntil(() => net.bus('p02').phase === 'ready')).toBe(true)
+    net.ready('p02', true)
+    net.flush()
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    net.run(2000)
+    net.press('p02', { t: 'off' })
+    net.run(3000)
+    expect(net.bus('p01').from).toBe('p02')
+    net.roster.delete('p04')
+    net.here.delete('p04')
+    net.get('p04').listening = false
+    net.run(KNOBS.ABANDON_MS + 2000)
+    expect(canStart(net.bus('p02'), net.ctx('p02'))).toBe(true)
+    const states = net.states().length
+    net.join('p03')
+    net.run(4000)
+    expect(net.states().slice(states)).toEqual([])
+    expect(holds(net.bus('p03'))).toBe(false)
+    expect(canStart(net.bus('p03'), net.ctx('p03'))).toBe(true)
+    net.join('p04')
+    net.run(3000)
+    expect(net.states().slice(states)[0]?.from).toBe('p01')
+    expect(net.leaders()).toEqual(['p04'])
+  })
+
+  it('a hello answers everybody still asking: Dee’s first, Bo’s a moment after, both new pages', () => {
+    /* Bo's link to Ann is slow, so Dee's hello reaches her first, while Bo — the lowest, the one
+       to answer Dee — is here and has not asked yet. His hello makes Ann the one, and she answers
+       Dee then, not at Dee's retry three seconds later */
+    const net = party(ids, {
+      paced: true,
+      lat: (from, to) => (from === 'p01' && to === 'p02' ? 150 : 0),
+    })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(41))
+    expect(net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'ready'))).toBe(
+      true,
+    )
+    for (const id of ['p04', 'p01']) {
+      net.roster.delete(id)
+      net.here.delete(id)
+      net.get(id).listening = false
+    }
+    net.run(400)
+    const states = net.states().length
+    net.join('p04')
+    net.join('p01')
+    const back = net.now
+    net.run(1000, 10)
+    const answer = net.states().slice(states)[0]
+    expect([answer?.from, answer && answer.at - back < 500]).toEqual(['p02', true])
+    expect(net.leaders()).toEqual(['p04'])
+  })
+})
+
+describe('the verify of 596d9b2d: every page that could drive a tour new at once, between stops', () => {
+  /*
+   * C: Dee (p04) starts and hosts, Eve (p05) boards at stop 1, Bo (p01) and Ann (p02) watch; in the
+   * dwell Dee and Eve reload together. D: Bo starts and hosts, Ann and Dee board at stop 1; Bo and
+   * Ann reload together. Both ways every page that could decide the tour is a new page holding
+   * nothing, and on 596d9b2d nobody answered either: riders answered riders (room.ts's answersHello)
+   * and the publisher, and both were the new pages. Between stops the tour's deadline is ten
+   * minutes off, so the deadline's backstop left Bo and Ann (C), or Dee (D), with no Start and
+   * nobody deciding at 3, 15, 40, 120 and 400 s, while the new pages were offered Start beside
+   * them; pressing it moved the rest of the new pages to the new tour and left them behind. Now the
+   * lowest here who holds it hands it back in about a round trip (answerers), and the page that
+   * comes to decide it says so at once.
+   */
+  const gone = (net: Net, id: string) => {
+    net.roster.delete(id)
+    net.here.delete(id)
+    net.get(id).listening = false
+  }
+  /** what each screen offers: Start, or the tour it holds and whether anybody live decides it */
+  const panel = (net: Net, id: string) => {
+    const b = net.bus(id)
+    const line = holds(b) ? phaseLine(viewOfBus(net, id)) : null
+    const start =
+      canStart(b, net.ctx(id)) &&
+      (!holds(b) || b.phase === 'end' || !!line?.buttons.some((x) => x.act === 'start'))
+    if (start) return 'START'
+    const deciders = net.leaders().filter((x) => net.bus(x).tour === b.tour)
+    return `${b.tour} ${b.phase} s${b.stops.length} ${deciders.length ? `decided by ${deciders}` : 'NOBODY DECIDES'}`
+  }
+  /** every panel at 3, 15, 40, 120 and 400 s after `back` */
+  const panels = (net: Net, ids: string[], back: number) => {
+    const seen: string[] = []
+    for (const after of [3000, 15_000, 40_000, 120_000, 400_000]) {
+      net.run(back + after - net.now)
+      for (const id of ids) seen.push(`${after / 1000}s ${id}: ${panel(net, id)}`)
+    }
+    return seen
+  }
+  /** from the moment the new pages are back: nobody offered Start, at any 100 ms, for `ms` */
+  const never = (net: Net, ids: string[], ms: number) => {
+    const offered: string[] = []
+    const end = net.now + ms
+    while (net.now < end) {
+      net.run(100, 100)
+      for (const id of ids) if (panel(net, id) === 'START') offered.push(`${id}@${net.now}`)
+    }
+    return offered
+  }
+
+  const shapeC = () => {
+    const ids = ['p01', 'p02', 'p04', 'p05']
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(5))
+    expect(net.runUntil(() => net.bus('p05').phase === 'ready')).toBe(true)
+    net.ready('p05', true)
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    net.run(1000)
+    expect(net.bus('p01').phase).toBe('pick')
+    const tour = net.bus('p01').tour
+    gone(net, 'p04')
+    gone(net, 'p05')
+    net.run(300)
+    const states = net.states().length
+    net.join('p04')
+    net.join('p05')
+    return { net, ids, tour, back: net.now, states }
+  }
+  for (const eve of [false, true])
+    it(`C: both deciders reload at once in the dwell${eve ? ', and Eve goes to press Start' : ''}: nobody is left without a driver or Start`, () => {
+      const { net, ids, tour, back, states } = shapeC()
+      expect(never(net, ids, 3000)).toEqual([])
+      /* handed back by Bo, the lowest here who holds it, within a round trip — one state — and
+         Dee, deciding it now, says so at once */
+      const after = net.states().slice(states)
+      expect(after[0]?.from).toBe('p01')
+      expect(after[0]!.at - back).toBeLessThan(KNOBS.SYNC_MS)
+      expect(after[1]?.from).toBe('p04')
+      expect(after[1]!.at - after[0]!.at).toBeLessThan(KNOBS.STATE_GAP_MS)
+      if (eve) {
+        expect(canStart(net.bus('p05'), net.ctx('p05'))).toBe(false)
+        net.start('p05')
+        net.flush()
+      }
+      const seen = panels(net, ids, back)
+      expect(seen.filter((x) => /NOBODY DECIDES|START/.test(x))).toEqual([])
+      expect(new Set(ids.map((id) => net.bus(id).tour))).toEqual(new Set([tour]))
+      expect(net.leaders()).toEqual(['p04'])
+    })
+
+  for (const when of ['dwell', 'window'] as const)
+    for (const starter of [null, 'p02'] as const)
+      it(`D: in the ${when}, the two lowest riders reload at once${starter ? ', and Ann goes to press Start' : ''}: Dee is never left alone on it`, () => {
+        const ids = ['p01', 'p02', 'p04']
+        const net = party(ids, { paced: true })
+        net.run(2000)
+        net.start('p01')
+        net.flush()
+        rollAndPick(net, seeded(12))
+        expect(net.runUntil(() => net.bus('p04').phase === 'ready')).toBe(true)
+        net.ready('p02', true)
+        net.ready('p04', true)
+        expect(net.runUntil(() => net.bus('p04').stops.length === 1, 30_000)).toBe(true)
+        net.run(1000)
+        expect(
+          net
+            .bus('p04')
+            .riders.filter((r) => r.on)
+            .map((r) => r.id)
+            .sort(),
+        ).toEqual(['p01', 'p02', 'p04'])
+        if (when === 'window') {
+          rollAndPick(net, seeded(13))
+          expect(net.runUntil(() => net.bus('p04').phase === 'ready', 60_000)).toBe(true)
+        }
+        const tour = net.bus('p04').tour
+        gone(net, 'p01')
+        gone(net, 'p02')
+        net.run(300)
+        const states = net.states().length
+        net.join('p01')
+        net.join('p02')
+        const back = net.now
+        expect(never(net, ids, 3000)).toEqual([])
+        /* Dee hands it back — the only one here who holds it — and Bo, deciding it, says so */
+        const after = net.states().slice(states)
+        expect(after[0]?.from).toBe('p04')
+        expect(after[0]!.at - back).toBeLessThan(KNOBS.SYNC_MS)
+        expect(after[1]?.from).toBe('p01')
+        if (starter) {
+          expect(canStart(net.bus(starter), net.ctx(starter))).toBe(false)
+          net.start(starter)
+          net.flush()
+        }
+        const seen = panels(net, ids, back)
+        expect(seen.filter((x) => /NOBODY DECIDES|START/.test(x))).toEqual([])
+        expect(new Set(ids.map((id) => net.bus(id).tour))).toEqual(new Set([tour]))
+        expect(net.leaders()).toEqual(['p01'])
+        /* and no page that came back was counted going anywhere it did not press for */
+        expect(net.landings.filter((l) => l.at >= back && l.id !== 'p04')).toEqual([])
+      })
+
+  it('the retry goes to the next one along: a crashed rider lower than everybody holding it', () => {
+    /* the verify's seeds 42 and 52: Bo (p01) rides, and his page crashes — no bye, so he is on
+       everybody's Lab until the party's sweep, first in the order to answer, and answering nobody.
+       Dee's new page asks; on 596d9b2d both her hellos went to Bo, and she was offered Start for
+       the 16–18 s his presence lingered. The retry goes to Ann (p02), HELLO_RETRY_MS later */
+    const ids = ['p01', 'p02', 'p03', 'p04']
+    const net = party(ids, { paced: true, lat: () => 100 })
+    net.run(2000)
+    net.start('p03')
+    net.flush()
+    rollAndPick(net, seeded(21))
+    expect(net.runUntil(() => net.bus('p04').phase === 'ready')).toBe(true)
+    for (const id of ['p01', 'p02', 'p04']) net.ready(id, true)
+    expect(net.runUntil(() => net.bus('p04').stops.length === 1, 30_000)).toBe(true)
+    net.run(1000)
+    /* Bo crashes: still here and on the roster, his page deaf and dumb */
+    net.get('p01').listening = false
+    net.drop((_to, from) => from === 'p01')
+    net.run(500)
+    gone(net, 'p04')
+    net.run(300)
+    net.join('p04')
+    const back = net.now
+    let offered = 0
+    while (!holds(net.bus('p04')) && net.now - back < 20_000) {
+      net.run(100, 100)
+      if (canStart(net.bus('p04'), net.ctx('p04'))) offered += 100
+    }
+    expect(holds(net.bus('p04'))).toBe(true)
+    expect(net.now - back).toBeLessThanOrEqual(KNOBS.HELLO_RETRY_MS + 500)
+    expect(offered).toBeLessThanOrEqual(KNOBS.HELLO_RETRY_MS - KNOBS.SYNC_MS + 500)
+  })
+
+  it('two crashed ahead take the hello and its retry: the sweep of either moves the order on, and the holder answers', () => {
+    /* the property's seed 4364: Bo (p01, deciding) and Ann (p02) crash — no bye, both on
+       everybody's Lab until the party's sweep, first and second in the order to answer — and Cy
+       (p03) reloads. His hello goes to Bo, his retry to Ann, and he has no third. Dee (p04) holds
+       the tour: the sweep of Bo moves the order on, and she answers the retry then (tick) */
+    const ids = ['p01', 'p02', 'p03', 'p04']
+    const net = party(ids, { paced: true, lat: () => 100 })
+    net.run(2000)
+    net.start('p01')
+    net.flush()
+    rollAndPick(net, seeded(23))
+    expect(net.runUntil(() => net.bus('p04').phase === 'ready')).toBe(true)
+    for (const id of ['p02', 'p03', 'p04']) net.ready(id, true)
+    expect(net.runUntil(() => net.bus('p04').stops.length === 1, 30_000)).toBe(true)
+    net.run(1000)
+    const tour = net.bus('p04').tour
+    for (const id of ['p01', 'p02']) {
+      net.get(id).listening = false
+      net.drop((_to, from) => from === id)
+    }
+    net.run(500)
+    gone(net, 'p03')
+    net.run(300)
+    const from = net.log.length
+    net.join('p03')
+    net.run(KNOBS.HELLO_RETRY_MS + 2000)
+    expect(hellos(net, 'p03', from)).toBe(2)
+    expect(holds(net.bus('p03'))).toBe(false)
+    /* Bo swept: Dee is the next one along for Cy's retry, and answers at once */
+    net.here.delete('p01')
+    const swept = net.now
+    net.run(1000, 10)
+    expect(net.bus('p03').tour).toBe(tour)
+    const answer = net.states().find((e) => e.at >= swept)
+    expect([answer?.from, answer && answer.at - swept < 200]).toEqual(['p04', true])
+    expect(hellos(net, 'p03', from)).toBe(2)
+  })
+
+  it('a page that reloads and asks again is asking a retry, not a third answerer along', () => {
+    /* Bo (p01), Ann (p02) and Dee (p04) ride; Ann's page has crashed (here, answering nobody). Bo's
+       page asked twice and went unanswered, reloaded, and asks again: that is his retry, which is
+       Dee's to answer — counted as a third hello it would go to a third answerer, and there is none */
+    const ids = ['p01', 'p02', 'p04']
+    const net = party(ids, { paced: true })
+    net.run(2000)
+    net.start('p01')
+    net.flush()
+    rollAndPick(net, seeded(12))
+    expect(net.runUntil(() => net.bus('p04').phase === 'ready')).toBe(true)
+    net.ready('p02', true)
+    net.ready('p04', true)
+    expect(net.runUntil(() => net.bus('p04').stops.length === 1, 30_000)).toBe(true)
+    net.run(1000)
+    const dee = { ...net.bus('p04'), askers: ['p01', 'p01'] }
+    const hello = { v: 1, t: 'hello' } as const
+    expect(receive(dee, net.ctx('p04'), 'p01', hello).out).toEqual([{ t: 'state' }])
+    /* and its first hello is Ann's to answer, not Dee's */
+    expect(receive({ ...dee, askers: [] }, net.ctx('p04'), 'p01', hello).out).toEqual([])
+  })
+
+  it('riders answer first: a watcher on an older build, lower than every rider, costs a returning rider nothing', () => {
+    /* Bo (p01) watches on a build that answers no hello — 596d9b2d's watchers did not — and is the
+       lowest here. Dee (p04) hosts with Ann (p02) riding; Dee reloads. A rider holds the tour and
+       knows the bus, so Ann answers her at once; asked in id order, Bo would be first, answer
+       nothing, and Dee would wait out HELLO_RETRY_MS offered Start */
+    const ids = ['p01', 'p02', 'p04']
+    const net = party(ids, { paced: true, lat: () => 100 })
+    net.drop((to, _from, m) => to === 'p01' && m.t === 'hello')
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(31))
+    expect(net.runUntil(() => net.bus('p02').phase === 'ready')).toBe(true)
+    net.ready('p02', true)
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    net.run(1000)
+    const tour = net.bus('p01').tour
+    gone(net, 'p04')
+    net.run(300)
+    const states = net.states().length
+    net.join('p04')
+    const back = net.now
+    expect(never(net, ids, 3000)).toEqual([])
+    const answer = net.states().slice(states)[0]
+    expect([answer?.from, answer && answer.at - back < KNOBS.SYNC_MS]).toEqual(['p02', true])
+    expect(net.bus('p04').tour).toBe(tour)
+    expect(net.leaders()).toEqual(['p02'])
+  })
+
+  it('a watcher handing the bus on at my count is not a new publisher; a rider at my count is', () => {
+    /* two deciders for a moment publish at the same count, and the lower one's wins (`newer`) —
+       but a watcher repeating the bus to a hello is not deciding anything, and taken as the one
+       who published it, every yes would be asked again (askAgain) */
+    const net = atTable(['p00'])
+    /* Ann holds the bus as Cy published it; Bo rides, and the newcomer p00 watches */
+    const b = { ...net.bus('p02'), from: 'p03' }
+    const at = (from: string) =>
+      receive(b, net.ctx('p02'), from, wireOf({ ...b, from }, net.here, net.now)).bus
+    expect(b.riders.find((r) => r.id === 'p00')).toBeUndefined()
+    expect([at('p00').from, at('p00').seq]).toEqual(['p03', b.seq])
+    expect([at('p01').from, at('p01').seq]).toEqual(['p01', b.seq])
+    /* and neither moves the clock that says somebody is driving it: the count did not move */
+    expect([at('p00').stateAt, at('p01').stateAt]).toEqual([b.stateAt, b.stateAt])
+  })
+})
+
+describe('no Start while somebody decides (the verify of 596d9b2d, kept as guards)', () => {
+  const startable = (net: Net, id: string) => {
+    const b = net.bus(id)
+    const line = holds(b) ? phaseLine(viewOfBus(net, id)) : null
+    return (
+      canStart(b, net.ctx(id)) &&
+      (!holds(b) || b.phase === 'end' || !!line?.buttons.some((x) => x.act === 'start'))
+    )
+  }
+  /** run `ms` in 100 ms steps, noting anybody offered Start on a tour that is not over */
+  const watch = (net: Net, ids: string[], ms: number, seen: string[]) => {
+    const end = net.now + ms
+    while (net.now < end) {
+      net.run(100)
+      for (const id of ids)
+        if (holds(net.bus(id)) && net.bus(id).phase !== 'end' && startable(net, id))
+          seen.push(`${net.now} ${id} offered Start on ${net.bus(id).tour}#${net.bus(id).seq}`)
+    }
+  }
+  const ids = ['p01', 'p02', 'p04']
+  for (const by of [-1500, -500])
+    it(`a slow host: Dee rolls, and everything she sends arrives STALL_MS ${by} ms after the last state heard`, () => {
+      /* the verify wrote this against the deadline's backstop (the dice's deadline + ABANDON_MS);
+         the bound is STALL_MS of silence now, so the slowness runs to just short of that */
+      let slowFrom = Infinity
+      let slowTo = -Infinity
+      let t = 0
+      const net = party(ids, {
+        paced: true,
+        lat: (from) => (from === 'p04' && t >= slowFrom && t < slowTo ? slowTo - t + 150 : 150),
+      })
+      net.run(2000)
+      net.start('p04')
+      net.flush()
+      net.runUntil(() => net.now >= net.bus('p04').openAt)
+      const faces = rollFaces(
+        TOYS,
+        net.bus('p04'),
+        net.get('p04').sub,
+        () => undefined,
+        'all',
+        seeded(9),
+      )!
+      net.press('p04', { t: 'roll', faces })
+      net.flush()
+      expect(
+        net.runUntil(() => ['p01', 'p02'].every((id) => net.bus(id).phase === 'choose'), 5000),
+      ).toBe(true)
+      t = net.now
+      slowFrom = net.now
+      slowTo = Math.min(net.bus('p01').stateAt, net.bus('p02').stateAt) + KNOBS.STALL_MS + by - 150
+      const seen: string[] = []
+      while (net.now < slowTo + 15_000) {
+        t = net.now
+        watch(net, ids, 100, seen)
+      }
+      expect(seen).toEqual([])
+      expect(['p01', 'p02'].every((id) => ['ready', 'pick'].includes(net.bus(id).phase))).toBe(true)
+    })
+  it('a host in a hidden tab with a rider here: 15 s hidden in the window, nobody offered Start', () => {
+    const net = party(['p01', 'p02', 'p04', 'p05'], { paced: true, lat: () => 150 })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(3))
+    expect(net.runUntil(() => net.bus('p05').phase === 'ready')).toBe(true)
+    net.ready('p05', true)
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    const seen: string[] = []
+    watch(net, ['p01', 'p02', 'p04', 'p05'], 1000, seen)
+    /* Eve rolls stop 2 when it is her turn; Dee's tab is hidden as the window opens */
+    expect(
+      net.runUntil(
+        () => net.bus('p05').phase === 'pick' && net.now >= net.bus('p05').openAt,
+        60_000,
+      ),
+    ).toBe(true)
+    const g = net.bus('p05').riders[net.bus('p05').guide].id
+    const faces = rollFaces(TOYS, net.bus(g), net.get(g).sub, () => undefined, 'all', seeded(4))!
+    net.press(g, { t: 'roll', faces })
+    net.flush()
+    net.press(g, { t: 'pick', toy: faces[1] })
+    net.flush()
+    net.here.delete('p04')
+    watch(net, ['p01', 'p02', 'p05'], 15_000, seen)
+    net.here.add('p04')
+    watch(net, ['p01', 'p02', 'p04', 'p05'], 30_000, seen)
+    expect(seen).toEqual([])
+  })
+  it('a long dwell: five minutes between stops with nobody rolling, nobody offered Start', () => {
+    const net = party(['p01', 'p02', 'p04', 'p05'], {
+      paced: true,
+      lat: (a, b) => 100 + ((a.charCodeAt(2) * 7 + b.charCodeAt(2) * 13) % 60),
+    })
+    net.run(2000)
+    net.start('p04')
+    net.flush()
+    rollAndPick(net, seeded(8))
+    expect(net.runUntil(() => net.bus('p05').phase === 'ready')).toBe(true)
+    net.ready('p05', true)
+    expect(net.runUntil(() => net.bus('p01').stops.length === 1, 30_000)).toBe(true)
+    const seen: string[] = []
+    watch(net, ['p01', 'p02', 'p04', 'p05'], 300_000, seen)
+    expect(seen).toEqual([])
+    expect(net.bus('p01').phase).toBe('pick')
+  })
+})
+
+describe('a party that does anything, in any order: nobody is left on a tour nobody can move', () => {
+  /*
+   * The property behind every case above. Three to five browsers on a paced party — each its own
+   * Outbox, a link delay of 0–150 ms each, half the seeds at the dev call's pace — press whatever
+   * their own screens offer (the phase line's buttons, the strip's Start and Hop off), reload,
+   * leave and come back, hide their tabs, and reload two at once: the tour's decider and the
+   * lowest id here. Gaps run 0–30 s, a third of them under 1.5 s so that presses race. Then
+   * nothing, and two looks:
+   *
+   *   — once every window could have closed (CHOOSE_MS + READY_MS) and ABANDON_MS run, or the
+   *     liveness bound (STALL_MS) if that is later: nobody is on a window or a roll nobody can
+   *     close, unless Start is on their screen;
+   *   — once every tour could have ended (TOUR_IDLE_MS more): every browser here either describes
+   *     the one live tour somebody here moves along, or has Start on its screen.
+   *
+   * And throughout, the rule this protocol is built on: nobody moves who did not press, on that
+   * page, for that toy — and the one browser that never presses anything never moves at all.
+   */
+  const SEEDS = 600
+  /* a better stream than `seeded` for a sweep: mulberry32 */
+  const stream = (seed: number) => {
+    let a = seed >>> 0
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0
+      let t = a
+      t = Math.imul(t ^ (t >>> 15), t | 1)
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+  }
+  /** what a screen offers: the phase line's buttons, and the strip's Start and Hop off */
+  const buttonsOf = (net: Net, id: string): BusButton[] => {
+    const b = net.bus(id)
+    const line = phaseLine(viewOfBus(net, id))?.buttons ?? []
+    const strip: BusButton[] = []
+    if (!holds(b) && canStart(b, net.ctx(id))) strip.push({ act: 'start', label: 'Start' })
+    if (b.phase !== 'end' && b.riders.some((r) => r.id === id && r.on))
+      strip.push({ act: 'off', label: 'Hop off' })
+    return [...line, ...strip]
+  }
+  /** Start on this screen, and pressing it would start a tour */
+  const offered = (net: Net, id: string) => {
+    const b = net.bus(id)
+    if (!canStart(b, net.ctx(id))) return false
+    if (!holds(b) || b.phase === 'end') return true
+    return buttonsOf(net, id).some((x) => x.act === 'start')
+  }
+  const live = (net: Net, id: string) => net.get(id).listening && net.ctx(id).meLive
+  /** how often a person presses each button, given the chance */
+  const WEIGHT: Record<BusButton['act'], number> = {
+    take: 6,
+    come: 3,
+    face: 6,
+    roll: 6,
+    rollFor: 2,
+    rollAnyway: 1,
+    go: 2,
+    fin: 3,
+    finAnyway: 1,
+    no: 1,
+    stay: 1,
+    off: 0.4,
+    start: 2,
+    another: 2,
+    catchUp: 0,
+    close: 0,
+  }
+
+  type Seen = { violations: string[]; stalls: number; actions: number; simulated: number }
+
+  function ride(seed: number, opt: { quiet?: boolean } = {}): Seen {
+    const r = stream(seed)
+    const int = (lo: number, hi: number) => lo + Math.floor(r() * (hi - lo + 1))
+    const any = <T>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]
+    const n = int(3, 5)
+    const ids = named(n)
+    const watcher = ids[n - 1]
+    const k = seed % 2 ? knobs(0.25) : KNOBS
+    const delay = new Map<string, number>()
+    const lat = (from: string, to: string) => {
+      const key = `${from}>${to}`
+      if (!delay.has(key)) delay.set(key, int(0, 150))
+      return delay.get(key)!
+    }
+    const net = party(ids, { paced: true, k, lat })
+    const v: string[] = []
+    const gen = new Map(ids.map((id) => [id, 1]))
+    /** the toys each page has pressed to go to: Take me there, Come too, the guide's own pick */
+    const pressed = new Map(ids.map((id) => [id, new Set<string>()]))
+    let landed = 0
+    const away = new Map<string, number>()
+    const hidden = new Map<string, number>()
+    const goes = (id: string) => {
+      net.roster.delete(id)
+      net.here.delete(id)
+      net.get(id).listening = false
+      hidden.delete(id)
+    }
+    const comes = (id: string) => {
+      net.join(id)
+      gen.set(id, gen.get(id)! + 1)
+      pressed.set(id, new Set())
+    }
+    const audit = () => {
+      for (const l of net.landings.slice(landed))
+        if (!pressed.get(l.id)!.has(l.toy) || l.id === watcher)
+          v.push(`${l.id} moved to ${l.toy} at ${l.at} without pressing for it on that page`)
+      landed = net.landings.length
+    }
+    /** the clock on to `until`, the page returns and the tabs shown again on their way */
+    const advance = (until: number, step: number) => {
+      while (net.now < until) {
+        const next = Math.min(until, ...away.values(), ...hidden.values())
+        if (next > net.now) net.run(next - net.now, step)
+        audit()
+        for (const [id, at] of [...away])
+          if (at <= net.now) {
+            away.delete(id)
+            comes(id)
+          }
+        for (const [id, at] of [...hidden])
+          if (at <= net.now) {
+            hidden.delete(id)
+            net.here.add(id)
+          }
+      }
+    }
+    const press = (id: string, btn: BusButton) => {
+      const b = net.bus(id)
+      switch (btn.act) {
+        case 'start':
+        case 'another':
+          if (canStart(b, net.ctx(id))) net.start(id)
+          return
+        case 'roll':
+        case 'rollFor':
+        case 'rollAnyway': {
+          const faces = rollFaces(TOYS, b, net.get(id).sub, () => undefined, 'all', r)
+          if (faces)
+            net.press(id, { t: 'roll', faces, ...(btn.act === 'rollAnyway' && { anyway: true }) })
+          return
+        }
+        case 'face':
+          pressed.get(id)!.add(btn.toy!)
+          return net.press(id, { t: 'pick', toy: btn.toy! })
+        case 'take':
+        case 'come':
+          pressed.get(id)!.add(btn.toy!)
+          return net.press(id, { t: 'ready', on: true, n: btn.n!, toy: btn.toy! })
+        case 'no':
+        case 'stay':
+          return net.press(id, { t: 'ready', on: false, n: btn.n!, toy: btn.toy! })
+        case 'go':
+          return net.press(id, { t: 'go' })
+        case 'off':
+          return net.press(id, { t: 'off' })
+        case 'fin':
+        case 'finAnyway':
+          return net.press(id, { t: 'fin', ...(btn.act === 'finAnyway' && { anyway: true }) })
+      }
+    }
+
+    /** a press somebody makes: mostly whatever moves the tour along, now and then anything */
+    const pick = (offer: { id: string; btn: BusButton }[]) => {
+      const total = offer.reduce((t, o) => t + WEIGHT[o.btn.act], 0)
+      let x = r() * total
+      for (const o of offer) if ((x -= WEIGHT[o.btn.act]) < 0) return o
+      return offer[offer.length - 1]
+    }
+
+    advance(2000, 100)
+    net.start(any(ids.filter((id) => id !== watcher)))
+    net.flush()
+    const actions = int(15, 40)
+    for (let a = 0; a < actions; a++) {
+      advance(net.now + (r() < 1 / 3 ? int(0, 1500) : int(0, 30_000)), 100)
+      const here = ids.filter((id) => net.get(id).listening && !away.has(id))
+      if (!here.length) continue
+      const roll = r()
+      if (roll < 0.6) {
+        const offer = here
+          .filter((id) => live(net, id))
+          .flatMap((id) =>
+            buttonsOf(net, id)
+              .filter((btn) => id !== watcher || btn.act === 'start' || btn.act === 'another')
+              .map((btn) => ({ id, btn })),
+          )
+        if (offer.length) {
+          const o = pick(offer)
+          press(o.id, o.btn)
+        }
+      } else if (roll < 0.7) {
+        const id = any(here)
+        goes(id)
+        away.set(id, net.now + int(100, 3000))
+      } else if (roll < 0.76) {
+        const id = any(here)
+        goes(id)
+        away.set(id, net.now + int(3000, 45_000))
+      } else if (roll < 0.84) {
+        /* the one deciding (or the host as everybody reckons it) and the lowest id here, at once */
+        const decider = net.leaders()[0] ?? hostOf(net.bus(here[0]), net.ctx(here[0]))
+        const lowest = [...here].sort()[0]
+        for (const id of new Set([decider ?? lowest, lowest]))
+          if (net.get(id).listening && !away.has(id)) {
+            goes(id)
+            away.set(id, net.now + int(100, 3000))
+          }
+      } else if (roll < 0.93) {
+        const id = any(here.filter((x) => !hidden.has(x)))
+        if (!id) continue
+        net.here.delete(id)
+        hidden.set(id, net.now + int(300, 30_000))
+      } else {
+        const id = any(here)
+        if (live(net, id) && offered(net, id)) net.start(id)
+      }
+      net.flush()
+    }
+    /* the last page back and the last tab shown are the last things that happen */
+    advance(Math.max(net.now, ...away.values(), ...hidden.values()), 100)
+    const quiet = net.now
+    const windows =
+      quiet +
+      Math.max(k.CHOOSE_MS + k.READY_MS + 2 * k.STATE_GAP_MS + k.ABANDON_MS, k.STALL_MS) +
+      5000
+    advance(windows, 250)
+    let stalls = 0
+    for (const id of ids) {
+      if (!live(net, id)) continue
+      const b = net.bus(id)
+      if (holds(b) && (b.phase === 'ready' || b.phase === 'choose')) {
+        if (offered(net, id)) stalls++
+        else
+          v.push(`${id} on a ${b.phase} nobody closes at ${net.now}: ${JSON.stringify(shape(b))}`)
+      }
+      if (buttonsOf(net, id).some((x) => x.act === 'start') && !canStart(b, net.ctx(id)))
+        v.push(`${id} shows a Start that would do nothing`)
+    }
+    advance(windows + k.TOUR_IDLE_MS + k.CHOOSE_MS + k.READY_MS + k.ABANDON_MS + 5000, 1000)
+    const here = ids.filter((id) => live(net, id))
+    const riding = here.filter((id) => !offered(net, id))
+    const tours = new Set(riding.map((id) => net.bus(id).tour))
+    if (tours.size > 1) v.push(`two tours at the end: ${[...tours]}`)
+    for (const id of riding) {
+      const b = net.bus(id)
+      const moving = net.leaders().some((x) => net.bus(x).tour === b.tour)
+      if (!holds(b) || b.phase === 'end' || !moving)
+        v.push(`${id} at the end: no Start, and ${JSON.stringify(shape(b))} with nobody moving it`)
+    }
+    if (riding.length && !net.agree(riding)) v.push(`the riders disagree at the end`)
+    if (!opt.quiet && v.length)
+      v.unshift(`seed ${seed}: ${n} browsers, pace ${seed % 2 ? 0.25 : 1}`)
+    return { violations: v, stalls, actions, simulated: net.now }
+  }
+  const shape = (b: Bus) => ({
+    tour: b.tour,
+    seq: b.seq,
+    phase: b.phase,
+    due: Math.round(b.due),
+    riders: b.riders.map((x) => `${x.id}${x.on ? '' : '-'}`),
+    stops: b.stops.length,
+  })
+
+  for (let chunk = 0; chunk < SEEDS / 100; chunk++)
+    it(`seeds ${chunk * 100 + 1}–${chunk * 100 + 100}: every screen can move on`, () => {
+      const bad: string[] = []
+      for (let seed = chunk * 100 + 1; seed <= chunk * 100 + 100; seed++)
+        bad.push(...ride(seed).violations.slice(0, 4))
+      expect(bad).toEqual([])
+    })
+})
+
+describe('a stray tour does not answer a hello for another (askers)', () => {
+  /* ⚠️ A HOLDER FORGOT WHO WAS ASKING ON HEARING ANY STATE, including a stray tour's that it ignored
+     as weaker — so when who is here changed, it had nobody left to hand its own tour back to. The
+     shape the verify found: Ann's page crashes and lingers until the sweep, so she is first in Cy's
+     answering order for both hellos; Bo and Dee reload together; Dee presses the Start she is
+     offered inside the retry's gap, and Bo's new page takes that tour. Once Ann is swept, the four
+     riders' tour must be back on every screen still here, with somebody deciding it */
+  for (const hopOff of [true, false])
+    it(`Dee's press in the retry's gap${hopOff ? ', then Hop off,' : ''} does not lose the four riders' tour`, () => {
+      const ids = ['p01', 'p02', 'p03', 'p04']
+      const net = party(ids, { paced: true, lat: () => 150 })
+      net.run(2000)
+      net.start('p01')
+      net.flush()
+      rollAndPick(net, seeded(5))
+      expect(net.runUntil(() => net.bus('p04').phase === 'ready')).toBe(true)
+      for (const id of ['p02', 'p03', 'p04']) net.ready(id, true)
+      expect(net.runUntil(() => net.bus('p03').stops.length === 1, 30_000)).toBe(true)
+      net.run(2000)
+      const tour = net.bus('p03').tour
+      expect(
+        net
+          .bus('p03')
+          .riders.filter((r) => r.on)
+          .map((r) => r.id)
+          .sort(),
+      ).toEqual(ids)
+      /* Ann's page crashes: no bye, so she stays on everybody's Lab and roster until the sweep */
+      net.get('p02').listening = false
+      net.run(500)
+      for (const id of ['p01', 'p04']) {
+        net.roster.delete(id)
+        net.here.delete(id)
+        net.get(id).listening = false
+      }
+      net.run(300)
+      net.join('p01')
+      net.join('p04')
+      const back = net.now
+      net.run(2500)
+      /* the gap itself is documented and left (Evan's call): Start is offered here */
+      expect(canStart(net.bus('p04'), net.ctx('p04'))).toBe(true)
+      net.start('p04')
+      net.flush()
+      if (hopOff) {
+        net.run(300)
+        net.press('p04', { t: 'off' })
+        net.flush()
+      }
+      /* the party's sweep takes Ann off everybody's Lab */
+      net.run(back + 17_000 - net.now)
+      net.here.delete('p02')
+      net.run(back + 25_000 - net.now)
+      for (const id of ['p01', 'p03', 'p04']) {
+        expect([id, net.bus(id).tour, net.bus(id).phase !== 'end']).toEqual([id, tour, true])
+        expect(net.leaders().filter((x) => net.bus(x).tour === tour)).not.toEqual([])
+      }
+    })
+})
+
+describe('a hello once answered stays answered (askers)', () => {
+  /* ⚠️ EVERY SCREEN HOLDING THE TOUR KEEPS WHO IS ASKING, AND ANSWERS FROM THAT LIST WHEN THE ORDER
+     MOVES. So the list must empty on every screen once the tour has been heard — handed back at its
+     count, or moved on in the same second — or the next screen in line answers a page that already
+     has its tour, at each change of who is here, and the page left on the list is passed over as
+     an answerer by everybody but itself */
+  const setUp = () => {
+    const ids = ['p01', 'p02', 'p03', 'p04']
+    const net = party(ids, { paced: true, lat: () => 150 })
+    net.run(2000)
+    net.start('p01')
+    net.flush()
+    rollAndPick(net, seeded(5))
+    expect(net.runUntil(() => net.bus('p04').phase === 'ready')).toBe(true)
+    return net
+  }
+  /* the one who answered goes; nobody else hands the page its tour again */
+  const quietAfter = (net: Net) => {
+    const tour = net.bus('p01').tour
+    expect(net.bus('p05').tour).toBe(tour)
+    const held = net.bus('p03').seq
+    expect(net.bus('p02').seq).toBe(held)
+    const from = net.log.length
+    for (const id of ['p01']) {
+      net.roster.delete(id)
+      net.here.delete(id)
+      net.get(id).listening = false
+    }
+    net.run(1000)
+    const again = net.log.slice(from).filter((e) => e.m.t === 'state' && e.m.seq === held)
+    expect(again.map((e) => e.from)).toEqual([])
+  }
+  it('handed back at its count, by the screen that published it', () => {
+    const net = setUp()
+    /* just after the host's last state, so the hand-back cannot fold into a count that moves */
+    const n = net.log.length
+    expect(net.runUntil(() => net.log.slice(n).some((e) => e.m.t === 'state'), 10_000)).toBe(true)
+    net.run(200)
+    net.join('p05')
+    net.run(1500)
+    quietAfter(net)
+  })
+  it('answered by the tour moving on in the same second', () => {
+    const net = setUp()
+    net.run(3000)
+    net.join('p05')
+    net.ready('p02', true)
+    net.run(1500)
+    quietAfter(net)
   })
 })

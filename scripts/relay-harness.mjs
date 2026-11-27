@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
 
 const RELAY = fileURLToPath(new URL('../server/ws-server.js', import.meta.url))
+/** the doorless double — started only by its own test, and only with PARK_STUB_RELAY=yes */
+export const STUB = fileURLToPath(new URL('./park-stub-relay.mjs', import.meta.url))
 const GUARD =
   "data:text/javascript,process.stdin.on('end',()=>process.exit(0));" +
   "process.stdin.on('close',()=>process.exit(0));process.stdin.resume()"
@@ -34,14 +36,15 @@ export async function until(cond, ms, every = 10) {
 }
 
 /**
- * Start the relay on a port the OS picks, and say which.
+ * Start the relay on a port the OS picks, and say which. `script` is the relay unless a test
+ * says otherwise (the stub's own test passes STUB).
  *
  * ⚠️ THE ENVIRONMENT IS BUILT, NOT INHERITED. A shell with SUPABASE_URL in it, or a CI secret,
  * would otherwise turn "the relay with no Supabase" into the relay with whatever this machine
  * has — and the frames a socket hears depend on that. Only PATH is passed through.
  */
-export async function startRelay(env = {}, { bootMs = 10_000 } = {}) {
-  const child = spawn(process.execPath, ['--import', GUARD, RELAY], {
+export async function startRelay(env = {}, { bootMs = 10_000, script = RELAY } = {}) {
+  const child = spawn(process.execPath, ['--import', GUARD, script], {
     env: {
       PATH: process.env.PATH ?? '',
       PORT: '0',

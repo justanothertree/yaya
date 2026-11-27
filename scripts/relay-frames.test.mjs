@@ -1,5 +1,7 @@
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import WebSocket from 'ws'
+import { SAY } from '../server/lib/labDoor.mjs'
 import { DEFAULT_SETTINGS } from '../server/lib/settings.mjs'
 import { openSocket, sleep, startRelay, until } from './relay-harness.mjs'
 
@@ -48,6 +50,13 @@ import { openSocket, sleep, startRelay, until } from './relay-harness.mjs'
  * Ids are random, so each socket's id is learnt from its own `welcome` and written as `<A>`.
  * The first relay runs with no Supabase at all, which is what keeps every socket in it unvouched
  * and every frame deterministic; HEARTBEAT_MS keeps a ping sweep out of the window.
+ *
+ * ⚠️ AND THE LAB TABLE, WHICH IS THE CHANGE THE RECORDING WAS MADE FOR. A Lab room is the quiet
+ * one: a socket the door has not let in hears its `welcome` and the door's answer, and the room
+ * hears nothing about it, arriving or leaving. The first relay has no Supabase, so nobody can be
+ * let in at a table and what is pinned is exactly that silence; LAB_VOUCH_MS shortens the wait
+ * for the door's answer. What happens once somebody IS let in needs answers from Supabase about
+ * friendships too, and is scripts/relay-lab.test.mjs.
  */
 
 const welcome = (id, visitor) => ({ type: 'welcome', id, visitor })
@@ -55,10 +64,16 @@ const host = (hostId) => ({ type: 'host', hostId })
 const presence = (count) => ({ type: 'presence', count })
 const settings = (s) => ({ type: 'settings', settings: s })
 const over = (from) => ({ type: 'over', from, reason: 'quit' })
+const refused = (code) => ({ type: 'error', code, message: SAY[code] })
+
+/* long enough for the steps before it to finish under load, short enough not to slow the suite;
+   the step that expects the door's answer waits for the frame itself, not for a guess */
+const LAB_VOUCH_MS = 2500
+const TABLE = 'lab:RelayFramesTable00000_'
 
 let relay
 beforeAll(async () => {
-  relay = await startRelay({ HEARTBEAT_MS: '600000' })
+  relay = await startRelay({ HEARTBEAT_MS: '600000', LAB_VOUCH_MS: String(LAB_VOUCH_MS) })
 })
 afterAll(async () => {
   await relay?.stop()
@@ -100,11 +115,14 @@ function room(on = relay) {
         socks.get(name).close()
         socks.delete(name)
       }, want),
+    /** nothing done by anybody: just what arrives in the next `ms` */
+    wait: (ms, want) => step(() => sleep(ms), want),
     /** one message from `name`, or several in order down the same socket, as one step */
     send: (name, msg, want) =>
       step(async () => {
         for (const m of [msg].flat()) socks.get(name).send(m)
       }, want),
+    closed: (name) => until(() => socks.get(name)?.ws.readyState === WebSocket.CLOSED, 5000),
     closeAll: () => {
       for (const s of socks.values()) s.close()
       socks.clear()
@@ -248,6 +266,90 @@ describe('what the real relay sends on hello and on a peer leaving', () => {
       await r.close('C', {})
       await r.close('A', { B: [host('<B>'), over('<A>'), presence(1)] })
       await r.close('B', {})
+    } finally {
+      r.closeAll()
+    }
+  })
+})
+
+describe('a Lab table, to sockets the door has not let in', () => {
+  it('each arrival hears its own id; the room hears nothing; at the timer, the sentence and a close', async () => {
+    expect(TABLE).toMatch(/^lab:[A-Za-z0-9_-]{22}$/)
+    const r = room()
+    try {
+      /* create: true, as every other room's client sends it — a Lab room ignores it */
+      await r.hello('A', { room: TABLE, create: true }, { A: [{ type: 'welcome', id: '<A>' }] })
+      await r.hello('B', { room: TABLE }, { A: [], B: [{ type: 'welcome', id: '<B>' }] })
+      /* nothing a Lab room does not take is answered or passed on — not even a chat line */
+      await r.send('A', { type: 'chat', text: 'hello?' }, {})
+      await r.send('A', { type: 'lab', d: 'anyone?' }, {})
+      await r.send('A', { type: 'name', name: 'Ann' }, {})
+      await r.wait(0, {
+        A: [refused('members-only')],
+        B: [refused('members-only')],
+      })
+      expect(await r.closed('A')).toBe(true)
+      expect(await r.closed('B')).toBe(true)
+    } finally {
+      r.closeAll()
+    }
+  })
+
+  it('a socket leaving before the timer tells the room nothing', async () => {
+    const r = room()
+    try {
+      await r.hello('A', { room: TABLE }, { A: [{ type: 'welcome', id: '<A>' }] })
+      await r.hello('B', { room: TABLE }, { B: [{ type: 'welcome', id: '<B>' }] })
+      await r.close('B', { A: [] })
+    } finally {
+      r.closeAll()
+    }
+  })
+
+  it('a badly shaped lab: id is refused with bad-room and becomes no room at all', async () => {
+    const r = room()
+    try {
+      for (const bad of ['lab:x', `${TABLE}x`, 'lab:'])
+        await r.hello(bad, { room: bad, create: true }, { [bad]: [refused('bad-room')] })
+      for (const bad of ['lab:x', `${TABLE}x`, 'lab:']) expect(await r.closed(bad)).toBe(true)
+      /* and a Snake hello to it afterwards finds no room there: it was never created */
+      await r.hello('S', { room: 'lab:x' }, { S: [refused('bad-room')] })
+    } finally {
+      r.closeAll()
+    }
+  })
+
+  it('list shows the Snake lobby and never a Lab table', async () => {
+    const r = room()
+    try {
+      await r.hello('A', { room: TABLE }, { A: [{ type: 'welcome', id: '<A>' }] })
+      await r.hello(
+        'S',
+        { room: 'relay-frames-listed', create: true },
+        {
+          A: [],
+          S: [
+            { type: 'welcome', id: '<S>', visitor: 0 },
+            host('<S>'),
+            host('<S>'),
+            presence(1),
+            presence(1),
+            settings(DEFAULT_SETTINGS),
+          ],
+        },
+      )
+      await r.send(
+        'S',
+        { type: 'list' },
+        {
+          S: [
+            {
+              type: 'rooms',
+              items: [{ id: 'relay-frames-listed', name: 'relay-frames-listed', count: 1 }],
+            },
+          ],
+        },
+      )
     } finally {
       r.closeAll()
     }
@@ -580,6 +682,68 @@ describe('a park and a bout, to members who have been let in and a stranger who 
         { A: [{ type: 'step', from: '<B>', n: 12, in: 5 }] },
       )
       await r.close('A', { B: [host('<B>'), over('<A>'), presence(1)] })
+    } finally {
+      r.closeAll()
+    }
+  })
+})
+
+/**
+ * A third relay, whose park door is on a short clock, for what a socket that LEAVES a park
+ * still hears from it.
+ *
+ * ⚠️ A PARK'S TIMER WAS THE CONNECTION'S, NOT THE ROOM'S. It was set on a park hello, cleared on
+ * a close or on being let in, and never on leaving — and its callback reads the park it was set
+ * for, where a socket that has moved on has no entry, so it counted as never let in. A socket
+ * that walked from a park into a Snake room was told the park's members-only sentence there, and
+ * one that walked into the next park was told it twice. The Lab table review found it, because a
+ * Lab room is the one that promises a socket hears nothing it did not ask for; the Snake half is
+ * on main as well, and no shipped client can reach either, since NetClient opens a socket per
+ * room.
+ */
+describe('a socket that leaves a park for another room', () => {
+  const QUICK_PARK_MS = 600
+  const parkSays = {
+    type: 'error',
+    code: 'members-only',
+    message: 'The park is for people with an account on the site',
+  }
+  let quick
+  beforeAll(async () => {
+    quick = await startRelay({ HEARTBEAT_MS: '600000', PARK_VOUCH_MS: String(QUICK_PARK_MS) })
+  })
+  afterAll(async () => {
+    await quick?.stop()
+  })
+  /* a room's whole hello to its first socket: the same for a park and for a Snake room */
+  const first = (name) => [
+    welcome(`<${name}>`, 0),
+    host(`<${name}>`),
+    host(`<${name}>`),
+    presence(1),
+    presence(1),
+    settings(DEFAULT_SETTINGS),
+  ]
+
+  it('takes nothing of the park’s door with it: nothing in a Snake room, once in the next park', async () => {
+    const r = room(quick)
+    try {
+      await r.hello('A', { room: 'park:relay-frames-hop-a', create: true }, { A: first('A') })
+      await r.send(
+        'A',
+        { type: 'hello', room: 'relay-frames-hop-snake', create: true },
+        { A: first('A') },
+      )
+      /* past the park's clock: a Snake room has no door, and the park's may not speak in it */
+      await r.wait(QUICK_PARK_MS + 300, { A: [] })
+      await r.hello('B', { room: 'park:relay-frames-hop-b', create: true }, { B: first('B') })
+      await r.send(
+        'B',
+        { type: 'hello', room: 'park:relay-frames-hop-c', create: true },
+        { B: first('B') },
+      )
+      /* once, from the park B is in — never again from the one it left */
+      await r.wait(QUICK_PARK_MS + 300, { B: [parkSays] })
     } finally {
       r.closeAll()
     }

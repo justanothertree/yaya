@@ -13,10 +13,12 @@
  */
 
 import {
+  abandoned,
   holdOn,
   holds,
   landedAt,
   podium,
+  stalled,
   upNext,
   type Bus,
   type Consent,
@@ -215,8 +217,14 @@ export const SHARING_OFF =
   'You stopped sharing, so the party tour is hidden. Your place on the bus is kept.'
 /** the pause over and the tour on screen again: said, because the pause was */
 export const TOUR_BACK = 'The party tour is back.'
-export const twoStartsWords = (v: View, starter: string) =>
-  `Two tours started at once; this one is ${nameOf(v, starter)}'s. Press Take me there at the first stop to ride.`
+/**
+ * My fresh tour lost to another started at the same moment. ⚠️ NOT "TWO TOURS": three Starts in
+ * one moment told a loser "Two tours started at once" (measured on the dev call), and no browser
+ * can know how many there were — each hears only the tours that reach it before the winner does —
+ * so the count is not said.
+ */
+export const startedAtOnceWords = (v: View, starter: string) =>
+  `More than one tour started at once; this one is ${nameOf(v, starter)}'s. Press Take me there at the first stop to ride.`
 /**
  * The window's time is up and the departure has not been heard. ⚠️ NOT "THE BUS LEAVES IN 0 s",
  * which is what the count said once it ran out: true for the moment a departure takes to arrive,
@@ -225,9 +233,49 @@ export const twoStartsWords = (v: View, starter: string) =>
  * holds until the bus moves: nothing about it changes by the second, so it is read once.
  */
 export const ABOUT_TO_LEAVE = 'The bus is about to leave…'
+/** a tour given up on (bus.ts's abandoned) with somebody on it here, and nothing moving it on */
+export const STALLED = 'The bus has stalled: nobody is driving it.'
 /** "The bus leaves in 12 s." while the window is open, then what is true once it is not */
 const leavesWords = (v: View) =>
   v.now < v.bus.due ? `The bus leaves in ${secs(v.bus.due - v.now)} s.` : ABOUT_TO_LEAVE
+
+/**
+ * When the status region says ABOUT_TO_LEAVE: two state gaps after the zero, the bound knobs()
+ * already puts on how long a state can take to arrive (a gap waiting in the host's Outbox, and a
+ * second for the wire).
+ *
+ * ⚠️ NOT AT THE ZERO. Every viewer but the host reaches the zero before the departure does, and
+ * when the host sent a state in the second before it — a late Take me there — the departure waits
+ * out that gap: measured on the dev call, Dee read "about to leave" for 0.9 s at a departure that
+ * went at its time. Said at the zero, it would be heard at nearly every stop about a bus that was
+ * leaving; said here, it is heard when the bus is late.
+ */
+export const leavingSaidAt = (b: Pick<Bus, 'due'>, k: Pick<Knobs, 'STATE_GAP_MS'>) =>
+  b.due + 2 * k.STATE_GAP_MS
+/**
+ * ABOUT_TO_LEAVE for the status region, once a window. Evan, 27 Nov 2026: "Yes, screen readers
+ * announce 'About to leave…' once." `told` is the window it was last said in, kept by the caller
+ * and handed back; the answer is the `told` to keep, and the sentence to say now or null.
+ *
+ * ⚠️ ONLY WHILE THE LINE SAYS IT, so the status never says what the screen does not: not to a rider
+ * staying here, nor somebody already at the toy, nor once the line says the bus has stalled.
+ * ⚠️ ONCE A WINDOW, NOT ONCE A STATE: a state of the same window heard after the zero carries nought
+ * left and moves `due` to when it arrived, so the window is its tour, departure and toy — as a no
+ * and the presses are kept (useBus, closeWindow) — and forgotten when the phase leaves ready, so the
+ * same toy rolled again at the same departure after a skip is a window of its own.
+ */
+export function leavingSaid(
+  told: string | null,
+  v: View,
+): { told: string | null; text: string | null } {
+  const b = v.bus
+  if (!holds(b) || b.phase !== 'ready' || !b.toy) return { told: null, text: null }
+  const key = `${b.tour}:${b.stops.length + 1}:${b.toy}`
+  if (told === key) return { told, text: null }
+  if (v.now < leavingSaidAt(b, v.k) || !phaseLine(v)?.text.includes(ABOUT_TO_LEAVE))
+    return { told: null, text: null }
+  return { told: key, text: ABOUT_TO_LEAVE }
+}
 /** a button whose request is in flight: at most 3 s, then the button comes back */
 export const PENDING = { roll: 'Rolling…', ready: 'Going…' } as const
 /**
@@ -248,7 +296,7 @@ export function saidOf(prev: Bus, v: View): string | null {
     /* my own fresh tour lost to one started at the same moment */
     const mine = holds(prev) && prev.phase !== 'end' && prev.riders[0]?.id === b.me
     if (mine && !prev.stops.length && b.riders[0]?.id !== b.me)
-      return twoStartsWords(v, b.riders[0]?.id ?? '')
+      return startedAtOnceWords(v, b.riders[0]?.id ?? '')
     return b.phase === 'pick' && !b.stops.length ? startedWords(v) : null
   }
   if (b.phase === 'end' && prev.phase !== 'end' && !b.riders.some((r) => r.on)) return ALL_OFF
@@ -487,15 +535,18 @@ export function phaseLine(v: View): Line | null {
   const b = v.bus
   if (!holds(b)) return null
   if (b.phase === 'end') return { text: finaleWords(v), buttons: finaleButtons }
-  /* nobody on the bus is here: the bus waits, and after a while anybody may start another */
-  if (b.quietSince !== null) {
-    if (v.now - b.quietSince < v.k.ABANDON_MS)
-      return { text: `The bus is waiting for ${nameOf(v, guideId(b))}.`, buttons: [] }
+  /* nobody on the bus is here, or nobody is moving it on (bus.ts's abandoned): after a while
+     anybody may start another. ⚠️ SAID FROM WHO IS HERE, NOT FROM WHICH RULE GAVE IT UP: a rider
+     back on a page that holds nothing is here, and "Nobody on the bus is here" would be untrue */
+  if (abandoned(b, v)) {
+    const here = b.riders.some((r) => r.on && v.present.has(r.id))
     return {
-      text: 'Nobody on the bus is here right now.',
+      text: here ? STALLED : 'Nobody on the bus is here right now.',
       buttons: [button('start', '🚌 Start a party tour')],
     }
   }
+  if (b.quietSince !== null)
+    return { text: `The bus is waiting for ${nameOf(v, guideId(b))}.`, buttons: [] }
   if (b.phase === 'choose') {
     const faces = b.faces!
     const by = roller(v)
@@ -524,7 +575,7 @@ export function phaseLine(v: View): Line | null {
  */
 export function busLine(v: View): Line | null {
   const b = v.bus
-  if (!holds(b) || b.phase === 'end' || b.quietSince !== null) return null
+  if (!holds(b) || b.phase === 'end' || b.quietSince !== null || stalled(b, v)) return null
   const i = myIndex(b)
   if (b.phase === 'ready') {
     const toy = b.toy!
