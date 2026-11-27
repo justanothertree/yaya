@@ -119,6 +119,8 @@ export function makeDrafts(
 export function makeAutosave<T>(
   store: { write(body: T): Promise<boolean>; drop(): Promise<boolean> },
   settleMs = 600,
+  /** told after every write whether the device took it — how a refused draft gets said */
+  onWritten: (ok: boolean) => void = () => {},
   timers: { set: typeof setTimeout; clear: typeof clearTimeout } = {
     set: (...a: Parameters<typeof setTimeout>) => setTimeout(...a),
     clear: (t) => clearTimeout(t),
@@ -134,7 +136,9 @@ export function makeAutosave<T>(
     const { body } = pending
     pending = null
     return (body === null ? store.drop() : store.write(body)).then((ok) => {
-      if (body !== null) failed = !ok
+      if (body === null) return
+      failed = !ok
+      onWritten(ok)
     })
   }
   return {
@@ -150,8 +154,10 @@ export function makeAutosave<T>(
     pause() {
       paused = true
     },
+    /** ⚠️ and picks up whatever changed while it was paused, or that change waits for the next */
     resume() {
       paused = false
+      if (pending && !timer) timer = timers.set(run, settleMs)
     },
     /** Whether the last write the device was asked for was refused — the one thing worth saying. */
     failed: () => failed,

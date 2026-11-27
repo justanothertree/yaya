@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeDrafts, memoryBackend } from '../drafts/drafts'
-import { contentSig, EMPTY_SIG, packPaintDraft, readPaintDraft } from './paintDraft'
+import { contentSig, EMPTY_SIG, offerFor, packPaintDraft, readPaintDraft } from './paintDraft'
 import type { PaintSession } from './session'
 import type { Stroke } from './strokes'
 
@@ -174,5 +174,55 @@ describe('contentSig: what counts as unsaved', () => {
   it('the empty page is the baseline', () => {
     expect(contentSig({ strokes: [], bg: null, layerNames: [] })).toBe(EMPTY_SIG)
     expect(contentSig(base)).not.toBe(EMPTY_SIG)
+  })
+})
+
+describe('the room across a reload: offer, bring back, save, and nothing left over', () => {
+  const ann = () => 'ann'
+  const page = (strokes: Stroke[]): PaintSession => ({
+    strokes,
+    bg: null,
+    hidden: [],
+    layerNames: ['body'],
+  })
+
+  it('a minion drawn and not saved is offered on the empty page after a reload, and only once saved is it gone', async () => {
+    const rows = new Map<string, unknown>()
+    /* drawing: the room keeps a draft of the unsaved page */
+    await makeDrafts(memoryBackend(rows), ann).write('paint', packPaintDraft(MINION, true))
+
+    /* reload: nothing in memory, the page empty — the draft is offered */
+    const first = await makeDrafts(memoryBackend(rows), ann).read('paint', readPaintDraft)
+    expect(offerFor(first?.body ?? null, EMPTY_SIG)).toBe(true)
+
+    /* brought back: the page IS the draft, so a second look offers nothing */
+    const pageSig = contentSig(first!.body.session)
+    expect(offerFor(first!.body, pageSig)).toBe(false)
+
+    /* saved: the room drops the draft — and the next reload has nothing to offer */
+    await makeDrafts(memoryBackend(rows), ann).drop('paint')
+    const after = await makeDrafts(memoryBackend(rows), ann).read('paint', readPaintDraft)
+    expect(offerFor(after?.body ?? null, EMPTY_SIG)).toBe(false)
+  })
+
+  it('walking to Games and back is not a reload: the page and its draft agree, so nothing is asked', async () => {
+    const rows = new Map<string, unknown>()
+    await makeDrafts(memoryBackend(rows), ann).write('paint', packPaintDraft(MINION, true))
+    const d = await makeDrafts(memoryBackend(rows), ann).read('paint', readPaintDraft)
+    expect(offerFor(d!.body, contentSig(MINION))).toBe(false)
+  })
+
+  it('a saved creature opened to edit does not hide an unsaved draft underneath it', async () => {
+    const rows = new Map<string, unknown>()
+    await makeDrafts(memoryBackend(rows), ann).write('paint', packPaintDraft(MINION, true))
+    const d = await makeDrafts(memoryBackend(rows), ann).read('paint', readPaintDraft)
+    expect(offerFor(d!.body, contentSig(page([stroke({ c: '#123456' })])))).toBe(true)
+  })
+
+  it('somebody else signing in on the same browser is offered nothing', async () => {
+    const rows = new Map<string, unknown>()
+    await makeDrafts(memoryBackend(rows), ann).write('paint', packPaintDraft(MINION, true))
+    const theirs = await makeDrafts(memoryBackend(rows), () => 'bo').read('paint', readPaintDraft)
+    expect(offerFor(theirs?.body ?? null, EMPTY_SIG)).toBe(false)
   })
 })

@@ -171,4 +171,29 @@ describe('makeAutosave', () => {
     await vi.advanceTimersByTimeAsync(10)
     expect(b.failed()).toBe(false)
   })
+
+  it('tells the room after each write whether it landed, and says nothing about a drop', async () => {
+    const said: boolean[] = []
+    const bad = makeAutosave(recorder(false).store, 10, (ok) => said.push(ok))
+    bad.change('x')
+    await vi.advanceTimersByTimeAsync(10)
+    bad.change(null)
+    await vi.advanceTimersByTimeAsync(10)
+    const good = makeAutosave(recorder(true).store, 10, (ok) => said.push(ok))
+    good.change('y')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(said).toEqual([false, true])
+  })
+
+  it('a change made while paused is written once it resumes, without another change', async () => {
+    const { log, store } = recorder()
+    const a = makeAutosave(store, 600)
+    a.pause()
+    a.change('drawn while the offer was up')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(log).toEqual([])
+    a.resume()
+    await vi.advanceTimersByTimeAsync(600)
+    expect(log).toEqual(['write drawn while the offer was up'])
+  })
 })

@@ -135,5 +135,18 @@ export function contentSig(
   ])
 }
 
+/**
+ * Whether a stored draft should be offered back, against the page as it stands.
+ *
+ * ⚠️ ONLY WHEN IT IS NOT ALREADY THERE. Walking to Games and back brings the picture back from
+ * memory, and its draft is the same work — offering it would ask somebody whether they want what
+ * they are looking at. Anything else is offered, and that includes a page that is NOT empty: a
+ * minion opened from the Minions room to edit is a saved creature, and a draft sitting under it is
+ * unsaved work that nothing else will ever bring back.
+ */
+export function offerFor(draft: PaintDraft | null, pageSig: string): boolean {
+  return !!draft && contentSig(draft.session) !== pageSig
+}
+
 /** The empty page's signature — the baseline before anything is saved or opened. */
 export const EMPTY_SIG = contentSig({ strokes: [], bg: null, layerNames: [] })
