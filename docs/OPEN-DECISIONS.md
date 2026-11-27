@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-26 for the Lab: §25 parks four-player Spades by turns, on Evan's answer of that day. Before that, 2026-11-22 for Chronicle: §24 records Evan's answers of that day and what was applied. Before that, 2026-11-21: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
+Last reviewed: 2026-11-27 for the Lab: §26 names two party-tour calls the liveness bound left open. Before that, 2026-11-26: §25 parks four-player Spades by turns, on Evan's answer of that day. Before that, 2026-11-22 for Chronicle: §24 records Evan's answers of that day and what was applied. Before that, 2026-11-21: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
 
 ---
 
@@ -1512,3 +1512,35 @@ here so it is not mistaken for forgotten, with the exact ask for the day it is w
 **If it keeps waiting:** nothing else is blocked. Two friends go on playing Spades by turns as they
 do today, and four friends play it together on a call once step 6 lands. What waits is only four
 friends playing one game over several days.
+
+---
+
+## 26. The party tour's liveness bound — two calls it leaves open (27 Nov 2026)
+
+**Already built.** No screen on a party tour waits more than 30 s (`STALL_MS`) with nobody driving
+it and no Start, in any phase, between stops included: whoever decides re-sends the bus after 5 s
+of quiet (`BEAT_MS`), and a page back from a reload is handed its tour by the first friend here who
+holds it, the retry by the next one along. docs/2026-11-22-lab-tour.md, "The liveness bound".
+
+### 26a. Offer Start 3.5 s after arriving instead of 1.5 s?
+
+A rider's new page is offered Start from 1.5 s (`SYNC_MS`). When the friend first in line to hand
+its tour back has crashed and not yet been swept, the retry answers it at about 3.3 s, so a press
+in between starts a second, stray tour. Since the askers fix of the same day that stray press costs
+a few seconds of the wrong tour on screen, until the retry or the party's sweep hands the real one
+back; it no longer loses it. Measured: 11 of the verify's 300 random calls pressed in that gap.
+
+**The ask.** Closing it means not offering Start to a page that has said hello until its retry
+could have been answered: 3.5 s after arriving rather than 1.5 s, for everybody who opens the Lab
+while anybody else is on it, tour or none.
+
+**If it keeps waiting:** nothing is blocked. The gap stays, and a stray press stays recoverable.
+
+### 26b. A host whose bus lags behind its presence gives the tour up at 30 s
+
+Recorded so it is not mistaken for an accident. A host whose bus states reach friends more than
+about 28 s late, while its `here` keeps arriving on time, loses the tour at `STALL_MS`, where the
+build before the bound tolerated about 38 s in a roll. On the call's one channel, in order, the two
+cannot drift apart: presence sweeps a host that slow in 16–18 s and the next rider takes over,
+measured with no Start at any delay up to 38 s. **No answer needed unless Evan wants the old
+tolerance back**, which would mean a longer `STALL_MS` for everybody.
