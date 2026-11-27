@@ -16,7 +16,9 @@
  * lowest id carries on from the last state it had. A newcomer's `hello` is answered by the host as
  * it was before they arrived, or by whoever published the room we hold (answersHello): a newcomer
  * with a lower id is host the moment they are present, and holds nothing yet. Should that answer
- * never come, whoever holds the room hands it on (owes).
+ * never go out, whoever holds the room hands it on (owes). Should it go out and reach everybody
+ * but the newcomer, nobody knows it is owed, and the first move made against the room they lack
+ * makes them ask again (receive).
  *
  * ⚠️ WHOLE STATE, NOT MOVES. A board game is under a kilobyte, so each change sends the room
  * entire. A lost message is then repaired by the next one, a repeated or late one is recognised by
@@ -124,10 +126,11 @@ export type Room<G> = {
   /** since when (ms) each seated player has been missing */
   missing: Record<string, number>
   /**
-   * The host has shown me an older room than mine, and nobody has put mine on the wire since: my
-   * next `present` sends it (owes, below). Absent until then.
+   * Since when (this tab's clock) the host has shown me it lacks the room I hold, with nobody
+   * putting mine on the wire since: a `present` OWE_MS on sends it (owes, below). Absent until
+   * then, and when paid.
    */
-  hostBehind?: boolean
+  hostBehind?: number
 }
 
 /** what goes out on the wire, as the body of a party `lab` message */
@@ -158,6 +161,11 @@ export type Action<M> =
 
 /** how long a seat is held for somebody who has gone */
 export const HOLD_MS = 60_000
+/**
+ * How long what is owed a host waits for the answer that pays it (owes): that answer comes a hop
+ * behind the hello, well under a second on a call
+ */
+export const OWE_MS = 1000
 
 type Step<G> = { room: Room<G>; out: Wire[] }
 
@@ -235,11 +243,22 @@ export const answersHello = (
  *
  * So a hello from my new host that somebody else is to answer leaves me owing it my room, and so
  * does my host showing me a room older than mine: a host who carries on from a room that missed
- * the last state before the old host left. What is owed goes at my next `present` (where.ts's
- * roster, every five seconds and whenever somebody comes or goes), unless that room or a newer one
- * reaches me first, from anybody: the host has heard it too. The wait keeps an arrival at its
- * cost, because the answer the rule names comes within the same hop and pays what everybody else
- * owed, so roomWire.test.ts's recording is byte for byte unchanged.
+ * the last state before the old host left. What is owed goes at a `present` OWE_MS or more after
+ * it was owed (where.ts's roster ticks every five seconds and whenever somebody comes or goes),
+ * unless that room or a newer one reaches me first, from anybody: the host has heard it too. The
+ * wait keeps an arrival at its cost, because the answer the rule names comes a hop behind the
+ * hello and pays what everybody else owed, so roomWire.test.ts's recording is byte for byte
+ * unchanged.
+ *
+ * ⚠️ THE WAIT IS A TIME, NOT "THE NEXT LOOK" (verification of 27 Nov 2026). Paid at the next
+ * `present`, a roster tick falling inside that one hop sent the room before the answer could pay
+ * for it, on every live game: a whole room nobody needed.
+ *
+ * ⚠️ AND IT CANNOT SEE AN ANSWER THAT WENT OUT AND WAS LOST ON ITS WAY TO THE HOST ALONE. Everybody
+ * else heard it and so owes nothing — the same when what is owed is itself lost on the way to the
+ * host and reaches everybody else. The host is then behind everybody, nobody knows it, and a quiet
+ * host says nothing. What tells it is the next move: made against a board newer than the host's,
+ * it is refused, and the host says hello again (receive), which everybody answers as a newcomer's.
  *
  * Two older rooms say nothing. A newcomer's own empty one (seq 0) is its hello again, and it can
  * come more than once, as their roster fills: counted, each could land after the answer and cost a
@@ -247,14 +266,14 @@ export const answersHello = (
  * earlier room, to somebody holding a newer one the host published, says only that it was late.
  */
 const owes = (room: Room<unknown>, from: string, heard: 'a hello not mine' | { seq: number }) =>
-  !room.hostBehind &&
+  room.hostBehind === undefined &&
   room.seq > 0 &&
   from === hostOf(room) &&
   (heard === 'a hello not mine' || (heard.seq > 0 && room.from !== from))
 
 /** the room with nothing owed to its host */
 const paid = <G>(room: Room<G>): Room<G> =>
-  room.hostBehind ? { ...room, hostBehind: false } : room
+  room.hostBehind === undefined ? room : { ...room, hostBehind: undefined }
 
 /** a newer state wins; at an equal seq (two hosts for a moment), the lower sender's */
 export const newer = (seq: number, from: string, heldSeq: number, heldFrom: string) =>
@@ -496,12 +515,16 @@ export const readSeats = (v: unknown): Seats | null =>
     ? (v as Seats)
     : null
 
-/** somebody else's message, off the wire — everything in it checked before it is believed */
+/**
+ * Somebody else's message, off the wire, at time `now` (this tab's clock, as `present`'s) —
+ * everything in it checked before it is believed
+ */
 export function receive<G, M>(
   rules: Rules<G, M>,
   room: Room<G>,
   from: string,
   body: unknown,
+  now: number,
 ): Step<G> {
   const none = { room, out: [] }
   const b = body as Partial<Record<string, unknown>> | null
@@ -521,9 +544,10 @@ export function receive<G, M>(
     if (!(rules.modes ?? ['versus']).includes(mode)) return none
     if (!newer(b.seq, from, room.seq, room.from)) {
       // somebody has my room, or a newer one, on the wire: the host has heard it too
-      if (b.seq >= room.seq) return room.hostBehind ? { room: paid(room), out: [] } : none
+      if (b.seq >= room.seq)
+        return room.hostBehind === undefined ? none : { room: paid(room), out: [] }
       return owes(room, from, { seq: b.seq })
-        ? { room: { ...room, hostBehind: true }, out: [] }
+        ? { room: { ...room, hostBehind: now }, out: [] }
         : none
     }
     return {
@@ -535,7 +559,7 @@ export function receive<G, M>(
     if (answersHello(room.me, room.present, from, room.seq, room.from))
       return { room, out: [stateOf(rules, room)] }
     return owes(room, from, 'a hello not mine')
-      ? { room: { ...room, hostBehind: true }, out: [] }
+      ? { room: { ...room, hostBehind: now }, out: [] }
       : none
   }
   if (!isHost(room)) return none
@@ -552,7 +576,14 @@ export function receive<G, M>(
        game is one anybody may move in at any time, whose moves do not depend on each other (two
        presses in Lamps land the same in either order), so a quick second press is not stale */
     if (move === null) return none
-    if (b.at !== room.seq && rules.turn(room.game) !== 'any') return none
+    if (b.at !== room.seq && rules.turn(room.game) !== 'any') {
+      /* made against a board newer than mine: I host without the room everybody else holds, and
+         nobody knows it (owes says why), so I ask for it as a newcomer does. Older than mine is
+         a mover a state behind, which the state on its way to them mends */
+      return typeof b.at === 'number' && b.at > room.seq
+        ? { room, out: [{ sub: room.sub, t: 'hello' }] }
+        : none
+    }
     return decide(rules, room, from, { t: 'move', move })
   }
   return none
@@ -578,7 +609,7 @@ export function present<G, M>(
     if (s && !here.has(s)) missing[s] = Object.hasOwn(room.missing, s) ? room.missing[s] : now
   const seen: Room<G> = { ...room, present: others, missing }
   if (!isHost(seen))
-    return seen.hostBehind
+    return seen.hostBehind !== undefined && now - seen.hostBehind >= OWE_MS
       ? { room: paid(seen), out: [stateOf(rules, seen)] }
       : { room: seen, out: [] }
   // a host owes nobody its room: it goes out with the announcement or the next change
