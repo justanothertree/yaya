@@ -19,7 +19,8 @@
  * the two kinds of table can never pick different hosts from the same people. Everybody else asks
  * (`sit`, `stand`, …) and the host answers with `state`, the whole table. A host may be watching:
  * it only writes chairs and never plays. `newer` and `answersHello` are room.ts's too, imported
- * rather than copied; `later` puts one key before `newer`'s, how far the rounds have got.
+ * rather than copied; `later` puts how far the rounds have got before the seq, and breaks
+ * `newer`'s last tie, one publisher's two tables, by code.
  *
  * The CAPTAIN sets the table — mode, options, computers, who sits where — and starts each round.
  * Derived, never elected: of the seated people here, whoever sat earliest. That is Evan's answer
@@ -75,7 +76,8 @@
  *   the lower publisher's (test 4.5).
  * - **Re-minted between rounds when anybody who heard it has left the call**, never mid-round, so a
  *   round is never cut off from its own room. A start still held for the pace has begun for
- *   nobody, so a leaver in that second re-mints too (betweenRounds).
+ *   nobody, so a leaver in that second re-mints too (betweenRounds) — unless this tab has heard
+ *   the same round started by another host, which has begun it for whoever took that.
  * - ⚠️ `knew` IS EVERYONE WHO HAS HEARD THIS CODE, AS FAR AS THE HOST CAN TELL — NOT ONLY THOSE ON
  *   THE CALL WHEN IT WAS MINTED, which is what the plan wrote. Somebody who joined the call
  *   afterwards heard the code in the next state just the same, and the plan's rule would let them
@@ -86,6 +88,14 @@
  *   newcomer left within the second. A newcomer with the lowest id, new to the call, costs that
  *   one state more than at a call table (4 sends, not 3). And somebody who reaches the host's
  *   roster just after a state went out is counted as having heard it (heardFirst).
+ * - ⚠️ AND WHOEVER HANDS A TABLE ON COUNTS ITS OWN CALL AS HAVING HEARD THE CODE (`relayed`,
+ *   verification of 27 Nov 2026). A newcomer's fold was the only record that they had heard it,
+ *   and one lost copy of it, or a newcomer who hung up first, left `knew` without them: the next
+ *   round began on a code somebody gone had heard. The tab that answered their hello had them on
+ *   its call as it sent, so it keeps that, and counts it when it hosts.
+ * - Somebody in `knew` who has not reached this host's roster yet reads as somebody who left, so a
+ *   host whose roster lags can re-mint for nobody: an extra state and a fresh code, between rounds
+ *   only, which errs the safe way for a capability.
  * - `knew` holds at most 16 different people (readChairs refuses a repeat), which cannot hide a
  *   leaver: a call holds at most 12 (voiceSession's CALL_HARD_LIMIT), so a full `knew` always
  *   names somebody who has left, and the next round re-mints.
@@ -142,8 +152,9 @@ export type Chairs<O> = {
   /** a change made here and not yet sent, waiting for PACE_MS */
   owed: boolean
   /**
-   * The round `n` of the last state this tab sent or took off the wire. A round on in this table
-   * past it is a start still held for the pace, which nobody has heard, so nobody has begun it
+   * The round `n` of the last state this tab sent, took off the wire, or heard from anybody. A
+   * round on in this table past it is a start still held for the pace, which nobody has heard, so
+   * nobody has begun it
    */
   told: number
   /**
@@ -151,6 +162,11 @@ export type Chairs<O> = {
    * `present` PACE_MS on sends it (owesHost)
    */
   hostBehind: number | null
+  /**
+   * Who was on my call when I handed `code` on as somebody else's table (a hello's answer, a debt
+   * paid): they heard it, whatever `knew` says, and I count them when I host that code. Never sent
+   */
+  relayed: { code: string; ids: string[] } | null
 }
 
 export type LiveRules<O> = {
@@ -188,7 +204,10 @@ export type Ask<O> =
   | { t: 'start'; n: number }
   | { t: 'over'; n: number; result: unknown }
 
-/** the table on the wire: a chair is [id, since, cpu]; `by` is who published it */
+/**
+ * The table on the wire: a chair is [id, since, cpu]; `by` is who published it. A publisher is in
+ * `knew` unless `knew` was already full, so `by` can name one id that `knew` and the chairs do not
+ */
 export type StateBody = {
   t: 'state'
   seq: number
@@ -257,6 +276,7 @@ export function openChairs<O>(rules: LiveRules<O>, me: string): Step<O> {
     owed: false,
     told: 0,
     hostBehind: null,
+    relayed: null,
   }
   return { table, out: [{ v: 1, sub: rules.sub, t: 'hello' }] }
 }
@@ -335,22 +355,35 @@ const betweenRounds = (c: Chairs<unknown>) => c.round.phase !== 'on' || c.round.
 /** how far a table's rounds have got: a start is past the open table before it, an end past both */
 const progress = (r: Round) => r.n * PHASES.length + PHASES.indexOf(r.phase)
 /**
- * Whether state `s` is later than table `c`: the higher seq; at an equal seq, which only two hosts
- * for a moment can make, the one further into its rounds; and then room.ts's `newer`, the lower
- * publisher's.
+ * Whether state `s` is later than table `c`: the one further into its rounds; at the same point,
+ * the higher seq; then room.ts's `newer`, the lower publisher's; and a publisher's two different
+ * tables at one seq, the lower code's.
  *
  * ⚠️ A ROUND STARTED IS NOT UNDONE BY A TIE (review of 26 Nov 2026). Ann, whose view had not yet
  * caught up with Bo, still hosted; she took Cy's start, Bo took Dee's sit, both at one seq. By
  * publisher alone Bo's won, so Cy and Dee watched round 1 begin and end without a move, and begin
  * again when the start reached Bo; a start Ann held for the pace was simply lost. A lost sit costs
  * a press; a lost start costs a round its referee may already be playing (step 5).
+ *
+ * ⚠️ NOR BY A HIGHER SEQ FROM A TABLE THAT NEVER HAD IT (verification of 27 Nov 2026). The start
+ * Ann sent as she hung up reached Dee, and Cy, who never had it, hosted on: Dee owed it her, a
+ * second on. Anything Cy published in that second — the captain's mode, a friend joining the
+ * call — was a later seq, and Dee took it, so the round she was playing was gone everywhere. Rounds
+ * only ever go forward along one table, so the table further on is the one that has seen more,
+ * whatever its seq; and what Cy changed in that second is a press lost, not a round.
+ *
+ * ⚠️ AND ONE PUBLISHER CAN HOLD TWO TABLES AT ONE SEQ: a host whose toy reopens before anybody
+ * sits mints a fresh "seq 1 by me" while somebody still holds its last one, and neither was later
+ * than the other, so two codes stood on the call for good. The lower code wins, on every tab.
  */
-const later = (s: Pick<Read<unknown>, 'seq' | 'from' | 'round'>, c: Read<unknown>) =>
-  s.seq !== c.seq
-    ? s.seq > c.seq
-    : progress(s.round) !== progress(c.round)
-      ? progress(s.round) > progress(c.round)
-      : newer(s.seq, s.from, c.seq, c.from)
+const later = (s: Pick<Read<unknown>, 'seq' | 'from' | 'round' | 'code'>, c: Read<unknown>) =>
+  progress(s.round) !== progress(c.round)
+    ? progress(s.round) > progress(c.round)
+    : s.seq !== c.seq
+      ? s.seq > c.seq
+      : s.from !== c.from
+        ? newer(s.seq, s.from, c.seq, c.from)
+        : s.code < c.code
 
 /* ── what goes out ─────────────────────────────────────────────────────────────────────────── */
 
@@ -382,12 +415,20 @@ const minted = <O>(c: Chairs<O>): Chairs<O> => ({
 })
 /** somebody who has heard this code has left the call */
 const stale = (c: Chairs<unknown>) => c.knew.some((id) => id !== c.me && !c.roster.includes(id))
+/** who was on my call when I handed this table's code on, as somebody else's */
+const relayedOf = (c: Chairs<unknown>) => (c.relayed?.code === c.code ? c.relayed.ids : [])
 /** who is on the call now and not yet in `knew`, while there is room to say so */
 const unheard = (c: Chairs<unknown>) =>
   c.knew.length >= MAX_KNEW ? [] : [c.me, ...c.roster].filter((id) => !c.knew.includes(id))
-/** the host's state as it goes out: everybody on the call now has heard its code */
+/**
+ * The host's state as it goes out: everybody on the call now has heard its code, and so has
+ * everybody who was on it when I handed the code on (`relayed`)
+ */
 function heard<O>(c: Chairs<O>): Chairs<O> {
-  const add = unheard(c)
+  const add =
+    c.knew.length >= MAX_KNEW
+      ? []
+      : [...new Set([...unheard(c), ...relayedOf(c)])].filter((id) => !c.knew.includes(id))
   if (!add.length) return c
   return { ...c, knew: [...c.knew, ...add].slice(0, MAX_KNEW), seq: c.seq + 1, from: c.me }
 }
@@ -396,9 +437,15 @@ function heard<O>(c: Chairs<O>): Chairs<O> {
 function send<O>(c: Chairs<O>, now: number, paced: boolean): Step<O> {
   if (paced && c.sent !== null && now - c.sent < PACE_MS)
     return { table: { ...c, owed: true }, out: [] }
-  const said = isHost(c) ? heard(c) : c
+  const host = isHost(c)
+  const said = host ? heard(c) : c
+  /* handed on as somebody else's: everybody on my call hears the code, and their own count of it
+     may never arrive */
+  const relayed = host
+    ? said.relayed
+    : { code: said.code, ids: [...new Set([...relayedOf(said), c.me, ...c.roster])] }
   return {
-    table: { ...said, sent: now, owed: false, told: said.round.n, hostBehind: null },
+    table: { ...said, sent: now, owed: false, told: said.round.n, hostBehind: null, relayed },
     out: [wireOf(said)],
   }
 }
@@ -636,13 +683,21 @@ export function readChairs<O>(rules: LiveRules<O>, body: unknown): Read<O> | nul
  *
  * Two earlier states say nothing, as in room.ts: a newcomer's own fresh table (seq 1, minted by
  * its sender), which is its hello again and can come more than once as its roster fills; and a
- * late copy of a state the host published itself, to somebody holding a later one it published.
+ * late copy of a state the host published itself, on the code I hold, to somebody holding a later
+ * one it published.
+ *
+ * ⚠️ "ON THE CODE I HOLD" IS WHAT TELLS A LATE COPY FROM A HOST WHOSE TOY REOPENED (verification
+ * of 27 Nov 2026). Both are "by" the host. Read by publisher alone, every state of the new session
+ * was a late copy, and a tab holding the old table owed nothing until the new seq passed its own,
+ * however many changes that took. A reopened toy mints a new code; a late copy carries the one I
+ * hold, unless the code changed between, and then what goes out is one state nobody needed.
  */
 const owesHost = (c: Chairs<unknown>, from: string, heard: 'a hello not mine' | Read<unknown>) =>
   c.hostBehind === null &&
   c.seq > 0 &&
   from === hostOf(c) &&
-  (heard === 'a hello not mine' || (!(heard.seq === 1 && heard.from === from) && c.from !== from))
+  (heard === 'a hello not mine' ||
+    (!(heard.seq === 1 && heard.from === from) && !(c.from === from && heard.code === c.code)))
 
 /** somebody else's message, off the wire — everything in it checked before it is believed */
 export function receive<O>(
@@ -665,6 +720,11 @@ export function receive<O>(
     // the table I hold, from anybody: the host has heard it too
     else if (!later(c, s)) next = c.hostBehind === null ? c : { ...c, hostBehind: null }
     else if (owesHost(c, from, s)) next = { ...c, hostBehind: now }
+    /* the round this table holds, begun on somebody's screen though I did not take their state
+       (one taken is told already): two hosts for a moment, each with one start, and mine held for
+       the pace. It has begun for them, so it is not between rounds for me either, and is never
+       re-minted under them (betweenRounds; verification of 27 Nov 2026) */
+    if (next.told < s.round.n) next = { ...next, told: s.round.n }
     /* that state went to the whole call: as host, everybody on it has now heard the code it
        carries, though I did not send it — the one way a newcomer with the lowest id is handed it.
        Said at once, as a hello's answer is: held for PACE_MS, it is lost if I leave within it */

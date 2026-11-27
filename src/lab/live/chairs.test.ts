@@ -1259,6 +1259,7 @@ describe('4.8 a state round trip, every field away from its default', () => {
     owed: false,
     told: 3,
     hostBehind: null,
+    relayed: { code: 'q3_Lm-8RtZ0aXcVbN2pWkA', ids: [EVE] },
   })
   const fields = (c: Chairs<Opts>) => ({
     seq: c.seq,
@@ -1708,6 +1709,242 @@ describe('a host without the table, and two hosts at once (review of 26 Nov 2026
     t.flush()
     expect(t.who(DEE)).toEqual([ANN, null, null, null])
     expect(t.agree()).toBe(true)
+  })
+})
+
+describe('what verification found (27 Nov 2026)', () => {
+  it("the host's last state handed on a second late: what the next host changes in that second does not undo its round", () => {
+    /* Z1. Ann's start reaches Dee as Ann hangs up, and Cy, who never had it, hosts and re-mints.
+       Dee owes Cy the round, a second on. Until now anything Cy published in that second was a
+       later seq, which Dee took, and round 1, which she was playing, was gone everywhere: the
+       captain setting the mode, or a friend joining the call, whom Cy counts at once */
+    for (const change of ['the mode', 'a friend joins the call'] as const) {
+      const t = table(cards, [ANN, CY, DEE])
+      t.see()
+      t.settle()
+      t.do(CY, { t: 'sit', chair: 2 })
+      t.settle()
+      t.do(DEE, { t: 'sit', chair: 0 })
+      t.settle()
+      t.later(5000)
+      const code = t.get(ANN).code
+      t.do(CY, { t: 'start', n: 1 })
+      t.flush([ANN])
+      t.wire.push(lastState(t, ANN))
+      t.flush([DEE])
+      expect(t.get(DEE).round, change).toMatchObject({ n: 1, phase: 'on' })
+      t.tabs.delete(ANN)
+      t.call([CY, DEE])
+      t.see()
+      t.flush()
+      expect(t.get(CY).round.phase, change).toBe('open')
+      expect(dueAt(t.get(DEE)), change).not.toBeNull()
+      t.later(200)
+      if (change === 'the mode') t.do(CY, { t: 'mode', mode: 'together' })
+      else {
+        t.call([BO, CY, DEE])
+        t.look(CY, [CY, DEE])
+      }
+      // what Cy holds goes out a hop before Dee's debt falls due
+      t.later(PACE_MS - 200)
+      t.look(CY, [CY, DEE])
+      t.flush()
+      for (let i = 0; i < 3; i++) t.settle()
+      expect(t.agree(), change).toBe(true)
+      expect(t.get(CY), change).toMatchObject({ code, round: { n: 1, phase: 'on' } })
+      if (change === 'a friend joins the call') expect(t.get(DEE).knew).toContain(BO)
+    }
+  })
+  it('a lowest id handed the code, whose own count of it is lost, is counted by whoever handed it over', () => {
+    /* Z2. Bo's fold was the one state saying he had heard the code, and it was lost; Ann, who
+       answered his hello, recorded nothing, so when he hung up the next round began on the code
+       he had heard. Ann had him on her call as she sent it, which is all `knew` is about */
+    const t = table(cards, [ANN, CY, DEE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    const code = t.get(ANN).code
+    t.call([ANN, CY, DEE, BO])
+    t.see([ANN, CY, DEE, BO])
+    t.flush()
+    t.open(BO)
+    t.look(BO, [ANN, CY, DEE, BO])
+    // Bo's hello and his fresh table reach everybody, and Ann answers it
+    t.flush([ANN, CY, DEE])
+    const answer = lastState(t, ANN)
+    expect(answer.body).toMatchObject({ code })
+    t.wire.push(answer)
+    t.flush([BO])
+    expect(t.get(BO).code).toBe(code)
+    // he counts himself as having heard it, in a state lost on its way to everybody
+    expect(lastState(t, BO).body).toMatchObject({ code, knew: expect.arrayContaining([BO]) })
+    t.wire.length = 0
+    t.tabs.delete(BO)
+    t.call([ANN, CY, DEE])
+    t.see([ANN, CY, DEE])
+    t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(ANN).code).not.toBe(code)
+    // and the round Cy starts is on the new code
+    t.do(CY, { t: 'start', n: 1 })
+    t.settle()
+    expect(t.get(DEE)).toMatchObject({ code: t.get(ANN).code, round: { n: 1, phase: 'on' } })
+  })
+  it('a friend handed a code that has since been re-minted costs the new one nothing', () => {
+    /* what a tab records for handing a code on is about that code: Ann answered Bo's hello on
+       Dee's code, Dee left and Bo re-minted, so Dee never heard the new one */
+    const t = table(cards, [ANN, CY, DEE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.call([ANN, CY, DEE, BO])
+    t.see([ANN, CY, DEE, BO])
+    t.flush()
+    t.open(BO)
+    t.look(BO, [ANN, CY, DEE, BO])
+    t.flush()
+    const old = t.get(BO).code
+    expect(t.get(ANN).knew).toContain(BO)
+    // Dee hangs up, and Bo, who hosts, re-mints between rounds
+    t.tabs.delete(DEE)
+    t.call([ANN, CY, BO])
+    t.see([ANN, CY, BO])
+    t.settle()
+    const code = t.get(ANN).code
+    expect(code).not.toBe(old)
+    // Bo closes the toy and stays on the call: Ann hosts the new code, which everybody here heard
+    t.tabs.delete(BO)
+    t.see([ANN, CY])
+    for (let i = 0; i < 3; i++) t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(ANN).code).toBe(code)
+  })
+  it('two hosts each taking one start: the one held for the pace keeps the code of the round already on', () => {
+    /* Z3. Ann still hosts in her own view and publishes Cy's start at once; Bo, the lowest id,
+       takes the same start a second after his last state and holds it. Eve, who heard the code,
+       hangs up within that second. Bo's held start counted as begun by nobody, so he re-minted
+       it, and Cy and Dee, playing round 1, had its code changed under them */
+    const t = table(cards, [ANN, CY, DEE], [ANN, CY, DEE, EVE])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(DEE, { t: 'sit', chair: 0 })
+    t.settle()
+    t.later(5000)
+    expect(t.get(ANN).knew).toContain(EVE)
+    // Bo, the lowest id, joins the call and opens the toy; Ann has him on her call, not her toy
+    t.call([ANN, BO, CY, DEE, EVE])
+    t.look(ANN, [ANN, CY, DEE])
+    t.open(BO)
+    // Bo sees Ann and Cy, Cy and Dee see Bo, and Ann's view of him lags: two hosts
+    t.look(BO, [ANN, BO, CY])
+    for (const id of [CY, DEE]) t.look(id, [ANN, BO, CY, DEE])
+    t.flush()
+    const code = t.get(BO).code
+    expect(t.get(ANN).code).toBe(code)
+    // Dee reaches Bo's view half a second on, and he tells the table: his pace starts again
+    t.later(500)
+    t.look(BO, [ANN, BO, CY, DEE])
+    t.flush()
+    t.later(700)
+    t.do(CY, { t: 'start', n: 1 })
+    t.flush()
+    expect(t.get(DEE)).toMatchObject({ code, round: { n: 1, phase: 'on' } })
+    expect(dueAt(t.get(BO))).not.toBeNull()
+    // Eve hangs up, and Bo's held start falls due
+    t.call([ANN, BO, CY, DEE])
+    t.later(300)
+    t.look(BO, [ANN, BO, CY, DEE])
+    t.flush()
+    t.see([ANN, BO, CY, DEE])
+    t.settle()
+    expect(t.agree()).toBe(true)
+    expect(t.get(DEE)).toMatchObject({ code, round: { n: 1, phase: 'on' } })
+    const codes = t.log.flatMap((m) =>
+      m.body.t === 'state' && m.body.round.n === 1 && m.body.round.phase === 'on'
+        ? [m.body.code]
+        : [],
+    )
+    expect(new Set(codes)).toEqual(new Set([code]))
+  })
+  it('a host whose toy reopens before anybody sits: one code on the call at quiet', () => {
+    /* Z4. Bo's first table and his second are both "seq 1 by Bo", so neither was later than the
+       other: Ann kept the one she had, Bo the one he minted, and two codes stood for good */
+    for (const [first, second] of [
+      [0x10, 0x60],
+      [0x60, 0x10],
+    ]) {
+      random(first, second)
+      const t = table(cards, [BO, ANN])
+      t.see()
+      t.settle()
+      const k1 = t.get(ANN).code
+      expect(t.get(BO)).toMatchObject({ seq: 1, from: BO, code: k1 })
+      t.tabs.delete(BO)
+      t.look(ANN, [ANN])
+      t.flush()
+      t.later(2000)
+      t.open(BO)
+      t.see([BO, ANN])
+      for (let i = 0; i < 5; i++) t.settle()
+      expect(t.get(BO).code).not.toBe('')
+      expect(t.agree(), `${first}`).toBe(true)
+      // the lower of the two codes, on every tab, whichever was minted first
+      const k2 = codeFrom(new Uint8Array(16).fill(second))
+      expect(t.get(ANN).code).toBe(k1 < k2 ? k1 : k2)
+      vi.restoreAllMocks()
+    }
+  })
+  it('a host whose toy reopens, its hello unanswered: its first change shows it lacks the table', () => {
+    /* Z5. Cy holds Bo's table, and Bo reopens the toy: his hello reaches Cy before Cy sees him
+       back, and Ann, who would have answered, hangs up. Bo's new session is "by Bo" like the
+       table Cy holds, so the late-copy rule read each of its states as a late copy of his own,
+       and Cy owed nothing until his new seq passed hers. A different code is a different table */
+    const t = table(cards, [BO, ANN, CY])
+    t.see()
+    t.settle()
+    t.do(CY, { t: 'sit', chair: 2 })
+    t.settle()
+    t.do(ANN, { t: 'sit', chair: 0 })
+    t.settle()
+    for (const target of [200, 500, 300, 200, 300, 500] as const) {
+      t.do(CY, { t: 'opts', o: { target } })
+      t.settle()
+    }
+    const held = t.get(CY)
+    expect(held).toMatchObject({ from: BO, seq: 9 })
+    // Bo's toy closes; Ann hosts and tells the table as it is
+    t.tabs.delete(BO)
+    t.see([ANN, CY])
+    t.flush()
+    t.later(2000)
+    // it opens again; Ann hangs up before anything reaches her, and Cy hears Bo before she sees him
+    t.open(BO)
+    t.look(BO, [ANN, BO, CY])
+    t.tabs.delete(ANN)
+    t.call([BO, CY])
+    t.flush([CY])
+    expect(dueAt(t.get(CY))).toBeNull()
+    t.look(CY, [BO, CY])
+    t.look(BO, [BO, CY])
+    t.flush()
+    t.settle()
+    // Bo's first change: Cy owes him the table she holds, and pays it a second on
+    t.do(BO, { t: 'sit', chair: 1 })
+    t.flush()
+    expect(dueAt(t.get(CY))).not.toBeNull()
+    t.settle()
+    t.settle()
+    expect(t.agree()).toBe(true)
+    // the table Cy held, Bo's sit in his new session lost; Ann heard its code and has gone
+    expect(t.get(BO)).toMatchObject({ opts: { target: 500 }, round: held.round })
+    expect(t.who(BO)).toEqual([ANN, null, CY, null])
+    expect(t.get(BO).code).not.toBe(held.code)
   })
 })
 

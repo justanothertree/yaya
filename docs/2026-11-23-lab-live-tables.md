@@ -539,16 +539,22 @@ network with a call roster beside it.
    (which reads "black circle") and say "connecting" instead. **The Move button carries both
    forms** the plan gives, "Move Bo here" on its face and "Move Bo to North" for a screen reader.
 
-Three more, from the review below:
+Five more, from the review and the verification below:
 
 10. **A state names who published it, `by`.** §3.1's state body gains one field, an id. A tab that
     hands a table on sends the host's state as it was, so every tab breaks a tie between two hosts
     on the same id. Who is listened to is still the sender, checked against my roster.
-11. **At one seq, a state further into its rounds wins before the lower publisher does.** §2.4
-    says the lower sender's state wins. It still does between two tables at the same point in
-    their rounds; between a round started and the same table not started, the start wins.
+11. **A state further into its rounds wins, whatever its seq.** §2.4 says the newer state wins
+    and, at one seq, the lower sender's. Both still decide between two tables at the same point in
+    their rounds; a table that has started a round, or ended one, beats one that has not at any
+    seq. So a tab's seq can go back, when it takes a table with a lower seq that is further on.
+    This was "at one seq" until the verification below.
 12. **A tab that is not host sends a state when its host lacks the table it holds**, a second on.
     §3.1 has states sent by the host alone. This is bookkeeping, like a hello's answer.
+13. **One publisher's two tables at one seq: the lower code wins.** Only a host whose toy reopened
+    before anybody sat can make two.
+14. **Whoever hands a table on counts its own call as having heard the code**, on its own tab
+    (`relayed`, never sent), and folds them into `knew` when it hosts that code.
 
 ### Measured, 26 Nov 2026
 
@@ -744,23 +750,167 @@ what would be markup, each passed through untouched.
   the bundle's md5 unchanged (3d2b8570…). `prettier --check` passed on every changed file. None of
   the 72 chunks in `dist/assets` holds a sentence or a name only `src/lab/live` has, while a
   busWords sentence, as a control, is found; room.ts's `owes` is there, as it should be.
+  ⚠️ _Corrected 27 Nov 2026: `owes` is a module-local name the minifier renames, and grepping
+  for it matched only the word "lowest" in game text, the same in a build without the fix. The mark
+  that can fail is `hostBehind`, which is in the GpuLab chunk and not in 8b4d87ea's build._
+
+### What verification found, 27 Nov 2026
+
+An independent verification of c54b15f9 confirmed five faults in the table, four sentences in this
+section that said more than the code does, and two small points. Each fault is fixed with a test
+that failed first on c54b15f9.
+
+**Faults in the table:**
+
+- **The repair for a host's last state, on its way as the host hung up, held only for a quiet
+  second.** Dee held the start Ann sent as she left, and owed it a second on to Cy, who never had
+  it. Anything Cy published in that second was a later seq, and Dee took it: the captain setting
+  the mode, or a friend joining the call, whom Cy counts at once. Round 1, which Dee was playing,
+  was gone everywhere. `later` now puts how far the rounds have got before the seq, because rounds
+  only ever go forward along one table, so the table further on has seen more, whatever its seq.
+  Dee keeps the round and pays the debt, and Cy takes it. What Cy changed in that second is lost,
+  which costs a press.
+- **`knew` could miss a lowest-id newcomer whose own count of the code was lost.** The newcomer's
+  fold was the only record that they had heard the code. One lost copy of it, or a newcomer who
+  hung up first, left `knew` without them, and the next round began on a code somebody gone had
+  heard. The tab that answers a hello or pays a debt had them on its call as it sent, so it keeps
+  that now (`relayed`, on its own tab, never sent, tied to that code), and folds them into `knew`
+  when it hosts.
+- **Two hosts each taking one start: the one holding it for the pace re-minted it under a round
+  already being played.** `told` counted only this tab's own sends and what it took off the wire.
+  A start the other host published, which this tab heard and did not take (the tie went its way),
+  still read as begun by nobody, so a leaver in that second re-minted it, and the tabs playing
+  round 1 had its code changed under them. Hearing a state of the round this table holds now counts
+  as its having begun. What is left, when the one holding the start never hears the other's, is
+  under Left.
+- **A host whose toy reopened before anybody sat left two codes on the call for good.** Its old
+  table and its new one were both "seq 1 by" it, so neither was later than the other. The lower
+  code now wins, on every tab.
+- **A host whose toy reopened, its hello unanswered, was read as a late copy of itself.** Every
+  state of its new session was "by" the host, as the table a guest still held was, so the late-copy
+  rule owed it nothing until its new seq passed the old one: twelve changes on a table thirteen
+  states old. A late copy carries the code the guest holds and a reopened toy mints a new one, so a
+  late copy is now one from the publisher of my table on my code. A late copy from before a
+  re-mint is then a host behind, which costs one state nobody needed, and needs out-of-order
+  delivery.
+
+**What said more than the code does,** each corrected under Left or above: the hello's retry as a
+backstop, which is the only repair when a hello lands before its sender is my host; the tab ahead
+after a host leaves, which keeps the departed host's table on a code the leaver holds; a remount
+healed by "the next change", which takes one change more than there were late states; and the
+gates' check for `owes` in the bundle, which could not fail.
+
+**Two small points, written down rather than changed** (in Left, and in chairs.ts's comments): a
+host whose roster lags can re-mint for nobody, and `by` can name one id that a full `knew` does not.
+
+**Measured, 27 Nov 2026, 06:05–06:50 EST:**
+
+- **Red first.** On c54b15f9's chairs.ts, the 5 new tests, each for the reason its name gives:
+  round 1 gone at Cy and Dee after Cy's mode change in the second; the code not re-minted after Bo
+  hung up; Dee's round 1 recoded mid-round; two codes at quiet; and no debt at Bo's first change. A
+  sixth, that a friend handed a code since re-minted costs the new one nothing, passes on c54b15f9
+  and pins `relayed` to its own code. The other 188 pass on both.
+- **Mutations of chairs.ts, each made once and put back with its md5 checked, red counted over
+  `src/lab/live`:**
+
+  | What was taken out                                              | Red   |
+  | --------------------------------------------------------------- | ----- |
+  | the seq before how far the rounds have got (`later` as it was)  | 1     |
+  | a relaying tab recording nobody; what it recorded never counted | 1; 1  |
+  | what was relayed counted whatever its code                      | 2     |
+  | a second hand-over on one code forgetting the first             | **0** |
+  | `told` not credited from a round begun elsewhere                | 1     |
+  | one publisher's two tables tying; the higher code winning       | 1; 1  |
+  | a late copy by publisher alone (as it was); by code alone       | 1; 2  |
+
+  The one that stays green matters only when somebody on the call at the first hand-over has left
+  by the second and their own count of the code was lost too. No test reaches it.
+
+- **The verification's own probes, run unchanged on this tree.** Gone: Z1's four timings of the
+  captain's change and the friend joining (round 1 kept at both); Z2's three (B, C and D); Z4's
+  story and its 600-seed sweep; Z5's case (b), healed at the new session's first change. Z3 with
+  the other start heard before the due look is fixed, and unheard it still recodes (Left). Z5's
+  case (a), Z6, Z7, Z8 and Z9 reproduce as their Left entries now say.
+- **The review's fuzzer** (zqconv, kept outside the repository), 2,000 seeds a config (40001–42000),
+  c54b15f9's chairs.ts against this one. Seeds with each finding, its two-host and other cases
+  added together:
+
+  | Finding                         | Realistic | Out of order, harsh | Wire alone | Harsh, 8% dropped |
+  | ------------------------------- | --------- | ------------------- | ---------- | ----------------- |
+  | round gone back                 | 4 → 0     | 134 → 0             | 149 → 0    | 158 → 0           |
+  | round lost at quiet             | 1 → 0     | 70 → 13             | 98 → 25    | 79 → 24           |
+  | round started twice             | 2 → 0     | 18 → 4              | 22 → 14    | 23 → 6            |
+  | split when quiet                | 11 → 1    | 79 → 55             | 106 → 71   | 152 → 111         |
+  | took an older table behind mine | 1 → 0     | 41 → 0              | 61 → 0     | 62 → 0            |
+  | code or chair changed while on  | 0 → 0     | 20 → 11             | 10 → 22    | 11 → 10           |
+  | took up a younger table         | 1 → 1     | 89 → 112            | 63 → 113   | 103 → 135         |
+  | a seq gone back                 | 0 → 3     | 0 → 155             | 0 → 175    | 0 → 168           |
+  | re-mint for nobody (roster lag) | 1 → 1     | 32 → 39             | 0 → 0      | 32 → 29           |
+  | start on a code a leaver heard  | 1 → 1     | 16 → 16             | 7 → 4      | 16 → 19           |
+
+  A seq gone back is the change itself. Taking up a younger table is mostly the same change seen
+  from the other side: a newer table that started a round, taken over an older one that had only
+  sat people down. Code or chair changed while on rose in the wire-alone config, all of it inside
+  two-host windows: with fewer rounds undone, more of them meet another host's round at the same
+  point. That is the window the plan accepts (4.5).
+
+- Arrivals cost what they did: 3 sends for a higher id, 10 for four filling a fresh table, 4 for a
+  lower id new to the call (4.9).
+- **Gates on the final tree, 06:29–06:49 EST:** `npm run typecheck`, `npm run lint` and
+  `npm run build` passed. `npm run test` passed 410 files, 6,410 tests, 6 skipped: the 6,400 of
+  c54b15f9, step 1's 4 and these 6. (A first run lost three workers to a SIGTERM from outside, in
+  files this does not touch; those three passed alone, and the whole suite passed again.)
+  `node scripts/lab-move-bundle.mjs --check` passed with no rebuild, the bundle's md5 unchanged
+  (3d2b8570…). `prettier --check` passed on every changed file. None of the 72 chunks in
+  `dist/assets` holds any of five sentences only liveWords.ts has, while a busWords sentence, as a
+  control, is found. The GpuLab chunk holds `hostBehind`, room.ts's, which 8b4d87ea's build does
+  not.
 
 ### Left
 
 - Nothing to check on a call until step 6 wires the table. The plan's §8 checks for live tables
   start there.
-- **Step 6 has the hello's retry at 3 s (§3.1) to decide.** An unanswered hello is now paid for by
-  whoever holds the table, so the retry is a backstop rather than the only repair.
+- **Step 6 has the hello's retry at 3 s (§3.1) to decide, and should keep it.** An unanswered hello
+  is paid for by whoever holds the table only when it lands after its sender is that tab's host. A
+  hello that lands first, before the newcomer's presence or while an old host below them is still
+  listed, is owed by nobody, and the retry is then the only repair. The newcomer's own next change
+  does raise a debt, but the table handed back for it replaces the one the change was made on.
 - A debt is owed to whoever the tab sees as host when the earlier state arrives. A new host whose
-  announcement lands before the receiving tab's presence has made it host is owed nothing, and
-  stays behind until its next change (1 seed in 600 of the realistic fuzz).
+  announcement lands before the receiving tab's presence has made it host is owed nothing. The tab
+  ahead then keeps the departed host's last table, on a code the leaver holds and with a round on
+  if that was a start, until the host's next change. What that change does turned on the
+  verification: a change to the table is earlier there, so the tab owes the host the further
+  table and hands it over, and a round the old host started survives. A Start pressed again starts
+  the round again, on the host's code. A probe of 27 Nov: round 1 on the old code everywhere after
+  a mode change, on a new code after Start. A sit the old host decided last is lost either way.
+- **The captain pressing Start again in the second before a handed-on start is paid starts the
+  round twice.** It is the likely press, because the captain never saw the round start (the
+  verification's probe: two codes for round 1, 500 ms on). The debt waits `PACE_MS` because paying
+  at once let a stale table start a round (seed 246, above).
+- **Two hosts each taking one start, where the one holding it for the pace never hears the other's
+  start, and somebody who heard the code leaves in that second:** the held start still goes out on
+  a new code, and the tabs already playing the other's start change code mid-round. It needs a lost
+  message as well as two hosts at once. Never re-minting a held start would bring back what review
+  found, a leaver holding the round's code, which needs only one host and a leaver in that second.
 - Two hosts each taking the same start from different tables, Bo's with a sit in it: round 1 is
   on everywhere, but its starters can change once, when Bo's state lands.
 - A host whose toy reopens while states from its last session are still on their way can be
-  handed one, by the publisher half of `answersHello`, older than what it published: the late-copy
-  rule then reads its next announcement as late and nothing is owed. Out-of-order delivery across a
-  remount; the next change heals it.
+  handed one older than what it published, by the publisher half of `answersHello`. Each late
+  state that lands after it ties the host's next change at one seq, one publisher and one code, so
+  the table heals one change later for every late state: 2 changes for one, 4 for three. That needs
+  out-of-order delivery across a remount. A reopened host whose hello nobody answers is now owed
+  its table at its first change, because the new code tells its states from a late copy.
 - A state the host hears, rather than sends, opens no roster-lag window: the fold on hearing counts
   the roster as it stands then.
 - A debt owed to a host that stops being host before it is paid still goes: one state nobody
   needed.
+- **A host whose roster lags can re-mint for nobody.** Somebody in `knew` who has not reached its
+  roster yet reads as somebody who left. It costs an extra state and a fresh code, between rounds
+  only, and errs the safe way for a capability. The fold on reaching the roster late made it more
+  frequent: 32 harsh seeds in 2,000 on c54b15f9 against 11 on c95544b3 (the verification's count),
+  and 39 on this tree. Counting an absence only once it has lasted `ROSTER_LAG_MS` would remove it,
+  at the price of a leaver keeping the code that long; step 6 can weigh it.
+- **`by` names a publisher who is in `knew`, unless `knew` was already full.** Past 16, a state can
+  name one id that neither `knew` nor a chair does, of the kind `knew` already lists.
+- **A tab's seq can go back**, when it takes a table with a lower seq that is further into its
+  rounds. Nothing here reads a seq as a clock, and step 6 must not either.
