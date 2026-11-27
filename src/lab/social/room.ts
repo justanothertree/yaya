@@ -19,8 +19,10 @@
  * never go out, whoever holds the room and heard the hello from their new host hands it on (owes);
  * a tab the hello reached before the newcomer's `where` saw somebody else as host, and owes
  * nothing. Should it go out and reach everybody but the newcomer, nobody knows it is owed, and in
- * a game played by turns the first move made against the room they lack makes them ask again
- * (receive). docs/2026-11-23-lab-live-tables.md (Step 1, Left) has what neither covers.
+ * a game played by turns the first move made against the room they lack OWE_MS or more after their
+ * own hello makes them ask again (receive); a move sooner than that is refused quietly, and the
+ * next one after the second has passed asks. docs/2026-11-23-lab-live-tables.md (Step 1, Left) has
+ * what neither covers.
  *
  * ⚠️ WHOLE STATE, NOT MOVES. A board game is under a kilobyte, so each change sends the room
  * entire. A lost message is then repaired by the next one, when there is one (the doc's Left has a
