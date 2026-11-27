@@ -3491,6 +3491,12 @@ div.lab-bus-face {
 .mn-cell.is-wrong {
   color: #e23d3d;
 }
+/* a link's board opens from the square it was opened from: marked by an outline and a ◎, never by
+   colour alone. Before the focus ring, so the keyboard's ring still wins on the same square. */
+.mn-cell.is-start {
+  outline: 3px dashed var(--mn-ink);
+  outline-offset: -5px;
+}
 .mn-cell:focus-visible {
   outline: 3px solid #ffb000;
   outline-offset: 1px;

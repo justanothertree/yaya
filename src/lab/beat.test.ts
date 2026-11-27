@@ -31,6 +31,9 @@ import { seeded } from '../gpu/stack'
 import registry from '../sections/labDemos.tsx?raw'
 /* ── g1 imports ── */
 /* ── g2 imports ── */
+import { deal as golfDeal, left as golfLeft } from '../gpu/golf'
+import { SIZES as MINE_SIZES } from '../gpu/mines'
+import { LAYOUTS as TILE_LAYOUTS } from '../gpu/tiles'
 /* ── g3 imports ── */
 /* ── g4 imports ── */
 
@@ -45,6 +48,9 @@ const FIXTURE: { [G in Game]: Extract<Beat, { game: G }> } = {
   dice: { game: 'dice', seed: daySeedOf(2026, 11, 27), turns: 14 },
   /* ── g1 fixtures ── */
   /* ── g2 fixtures ── */
+  golf: { game: 'golf', seed: daySeedOf(2026, 11, 27), wrap: true, score: -3 },
+  mines: { game: 'mines', seed: 4_294_967_295, size: 'large', start: 241, tenths: 1234 },
+  tiles: { game: 'tiles', seed: 3_000_000_001, layout: 'twin', secs: 431 },
   /* ── g3 fixtures ── */
   /* ── g4 fixtures ── */
 }
@@ -449,5 +455,131 @@ describe('the dice deal', () => {
 
 /* ── g1 cases ── */
 /* ── g2 cases ── */
+describe('g2: Golf patience, Mines and Tile pairs', () => {
+  const at = (b: Beat, key: string, v: string) => {
+    const q = paramsOf(beatHash(b))
+    q.set(key, v)
+    return readBeat(`#lab?${q}`)
+  }
+  describe('golf', () => {
+    const b = FIXTURE.golf
+    /* the bounds from the deal itself, sharing no arithmetic with the arm: nothing taken leaves
+       every column card, and clearing with the whole stock unturned scores minus the stock */
+    const d = golfDeal(4_279_824_600)
+    const hi = golfLeft(d)
+    const lo = -d.stock.length
+    it('scores from minus the stock to every column card, written one way only', () => {
+      expect([hi, lo]).toEqual([35, -16])
+      expect(at(b, 'score', String(lo - 1))).toBeNull()
+      expect(at(b, 'score', String(lo))).toMatchObject({ score: lo })
+      expect(at(b, 'score', String(hi))).toMatchObject({ score: hi })
+      expect(at(b, 'score', String(hi + 1))).toBeNull()
+      expect(at(b, 'score', '0')).toMatchObject({ score: 0 })
+      for (const v of ['-0', '+3', '03', '-03', '3.0']) expect(at(b, 'score', v), v).toBeNull()
+      expect(at(b, 'wrap', '0')).toMatchObject({ wrap: false })
+      expect(at(b, 'wrap', '2')).toBeNull()
+    })
+    it('lower wins, on the same deal under the same rule', () => {
+      expect(outcome({ ...b, score: -4 }, b)).toBe('beat')
+      expect(outcome({ ...b, score: -3 }, b)).toBe('level')
+      expect(outcome({ ...b, score: 0 }, b)).toBe('short')
+      expect(outcome({ ...b, wrap: false, score: -9 }, b)).toBeNull()
+      expect(outcome({ ...b, seed: 5, score: -9 }, b)).toBeNull()
+    })
+    it('says the score the way the toy does, and names the rule only when it is on', () => {
+      expect(beatMessage(b, 'L')).toBe(
+        '🏁 Beat my deal at Golf patience: −3, king and ace neighbours. Same cards, same order:\nL',
+      )
+      expect(beatMessage({ ...b, wrap: false, score: 4 }, 'L')).toBe(
+        '🏁 Beat my deal at Golf patience: +4. Same cards, same order:\nL',
+      )
+      expect(bannerText({ ...b, wrap: false, score: 0 }, true)).toEqual({
+        lead: 'A deal to beat:',
+        body: 'this link says 0. Same cards, same order — lower wins. It is today’s board here, so it counts as your today’s.',
+      })
+      expect(beatMessage({ ...b, score: -5 }, 'L', b)).toBe(
+        '🏆 I beat the link at Golf patience: −5, king and ace neighbours — it said −3, king and ace neighbours. Same cards, same order, your go:\nL',
+      )
+    })
+  })
+  describe('mines', () => {
+    const b = FIXTURE.mines
+    const names = Object.keys(MINE_SIZES) as (keyof typeof MINE_SIZES)[]
+    it('opens from any square of its own size, and from none past it', () => {
+      expect(names).toEqual(['small', 'medium', 'large'])
+      for (const size of names) {
+        const last = MINE_SIZES[size].w * MINE_SIZES[size].h - 1
+        const q = (start: number) => ({ ...b, size, start })
+        expect(readBeat(beatHash(q(0))), `${size} 0`).toMatchObject({ size, start: 0 })
+        expect(readBeat(beatHash(q(last))), `${size} ${last}`).toMatchObject({ size, start: last })
+        expect(readBeat(beatHash(q(last + 1))), `${size} ${last + 1}`).toBeNull()
+      }
+      // the three last squares, as numbers: 9×9, 16×16 and 16×30
+      expect(names.map((n) => MINE_SIZES[n].w * MINE_SIZES[n].h - 1)).toEqual([80, 255, 479])
+      expect(readBeat(beatHash({ ...b, size: 'small', start: 200 }))).toBeNull()
+      expect(at(b, 'start', '-1')).toBeNull()
+      expect(at(b, 'size', 'huge')).toBeNull()
+      expect(at(b, 'size', 'Large')).toBeNull()
+    })
+    it('a time from a tenth of a second to a day', () => {
+      const day = 24 * 60 * 60 * 10
+      expect(at(b, 'tenths', '0')).toBeNull()
+      expect(at(b, 'tenths', '1')).toMatchObject({ tenths: 1 })
+      expect(at(b, 'tenths', String(day))).toMatchObject({ tenths: day })
+      expect(at(b, 'tenths', String(day + 1))).toBeNull()
+      expect(at(b, 'tenths', '12.3')).toBeNull()
+    })
+    it('faster wins, on the same board opened from the same square', () => {
+      expect(outcome({ ...b, tenths: 1233 }, b)).toBe('beat')
+      expect(outcome({ ...b, tenths: 1234 }, b)).toBe('level')
+      expect(outcome({ ...b, tenths: 1235 }, b)).toBe('short')
+      expect(outcome({ ...b, start: 240, tenths: 1 }, b)).toBeNull()
+      expect(outcome({ ...b, size: 'medium', start: 136, tenths: 1 }, b)).toBeNull()
+    })
+    it('says the time and the size', () => {
+      expect(beatMessage(b, 'L')).toBe(
+        '🏁 Beat my board at Mines: 123.4 s on a large board. Same board, opened from the same square:\nL',
+      )
+      expect(bannerText(b)).toEqual({
+        lead: 'A board to beat:',
+        body: 'this link says 123.4 s on a large board. Same board, opened from the same square — faster wins.',
+      })
+      expect(beatMessage({ ...b, tenths: 1500 }, 'L', b)).toBe(
+        '🏁 My go at Mines: 150.0 s on a large board — the link I was sent said 123.4 s on a large board. Same board, opened from the same square, your go:\nL',
+      )
+    })
+  })
+  describe('tiles', () => {
+    const b = FIXTURE.tiles
+    it('any layout the toy has, and a time from a second to a day', () => {
+      for (const l of TILE_LAYOUTS) expect(at(b, 'layout', l.id)).toMatchObject({ layout: l.id })
+      expect(at(b, 'layout', 'Twin')).toBeNull()
+      expect(at(b, 'layout', 'tower')).toBeNull()
+      const day = 24 * 60 * 60
+      expect(at(b, 'secs', '0')).toBeNull()
+      expect(at(b, 'secs', '1')).toMatchObject({ secs: 1 })
+      expect(at(b, 'secs', String(day))).toMatchObject({ secs: day })
+      expect(at(b, 'secs', String(day + 1))).toBeNull()
+    })
+    it('faster wins, on the same tiles', () => {
+      expect(outcome({ ...b, secs: 430 }, b)).toBe('beat')
+      expect(outcome({ ...b, secs: 431 }, b)).toBe('level')
+      expect(outcome({ ...b, secs: 432 }, b)).toBe('short')
+      expect(outcome({ ...b, layout: 'pyramid', secs: 1 }, b)).toBeNull()
+    })
+    it('says the time and the layout by the name the toy shows', () => {
+      expect(beatMessage(b, 'L')).toBe(
+        '🏁 Beat my deal at Tile pairs: 7:11 on Twin towers. Same tiles, and the same shuffles for the same presses:\nL',
+      )
+      expect(bannerText(b)).toEqual({
+        lead: 'A deal to beat:',
+        body: 'this link says 7:11 on Twin towers. Same tiles, and the same shuffles for the same presses — faster wins; hints and shuffles add time.',
+      })
+      expect(beatMessage({ ...b, secs: 95 }, 'L', b)).toBe(
+        '🏆 I beat the link at Tile pairs: 1:35 on Twin towers — it said 7:11 on Twin towers. Same tiles, and the same shuffles for the same presses, your go:\nL',
+      )
+    })
+  })
+})
 /* ── g3 cases ── */
 /* ── g4 cases ── */
