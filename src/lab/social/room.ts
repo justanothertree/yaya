@@ -15,12 +15,20 @@
  * `state` — the whole room: seats, a sequence number and the game. When the host leaves, the next
  * lowest id carries on from the last state it had. A newcomer's `hello` is answered by the host as
  * it was before they arrived, or by whoever published the room we hold (answersHello): a newcomer
- * with a lower id is host the moment they are present, and holds nothing yet.
+ * with a lower id is host the moment they are present, and holds nothing yet. Should that answer
+ * never go out, whoever holds the room and heard the hello from their new host hands it on (owes);
+ * a tab the hello reached before the newcomer's `where` saw somebody else as host, and owes
+ * nothing. Should it go out and reach everybody but the newcomer, nobody knows it is owed, and in
+ * a game played by turns the first move made against the room they lack OWE_MS or more after their
+ * own hello makes them ask again (receive); a move sooner than that is refused quietly, and the
+ * next one after the second has passed asks. docs/2026-11-23-lab-live-tables.md (Step 1, Left) has
+ * what neither covers.
  *
  * ⚠️ WHOLE STATE, NOT MOVES. A board game is under a kilobyte, so each change sends the room
- * entire. A lost message is then repaired by the next one, a repeated or late one is recognised by
- * its older `seq` and ignored, and somebody arriving says `hello` and is sent the room. No log to
- * replay and no gap to fill.
+ * entire. A lost message is then repaired by the next one, when there is one (the doc's Left has a
+ * loss after which nobody has a move to make), a repeated or late one is recognised by its older
+ * `seq` and ignored, and somebody arriving says `hello` and is sent the room. No log to replay and
+ * no gap to fill.
  *
  * ⚠️ THE RULES ARE THE TOY'S OWN. A move is checked by the toy's pure module (fourrow.ts's drop,
  * and so on): the host refuses anything not legal, from anyone but the player whose turn it is,
@@ -122,6 +130,19 @@ export type Room<G> = {
   present: string[]
   /** since when (ms) each seated player has been missing */
   missing: Record<string, number>
+  /**
+   * Since when (this tab's clock) the host has shown me it lacks the room I hold, with nobody
+   * putting mine on the wire since: a `present` OWE_MS on sends it (owes, below). Absent until
+   * then, and when paid.
+   */
+  hostBehind?: number
+  /**
+   * When (this tab's clock) this room last said hello: as it opened, and as a move showed it
+   * behind (receive). For OWE_MS after, that hello's answer is on its way, and asking again
+   * would cost a hello and a whole room for nothing. Absent in a room nothing opened, which may
+   * ask at once.
+   */
+  asked?: number
 }
 
 /** what goes out on the wire, as the body of a party `lab` message */
@@ -152,10 +173,16 @@ export type Action<M> =
 
 /** how long a seat is held for somebody who has gone */
 export const HOLD_MS = 60_000
+/**
+ * How long what is owed a host waits for the answer that pays it (owes): that answer comes a hop
+ * behind the hello, well under a second on a call
+ */
+export const OWE_MS = 1000
 
 type Step<G> = { room: Room<G>; out: Wire[] }
 
-export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string): Step<G> {
+/** a room as a toy mounts, at time `now` (this tab's clock, as `receive`'s): it says hello */
+export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string, now: number): Step<G> {
   const room: Room<G> = {
     sub,
     me,
@@ -168,11 +195,24 @@ export function openRoom<G, M>(rules: Rules<G, M>, sub: string, me: string): Ste
     game: rules.fresh('versus'),
     present: [],
     missing: {},
+    asked: now,
   }
   return { room, out: [{ sub, t: 'hello' }] }
 }
 
-export const hostOf = (room: Room<unknown>) => [room.me, ...room.present].sort()[0]
+/**
+ * Who hosts, from ids alone: the lowest of mine and everybody present's, seated or not. Everyone
+ * works it out from the same presence, so there is no election and nothing to agree on, and ids
+ * are unique, so it is always exactly one person.
+ *
+ * In plain values rather than a room, like answersHello below, because more than a two-seat room
+ * asks it: answersHello asks it of everybody but a newcomer, and a live table of four chairs
+ * (docs/2026-11-23-lab-live-tables.md) will ask it of everybody on its toy. One answer, written
+ * once, so two of them can never pick different hosts from the same people.
+ */
+export const lowest = (me: string, present: readonly string[]) => [me, ...present].sort()[0]
+
+export const hostOf = (room: Room<unknown>) => lowest(room.me, room.present)
 
 /**
  * Whether I hand a newcomer the room: I was host before they arrived, or I published the room we
@@ -199,7 +239,59 @@ export const answersHello = (
   from: string,
   seq: number,
   lastFrom: string,
-) => [me, ...present.filter((id) => id !== from)].sort()[0] === me || (seq > 0 && lastFrom === me)
+) => {
+  /* me and everybody here but the newcomer: the host among us is who hosted before they came */
+  const before = present.filter((id) => id !== from)
+  return lowest(me, before) === me || (seq > 0 && lastFrom === me)
+}
+
+/**
+ * Whether what `from` just said shows my host without the room I hold, which I then owe it.
+ *
+ * ⚠️ answersHello NAMES WHO ANSWERS A NEWCOMER, AND THEY CAN BE GONE BEFORE THE HELLO REACHES THEM
+ * (review of 26 Nov 2026). Bo hosts a game with Cy; Ann, a lower id, arrives and is host at once;
+ * Bo closes the toy, or his tab hangs, before her hello reaches him. Cy still saw Bo as the host
+ * before her when it landed, so it was not Cy's to answer, and Ann led from an empty board for
+ * good: her room older than everybody's and ignored, Bo's seat never freed, Cy's game stopped.
+ * Everybody kept the rule, and nobody spoke again.
+ *
+ * So a hello from my new host that somebody else is to answer leaves me owing it my room, and so
+ * does my host showing me a room older than mine: a host who carries on from a room that missed
+ * the last state before the old host left. What is owed goes at a `present` OWE_MS or more after
+ * it was owed (where.ts's roster ticks every five seconds and whenever somebody comes or goes),
+ * unless that room or a newer one reaches me first, from anybody: the host has heard it too. The
+ * wait keeps an arrival at its cost, because the answer the rule names comes a hop behind the
+ * hello and pays what everybody else owed, so roomWire.test.ts's recording is byte for byte
+ * unchanged.
+ *
+ * ⚠️ THE WAIT IS A TIME, NOT "THE NEXT LOOK" (verification of 27 Nov 2026). Paid at the next
+ * `present`, a roster tick falling inside that one hop sent the room before the answer could pay
+ * for it, on every live game: a whole room nobody needed.
+ *
+ * ⚠️ AND IT CANNOT SEE AN ANSWER THAT WENT OUT AND WAS LOST ON ITS WAY TO THE HOST ALONE. Everybody
+ * else heard it and so owes nothing — the same when what is owed is itself lost on the way to the
+ * host and reaches everybody else. The host is then behind everybody, nobody knows it, and a quiet
+ * host says nothing. What tells it is the next move: made against a board newer than the host's,
+ * it is refused, and the host says hello again (receive), which everybody answers as a newcomer's
+ * — once a second at most, counting the hello its toy opened with, whose answer is on its way
+ * then. Two hosts are never told (the doc's Left, both older than this rule): Lamps', whose moves
+ * are not refused for their board, and one whose only player waits for somebody gone, who
+ * cannot move at all.
+ *
+ * Two older rooms say nothing. A newcomer's own empty one (seq 0) is its hello again, and it can
+ * come more than once, as their roster fills: counted, each could land after the answer and cost a
+ * room nobody needed (measured on a dev call, 26 Nov 2026). And a late copy of the host's own
+ * earlier room, to somebody holding a newer one the host published, says only that it was late.
+ */
+const owes = (room: Room<unknown>, from: string, heard: 'a hello not mine' | { seq: number }) =>
+  room.hostBehind === undefined &&
+  room.seq > 0 &&
+  from === hostOf(room) &&
+  (heard === 'a hello not mine' || (heard.seq > 0 && room.from !== from))
+
+/** the room with nothing owed to its host */
+const paid = <G>(room: Room<G>): Room<G> =>
+  room.hostBehind === undefined ? room : { ...room, hostBehind: undefined }
 
 /** a newer state wins; at an equal seq (two hosts for a moment), the lower sender's */
 export const newer = (seq: number, from: string, heldSeq: number, heldFrom: string) =>
@@ -441,12 +533,16 @@ export const readSeats = (v: unknown): Seats | null =>
     ? (v as Seats)
     : null
 
-/** somebody else's message, off the wire — everything in it checked before it is believed */
+/**
+ * Somebody else's message, off the wire, at time `now` (this tab's clock, as `present`'s) —
+ * everything in it checked before it is believed
+ */
 export function receive<G, M>(
   rules: Rules<G, M>,
   room: Room<G>,
   from: string,
   body: unknown,
+  now: number,
 ): Step<G> {
   const none = { room, out: [] }
   const b = body as Partial<Record<string, unknown>> | null
@@ -464,13 +560,26 @@ export function receive<G, M>(
       return none
     if (mode === null || level === null || !isSeat(b.next)) return none
     if (!(rules.modes ?? ['versus']).includes(mode)) return none
-    if (!newer(b.seq, from, room.seq, room.from)) return none
-    return { room: { ...room, seq: b.seq, from, seats, mode, level, next: b.next, game }, out: [] }
+    if (!newer(b.seq, from, room.seq, room.from)) {
+      // somebody has my room, or a newer one, on the wire: the host has heard it too
+      if (b.seq >= room.seq)
+        return room.hostBehind === undefined ? none : { room: paid(room), out: [] }
+      return owes(room, from, { seq: b.seq })
+        ? { room: { ...room, hostBehind: now }, out: [] }
+        : none
+    }
+    return {
+      room: { ...paid(room), seq: b.seq, from, seats, mode, level, next: b.next, game },
+      out: [],
+    }
   }
-  if (b.t === 'hello')
-    return answersHello(room.me, room.present, from, room.seq, room.from)
-      ? { room, out: [stateOf(rules, room)] }
+  if (b.t === 'hello') {
+    if (answersHello(room.me, room.present, from, room.seq, room.from))
+      return { room, out: [stateOf(rules, room)] }
+    return owes(room, from, 'a hello not mine')
+      ? { room: { ...room, hostBehind: now }, out: [] }
       : none
+  }
   if (!isHost(room)) return none
   if (b.t === 'sit')
     return isSeat(b.seat) ? decide(rules, room, from, { t: 'sit', seat: b.seat }) : none
@@ -485,7 +594,21 @@ export function receive<G, M>(
        game is one anybody may move in at any time, whose moves do not depend on each other (two
        presses in Lamps land the same in either order), so a quick second press is not stale */
     if (move === null) return none
-    if (b.at !== room.seq && rules.turn(room.game) !== 'any') return none
+    if (b.at !== room.seq && rules.turn(room.game) !== 'any') {
+      /* made against a board newer than mine: I host without the room everybody else holds, and
+         nobody may know it (owes says why), so I ask for it as a newcomer does. Older than mine
+         is a mover a state behind, which the state on its way to them mends.
+
+         ⚠️ NOT WITHIN OWE_MS OF MY LAST HELLO (third verification of 27 Nov 2026). A host whose
+         toy has just opened, or reopened, is behind until its hello is answered, and everybody
+         knows that: a press in that hop said hello again, and cost a hello and a whole room for
+         every press, with nothing lost. A move then is refused as it always was. Once a second at
+         most, too, whoever sends the moves */
+      const behind = typeof b.at === 'number' && b.at > room.seq
+      return behind && (room.asked === undefined || now - room.asked >= OWE_MS)
+        ? { room: { ...room, asked: now }, out: [{ sub: room.sub, t: 'hello' }] }
+        : none
+    }
     return decide(rules, room, from, { t: 'move', move })
   }
   return none
@@ -504,11 +627,19 @@ export function present<G, M>(
   const others = [...new Set(ids)].filter((id) => id !== room.me).sort()
   const wasHost = isHost(room)
   const here = new Set([room.me, ...others])
-  const missing: Record<string, number> = {}
-  for (const s of room.seats) if (s && !here.has(s)) missing[s] = room.missing[s] ?? now
-  const next: Room<G> = { ...room, present: others, missing }
+  /* keyed by whatever id a seat holds, so nothing may be inherited: on a plain object
+     'constructor' reads back Object, `now - Object` is NaN, and that seat is held for ever */
+  const missing: Record<string, number> = Object.create(null)
+  for (const s of room.seats)
+    if (s && !here.has(s)) missing[s] = Object.hasOwn(room.missing, s) ? room.missing[s] : now
+  const seen: Room<G> = { ...room, present: others, missing }
+  if (!isHost(seen))
+    return seen.hostBehind !== undefined && now - seen.hostBehind >= OWE_MS
+      ? { room: paid(seen), out: [stateOf(rules, seen)] }
+      : { room: seen, out: [] }
+  // a host owes nobody its room: it goes out with the announcement or the next change
+  const next = paid(seen)
   const out: Wire[] = []
-  if (!isHost(next)) return { room: next, out }
   // freed seats, for anybody gone too long
   const gone = next.seats.map((s) =>
     s && missing[s] !== undefined && now - missing[s] >= HOLD_MS ? s : null,
