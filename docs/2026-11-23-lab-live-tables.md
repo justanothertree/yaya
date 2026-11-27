@@ -755,6 +755,11 @@ in at 555, 876, 621 and 250 ms, with the same outcomes for the 390.
   fresh table without a token: it expects `welcome` alone, no listing, then at 12 s "A Lab table is
   for friends on a call, signed in on the site." and a close. That sentence is in no older relay.
   It is skipped automatically for a ref whose `server/` has no `labDoor.mjs`.
+  **27 Nov:** the first live run heard the sentence on time and never the close — Render's proxy
+  drops the relay's close frame (the socket ended 1006 at 32 s). Behind Render (told by the
+  `x-render-origin-server` header on `/health`) a missing close is now a WARN; a local run still
+  requires the 1008, and the sentence must land within 1 s early / 4 s late of the timer, measured
+  from the `welcome`. The rules are in `scripts/relay-smoke-lab.mjs`, with tests.
 - **Then Evan reads `/relay-config` himself (his answer, above).** If `has.SUPABASE_URL` or
   `has.SUPABASE_ANON_KEY` is false on Render, every Lab table answers `door-unavailable`, which is
   safe and useless (P2).
