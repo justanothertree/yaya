@@ -296,4 +296,58 @@ describe('a change made while a send is still out', () => {
     expect(sent('library_put')).toContain('Dusk')
     stop()
   })
+
+  /**
+   * ⚠️ AND IT IS ON DISK BEFORE THAT SEND ANSWERS. A change made while a pass was out was only
+   * noted at the start of the NEXT pass — after the slow send — so a tab closed in between lost it
+   * from the outbox, and the next load pulled the deleted item back (found in review, 28 Nov 2026).
+   */
+  it('is written down at once, so a tab closed before the send answers still owes it', async () => {
+    const first = await load()
+    const dawn = first.gallery.saveArt(drawing('Dawn'))!
+    const dusk = first.gallery.saveArt(drawing('Dusk', '#7c3f4a'))!
+    const bodies = {
+      Dawn: first.strokes.packDrawing(dawn.art),
+      Dusk: first.strokes.packDrawing(dusk.art),
+    }
+    const stop = first.cloud.watchLibrary(() => 'u1')
+    await drain()
+    /* every delete from here on goes out and never answers */
+    net.answer = async (fn) => {
+      if (fn === 'library_drop') await new Promise(() => {})
+      return ok
+    }
+    first.gallery.removeArt(dawn.id)
+    await drain()
+    /* Dusk is deleted while Dawn's delete is still out — and then the tab closes */
+    first.gallery.removeArt(dusk.id)
+    await drain()
+    stop()
+
+    net.calls.length = 0
+    answer((fn) =>
+      fn === 'library_index'
+        ? {
+            data: [
+              { kind: 'art', name: 'Dawn', at: 1 },
+              { kind: 'art', name: 'Dusk', at: 1 },
+            ],
+            error: null,
+          }
+        : fn === 'library_bodies'
+          ? {
+              data: [
+                { kind: 'art', name: 'Dawn', body: bodies.Dawn },
+                { kind: 'art', name: 'Dusk', body: bodies.Dusk },
+              ],
+              error: null,
+            }
+          : ok,
+    )
+    const next = await load()
+    await next.cloud.syncLibrary('u1')
+    /* neither comes back: Dawn's delete was owed from before the slow send, Dusk's from during it */
+    expect(next.gallery.gallery().map((a) => a.name)).toEqual([])
+    expect(sent('library_drop').sort()).toEqual(['Dawn', 'Dusk'])
+  })
 })

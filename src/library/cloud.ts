@@ -400,33 +400,66 @@ export function watchLibrary(signedInAs: () => string | null): () => void {
   /* what each account refused this visit; asked again when it changes or room is made */
   const held = new Map<string, Set<string>>()
 
-  /** One look. True when something did not get an answer and is worth asking again soon. */
-  const pass = async (): Promise<boolean> => {
+  /** This account's outbox for the visit: ONE live map, so every pass and record share it. */
+  const boxOf = (who: string): Outbox => {
+    let box = boxes.get(who)
+    if (!box) {
+      box = owedTo(who)
+      boxes.set(who, box)
+    }
+    return box
+  }
+
+  /**
+   * Note what changed since the last look, into the outbox ON DISK, now. Returns who it is owed to.
+   *
+   * ⚠️ ON EVERY CALL, BUSY OR NOT. This used to happen only at the start of a pass, and a change
+   * made while a pass was out waited for that pass's sends to finish — so a tab closed in between
+   * lost it, and the next load pulled the deleted item back (found in review, 28 Nov 2026). Now
+   * settle() records first and only then decides whether a pass can start.
+   *
+   * ⚠️ AND INTO THE LIVE MAP, IN PLACE. noteChanges answers with a new map; swapping it in while a
+   * pass is out would leave that pass deleting from, and writing out, a stale copy.
+   */
+  const record = (): string | null => {
     const now = snapshot()
     const who = signedInAs()
     if (!who) {
       last = now
-      return false
+      return null
     }
-    const noted = noteChanges(boxes.get(who) ?? owedTo(who), last, now)
+    const box = boxOf(who)
+    const noted = noteChanges(box, last, now)
     last = now
-    const box = noted.box
-    boxes.set(who, box)
+    for (const k of noted.touched) box.set(k, noted.box.get(k)!)
     const refused = held.get(who) ?? new Set<string>()
     held.set(who, refused)
     for (const k of noted.touched) refused.delete(k)
     /* ⚠️ written down BEFORE anything is sent, so a tab closed mid-send still owes it */
     keepOwed(who, box)
+    return who
+  }
 
-    const { send, stale } = due(box, now, refused)
+  /** One look. True when something did not get an answer and is worth asking again soon. */
+  const pass = async (): Promise<boolean> => {
+    const who = record()
+    if (!who) return false
+    const box = boxOf(who)
+    const refused = held.get(who)!
+
+    const { send, stale } = due(box, last, refused)
     for (const k of stale) box.delete(k)
     let failed = false
     let roomMade = false
     for (const s of send) {
+      /* ⚠️ owed to THIS account: if somebody else signed in mid-pass, the rest waits for it */
+      if (signedInAs() !== who) break
+      const owed = box.get(s.key)
       const r = s.op === 'drop' ? await drop(s.kind, s.name) : await put(s.item)
       const what = s.op === 'drop' ? `${s.kind} "${s.name}"` : `${s.item.kind} "${s.item.name}"`
       if (r.outcome === 'sent') {
-        box.delete(s.key)
+        /* ⚠️ only the entry that was sent: one recorded while it was out is newer, and still owed */
+        if (box.get(s.key) === owed) box.delete(s.key)
         if (s.op === 'drop') roomMade = true
       } else if (r.outcome === 'refused') {
         /* ⚠️ the watcher cannot show anything — it fires long after any button was pressed —
@@ -450,6 +483,8 @@ export function watchLibrary(signedInAs: () => string | null): () => void {
 
   const settle = () => {
     if (stopped) return
+    /* written down first, whatever happens next — see record() */
+    record()
     if (busy) {
       again = true
       return
