@@ -28,6 +28,7 @@ import {
   loungePresenceName,
   type LoungeName,
 } from '../loungeName'
+import { callNameFor } from '../callName'
 
 /**
  * Chat — a real messaging screen, not a row of room chips. The left side is your friends, each
@@ -510,7 +511,14 @@ export function Chat({
                   roomId={room.id}
                   roomName={room.name}
                   meId={me}
-                  myName={myName}
+                  /* the Lounge name in the Lounge, never the real one — see callName.ts */
+                  myName={callNameFor(
+                    room.kind === 'lounge' || room.kind === 'dm' || room.kind === 'circuit'
+                      ? room.kind
+                      : undefined,
+                    lounge,
+                    myName,
+                  )}
                   // presence is already loaded for the room list — it is the only count of who
                   // is in a call, since nothing server-side keeps a tally
                   occupancy={voiceIn[room.id]?.length ?? 0}

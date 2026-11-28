@@ -22,6 +22,8 @@ import { r2Operations, r2Storage } from './lib/r2ops.mjs'
 import { clientAddr, makeConnGate } from './lib/connGate.mjs'
 /* "did Supabase answer, or could it not be asked", and how long to keep a yes: see tokenAnswer */
 import { keepYes, sureOf } from './lib/supabaseAnswer.mjs'
+/* what an `auth` frame's answers mean, and when a doubt is asked again — see the header there */
+import { nextTry, signInStep, standingOf } from './lib/signIn.mjs'
 import { OWNER_RETRY_MS, makeParkHosts, ownerOfRoom } from './lib/parkHost.mjs'
 import { stampOfServer } from './lib/buildStamp.mjs'
 /* the largest frame read from a client, and why it is that size — see the header of that file */
@@ -76,7 +78,8 @@ const BUILD = (() => {
  * join request that never answers rather than one that is refused.
  *
  * Every one of those three catches, and a catch lets nobody in (`isAdmin` returns false; the two
- * answers say 'unsure', which their boolean wrappers read as no). The two Cloudflare ones and
+ * answers say 'unsure', which no door reads as a yes — the `auth` frame asks again, inside
+ * PARK_VOUCH_MS, and every other caller refuses). The two Cloudflare ones and
  * `finalize_round_rpc` either catch or throw into a caller that does — so a timeout lands on the
  * existing failure path and the auth checks stay FAIL-CLOSED, which is the property that mattered
  * before adding this. scripts/relay-fail-closed.test.mjs holds every door to that.
@@ -229,6 +232,12 @@ const WALK_WINDOW_MS = 1000
  * and then its token, and verifying the token is a round trip to Supabase — so there is always a
  * window where somebody is in the room and not yet vouched for. The window is what is bounded
  * here; what happens INSIDE it is bounded by broadcastPark, which sends them nothing.
+ *
+ * ⚠️ AND IT IS THE `auth` FRAME'S WINDOW FOR ASKING AGAIN, in every kind of room. A check that
+ * Supabase did not answer is retried only while it would start inside this many ms of the frame
+ * (server/lib/signIn.mjs's nextTry), so a sign-in is settled by about the time the park says
+ * who it is for — and one that lands a moment after still lets them in, because the roster
+ * clears the message on the client.
  *
  * Shortened by the environment for a test, never lengthened, as OUTBOUND_TIMEOUT_MS is.
  */
@@ -969,10 +978,11 @@ function bearer(req) {
  * accepting a userId the client typed would let anyone post scores to anyone's handle, which is
  * exactly what the RPC's claimed-handle rule exists to prevent.
  *
- * Every existing caller wants exactly that — a user or null — and gets it from `verifyToken`.
+ * The HTTP routes want exactly that — a user or null — and get it from `verifyToken`.
  * `tokenAnswer` underneath also says how SURE the null is (server/lib/supabaseAnswer.mjs):
  * 'no' when Supabase refused the token, 'unsure' when it could not be asked. A door that turns
- * people away with words needs the difference; one that only lets them in or not does not.
+ * people away with words needs the difference, and so does one that is only ever asked once:
+ * the WebSocket `auth` frame asks again on 'unsure' (server/lib/signIn.mjs).
  */
 async function tokenAnswer(token) {
   /* no token, or one no real session could have: definite, and never worth a round trip */
@@ -1055,12 +1065,17 @@ async function verifyToken(token) {
  * wait rather than to wave them through.
  *
  * `standingAnswer` says which kind of no it was, as `tokenAnswer` does: 'no' for a suspended
- * account (or a refused token), 'unsure' when nobody could be asked. `inGoodStanding` is the
- * yes-or-no every existing caller reads, and reads 'unsure' as no.
+ * account (or a refused token), 'unsure' when nobody could be asked. Both callers — the Lab's
+ * door and the `auth` frame (signInStep) — let somebody in on 'yes' alone; the `auth` frame asks
+ * again on 'unsure', and neither ever reads it as a yes.
  *
  * ⚠️ ONLY A 2xx IS CACHED, as before, because only a 2xx is a fact about THE PERSON. The cache is
  * keyed by user, and a 401 here is about the token in hand — keeping it would refuse that
  * person's next, perfectly good token for a minute.
+ *
+ * ⚠️ AND ONLY A 2xx THAT SAYS SOMETHING IS AN ANSWER (standingOf). Until 27 Nov 2026 a 2xx NULL
+ * counted as good standing — the one way through this door that failed OPEN. It is 'unsure' now:
+ * never cached, asked again by the auth frame's retry, and never a yes.
  */
 const standingCache = new Map()
 
@@ -1082,18 +1097,14 @@ async function standingAnswer(token, userId) {
     })
     const sure = sureOf(r.status)
     if (sure !== 'yes') return sure
-    const suspended = await r.json()
-    const answer = suspended === true ? 'no' : 'yes'
+    const answer = standingOf(r.status, await r.json())
+    if (answer === 'unsure') return answer
     standingCache.set(userId, { at: Date.now(), answer })
     capMap(standingCache, 200)
     return answer
   } catch (err) {
     return sureOf(err)
   }
-}
-
-async function inGoodStanding(token, userId) {
-  return (await standingAnswer(token, userId)) === 'yes'
 }
 
 /**
@@ -2882,25 +2893,57 @@ wss.on('connection', (ws, req) => {
          * userId would hand anyone else's handle to anyone who asked.
          *
          * Never broadcast: peers learn names, never account ids.
+         *
+         * ⚠️ A DOUBT IS ASKED AGAIN, BECAUSE THIS FRAME IS NEVER SENT TWICE. The client sends it
+         * once per socket, so until 27 Nov 2026 one 503 or timeout here was the answer for the
+         * socket's whole life: a claimed handle uncredited for the round, a member never let into
+         * a park or a bout and told at PARK_VOUCH_MS that it is for people with an account. Now a
+         * refused token or a suspended account is final, as before, and anything Supabase did not
+         * answer is asked again a few times inside PARK_VOUCH_MS — what each answer means and how
+         * long to wait are server/lib/signIn.mjs's, and only a 'yes' ever lets anybody in.
+         * scripts/relay-signin-retry.test.mjs plays it against a Supabase that blips;
+         * scripts/relay-fail-closed.test.mjs still holds an outage that lasts to a refusal.
          */
         if (typeof msg.token !== 'string' || msg.token.length > 4096) break
         /* see authInFlight above: cheap frames with an expensive tail, counted here because
-           nothing else counts them — the only general ceiling is a frame's size */
+           nothing else counts them — the only general ceiling is a frame's size. It is held
+           for every retry below, so a client cannot start a second check beside them. */
         if (!takeAuthSlot()) break
         const token = msg.token
-        void verifyToken(token)
-          .then(async (user) => {
-            if (!user?.id) return null
-            const st0 = room.state.get(id)
-            if (!st0) return null // left while we were checking
-            st0.userId = user.id
-            room.state.set(id, st0)
-            /* ⚠️ only rooms that carry a drawing pay for this round trip — Snake credits scores
-               off the token alone and always has, and asking twice there would slow every join
-               to buy nothing */
-            if (!carriesArt(joinedRoomId)) return null
-            return (await inGoodStanding(token, user.id)) ? user : null
-          })
+        /* the room this frame was sent in, which is the only door it is an answer for */
+        const authRoomId = joinedRoomId
+        const needsStanding = carriesArt(authRoomId)
+        const startedAt = Date.now()
+        /* ⚠️ still in that room. A hello elsewhere deletes this socket's entry here (leavePrevious);
+           a close keeps it, on purpose — a Snake player who drops keeps their score in the round,
+           and an answer already on its way still credits it — so asking AGAIN also needs the
+           socket open. Nobody is asked about once they have gone. */
+        const stillHere = () => joinedRoomId === authRoomId && !!room.state.get(id)
+        const worthAsking = () => stillHere() && ws.readyState === ws.OPEN
+        void (async () => {
+          for (let attempt = 1; ; attempt++) {
+            const t = await tokenAnswer(token)
+            if (!stillHere()) return null
+            let standing
+            if (t.sure === 'yes') {
+              const st0 = room.state.get(id)
+              st0.userId = t.user.id
+              room.state.set(id, st0)
+              /* ⚠️ only rooms that carry a drawing pay for this round trip — Snake credits scores
+                 off the token alone and always has, and asking twice there would slow every join
+                 to buy nothing */
+              if (needsStanding) standing = await standingAnswer(token, t.user.id)
+              if (!stillHere()) return null
+            }
+            const step = signInStep({ token: t.sure, standing, needsStanding })
+            if (step === 'vouched') return t.user
+            if (step !== 'retry' || !worthAsking()) return null
+            const wait = nextTry(attempt, startedAt, Date.now(), PARK_VOUCH_MS)
+            if (wait === null) return null
+            await new Promise((resolve) => setTimeout(resolve, wait))
+            if (!worthAsking()) return null
+          }
+        })()
           .then((user) => {
             if (!user?.id) return
             const st = room.state.get(id)

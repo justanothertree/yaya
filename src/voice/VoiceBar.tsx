@@ -29,7 +29,12 @@ export function VoiceBar({
   roomId: string
   roomName: string
   meId: string
-  myName: string
+  /**
+   * Who the call announces you as, or null for "not known yet" — the Lounge before its name has
+   * loaded. ⚠️ NULL HOLDS THE CALL rather than falling back to anything, because the only name
+   * there is to fall back to is the real one, which is what the Lounge exists not to show.
+   */
+  myName: string | null
   /** how many are already in this room's call, from voice presence */
   occupancy?: number
   /** circuit, lounge or dm — said here because the call itself cannot know */
@@ -57,12 +62,16 @@ export function VoiceBar({
       <div className="voice-bar">
         <button
           className="btn"
-          disabled={v.joining}
-          onClick={() => void v.join(roomId, roomName, meId, myName, occupancy, roomKind)}
+          disabled={v.joining || myName === null}
+          onClick={() => {
+            if (myName !== null) void v.join(roomId, roomName, meId, myName, occupancy, roomKind)
+          }}
           title={
-            v.inCall
-              ? `Leave ${v.roomName} and join this call instead`
-              : `Start a voice call in ${roomName}`
+            myName === null
+              ? 'Your Lounge name has not loaded yet'
+              : v.inCall
+                ? `Leave ${v.roomName} and join this call instead`
+                : `Start a voice call in ${roomName}`
           }
         >
           {/* Switching used to be blocked until you'd left the other call first. It just
