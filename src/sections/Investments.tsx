@@ -10,8 +10,17 @@ const fundOwner = site.fundOwner
 import { correctionWarning, fullPrecision } from '../finance/correction'
 import { accountNumbers, holdingWorth, type AccountNumbers } from '../finance/accountNumbers'
 import { DUST_UNITS, DUST_USD } from '../finance/dust'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { errText } from '../ui/errText'
+import { CouldNotLoad } from '../ui/CouldNotLoad'
+import {
+  LEDGER_UNREAD,
+  answerRead,
+  mayWrite,
+  startRead,
+  wrote,
+  type LedgerRead,
+} from '../finance/ledgerRead'
 import { isAuthDenial } from '../finance/auth'
 import {
   fetchMyPortfolio,
@@ -1716,14 +1725,57 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const [fPlatform, setFPlatform] = useState<'all' | 'cashapp' | 'robinhood'>('all')
   const [fKind, setFKind] = useState<'all' | 'buys' | 'sells' | 'adjustments'>('all')
   const [visibleCount, setVisibleCount] = useState(50)
+  /**
+   * Whether what is on screen is what the server holds — see finance/ledgerRead.ts.
+   *
+   * ⚠️ IN A REF AS WELL AS STATE, because `write` must refuse on what is true NOW and a closure
+   * holds the value from its own render. The state copy is only what the buttons are drawn from,
+   * so every change sets both.
+   */
+  const readRef = useRef<LedgerRead>(LEDGER_UNREAD)
+  const [read, setRead] = useState<LedgerRead>(LEDGER_UNREAD)
 
+  /** Never throws: a failure is kept in `read` and shown as one, never as an empty ledger. */
   const load = async () => {
-    const [t, a, p] = await Promise.all([fetchMyTrades(), fetchMyAllocations(), fetchPositions()])
+    const { next, ticket } = startRead(readRef.current)
+    readRef.current = next
+    setRead(next)
+    let got: [Trade[], AllocationRow[], Position[]] | null = null
+    let failure: string | null = null
+    try {
+      got = await Promise.all([fetchMyTrades(), fetchMyAllocations(), fetchPositions()])
+    } catch (e: unknown) {
+      failure = errText(e)
+    }
+    const answer = answerRead(readRef.current, ticket, failure)
+    readRef.current = answer.next
+    setRead(answer.next)
+    if (!answer.use || !got) return
+    const [t, a, p] = got
     t.sort((x, y) => y.date.localeCompare(x.date) || x.symbol.localeCompare(y.symbol))
     setTrades(t)
     setAllocs(a)
     setPositions(p)
   }
+  const retry = () => void load()
+
+  /**
+   * Every write this tab makes goes through here. It refuses unless the ledger is current, counts
+   * the write before sending it, and reads the ledger back afterwards WHETHER OR NOT the write
+   * said it worked — a timeout can still land, and `insert_allocation` adds rows. The write's
+   * own error is what rejects; the read-back's is shown by `read`.
+   */
+  const write = async <T,>(send: () => Promise<T>): Promise<T> => {
+    if (!mayWrite(readRef.current)) throw new Error('The ledger isn’t up to date yet.')
+    readRef.current = wrote(readRef.current)
+    setRead(readRef.current)
+    try {
+      return await send()
+    } finally {
+      await load()
+    }
+  }
+  const canWrite = mayWrite(read)
 
   const posKey = (p: Position) => `${p.symbol}|${p.platform}`
 
@@ -1739,7 +1791,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
     setAskFor(null)
     setErr(null)
     setDidSay(null)
-    setSymbolDesignation(pos.symbol, pos.platform, !pos.isFamily)
+    write(() => setSymbolDesignation(pos.symbol, pos.platform, !pos.isFamily))
       .then((r) => {
         setDidSay({
           key,
@@ -1749,7 +1801,6 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
               ? `Shared ${pos.symbol} out — ${r.allocationsCreated.toLocaleString()} new allocation${r.allocationsCreated === 1 ? '' : 's'}.`
               : `${pos.symbol} is now ${r.family ? 'family' : 'personal'}. Nothing else changed.`,
         })
-        return load()
       })
       .catch((e: unknown) => setErr(errText(e)))
       .finally(() => setBusySym(null))
@@ -1768,33 +1819,30 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
     if (!Number.isFinite(v) || v < 0) return
     setBusySym(posKey(pos))
     setErr(null)
-    correctPosition(pos.symbol, pos.platform, v)
+    write(() => correctPosition(pos.symbol, pos.platform, v))
       .then(() => {
         setFixFor(null)
         setFixVal('')
-        return load()
       })
       .catch((e: unknown) => setErr(errText(e)))
       .finally(() => setBusySym(null))
   }
   useEffect(() => {
-    void load().catch((e: unknown) => setErr(errText(e)))
+    void load()
   }, [])
 
   /**
-   * ⚠️ ONLY WHEN THE FIRST LOAD FAILED.
+   * ⚠️ ONLY WHEN THE FIRST LOAD FAILED — there is nothing on screen yet to keep.
    *
-   * `err` is also set by toggleDesignation and saveCorrection — actions taken after the page
-   * is up. Returning early on those replaced the whole tab with one red sentence: the
-   * positions, the 1,500-row trade history, the filters and the scroll position, all gone
-   * because a designation click hit an expired token. There was no retry and no dismiss; the
-   * only way back was to switch tabs and remount. An action that failed is a message, not a
-   * new page — it renders as a banner over the list below.
+   * A read that fails LATER, after a write, is a banner over the list instead: returning early
+   * replaced the whole tab with one red sentence — the positions, the 1,500-row trade history,
+   * the filters and the scroll position, all gone because a designation click hit an expired
+   * token. `err` is only ever an action's own failure now, and the reads keep theirs in `read`.
    */
-  if (err && trades === null) {
+  if (trades === null && read.failed) {
     return (
       <article className="card">
-        <p style={{ margin: 0, color: 'var(--accent-2)' }}>{err}</p>
+        <CouldNotLoad what="the trades ledger" onRetry={retry} retrying={read.waiting} />
       </article>
     )
   }
@@ -1908,6 +1956,16 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
           <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => setErr(null)}>
             Dismiss
           </button>
+        </article>
+      )}
+      {/* a read after a write failed: what is below predates it, so nothing here writes */}
+      {read.failed && (
+        <article className="card" style={{ borderColor: 'var(--accent-2)' }}>
+          <CouldNotLoad
+            what="the latest trades and allocations"
+            onRetry={retry}
+            retrying={read.waiting}
+          />
         </article>
       )}
       <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
@@ -2071,14 +2129,17 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                             placeholder="true units"
                             autoFocus
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveCorrection(p)
+                              if (e.key === 'Enter' && busySym === null && canWrite)
+                                saveCorrection(p)
                             }}
                             style={{ padding: '0.2rem 0.4rem', width: '8rem' }}
                           />
                           <button
                             className="btn"
                             onClick={() => saveCorrection(p)}
-                            disabled={busySym !== null || !Number.isFinite(parseFloat(fixVal))}
+                            disabled={
+                              busySym !== null || !canWrite || !Number.isFinite(parseFloat(fixVal))
+                            }
                             style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
                           >
                             Set
@@ -2111,7 +2172,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                       <button
                         className="btn btn-ghost"
                         onClick={() => askOrFlip(p)}
-                        disabled={busySym !== null}
+                        disabled={busySym !== null || !canWrite}
                         aria-pressed={p.isFamily}
                         aria-expanded={askFor === key}
                         title={
@@ -2149,7 +2210,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                                 <button
                                   className="btn"
                                   onClick={() => toggleDesignation(p)}
-                                  disabled={busySym !== null}
+                                  disabled={busySym !== null || !canWrite}
                                   style={{
                                     fontSize: '0.74rem',
                                     background: plan.destroys ? '#e5484d' : 'var(--accent,#7c6af7)',
@@ -2305,7 +2366,15 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                     borderRadius: 8,
                   }}
                 >
-                  {rows.length > 0 ? (
+                  {/* after a failed read the split held here predates a write, so it is not
+                      said as the answer: "Nothing assigned yet" is what invited the duplicate */}
+                  {read.failed ? (
+                    <CouldNotLoad
+                      what="this trade’s allocations"
+                      onRetry={retry}
+                      retrying={read.waiting}
+                    />
+                  ) : rows.length > 0 ? (
                     rows.map((a) => (
                       <div
                         key={a.id}
@@ -2327,10 +2396,10 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                     <AssignForm
                       accounts={accounts}
                       remaining={remaining}
-                      onAssign={async (accountId, units) => {
-                        await assignAllocation(accountId, t.id, units)
-                        await load()
-                      }}
+                      blocked={!canWrite}
+                      onAssign={(accountId, units) =>
+                        write(() => assignAllocation(accountId, t.id, units))
+                      }
                     />
                   )}
                 </div>
@@ -2421,14 +2490,17 @@ function SetPriceForm({ symbols }: { symbols: string[] }) {
   )
 }
 
-// Assign some of a trade's remaining units to one account.
+// Assign some of a trade's remaining units to one account. `blocked` while the ledger is not
+// known to be current — `remaining` is worked out from it and `insert_allocation` adds rows.
 function AssignForm({
   accounts,
   remaining,
+  blocked,
   onAssign,
 }: {
   accounts: AccountPortfolio[]
   remaining: number
+  blocked: boolean
   onAssign: (accountId: string, units: number) => Promise<void>
 }) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '')
@@ -2442,7 +2514,7 @@ function AssignForm({
     <form
       onSubmit={(e) => {
         e.preventDefault()
-        if (!valid || !accountId) return
+        if (!valid || !accountId || blocked || busy) return
         setBusy(true)
         setErr(null)
         onAssign(accountId, parsed)
@@ -2478,7 +2550,7 @@ function AssignForm({
       <button
         className="btn"
         type="submit"
-        disabled={busy || !valid || !accountId}
+        disabled={busy || !valid || !accountId || blocked}
         style={{
           fontSize: '0.8rem',
           background: 'var(--accent,#7c6af7)',
