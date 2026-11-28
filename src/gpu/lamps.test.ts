@@ -3,6 +3,8 @@ import { daySeed, daySeedOf, rng } from './bricks'
 import { dayNumber } from './daily'
 import {
   EMPTY,
+  PATTERNS,
+  SIZES,
   dark,
   seedFor,
   verifyLamps,
@@ -16,6 +18,7 @@ import {
   type Saved,
 } from './lamps'
 import { NIGHTLY } from './testMatches'
+import { beatHash, readBeat } from '../lab/beat'
 
 /**
  * The fewest presses by trying every set of presses there is: 512 on 3 × 3, 65,536 on 4 × 4,
@@ -223,5 +226,39 @@ describe('checking a solve from its replay', () => {
     expect(r([])).toEqual({ ok: false, why: 'actions' })
     expect(r(way, { size: 3 })).toEqual({ ok: false, why: 'board' })
     expect(r(way, { pattern: 'star' })).toEqual({ ok: false, why: 'board' })
+  })
+})
+
+/** a fingerprint of anything JSON can say, through WebCrypto: node:crypto is not typed for src/ */
+const sha256 = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+describe('the board a “beat my board” link names', () => {
+  it('is the board its seed has always made, at every size and pattern', async () => {
+    // node v22.23.4 and bun 1.4.4 agree on this figure (27 Nov 2026); a change to make() turns it
+    // red, and a deliberate one must give links a version (docs/2026-11-27-lab-beat-my-board.md)
+    const boards = SIZES.flatMap((n) => PATTERNS.map((p) => make(n, p, 3_000_000_001)))
+    expect(await sha256(boards)).toBe(
+      '1eb2e786e9597e091641827987a8f5d48e7f9a6d3c97488807c6e942c239f3bf',
+    )
+  })
+  it('is the sender’s board, built from what the link carries', () => {
+    const way = solve(make(6, 'cross', 3_000_000_001), 6, 'cross')!
+    const b = readBeat(
+      beatHash({ game: 'lamps', seed: 3_000_000_001, size: 6, pattern: 'cross', presses: way }),
+    )
+    expect(b?.game).toBe('lamps')
+    if (b?.game !== 'lamps') return
+    expect(make(b.size, b.pattern, b.seed)).toEqual(make(6, 'cross', 3_000_000_001))
+    // and the presses it carries are the sender's, which switch that board off
+    let lit = make(6, 'cross', 3_000_000_001)
+    for (const i of b.presses) lit = press(lit, 6, i, 'cross')
+    expect(dark(lit)).toBe(true)
   })
 })
