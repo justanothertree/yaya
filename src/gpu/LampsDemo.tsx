@@ -37,6 +37,9 @@ import { MatchChallenge } from '../lab/matches/MatchChallenge'
 import { useSignedIn } from '../lab/matches/useSignedIn'
 import { otherName } from '../lab/matches/words'
 import { myHidden } from '../lab/matches/cloud'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { newSeed, outcome, verdict, type Beat } from '../lab/beat'
 
 const LOOK_NAMES: Record<Saved['look'], string> = {
   bulbs: 'Bulbs',
@@ -59,10 +62,20 @@ export function LampsDemo() {
 function LampsAlone() {
   const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(LAMPS_KEY, readSaved)
-  const [seed, setSeed] = useState(() => seedFor(saved.size, saved.pattern))
+  /**
+   * A friend's board to beat, from the address: its seed, size and pattern, and the presses that
+   * switched it off — replayed when the link is read (beat.ts), so the banner can say they work.
+   * It is played on your own; a call's room and a duel ignore it.
+   */
+  const [challenge, leaveChallenge] = useChallenge('lamps')
+  const [seed, setSeed] = useState(() => challenge?.seed ?? seedFor(saved.size, saved.pattern))
   const n = saved.size
   const pattern = saved.pattern
   const daily = seed === seedFor(n, pattern)
+  /** the link's board is today's board here, so finishing it counts as your own today's */
+  const todayEqual = !!challenge && challenge.seed === seedFor(challenge.size, challenge.pattern)
+  const onLinkBoard =
+    !!challenge && seed === challenge.seed && n === challenge.size && pattern === challenge.pattern
   const fresh = useMemo(() => make(n, pattern, seed), [n, pattern, seed])
   const par = useMemo(() => solve(fresh, n, pattern)!.length, [fresh, n, pattern])
   /**
@@ -86,6 +99,8 @@ function LampsAlone() {
   const [hint, setHint] = useState<number | null>(null)
   const [done, setDone] = useState(false)
   const [kept, setCursor] = useState(0)
+  /** this board's finish as a link would carry it, kept from the moment it went dark */
+  const [finished, setFinished] = useState<Extract<Beat, { game: 'lamps' }> | null>(null)
   // the same for the keyboard's place: on the last lamp of 7×7, 4×4 had no lamp to Tab to for a render
   const cursor = kept < n * n ? kept : 0
   const [line, setLine] = useState(
@@ -101,6 +116,7 @@ function LampsAlone() {
     setHints(0)
     setHint(null)
     setDone(false)
+    setFinished(null)
     setCursor(0)
   }, [fresh])
 
@@ -111,6 +127,32 @@ function LampsAlone() {
   const [withCall, setWithCall] = useState(false)
   const roomRules = useMemo(() => lampsRules(today, n, pattern), [today, n, pattern])
   const lab = useLabRoom('lamps', roomRules)
+  /** a control that changes the board leaves a link first, so the address names what is on screen */
+  const leave = () => {
+    if (challenge) leaveChallenge()
+  }
+  /* a link names its board, written as the size and pattern buttons write them, so every record
+     keyed on the size is the board's own. And a link that leaves the address some other way than
+     Leave (Back, say) takes its board with it: today's board comes back, as Leave deals it, so a
+     link's board never goes on to record as your own. Both wait while the call has the board —
+     the call's room is ruled by this size and pattern */
+  const lastLink = useRef(challenge)
+  useEffect(() => {
+    if (withCall) return
+    const was = lastLink.current
+    lastLink.current = challenge
+    if (challenge) {
+      setSaved((x) =>
+        x.size === challenge.size && x.pattern === challenge.pattern
+          ? x
+          : { ...x, size: challenge.size, pattern: challenge.pattern },
+      )
+      setSeed(challenge.seed)
+    } else if (was && seed === was.seed && n === was.size && pattern === was.pattern)
+      setSeed(seedFor(n, pattern))
+    // only a new link, or the call letting go of the board, should run this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge, withCall])
   const words = tableSeats(lab, roomRules)
   const room = withCall ? lab.room : null
   const g = room?.game
@@ -139,19 +181,31 @@ function LampsAlone() {
     setPresses(count)
     if (dark(next)) {
       setDone(true)
-      setSaved((s) => ({
-        ...s,
-        solvedCount: s.solvedCount + 1,
-        bests: daily
-          ? keepBest(
-              s.bests,
-              { day: today, size: n, pattern, presses: count, par, actions: actions.current },
-              today,
-            )
-          : s.bests,
-      }))
+      const result: Extract<Beat, { game: 'lamps' }> = {
+        game: 'lamps',
+        seed,
+        size: n,
+        pattern,
+        presses: [...actions.current],
+      }
+      setFinished(result)
+      /* ⚠️ A LINK'S BOARD IS PRACTICE: its presses were in the address, and "start again" replays
+         it. Unless it is today's board here — then it is your own today's, kept as Today's keeps it */
+      const onLink = challenge !== null && outcome(result, challenge) !== null
+      if (!onLink || daily)
+        setSaved((s) => ({
+          ...s,
+          solvedCount: s.solvedCount + 1,
+          bests: daily
+            ? keepBest(
+                s.bests,
+                { day: today, size: n, pattern, presses: count, par, actions: actions.current },
+                today,
+              )
+            : s.bests,
+        }))
       setLine(
-        `🎉 All dark in ${count} presses${count === par ? ' — that is par, the fewest there are!' : `; par is ${par}.`}${hints ? ` (${hints} hint${hints === 1 ? '' : 's'})` : ''}`,
+        `🎉 All dark in ${count} presses${count === par ? ' — that is par, the fewest there are!' : `; par is ${par}.`}${hints ? ` (${hints} hint${hints === 1 ? '' : 's'})` : ''}${challenge ? verdict(result, challenge) : ''}`,
       )
     } else setLine(`${next.filter(Boolean).length} lamps still lit.`)
   }
@@ -184,6 +238,7 @@ function LampsAlone() {
     setHints(0)
     setHint(null)
     setDone(false)
+    setFinished(null)
     setLine('The same board again, from the start.')
   }
 
@@ -195,6 +250,9 @@ function LampsAlone() {
     setWithCall(false)
     if (!r || r.game.winner !== null || r.game.size !== n || r.game.pattern !== pattern) return
     const k = r.game.boards.length === 1 ? 0 : (words.mySeat ?? 0)
+    // the call's board, not a link's: carrying it on leaves the link
+    leave()
+    setFinished(null)
     setSeed(seedFor(n, pattern))
     setPlay({ fresh, lit: r.game.lit[k] })
     actions.current = []
@@ -205,6 +263,16 @@ function LampsAlone() {
 
   return (
     <div className={`lab-keys lp-room is-${saved.look}`}>
+      {!withCall && challenge && (
+        <BeatBanner
+          beat={challenge}
+          today={todayEqual}
+          onLeave={() => {
+            leaveChallenge()
+            setSeed(seedFor(n, pattern))
+          }}
+        />
+      )}
       {(lab.live || withCall) && (
         <div className="lab-controls">
           <div className="lab-group" role="group" aria-label="Who with">
@@ -253,6 +321,7 @@ function LampsAlone() {
                 className="btn btn-ghost"
                 aria-pressed={n === s}
                 onClick={() => {
+                  leave()
                   setSaved((x) => ({ ...x, size: s as Size }))
                   setSeed(seedFor(s, pattern))
                 }}
@@ -268,6 +337,7 @@ function LampsAlone() {
                 className="btn btn-ghost"
                 aria-pressed={pattern === p}
                 onClick={() => {
+                  leave()
                   setSaved((x) => ({ ...x, pattern: p }))
                   setSeed(seedFor(n, p))
                 }}
@@ -280,13 +350,19 @@ function LampsAlone() {
             <button
               className="btn btn-ghost"
               aria-pressed={daily}
-              onClick={() => setSeed(seedFor(n, pattern))}
+              onClick={() => {
+                leave()
+                setSeed(seedFor(n, pattern))
+              }}
             >
               Today’s
             </button>
             <button
               className="btn btn-ghost"
-              onClick={() => setSeed((Math.random() * 2 ** 31) >>> 0)}
+              onClick={() => {
+                leave()
+                setSeed(newSeed())
+              }}
             >
               ⟳ New board
             </button>
@@ -331,7 +407,9 @@ function LampsAlone() {
           <div className="dice-score">
             <span>Today’s best</span>
             <strong>{best ? best.presses : '—'}</strong>
-            <span className="muted">{daily ? 'today’s board' : 'a random board'}</span>
+            <span className="muted">
+              {daily ? 'today’s board' : onLinkBoard ? 'the link’s board' : 'a random board'}
+            </span>
           </div>
         </div>
       )}
@@ -340,6 +418,7 @@ function LampsAlone() {
           {line}
         </p>
       )}
+      {!withCall && finished && <BeatShare beat={finished} answering={challenge} />}
 
       <LampGrid
         n={N}

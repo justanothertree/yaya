@@ -3,6 +3,7 @@ import {
   DIFFICULTY,
   EMPTY_SAVED,
   LEVELS,
+  SEEDS,
   fitBoard,
   generate,
   packTiles,
@@ -18,6 +19,7 @@ import {
   type Dir,
   type State,
 } from './slide'
+import { beatHash, readBeat } from '../lab/beat'
 
 const DIRS: Dir[] = ['up', 'down', 'left', 'right']
 const begin = (b: Board): State => ({ at: b.start, got: 0 })
@@ -168,5 +170,43 @@ describe('what is kept, and the stage', () => {
     const f = fitBoard([600, 400], l.w, l.h)
     expect(f.ox + l.w * f.s).toBeLessThanOrEqual(600)
     expect(f.oy + l.h * f.s).toBeLessThanOrEqual(400)
+  })
+})
+
+/** a fingerprint of anything JSON can say, through WebCrypto: node:crypto is not typed for src/ */
+const sha256 = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+describe('the board a “beat my board” link names', () => {
+  const kinds = Object.keys(DIFFICULTY) as Difficulty[]
+  it('is the board its seed has always made, at every difficulty', async () => {
+    // node v22.23.4 and bun 1.4.4 agree on this figure (27 Nov 2026); a change to generate() turns
+    // it red, and a deliberate one must give links a version (docs/2026-11-27-lab-beat-my-board.md)
+    expect(await sha256(kinds.map((d) => generate(99_998, d)))).toBe(
+      'ab97c595ff7a6b56c99676637155e6d2a77eea5728e7a0df06e86d9df156a4f8',
+    )
+  })
+  it('is the sender’s board, built from what the link carries', () => {
+    const b = readBeat(beatHash({ game: 'slide', seed: 99_998, difficulty: 'hard', pushes: 23 }))
+    expect(b?.game).toBe('slide')
+    if (b?.game !== 'slide') return
+    expect(generate(b.seed, b.difficulty)).toEqual(generate(99_998, 'hard'))
+  })
+  it('every seed the toy deals is one a link can carry, and both ends make a board', () => {
+    // every seed from 1 to SEEDS was swept at every difficulty on 27 Nov 2026: 299,997 boards, no
+    // null (docs/2026-11-27-lab-beat-my-board.md); the ends are asked again here on every run
+    for (const d of kinds) {
+      expect(generate(1, d), d).not.toBeNull()
+      expect(generate(SEEDS, d), d).not.toBeNull()
+      expect(
+        readBeat(beatHash({ game: 'slide', seed: SEEDS, difficulty: d, pushes: 99 })),
+      ).not.toBeNull()
+    }
   })
 })

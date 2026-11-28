@@ -620,3 +620,134 @@ was exact.
   Tents say "board" there rather than "map" or "field". That line is the base's.
 - Pipes' "↺ Start this board again" keeps a link up: it does not change the board, so it is a
   retry on the same link.
+
+## Group g4: Lamps, Slide and Nonogram, 27 Nov 2026
+
+### What each link carries
+
+| Toy      | Link                                                                         | Who wins                                   |
+| -------- | ---------------------------------------------------------------------------- | ------------------------------------------ |
+| Lamps    | `#lab?demo=lamps&seed=…&size=4…7&pattern=plus\|cross&presses=…`              | Fewer presses, an undo counted as one      |
+| Slide    | `#lab?demo=slide&seed=1…99999&difficulty=easy\|medium\|hard&pushes=…`        | Fewer pushes                               |
+| Nonogram | `#lab?demo=nonogram&code=10x10.…` — not a beat link, the code is the picture | Nobody: it is a puzzle somebody drew, sent |
+
+**Lamps is the one link that is checked, not claimed.** Its `presses` are one letter per press
+(`A`–`Z`, `a`–`w` for lamps 0 to 48, `_` for an undo). Reading the link replays them on
+`make(size, pattern, seed)` with `runSolve`, the toy's own rule for a finish: dark at the end and not
+before, an undo counted. Anything that does not switch that board off is no challenge, so the banner
+says "checked here — … They were replayed on this page and do switch it off; hints are not in the
+link." It never calls `verifyLamps`, which refuses any day but yesterday, today and tomorrow: a link
+carries the seed, so a random board or an old day's board can be sent too. Measured: making the
+board and replaying a solve took at most 3.5 ms in node and 5.5 ms in bun over 480 boards, a solve
+included (19:06 EST).
+
+**Every real Lamps run has an even number of presses.** A board is lit by an even number of presses
+(6, 10, 14 or 20), and every set of presses that changes nothing is even too: the press matrix's
+null space has basis weights 8,8,8,8 and 6,4,4,6 on 4×4, 16,12 and 8,8,8,8 on 5×5, and is empty on
+6×6 and 7×7, both patterns (computed 19:40 EST). A press and its undo, or a lamp pressed twice, add
+two. So the first real run past the 400-press bound is 402, and the tests pad a real solve to 400
+and 402 rather than 401.
+
+**The same presses can switch off the other pattern's board from the same seed** when `make` kept
+its first scatter for both, as it did for the fixture. That is a true replay, not a gap: the pattern
+is part of the board, so a result on it is never compared with the link's.
+
+**Slide keeps its own seeds.** `slide.ts` exports `SEEDS = 99_999`, what the toy mints and what a
+link may carry. Every seed from 1 to 99,999 at every difficulty was generated in node (19:07 EST):
+299,997 boards, none null, so `generate(...) ?? LEVELS[0]` never shows level 1 for a link. A link's
+`pushes` must be at least its difficulty's fewest (`DIFFICULTY[d].min`), which every board's par is.
+
+### What a link run may write
+
+- **Lamps:** `solvedCount` and `bests` are untouched unless the link's board is today's board here
+  (`seed === seedFor(size, pattern)` for today). Then the finish records exactly as the Today's
+  button would: in the browser, the same presses through a link and through Today's left the two
+  stores byte-identical. The link writes `size` and `pattern` the way their buttons do, as a
+  preference, so every record keyed on the size is the board's own. It waits while "With the call"
+  has the board, because the call's room is ruled by that size and pattern, and a duel ignores it.
+- **Slide:** `endless[difficulty]` is untouched. A link only ever opens an endless board in component
+  state; nothing is saved for it.
+- **Nonogram:** `progress[code]` and `solved[code]` are written exactly as "Open a code" writes them;
+  in the browser the two stores had the same keys and the same marks.
+
+**Back takes a link's board with it** (the same rule as g1). A link clicked in a chat pushes a
+history entry, and Back cleared the challenge while its board stayed up, to record as your own on
+the next finish. Now a link that leaves the address any way but Leave deals what Leave deals: Lamps'
+today's board at the current size, Slide's a new endless board.
+
+### Nonogram: a drawn picture opens from a link
+
+- The toy opens on `ofCode('A picture from a link', code)` when the address names `demo=nonogram`
+  and a code `fromCode` accepts; anything it refuses opens the toy as it would have opened.
+- A link clicked while the Lab is open is heard on `hashchange`, and opens unless that picture is on
+  screen already.
+- **Any other puzzle takes `&code=` out of the address** (`replaceState`, no `TOY_EVENT`). Left in,
+  a second click on the same link changed nothing, because an identical hash fires no hashchange;
+  with the rule removed, the browser check timed out waiting for exactly that.
+- "🔗 Copy a link" sits beside "📋 Copy code" in the maker, and on a made picture in play mode.
+  Built-in levels get none: a code carries no colours. The maker's sentence about sharing now says
+  "by its code, or as a link that opens it".
+- A reload after opening a level opens the toy's own first unsolved puzzle, as a reload always
+  has, not the link's picture.
+
+### Engine and pins
+
+- Lamps' boards and solves for 12 seeds from 1 to 4,294,967,295 at every size and pattern (96
+  fingerprints), and Slide's boards and solves for 8 seeds at every difficulty (24), are
+  byte-identical in node v22.23.4 and bun 1.4.4 (19:06 EST). Both are integer xorshift with
+  divisions by 2^32; neither sorts.
+- `lamps.test.ts` pins every size and pattern at seed 3,000,000,001 and `slide.test.ts` every
+  difficulty at seed 99,998, as SHA-256 through WebCrypto (the g1 convention: `node:crypto` is not
+  typed for `src/`). Both figures agree in node and bun.
+
+### Corrections to the spec
+
+- **Day 20784 is 27 Nov 2026 itself**, not 30 days ago. The test takes today as 20,784 (and checks
+  that against `dayNumber`) and sends the board of day 20,754.
+- **The Slide share sits just above the result paragraph**, not inside it: `BeatShare` renders a
+  `<div>`, which cannot sit in the `<p>` that holds "Another ›".
+- **The fixture with its pattern changed is not refused**, as the spec's list implied — see above.
+
+### Tests and mutations
+
+`beat.test.ts` gained two FIXTURE rows (12 generic tests) and 13 g4 cases: golden links, bounds at
+lo − 1, lo, hi and hi + 1 from `SIZES`, `MAX_ACTIONS`, `SEEDS` and `DIFFICULTY`, the forged-presses
+refusals, outcome better, level and worse, and the banner, invitation and reply sentences. The toy
+tests pin the boards and build the sender's board from the link with the generator called directly.
+
+24 mutations were run against the tests and 23 went red, among them every one the spec named:
+Lamps' `check` removed, Slide's minimum removed, the presses alphabet widened to `x`. The one that
+stayed green raises the presses codec's bound past `MAX_ACTIONS`: `runSolve` refuses past
+`MAX_ACTIONS` itself, so nothing can observe it. Lowering it goes red. In the browser, removing
+either toy's records guard changed the records, and removing Lamps' Back guard left the link's
+board up after Back.
+
+### Browser, 27 Nov 2026 (Playwright Chromium, 375, 820 with the `(pointer: coarse)` rules, 1440)
+
+Lamps 19:23–19:24, Slide 19:28–19:30, Nonogram 19:31–19:34 EST.
+
+- **Lamps and Slide:** A sent a non-default board (6×6 corners on ⟳ New board; hard on 🎲 New
+  board). B opened it in a fresh context with records already kept and saw A's board (every lamp's
+  state; the seed, the difficulty and a par equal to the solver's in node). B finished better, level
+  and worse, its records unchanged but for Lamps' size and pattern, and sent a reply carrying A's
+  board and B's score. C's banner showed B's score. Leave wrote `#lab?demo=<toy>`, dealt today's
+  board or a new endless one, and the next finish recorded. At 1440: warm opens from another toy and
+  from the same toy, Back took the link's board with it, the picker wrote `#lab?demo=<other>`, and
+  malformed links (a parameter dropped, `seed=4294967296`, doctored presses, another size,
+  `seed=100000`, pushes under the minimum, an unknown difficulty) opened the toy with no banner. A
+  link to today's Lamps board said so in its banner, and finishing it left the store byte-identical
+  to the same presses on Today's.
+- **Nonogram:** A drew a 10×10 picture from the keyboard and copied a link. B, with records kept,
+  read the same clue numbers from the stage as A's page showed for A's own picture, solved it, and
+  had the same keys and marks written as "Open a code" writes. B's own "🔗 Copy a link" carried the
+  same code. Opening a level dropped the code from the address, the same link opened again, and a
+  reload opened the toy's first unsolved puzzle. At 1440: warm opens from another toy and the same
+  toy; four spoiled codes opened Heart with the address put back on `#lab?demo=nonogram`; the picker
+  wrote `#lab?demo=lamps`.
+- **Every toy, every width:** no sideways scroll. Leave measured 161×36, 162×37 and 165×39, the share
+  234–237 wide by 36–39, Nonogram's "🔗 Copy a link" 119–122×36. `mobileAudit` named an injected
+  16×16 control each time and was clean without it.
+
+Headless swiftshader loses a WebGPU device now and then when another context closes; the scripts
+press the stage's own "Try again", which is the toy's way back from a lost device. Firefox and
+Safari are not reachable from here and need a look.

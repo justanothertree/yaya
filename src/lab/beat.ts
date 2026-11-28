@@ -38,6 +38,8 @@ import { SIZES as BRIDGES_SIZES } from '../gpu/bridges'
 import { SIZES as TENTS_SIZES } from '../gpu/tents'
 import { clock as boardClock } from '../gpu/daily'
 /* ── g4 imports ── */
+import * as lampsToy from '../gpu/lamps'
+import * as slideToy from '../gpu/slide'
 
 /* ---------------------------------------------------------------------------- seeds */
 
@@ -316,6 +318,45 @@ export const ARMS = {
       `${boardClock(b.secs)} on ${[8, 11, 18].includes(b.size) ? 'an' : 'a'} ${b.size}×${b.size} field`,
   }),
   /* ── g4 arms ── */
+  lamps: arm({
+    name: 'Lamps',
+    noun: 'board',
+    same: 'Same board',
+    goal: 'fewer presses wins, and an undo counts',
+    fields: {
+      seed: SEED,
+      size: oneOf('size', lampsToy.SIZES),
+      pattern: oneOf('pattern', lampsToy.PATTERNS),
+      presses: presses('presses', lampsToy.MAX_ACTIONS),
+    },
+    board: ['seed', 'size', 'pattern'],
+    /* ⚠️ REPLAYED, NOT BELIEVED: the toy's own board and the toy's own rule for a finish — dark at
+       the end and not before, an undo counted. runSolve, never verifyLamps, which refuses any day
+       but yesterday, today and tomorrow, and a link can name a board from any day or none */
+    check: (b) =>
+      lampsToy.runSolve(lampsToy.make(b.size, b.pattern, b.seed), b.size, b.pattern, b.presses).ok,
+    checked: 'They were replayed on this page and do switch it off; hints are not in the link.',
+    rank: (b) => [b.presses.length],
+    says: (b) =>
+      `${b.presses.length} presses on a ${b.size}×${b.size} ${b.pattern === 'plus' ? '✚' : '✖'} board`,
+  }),
+  slide: arm({
+    name: 'Slide',
+    noun: 'board',
+    same: 'Same board',
+    goal: 'fewer pushes wins',
+    fields: {
+      // the toy's own seeds, not SEED: an endless board is only ever dealt from 1 to SEEDS
+      seed: whole('seed', 1, slideToy.SEEDS),
+      difficulty: oneOf('difficulty', Object.keys(slideToy.DIFFICULTY) as slideToy.Difficulty[]),
+      pushes: whole('pushes', 1, 9_999),
+    },
+    board: ['seed', 'difficulty'],
+    // every board of a difficulty takes at least its band's fewest pushes (slide.ts generate)
+    check: (b) => b.pushes >= slideToy.DIFFICULTY[b.difficulty].min,
+    rank: (b) => [b.pushes],
+    says: (b) => `${b.pushes} pushes on a ${b.difficulty} board`,
+  }),
 }
 
 export type Game = keyof typeof ARMS

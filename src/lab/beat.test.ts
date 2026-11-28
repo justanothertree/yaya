@@ -42,6 +42,9 @@ import { SIZES as CAGES_SIZES, keepBest as cagesKeep } from '../gpu/cages'
 import { SIZES as BRIDGES_SIZES, keepBest as bridgesKeep } from '../gpu/bridges'
 import { SIZES as TENTS_SIZES, keepBest as tentsKeep } from '../gpu/tents'
 /* ── g4 imports ── */
+import * as lampsToy from '../gpu/lamps'
+import * as slideToy from '../gpu/slide'
+import { dayNumber as lampsDay } from '../gpu/daily'
 
 /**
  * One finished game per arm, EVERY FIELD AWAY FROM ITS DEFAULT: not the toy's EMPTY setting, not a
@@ -65,6 +68,9 @@ const FIXTURE: { [G in Game]: Extract<Beat, { game: G }> } = {
   bridges: { game: 'bridges', seed: 3_000_000_001, size: 11, secs: 140 },
   tents: { game: 'tents', seed: 3_000_000_001, size: 10, secs: 140 },
   /* ── g4 fixtures ── */
+  // a real solve with a press and its undo put in, so the run is neither empty nor the fewest
+  lamps: { game: 'lamps', seed: 3_000_000_001, size: 6, pattern: 'cross', presses: lampsRun() },
+  slide: { game: 'slide', seed: 99_998, difficulty: 'hard', pushes: 23 },
 }
 const ROWS: Beat[] = Object.values(FIXTURE)
 const paramsOf = (h: string) => new URLSearchParams(h.slice('#lab?'.length))
@@ -853,3 +859,172 @@ describe('g3: Pipes, Cages, Island bridges and Tents', () => {
   })
 })
 /* ── g4 cases ── */
+/** Lamps' FIXTURE run: the fewest presses for its board, with a press and its undo put in */
+function lampsRun(): number[] {
+  const way = lampsToy.solve(lampsToy.make(6, 'cross', 3_000_000_001), 6, 'cross')!
+  const spare = [...Array(36).keys()].find((i) => !way.includes(i))!
+  return [...way.slice(0, 3), spare, -1, ...way.slice(3)]
+}
+
+describe('g4: Lamps, checked by replaying the presses on the board they name', () => {
+  type Lamps = Extract<Beat, { game: 'lamps' }>
+  const link = FIXTURE.lamps
+  const way = lampsToy.solve(lampsToy.make(6, 'cross', 3_000_000_001), 6, 'cross')!
+  const at = (b: Lamps) => readBeat(beatHash(b))
+  /** the link with its presses spelled by hand, so a letter the writer never makes can be put in */
+  const spelled = (letters: string) => {
+    const q = paramsOf(beatHash(link))
+    q.set('presses', letters)
+    return readBeat(`#lab?${q}`)
+  }
+  const letters = paramsOf(beatHash({ ...link, presses: way })).get('presses')!
+  it('a link reads as it was first written: parameters, order and letters', () => {
+    expect(beatHash(link)).toBe(
+      '#lab?demo=lamps&seed=3000000001&size=6&pattern=cross&presses=JKNA_WXaij',
+    )
+  })
+  it('a real solve opens, an undo counted as a press, as the toy counts it', () => {
+    expect(link.presses).toHaveLength(way.length + 2)
+    expect(at(link)).toEqual(link)
+    expect(at({ ...link, presses: way })).toEqual({ ...link, presses: way })
+  })
+  it('an old day’s board opens: the link carries the seed, and verifyLamps refuses any but today’s', () => {
+    const today = 20_784 // 27 Nov 2026, as dayNumber says
+    expect(today).toBe(lampsDay(new Date(2026, 10, 27, 12)))
+    const day = today - 30
+    const seed = lampsToy.seedFor(day, 5, 'plus')
+    const board = lampsToy.make(5, 'plus', seed)
+    const actions = lampsToy.solve(board, 5, 'plus')!
+    expect(lampsToy.verifyLamps({ day, size: 5, pattern: 'plus', actions }, today)).toEqual({
+      ok: false,
+      why: 'day',
+    })
+    const old: Lamps = { game: 'lamps', seed, size: 5, pattern: 'plus', presses: actions }
+    expect(at(old)).toEqual(old)
+  })
+  it('refuses presses that do not switch that board off, or are not presses at all', () => {
+    expect(at({ ...link, presses: way.slice(0, -1) }), 'one short').toBeNull()
+    expect(at({ ...link, presses: [...way, 0] }), 'a press after dark').toBeNull()
+    expect(at({ ...link, presses: [-1, ...way] }), 'an undo first').toBeNull()
+    // a press and its undo before the solve is a real run; on a lamp past the board it is not
+    expect(at({ ...link, presses: [35, -1, ...way] })).not.toBeNull()
+    expect(at({ ...link, presses: [36, -1, ...way] }), 'lamp 36 of 36').toBeNull()
+    expect(spelled(`J_${letters}`)).not.toBeNull()
+    for (const c of ['x', 'y', 'z', ...'0123456789', '-'])
+      expect(spelled(`${c}_${letters}`), c).toBeNull()
+    expect(at({ ...link, size: 7 }), 'the same presses on another size').toBeNull()
+    expect(at({ ...link, size: 5 })).toBeNull()
+    expect(at({ ...link, seed: link.seed + 1 }), 'and another seed').toBeNull()
+  })
+  it('sizes from the toy’s own list, and runs up to the toy’s own bound', () => {
+    const sizes = lampsToy.SIZES
+    const solved = (n: number, seed = 3_000_000_001): Lamps =>
+      ({
+        game: 'lamps',
+        seed,
+        size: n,
+        pattern: 'plus',
+        presses: lampsToy.solve(lampsToy.make(n, 'plus', seed), n, 'plus')!,
+      }) as Lamps
+    const lo = sizes[0]
+    const hi = sizes[sizes.length - 1]
+    expect(at(solved(lo - 1)), 'lo − 1').toBeNull()
+    expect(at(solved(lo))).not.toBeNull()
+    expect(at(solved(hi))).not.toBeNull()
+    expect(at(solved(hi + 1)), 'hi + 1').toBeNull()
+    expect(at(solved(5, 0))).toBeNull()
+    expect(at(solved(5, 2 ** 32 - 1))).not.toBeNull()
+    /* pad a real solve with presses and their undos to a length. Every real run is EVEN: a board
+       is lit by an even number of presses (lamps.ts make), and a press and its undo, or a lamp
+       pressed twice, add two — so the first real run past the bound is two past it */
+    for (const n of sizes) expect(solved(n).presses.length % 2, `${n}×${n}`).toBe(0)
+    const max = lampsToy.MAX_ACTIONS
+    const b = solved(6)
+    const padded = (length: number): Lamps => {
+      const pairs = (length - b.presses.length) / 2
+      expect(Number.isInteger(pairs)).toBe(true)
+      return { ...b, presses: [...Array(pairs).fill([0, -1]).flat(), ...b.presses] }
+    }
+    expect(at(padded(max))).toEqual(padded(max))
+    expect(at(padded(max + 2)), 'a real run two past the bound').toBeNull()
+    expect(shareable(padded(max + 2))).toBe(false)
+    expect(spelled('A'.repeat(max + 1)), `${max + 1} letters`).toBeNull()
+  })
+  it('fewer presses wins, and only on the same board', () => {
+    expect(outcome({ ...link, presses: way }, link)).toBe('beat')
+    expect(outcome({ ...link, presses: [...link.presses] }, link)).toBe('level')
+    expect(outcome({ ...link, presses: [...link.presses, 0, -1] }, link)).toBe('short')
+    expect(outcome({ ...link, size: 5, presses: way }, link)).toBeNull()
+    expect(outcome({ ...link, pattern: 'plus', presses: way }, link)).toBeNull()
+  })
+  it('the banner says what was checked, and the sentences read as they should', () => {
+    expect(bannerText(link)).toEqual({
+      lead: 'A board to beat:',
+      body: 'checked here — 10 presses on a 6×6 ✖ board. They were replayed on this page and do switch it off; hints are not in the link. Same board — fewer presses wins, and an undo counts.',
+    })
+    expect(beatMessage(link, 'L')).toBe(
+      '🏁 Beat my board at Lamps: 10 presses on a 6×6 ✖ board. Same board:\nL',
+    )
+    expect(beatMessage({ ...link, presses: way }, 'L', link)).toBe(
+      '🏆 I beat the link at Lamps: 8 presses on a 6×6 ✖ board — it said 10 presses on a 6×6 ✖ board. Same board, your go:\nL',
+    )
+    expect(verdict({ ...link, presses: way }, link)).toBe(
+      ' You beat the link’s 10 presses on a 6×6 ✖ board!',
+    )
+    expect(bannerText({ ...link, pattern: 'plus' }).body).toContain('a 6×6 ✚ board')
+  })
+})
+
+describe('g4: Slide, an endless board from its own seeds', () => {
+  type Slide = Extract<Beat, { game: 'slide' }>
+  const link = FIXTURE.slide
+  const at = (b: Slide) => readBeat(beatHash(b))
+  const kinds = Object.keys(slideToy.DIFFICULTY) as slideToy.Difficulty[]
+  it('a link reads as it was first written', () => {
+    expect(beatHash(link)).toBe('#lab?demo=slide&seed=99998&difficulty=hard&pushes=23')
+  })
+  it('seeds from 1 to the toy’s own last seed', () => {
+    expect(at({ ...link, seed: 0 })).toBeNull()
+    expect(at({ ...link, seed: 1 })).not.toBeNull()
+    expect(at({ ...link, seed: slideToy.SEEDS })).not.toBeNull()
+    expect(at({ ...link, seed: slideToy.SEEDS + 1 })).toBeNull()
+    expect(slideToy.SEEDS + 1).toBe(100_000)
+  })
+  it('never fewer pushes than the difficulty’s own fewest, and a bounded count above that', () => {
+    for (const difficulty of kinds) {
+      const { min } = slideToy.DIFFICULTY[difficulty]
+      expect(at({ ...link, difficulty, pushes: min - 1 }), `${difficulty} ${min - 1}`).toBeNull()
+      expect(at({ ...link, difficulty, pushes: min })).toEqual({ ...link, difficulty, pushes: min })
+    }
+    expect(at({ ...link, pushes: 9_999 })).not.toBeNull()
+    expect(at({ ...link, pushes: 10_000 })).toBeNull()
+  })
+  it('only a difficulty the toy has, spelled as it spells it', () => {
+    const q = (d: string) => {
+      const p = paramsOf(beatHash(link))
+      p.set('difficulty', d)
+      return readBeat(`#lab?${p}`)
+    }
+    for (const d of kinds) expect(q(d)).toEqual({ ...link, difficulty: d })
+    for (const d of ['expert', 'Hard', 'HARD', 'constructor', ' hard']) expect(q(d), d).toBeNull()
+  })
+  it('fewer pushes wins, and only on the same board', () => {
+    expect(outcome({ ...link, pushes: 22 }, link)).toBe('beat')
+    expect(outcome({ ...link }, link)).toBe('level')
+    expect(outcome({ ...link, pushes: 24 }, link)).toBe('short')
+    expect(outcome({ ...link, seed: 99_997, pushes: 12 }, link)).toBeNull()
+    expect(outcome({ ...link, difficulty: 'medium', pushes: 12 }, link)).toBeNull()
+  })
+  it('the banner and the sentences', () => {
+    expect(bannerText(link)).toEqual({
+      lead: 'A board to beat:',
+      body: 'this link says 23 pushes on a hard board. Same board — fewer pushes wins.',
+    })
+    expect(beatMessage(link, 'L')).toBe(
+      '🏁 Beat my board at Slide: 23 pushes on a hard board. Same board:\nL',
+    )
+    expect(beatMessage({ ...link, pushes: 30 }, 'L', link)).toBe(
+      '🏁 My go at Slide: 30 pushes on a hard board — the link I was sent said 23 pushes on a hard board. Same board, your go:\nL',
+    )
+  })
+})
