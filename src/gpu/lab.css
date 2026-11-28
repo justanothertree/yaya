@@ -1825,6 +1825,16 @@ div.lab-bus-face {
   border: 1px solid var(--accent);
   background: color-mix(in oklab, var(--accent), transparent 90%);
 }
+/* the sentence is a paragraph of its own, so the button beside it is not "a link in a sentence"
+   to mobile-audit.js — but it stays inline, and the box keeps a paragraph's size (index.css's
+   `p, li`), so the banner reads and wraps exactly as it did when it was the paragraph */
+div.beat-banner {
+  font-size: clamp(0.95rem, 0.9rem + 0.3vw, 1.05rem);
+}
+.beat-banner > p {
+  display: inline;
+  margin: 0;
+}
 .beat-banner .btn {
   margin-left: 0.25rem;
 }

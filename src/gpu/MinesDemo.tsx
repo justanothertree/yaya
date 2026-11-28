@@ -300,9 +300,17 @@ export function MinesDemo() {
   // the handler above was made once, so what it calls at the end is kept current here
   const finishRef = useRef(finish)
   finishRef.current = finish
-  // and a link's marked square is brought into view, wherever on a wide board it is
+  /* and a link's marked square is brought into view, wherever on a wide board it is — inside the
+     board's own scroller and nowhere else. ⚠️ NOT scrollIntoView: that scrolls every scrolling
+     ancestor, the page included, so a ◎ on a tall board's bottom row dropped the page 1,085px at
+     1440 and the banner, the line saying where to start and Leave all went off the top. */
   useEffect(() => {
-    if (gate !== null) refs.current[gate]?.scrollIntoView({ block: 'nearest', inline: 'center' })
+    const sc = scroller.current
+    const el = gate === null ? null : refs.current[gate]
+    if (!sc || !el) return
+    const a = sc.getBoundingClientRect()
+    const c = el.getBoundingClientRect()
+    sc.scrollLeft += c.left - a.left - (a.width - c.width) / 2
   }, [gate, game.seed, game.size])
   const setRef = useRef((i: number, el: HTMLButtonElement | null) => {
     refs.current[i] = el

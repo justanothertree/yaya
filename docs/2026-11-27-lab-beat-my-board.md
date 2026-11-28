@@ -92,7 +92,9 @@ today's board on today's date. In that case the arm says so in its banner (`bann
 
 This base changes Stackfall's behaviour. Until now, a link run updated the longest run, most lines
 and best score. "Play again" replays the link's seed every time, so a record could be built on a
-piece order learned by heart. Now a link run records nothing. Measured in the browser with the
+piece order learned by heart. Now a link run records nothing, and "a link run" means the run was
+dealt from a link: the game keeps that fact from the moment it is dealt (`fromLink`), because the
+address can change mid-run (see "What the review found" below). Measured in the browser with the
 record seeded at a longest run of 0.1 s and a score of 1:
 
 - after two link runs (1.5 s, 212 points) the record was unchanged;
@@ -162,10 +164,11 @@ Each row then runs the generic tests:
 So the first arm with a `check` (Mines, Slide or Lamps) must show its refusals going red with the
 check removed. Lamps must pin its "checked here" banner.
 
-**`mobile-audit.js` cannot see a control inside the banner.** The banner is a `<p>`, and the
-audit's `inProse` rule skips an inline-block control inside a paragraph as a link in a sentence. A
-16×16 button injected into the banner went unreported. The same button in `.beat-share` was named
-at once. Measure the Leave button directly. It was 161×36 at 375 and 165×39 at 1440.
+**`mobile-audit.js` could not see a control inside the banner** while the banner was a `<p>`: the
+audit's `inProse` rule skips an inline-block control inside a paragraph as a link in a sentence, so
+a 16×16 button injected into the banner went unreported. The review made the banner a `<div>`
+holding its sentence in an inline `<p>`, and the audit now names that button (below). Leave
+measures 161×36 at 375 and 165×39 at 1440, as it did.
 
 ### Verified
 
@@ -219,7 +222,8 @@ on the sender's seed.
 ### The room
 
 - A link opens the toy **Alone** on the link's seed, with the banner at the top. A link clicked
-  while the toy is already up does the same.
+  while the toy is already up does the same, a friend's reply on the same seed included: the room
+  compares the link, not its seed (fixed in the review, below).
 - **"↻ New game" (Yacht) and "↻ New turn" (Shut) replay the link's seed while a link is up.** That
   is a retry, as Ten thousand's race and Stackfall's "Play again" already do. It departs from R3,
   which lists New board among the controls that leave; the Yacht spec asked for the replay, and
@@ -230,7 +234,8 @@ on the sender's seed.
   the game running on the link's seed, so finishing it would have recorded a best on a board the
   reader may have learned by heart. Now, when the challenge leaves the address some other way than
   Leave, a game on its seed is replaced, exactly as Leave replaces it. Stackfall and Ten thousand
-  have the same gap; they are the base's, so it is noted here rather than changed.
+  had the same gap. The review closed Stackfall's half, where it let a link run record, by keeping
+  the link with the run; Ten thousand's race writes no records, so its Back still leaves the race up.
 - A match (`lm.id`) ignores the link, and neither the banner nor the share appears in one.
 
 ### What a link game may write
@@ -349,7 +354,8 @@ The clock starts on the first square acted on, so a link has to start everyone i
 
 - **A practice board opens unlaid,** with its start square marked: class `is-start`, a dashed
   outline and a `◎`, never colour alone. Its label adds ", the square this board opens from", the
-  keyboard cursor sits on it, and it is scrolled into view. Until it is opened, a press or a flag
+  keyboard cursor sits on it, and the board's own scroller brings it into view sideways; the page
+  itself does not move (see the review, below). Until it is opened, a press or a flag
   anywhere else (or a flag on the mark) does nothing and says "This board opens from the marked
   square ◎ — open it to start the clock."
 - **The refusal sits before `t0`.** With it moved after, a refused press started the clock
@@ -458,8 +464,8 @@ Each toy ran at 375 (touch), at 820 with the `(pointer: coarse)` rules injected,
   - Leave measured 161×36 at 375 and 165×39 at 1440. The share measured 223–237 wide by 36–39.
     The marked square measured 26×26 at 375 and 30×30 above that.
   - `mobileAudit` named an injected 16×16 control, then reported nothing once it was removed.
-  - At 375 the marked square scrolls to just above the bottom bar, and `elementFromPoint` hits
-    it.
+  - At 375 the marked square scrolled to just above the bottom bar, and `elementFromPoint` hit
+    it — by scrolling the whole page past the banner, which the review undid (below).
 
 **Not reachable from here:** Firefox and Safari need a look.
 
@@ -751,3 +757,135 @@ Lamps 19:23–19:24, Slide 19:28–19:30, Nonogram 19:31–19:34 EST.
 Headless swiftshader loses a WebGPU device now and then when another context closes; the scripts
 press the stage's own "Try again", which is the toy's way back from a lost device. Firefox and
 Safari are not reachable from here and need a look.
+
+## What the review found, 27 Nov 2026
+
+Four verifiers checked the batch at `b2bab18f` between 20:16 and 21:00 EST. Everything below was
+reproduced here before it was changed. Each fix has a check that failed first, passed with the fix,
+went red again with the fix undone once, and passed once more when it was restored (md5 checked).
+Browser checks: Playwright, Chromium, the dev server, 27 Nov 2026, times EST.
+
+### 1. A Stackfall run dealt from a link recorded once the link left the address mid-run
+
+- **Reproduced (21:06–21:07):** the record seeded at a longest run of 1 s, 1 line and a score of 1.
+  A link was opened warm, Start pressed, and 3.4 s in either Back was pressed or a second link (on
+  another seed) was opened. Untouched, the record stayed put. After Back it became 1.9 s and 238;
+  after the second link, the same. Both runs were still on the first link's pieces.
+- **Cause:** `finish()` asked `challengeRef.current`, the address at the finish, not the link the run
+  was dealt from.
+- **Fix:** the game keeps `fromLink`, set by `start()` from the challenge it was dealt; the record
+  guard reads that. The verdict still reads the banner on screen, and only when it names the run's
+  seed, so a second link on another seed gets no verdict, just as its share is a plain invitation.
+- **After (21:07–21:08):** all three runs left the record unchanged, and a run after Leave recorded.
+  **Undone (21:08):** Back and the second link both recorded again, 2 of 2 red.
+
+### 2. Nothing pinned the inside edges of the links already pasted
+
+- Five one-character changes to the Stackfall and Ten thousand arms kept all 168 tests green:
+  `lines` from 0 to 1 (every pasted run that cleared no lines would stop opening), `lines` to
+  99,998, `t` to 86,401, and `turns` to 2 and to 399.
+- **Test:** "the oldest bounds still open at both ends" opens `t=0.1` and `t=86400.0`, `lines=0` and
+  `lines=99999`, `turns=1` and `turns=400`, and refuses `t=0.0`, `t=86400.1`, `lines=100000`,
+  `turns=0` and `turns=401`. Each of the five changes turns exactly that test red, 5 of 5; beat.ts
+  was restored to md5 `a6fd5c9c…` each time.
+
+### 3. A Mines link scrolled the page past its own banner
+
+- **Reproduced (21:09–21:10):** `scrollIntoView({ block: 'nearest', inline: 'center' })` on the
+  marked square scrolls every scrolling ancestor, the page included.
+
+  | Link                    | Width | Page scrolled | Banner top             |
+  | ----------------------- | ----- | ------------- | ---------------------- |
+  | large, from 479         | 1440  | 1,085 px      | −316, Leave off screen |
+  | large, from 333         | 1440  | 797 px        | −28, under the nav     |
+  | large, from 479         | 375   | 2,846 px      | −527, Leave off screen |
+  | large 241 or medium 255 | 375   | 2,454 px      | −135                   |
+  | small, from 40          | 1440  | 285 px        | 484, still on screen   |
+
+  The first Tab after a cold open at 1440 went to "Meadow", below the board, skipping the banner;
+  on plain Mines it goes to "Contact".
+
+- **Fix:** the effect moves the board's own scroller (`.mn-scroll`'s `scrollLeft`) so the ◎ is
+  centred in it, and nothing else.
+- **After (21:10):** the page stayed at 0 in all six cases, the banner at y 769 at 1440 where every
+  other toy's link puts it, the ◎ inside the scroller at 375 (scrolled 127 of 127 for a ◎ at the
+  right, 0 for one at the left), and the first Tab went to "Contact". **Undone (21:10):** all six
+  scrolled again, five of them hiding the banner, and Tab went to "Meadow".
+- At 1440×900 a link now lands where every toy's link does, with the banner near the bottom of the
+  screen and the board, the ◎ included, below the fold.
+
+### 4. A reply on the board already up did not deal it again
+
+Yacht, Shut the box, Lamps and Slide, and Ten thousand, which had it before this batch. Tents and
+the other g2 and g3 toys already dealt again.
+
+- **Reproduced (21:13):** one roll, two presses or one push, then a reply link on the same board.
+  Yacht kept its roll, Shut kept its roll with Roll disabled, Ten thousand kept the race going,
+  Lamps kept two lamps lit, and Slide stayed at "1 push".
+- **Cause:** Yacht, Shut and Ten thousand compared seeds. Lamps and Slide called `setSeed` with the
+  seed already showing, which changes no state.
+- **Fix:** Yacht, Shut and Ten thousand compare the link itself. `useChallenge` reads a new object
+  on each `hashchange`, and the first mount compares equal, so nothing is dealt twice. Lamps and
+  Slide get Tents' `round` counter in their reset effects, bumped when the link changes.
+- **Lamps' Leave on a link to today's board** had the same cause: the seed did not change, so the
+  presses stayed lit ("9 lamps still lit", 21:15). Leave bumps `round` now, as Tents' Leave does.
+- **After (21:15):** all six dealt the board again, the first roll after the reply matched the
+  first link's, and Lamps' share went. **Undone (21:20–21:21):** 6 of 6 red.
+- **Back still takes the link's board with it (21:25–21:26):** Yacht came back on "Roll (3 left)",
+  Shut on its opening line, Lamps on today's board and Slide on a new seed.
+
+### 5. Lamps' verdict outlived its board
+
+- **Reproduced (21:15):** after a finished link, then Leave, then ⟳ New board, the line still said
+  "You beat the link’s 10 presses …".
+- **Fix:** the reset effect puts the opening line back, as Tents' does.
+- **After (21:15):** the opening line after Leave and after New board. **Undone (21:34):** the
+  verdict stayed up again, and so did the presses after Leave on today's board, 2 of 2 red.
+
+### 6. The audit could not see the banner's Leave button
+
+- **Reproduced (21:21, 375 with touch):** a 16×16 button injected into the banner gave
+  `tooSmall: 0` on Stackfall, Ten thousand, Lamps and Golf.
+- **Fix:** the banner is a `<div>` holding its sentence in a `<p>` that stays inline, and the div
+  takes a paragraph's font size, so nothing moves. Stackfall's and Ten thousand's own banners too.
+- **After (21:23):** `tooSmall: 1`, named "16x16", and 0 with it removed. Banner and Leave boxes
+  identical at 375 and 1440; screenshots pixel-identical at 375 and within 1/255 at 1440.
+  **Undone (21:23):** 0 again, 4 of 4.
+- A first try without the font size grew the banner 3 to 5 px at 375: the line box took the div's
+  16 px while the sentence kept a paragraph's fluid size.
+
+### 7. Lamps named its pattern by its glyph alone
+
+- "On a 6×6 ✖ board" reads aloud as "heavy multiplication x", and a friend reading the chat has no
+  button beside it.
+- **Fix:** `PATTERN_NAMES` moved to lamps.ts, read by the buttons and the sentence alike: "a 6×6 ✖
+  Corners board", "a 6×6 ✚ Beside board". No Lamps link has been sent yet, so no pasted sentence
+  changes.
+- **Test:** the g4 sentences pinned in words, red before the change, green after, and red with the
+  glyph put back.
+
+### Left open
+
+- **g3's Back keeps the board, and its finish counts in `solvedCount`.** That was chosen on purpose
+  (g3, "Opening a link") and it disagrees with the spec's g3 records rule, so it is the owner's
+  decision. If the rule wins, the fix is the one Stackfall now has: keep the link with the board.
+- **On a phone, a link opens 2,300 px above its banner,** under the 133-toy picker (y 2,319 at
+  375). Every `#lab?demo=` address has always landed there; scrolling to the banner on open has to
+  be reasoned about with App's scroll-to-top on a section change and the lazy chunks first.
+- What R3's "New game" does on a link still differs between groups.
+- Follow protects a link run for only 15 s, and the bus does not know about link runs.
+- Lamps' `pattern` adds no evidence of its own: a solve of one pattern usually solves the other on
+  the same seed. Changing that changes boards, so it needs `v=`.
+- Nonogram loses progress on a link's puzzle once another link opens and is marked.
+- Impossible scores open as claims: Slide's check is only its band's minimum, and Pipes accepts
+  turns under par.
+- A cold link open draws one frame at the saved size first, in Lamps, Tents and Pipes.
+- g4's "letter x" refusal passes for the wrong reason: `x` decodes to an undo, refused as a first
+  press.
+- From `main`, unchanged: Stackfall can say "You beat the link’s 0:01!" when both times floor to
+  the same second, and `#lab?demo=__proto__` stays in the address.
+- Fireworks, Type, Levels and Bonsai still put their buttons inside a `<p class="beat-banner">`.
+
+**Gates:** `npm run typecheck`, `npm run lint`, `npm run test` (419 files, 6,945 passed, 6
+skipped), `npm run build` and `prettier --check`. The browser checks were run once more on the
+finished tree, 21:30–21:32, with the same results. Firefox and Safari need a look.

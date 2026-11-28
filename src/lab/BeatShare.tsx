@@ -25,6 +25,10 @@ export function BeatShare({ beat, answering }: { beat: Beat; answering?: Beat | 
 /**
  * The banner over a toy opened from a link: what the link says, what is the same, and how to win.
  * `today` when the link's board is today's board here, so the finish counts as the reader's own.
+ *
+ * ⚠️ A `<div>` HOLDING THE SENTENCE, NOT A `<p>` HOLDING THE BUTTON. Inside a paragraph, Leave read
+ * to mobile-audit.js as a link in a sentence — exempt from the 24px floor — so a 16×16 button put
+ * in the banner went unreported on every arm. The sentence stays inline, so nothing moves.
  */
 export function BeatBanner({
   beat,
@@ -39,11 +43,13 @@ export function BeatBanner({
 }) {
   const { lead, body } = bannerText(beat, today)
   return (
-    <p className="beat-banner">
-      🏁 <strong>{lead}</strong> {body}{' '}
+    <div className="beat-banner">
+      <p>
+        🏁 <strong>{lead}</strong> {body}
+      </p>{' '}
       <button className="btn btn-ghost" onClick={onLeave} disabled={disabled}>
         Leave the challenge
       </button>
-    </p>
+    </div>
   )
 }

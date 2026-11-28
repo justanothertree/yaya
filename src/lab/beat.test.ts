@@ -152,6 +152,23 @@ describe('links already pasted in somebody’s chat open exactly as before', () 
     expect(readBeat('#lab?demo=dice&seed=05&turns=9')).toEqual({ game: 'dice', seed: 5, turns: 9 })
     expect(readBeat('#lab?demo=dice&seed=5&seed=6&turns=3')?.seed).toBe(5)
   })
+  /* ⚠️ THE INSIDE EDGES, NOT ONLY THE OUTSIDE ONES. The bounds are main's as they were when these
+     links were sent, so they are typed here as the links carry them: a run that cleared no lines
+     is the commonest Stackfall link there is, and lines 0 → 1 kept every other test green. */
+  it('the oldest bounds still open at both ends, and nothing past them', () => {
+    for (const [h, opens] of [
+      ['#lab?demo=stack&seed=5&t=0.1&lines=0', true],
+      ['#lab?demo=stack&seed=5&t=86400.0&lines=99999', true],
+      ['#lab?demo=stack&seed=5&t=0.0&lines=0', false],
+      ['#lab?demo=stack&seed=5&t=86400.1&lines=0', false],
+      ['#lab?demo=stack&seed=5&t=12.5&lines=100000', false],
+      ['#lab?demo=dice&seed=5&turns=1', true],
+      ['#lab?demo=dice&seed=5&turns=400', true],
+      ['#lab?demo=dice&seed=5&turns=0', false],
+      ['#lab?demo=dice&seed=5&turns=401', false],
+    ] as const)
+      expect(readBeat(h) !== null, h).toBe(opens)
+  })
   it('the same seed deals the same dice', () => {
     expect(roll(6, dealRand(42, 0, 0))).toEqual([3, 3, 1, 4, 6, 5])
     expect(roll(6, dealRand(2147483647, 13, 2))).toEqual([3, 5, 5, 2, 6, 3])
@@ -960,18 +977,20 @@ describe('g4: Lamps, checked by replaying the presses on the board they name', (
   it('the banner says what was checked, and the sentences read as they should', () => {
     expect(bannerText(link)).toEqual({
       lead: 'A board to beat:',
-      body: 'checked here — 10 presses on a 6×6 ✖ board. They were replayed on this page and do switch it off; hints are not in the link. Same board — fewer presses wins, and an undo counts.',
+      body: 'checked here — 10 presses on a 6×6 ✖ Corners board. They were replayed on this page and do switch it off; hints are not in the link. Same board — fewer presses wins, and an undo counts.',
     })
     expect(beatMessage(link, 'L')).toBe(
-      '🏁 Beat my board at Lamps: 10 presses on a 6×6 ✖ board. Same board:\nL',
+      '🏁 Beat my board at Lamps: 10 presses on a 6×6 ✖ Corners board. Same board:\nL',
     )
     expect(beatMessage({ ...link, presses: way }, 'L', link)).toBe(
-      '🏆 I beat the link at Lamps: 8 presses on a 6×6 ✖ board — it said 10 presses on a 6×6 ✖ board. Same board, your go:\nL',
+      '🏆 I beat the link at Lamps: 8 presses on a 6×6 ✖ Corners board — it said 10 presses on a 6×6 ✖ Corners board. Same board, your go:\nL',
     )
     expect(verdict({ ...link, presses: way }, link)).toBe(
-      ' You beat the link’s 10 presses on a 6×6 ✖ board!',
+      ' You beat the link’s 10 presses on a 6×6 ✖ Corners board!',
     )
-    expect(bannerText({ ...link, pattern: 'plus' }).body).toContain('a 6×6 ✚ board')
+    // the pattern in the toy's own words, as its buttons say it: a screen reader reads ✖ alone as
+    // "heavy multiplication x", and a friend reading the chat has no button to look at
+    expect(bannerText({ ...link, pattern: 'plus' }).body).toContain('a 6×6 ✚ Beside board')
   })
 })
 

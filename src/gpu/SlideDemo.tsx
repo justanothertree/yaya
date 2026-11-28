@@ -103,11 +103,13 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
     setNote(null)
     setFinished(null)
   }
-  // a new board — another level, another seed — starts at its start
+  /** bumped to start the same board over: a new link on the board already up */
+  const [round, setRound] = useState(0)
+  // a new board — another level, another seed — starts at its start, and so does a new round
   useEffect(() => {
     reset(board)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board])
+  }, [board, round])
 
   /** a control that changes the board leaves a link first, so the address names what is on screen */
   const leave = () => {
@@ -124,6 +126,9 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
       setMode('endless')
       setDifficulty(challenge.difficulty)
       setSeed(challenge.seed)
+      /* ⚠️ a friend's reply is on the board already up: the same seed changes nothing, so without
+         this the pushes made against the first link went on counting under the second's banner */
+      if (challenge !== was) setRound((r) => r + 1)
     } else if (was && seed === was.seed && difficulty === was.difficulty) setSeed(newSeed())
     // only a new link, or one going, should run this
     // eslint-disable-next-line react-hooks/exhaustive-deps

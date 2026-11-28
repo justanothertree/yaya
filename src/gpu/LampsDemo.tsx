@@ -10,6 +10,7 @@ import {
   LAMPS_KEY,
   LOOKS,
   PATTERNS,
+  PATTERN_NAMES,
   SIZES,
   dark,
   keepBest,
@@ -46,7 +47,7 @@ const LOOK_NAMES: Record<Saved['look'], string> = {
   lanterns: 'Lanterns',
   neon: 'Neon',
 }
-const PATTERN_NAMES: Record<Pattern, string> = { plus: '✚ Beside', cross: '✖ Corners' }
+const INTRO = 'Press a lamp and it switches, and so do the ones beside it. Switch them all off.'
 /* today's board — one function with whatever checks a solve later (lamps.ts seedFor) */
 const seedFor = (size: number, pattern: Pattern) => daySeedFor(dayNumber(), size, pattern)
 
@@ -103,11 +104,13 @@ function LampsAlone() {
   const [finished, setFinished] = useState<Extract<Beat, { game: 'lamps' }> | null>(null)
   // the same for the keyboard's place: on the last lamp of 7×7, 4×4 had no lamp to Tab to for a render
   const cursor = kept < n * n ? kept : 0
-  const [line, setLine] = useState(
-    'Press a lamp and it switches, and so do the ones beside it. Switch them all off.',
-  )
+  const [line, setLine] = useState(INTRO)
+  /** bumped to start the same board over: a new link on the board already up, or Leave */
+  const [round, setRound] = useState(0)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  // a fresh board whenever the size, pattern or seed changes
+  /* a fresh board whenever the size, pattern or seed changes, or it starts over — and the opening
+     line with it, or a finished link's verdict stayed up over the next board, naming a link that
+     had gone */
   useEffect(() => {
     setPlay({ fresh, lit: fresh })
     setHistory([])
@@ -118,7 +121,8 @@ function LampsAlone() {
     setDone(false)
     setFinished(null)
     setCursor(0)
-  }, [fresh])
+    setLine(INTRO)
+  }, [fresh, round])
 
   const today = dayNumber()
   const best = saved.bests.find((b) => b.day === today && b.size === n && b.pattern === pattern)
@@ -148,6 +152,9 @@ function LampsAlone() {
           : { ...x, size: challenge.size, pattern: challenge.pattern },
       )
       setSeed(challenge.seed)
+      /* ⚠️ a friend's reply is on the board already up: the same seed changes nothing, so without
+         this the presses made against the first link stayed lit under the second one's banner */
+      if (challenge !== was) setRound((r) => r + 1)
     } else if (was && seed === was.seed && n === was.size && pattern === was.pattern)
       setSeed(seedFor(n, pattern))
     // only a new link, or the call letting go of the board, should run this
@@ -270,6 +277,8 @@ function LampsAlone() {
           onLeave={() => {
             leaveChallenge()
             setSeed(seedFor(n, pattern))
+            // a link to today's board leaves it on the same seed: deal it fresh all the same
+            setRound((r) => r + 1)
           }}
         />
       )}

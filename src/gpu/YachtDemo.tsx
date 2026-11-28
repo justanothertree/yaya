@@ -185,14 +185,16 @@ export function YachtDemo() {
   }, [inMatch])
   /* a link opened while this toy is already up starts a game alone on its seed; and a link that
      leaves the address some other way than Leave (Back, say) takes its game with it, so a game on
-     its seed never goes on to record as the reader's own */
-  const lastSeed = useRef(challenge?.seed)
+     its seed never goes on to record as the reader's own. ⚠️ THE LINK, NOT ITS SEED: a friend's
+     reply is on the same seed as the link already up, and comparing seeds left the game under way
+     under the reply's banner */
+  const lastLink = useRef(challenge)
   useEffect(() => {
-    if (!inMatch && challenge && challenge.seed !== lastSeed.current)
-      fresh('alone', saved.level, challenge.seed)
-    else if (!inMatch && !challenge && mode === 'alone' && seed === lastSeed.current)
+    const was = lastLink.current
+    lastLink.current = challenge
+    if (!inMatch && challenge && challenge !== was) fresh('alone', saved.level, challenge.seed)
+    else if (!inMatch && !challenge && mode === 'alone' && was && seed === was.seed)
       fresh('alone', saved.level, newSeed())
-    lastSeed.current = challenge?.seed
     // fresh is rebuilt every render; only a new challenge should run this
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [challenge])

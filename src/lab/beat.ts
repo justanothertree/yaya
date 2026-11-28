@@ -337,8 +337,10 @@ export const ARMS = {
       lampsToy.runSolve(lampsToy.make(b.size, b.pattern, b.seed), b.size, b.pattern, b.presses).ok,
     checked: 'They were replayed on this page and do switch it off; hints are not in the link.',
     rank: (b) => [b.presses.length],
+    /* the pattern in the toy's own words, never its glyph alone: a screen reader reads ✖ as
+       "heavy multiplication x", and a friend reading the chat has no button beside it to look at */
     says: (b) =>
-      `${b.presses.length} presses on a ${b.size}×${b.size} ${b.pattern === 'plus' ? '✚' : '✖'} board`,
+      `${b.presses.length} presses on a ${b.size}×${b.size} ${lampsToy.PATTERN_NAMES[b.pattern]} board`,
   }),
   slide: arm({
     name: 'Slide',
