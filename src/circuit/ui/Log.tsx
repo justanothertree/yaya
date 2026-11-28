@@ -37,7 +37,7 @@ export function Log({
     authReady,
     pid,
     person,
-    mine,
+    isMine,
     canEdit,
     existing,
     imported,
@@ -85,7 +85,7 @@ export function Log({
         })}
       </div>
 
-      {authReady && !mine && person && (
+      {authReady && !isMine && person && (
         <div
           className="card"
           style={{
