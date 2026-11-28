@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { DraftOffer } from '../drafts/DraftOffer'
+import { useKeptDraft } from '../drafts/useKeptDraft'
 import { LabStage } from './LabStage'
 import {
   BACKGROUNDS,
@@ -15,6 +17,7 @@ import {
   paintCell,
   touched,
   question,
+  readDrawing,
   readKept,
   readQuiz,
   rgb,
@@ -68,6 +71,23 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
   const [showCells, setShowCells] = useState(false)
   const [kept, setKept] = useState<Drawing[]>(readStore)
   const [note, setNote] = useState<string | null>(null)
+  /**
+   * ⚠️ THE PATTERN BEING DRAWN OUTLIVES A RELOAD (drafts/useKeptDraft). It lived in this state
+   * alone until ⭐ Keep, and the toy is keyed in the Lab, so a reload, a pull-down on a phone or a
+   * tap on another toy threw it away — the way a whole minion was lost in Paint on 27 Nov 2026.
+   * Offered back rather than put back, because bringing it back replaces the wall on screen.
+   */
+  const wip = useKeptDraft<Drawing>({
+    kind: 'wallpaper',
+    value: drawing,
+    isEmpty: (d) => !d.strokes.length,
+    parse: readDrawing,
+    restore: (d) => {
+      setDrawing(d)
+      setMode('draw')
+    },
+    offer: true,
+  })
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1e9))
   const [answer, setAnswer] = useState<{ guess: string; right: boolean } | null>(null)
   const [score, setScore] = useState({ right: 0, asked: 0, run: 0 })
@@ -147,8 +167,19 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
     if (!drawing.strokes.length) return
     if (kept.length >= MAX_KEPT)
       return setNote(`That is ${MAX_KEPT} kept, the most: remove one to keep another.`)
-    setKept([...kept, toKept(drawing)])
+    const next = [...kept, toKept(drawing)]
+    /* ⚠️ WRITTEN HERE, NOT ONLY BY THE EFFECT BELOW, so "Kept" is only said about a keep that
+       landed. The effect's catch is silent, and this used to say "Kept in this browser" over a
+       full store — which, now that a keep also clears the draft, would have lost the drawing. */
+    try {
+      writeKept(WALLPAPER_KEY, JSON.stringify(next))
+    } catch {
+      return setNote('Not kept: this browser is out of room. Remove a kept one, or save a PNG.')
+    }
+    setKept(next)
     setNote('Kept in this browser.')
+    /* what was written, not what is on screen when this runs — see markSaved */
+    wip.markSaved(drawing)
   }
   /** the wall as a 1024-pixel PNG: drawn offscreen by the GPU and read back. ⚠️ A readback can fail
    *  (a GPU that was taken away), and a button that silently does nothing reads as broken — so it
@@ -180,6 +211,23 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
   }
 
   const truth = byId(quiz.group)
+  /**
+   * ⚠️ ONLY THE QUESTION UNTIL IT IS ANSWERED. While a draft is offered nothing new is kept — or
+   * the empty wall would write over the thing being offered — so a wall left drawable under the
+   * card let somebody draw a pattern no reload would bring back, and then Bring it back replaced
+   * it without asking (found in review). One press either way, and the toy is back.
+   */
+  if (wip.offered)
+    return (
+      <div className="lab-keys" aria-label="Wallpaper">
+        <DraftOffer
+          draft={wip.offered}
+          what="pattern"
+          onBringBack={wip.bringBack}
+          onStartFresh={wip.startFresh}
+        />
+      </div>
+    )
   return (
     <div className="lab-keys" tabIndex={-1} aria-label="Wallpaper">
       <LabStage
@@ -364,7 +412,15 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
                 value=""
                 onChange={(e) => {
                   const k = kept[Number(e.target.value)]
-                  if (k) change(k)
+                  if (
+                    k &&
+                    (!wip.unsaved ||
+                      window.confirm('Open that one instead of the pattern you have not kept?'))
+                  ) {
+                    change(k)
+                    /* a kept one, so not unsaved until it is changed */
+                    wip.markSaved()
+                  }
                 }}
               >
                 <option value="">Open one…</option>

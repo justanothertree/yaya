@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ArtThumb } from '../draw/ArtThumb'
+import { DraftOffer } from '../drafts/DraftOffer'
+import { useKeptDraft } from '../drafts/useKeptDraft'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import {
   loopFrames,
@@ -21,6 +23,7 @@ import {
 import {
   cropToInk,
   MAX_PIECES,
+  readMapDoc,
   worldOf,
   type Door,
   type Life,
@@ -510,6 +513,43 @@ export function MapMaker() {
         : null,
     [name, palette, pieces, inkDoc, spawn, block, doors],
   )
+
+  /** Put a whole map on the board to work on — a kept one, or an unsaved one brought back. */
+  const openDoc = (d: MapDoc) => {
+    setName(d.name)
+    setPalette(d.palette)
+    setPieces(d.pieces)
+    setGround(d.ground?.strokes ?? [])
+    setSpawn(d.spawn)
+    cells.current = readZone(d.block) ?? blankZone()
+    setBlockTick((n) => n + 1)
+    setDoors(d.doors)
+    /* ⚠️ a different map is a different history. Keeping it would let Undo put a piece of the
+       last map into this one, which is the worst thing an undo can do: quietly mix two
+       documents. */
+    setHist(emptyHistory<Step>())
+    setErasing(false)
+  }
+
+  /**
+   * ⚠️ THE MAP BEING MADE OUTLIVES A RELOAD AND ✕ CLOSE (drafts/useKeptDraft). It was React state
+   * here and nothing else until ⬇ Keep, so closing the maker, leaving Paint, a reload or a
+   * pull-down on a phone threw a map away — the way a whole minion was lost in this same room on
+   * 27 Nov 2026. It goes through readMapDoc on the way back, the reader a stranger's map comes
+   * through, and is offered rather than put back because it replaces the board.
+   */
+  const wip = useKeptDraft<MapDoc | null>({
+    kind: 'map',
+    value: doc,
+    isEmpty: (d) => !d,
+    parse: readMapDoc,
+    restore: (d) => {
+      if (!d) return
+      openDoc(d)
+      setSaid(`Brought back "${d.name}", not kept yet.`)
+    },
+    offer: true,
+  })
   /**
    * ⚠️ THE PARK IS THE SIZE IT IS, AND THIS SAID OTHERWISE. It read out worldOf — how
    * big a world would hold everything placed — as though that were the size you get, so
@@ -1224,6 +1264,10 @@ export function MapMaker() {
    */
   const keep = () => {
     if (!doc) return setSaid('Put something on it first.')
+    /* ⚠️ THE MAP AS IT WAS WHEN KEEP WAS PRESSED, which is what both copies store. The account
+       answers after a round trip, and anything placed meanwhile is NOT in either copy — so that,
+       not the board when the answer comes, is what markSaved is told (found in review). */
+    const saving = doc
     const local = saveMap(doc)
     void (async () => {
       /**
@@ -1235,6 +1279,7 @@ export function MapMaker() {
        */
       const yes = signedInNow ?? (await signedIn())
       const cloud = yes ? await saveMapToAccount(doc) : null
+      if (cloud?.ok || local) wip.markSaved(saving)
       if (cloud?.ok) {
         /* ⚠️ it is safe at this point whatever the browser did, so the sentence says the thing
            that is true rather than the thing that happened most recently */
@@ -1266,6 +1311,24 @@ export function MapMaker() {
   }
 
   const drawing = mode === 'draw'
+
+  /**
+   * ⚠️ ONLY THE QUESTION UNTIL IT IS ANSWERED. While a draft is offered nothing new is kept — or
+   * the empty board would write over the thing being offered — so a maker left usable under the
+   * card let somebody build a map no reload would bring back, and then Bring it back replaced it
+   * without asking (found in review). One press either way, and the maker is back.
+   */
+  if (wip.offered)
+    return (
+      <section className="card map-maker">
+        <DraftOffer
+          draft={wip.offered}
+          what="map"
+          onBringBack={wip.bringBack}
+          onStartFresh={wip.startFresh}
+        />
+      </section>
+    )
 
   return (
     <section className="card map-maker">
@@ -1771,19 +1834,15 @@ export function MapMaker() {
                 className="map-kept-open"
                 title={`Work on ${m.name}`}
                 onClick={() => {
-                  setName(m.doc.name)
-                  setPalette(m.doc.palette)
-                  setPieces(m.doc.pieces)
-                  setGround(m.doc.ground?.strokes ?? [])
-                  setSpawn(m.doc.spawn)
-                  cells.current = readZone(m.doc.block) ?? blankZone()
-                  setBlockTick((n) => n + 1)
-                  setDoors(m.doc.doors)
-                  /* ⚠️ a different map is a different history. Keeping it would let Undo put a
-                     piece of the last map into this one, which is the worst thing an undo can
-                     do: quietly mix two documents. */
-                  setHist(emptyHistory<Step>())
-                  setErasing(false)
+                  /* ⚠️ it replaces the board, and what is on it may be the only copy */
+                  if (
+                    wip.unsaved &&
+                    !window.confirm(`Open "${m.name}" instead of the map you have not kept?`)
+                  )
+                    return
+                  openDoc(m.doc)
+                  /* a kept map, so not unsaved until it is changed */
+                  wip.markSaved()
                   setSaid(`Working on "${m.doc.name}".`)
                 }}
               >
@@ -1830,21 +1889,19 @@ export function MapMaker() {
                 disabled={pulling === r.name}
                 title={`Fetch "${r.name}" and work on it`}
                 onClick={() => {
+                  /* the same door as a kept map: it replaces the board, so it asks first */
+                  if (
+                    wip.unsaved &&
+                    !window.confirm(`Open "${r.name}" instead of the map you have not kept?`)
+                  )
+                    return
                   setPulling(r.name)
                   void fetchMyMap(r.name).then((d) => {
                     setPulling(null)
                     if (!d) return setSaid(`Could not fetch "${r.name}".`)
-                    setName(d.name)
-                    setPalette(d.palette)
-                    setPieces(d.pieces)
-                    setGround(d.ground?.strokes ?? [])
-                    setSpawn(d.spawn)
-                    cells.current = readZone(d.block) ?? blankZone()
-                    setBlockTick((n) => n + 1)
-                    setDoors(d.doors)
-                    /* a different map is a different history — see the note on the list above */
-                    setHist(emptyHistory<Step>())
-                    setErasing(false)
+                    openDoc(d)
+                    /* a kept map, so not unsaved until it is changed */
+                    wip.markSaved()
                     setSaid(`Working on "${d.name}".`)
                   })
                 }}

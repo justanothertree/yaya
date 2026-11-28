@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { drafts } from '../drafts/device'
-import { makeAutosave, type Draft } from '../drafts/drafts'
+import { makeAutosave, whenKept, type Draft } from '../drafts/drafts'
 import {
   contentSig,
   EMPTY_SIG,
@@ -1790,16 +1790,7 @@ export function PaintRoom() {
     setOffer(null)
     void drafts.drop('paint').then(() => autosave.resume())
   }
-  const offerWhen = offer
-    ? new Date(offer.at).toDateString() === new Date().toDateString()
-      ? new Date(offer.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-      : new Date(offer.at).toLocaleString([], {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        })
-    : ''
+  const offerWhen = offer ? whenKept(offer.at) : ''
 
   const finishPet = () => {
     /* ⚠️ offered back, so keeping an edited creature under its own name updates it */

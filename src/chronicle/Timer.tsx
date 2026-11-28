@@ -30,6 +30,8 @@ import { chronicleKey } from './keys'
 import { buzz } from '../ui/haptics'
 import { useFresh } from '../ui/useFresh'
 import { JournalList } from './JournalList'
+import { drafts } from '../drafts/device'
+import { KeepRunNote } from './KeepRunNote'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
 import { dayOfStart } from './sets'
@@ -766,6 +768,8 @@ export function Timer({
       setRunNote('')
       runNoteFor.current = null
       buzz('tap')
+      /* its kept copy too, by name: by now the box may belong to the next sitting */
+      void drafts.drop('sitting-note', id)
     }
     return ok
   }
@@ -1634,6 +1638,16 @@ export function Timer({
            * ⚠️ AND THE COUNT IS THE DOOR TO WHAT IS ALREADY WRITTEN, which is where the ⋯'s Note
            * used to lead: the sitting's own dialog, journal first, every entry editable in place.
            */}
+          <KeepRunNote
+            key={running.id}
+            sitting={running.id}
+            text={runNoteFor.current === null || runNoteFor.current === running.id ? runNote : ''}
+            putBack={(words) => {
+              if (runNote.trim()) return
+              setRunNote(words)
+              runNoteFor.current = running.id
+            }}
+          />
           {show === 'day' ? (
             <div className="chron-runnote">
               <div className="chron-runnote-row">

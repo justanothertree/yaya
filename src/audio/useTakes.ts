@@ -235,6 +235,24 @@ export function useTakes() {
     }
   }, [])
 
+  /**
+   * ⚠️ A RELOAD MID-TAKE ASKS FIRST, because it is the one way left to lose singing. Walking to
+   * another room keeps the take (above), but a recording exists only in memory until Stop — the
+   * recorder hands over its audio in one piece at the end — so a refresh, a closed tab or a
+   * pull-down on a phone threw the whole take away. The Instrument room has pull-to-refresh off
+   * now; this covers the rest. Bringing back an interrupted take would mean writing it to the
+   * device as it is sung, which is a bigger change than this.
+   */
+  useEffect(() => {
+    if (!going) return
+    const ask = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [going])
+
   const stopPlaying = useCallback(() => {
     const on = out.current
     if (!on) return
