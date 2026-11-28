@@ -57,6 +57,7 @@ import {
 import { CATS, countText, spanText, type Activity } from '../chronicle/record'
 import { daysText, maskOn } from '../chronicle/weekdays'
 import { Timer } from '../chronicle/Timer'
+import { latestOnly } from '../chronicle/latest'
 import { dayAsked } from '../chronicle/dayLink'
 import { Friends } from '../chronicle/Friends'
 import { Sharing } from '../chronicle/Sharing'
@@ -519,13 +520,17 @@ export function Chronicle({
   /** which streak fetch is the current one — see the note in `load` about late answers */
   const runSeq = useRef(0)
 
+  /* ⚠️ the newest load speaks, not the last to answer — see chronicle/latest.ts */
+  const [loads] = useState(latestOnly)
   const load = useCallback(async () => {
+    const ticket = loads.start()
     if (!authed) {
       setGoals([])
       setLoaded(true)
       return
     }
     const [mine, a] = await Promise.all([myGoals(), myActivities()])
+    if (!loads.current(ticket)) return
     /**
      * ⚠️ THE MARKS ARE SET WITH THE GOALS, NOT AFTER THEM. A repeating tick-box reads its done
      * state from its mark, so goals painted before their marks arrive would draw every one of them
@@ -533,6 +538,7 @@ export function Chronicle({
      * reloads. The tally can arrive later; a meter filling in is not a box changing its mind.
      */
     const mk = await marksFor(markAsks(mine, [todayISO(), tomorrowISO()]))
+    if (!loads.current(ticket)) return
     setGoals(mine)
     if (mk) setMarked(mk)
     setMarksRead(mk !== null)
@@ -550,7 +556,9 @@ export function Chronicle({
         [todayISO(), tomorrowISO()].flatMap((d) => tallyAsks(mine, d)).map((x) => [x.key, x]),
       ).values(),
     ]
-    setGot(asks.length ? await tally(asks) : {})
+    const got = asks.length ? await tally(asks) : {}
+    if (!loads.current(ticket)) return
+    setGot(got)
     setLoaded(true)
     /**
      * ⚠️ THE STREAKS ARE NOT AWAITED, and that is a measured decision rather than a style one.
@@ -586,7 +594,7 @@ export function Chronicle({
     void tally(back).then((r) => {
       if (mark === runSeq.current) setRuns(r)
     })
-  }, [authed])
+  }, [authed, loads])
 
   useEffect(() => {
     void load()
