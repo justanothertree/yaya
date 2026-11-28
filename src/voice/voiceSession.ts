@@ -91,6 +91,11 @@ export type VoiceState = {
   roomName: string
   roomKind: RoomKind | null
   inCall: boolean
+  /**
+   * The name this call joined with — what voice told everybody in it, and so the only name voice
+   * presence may carry for the call's room. In the Lounge it is the Lounge name (callName.ts).
+   */
+  myName: string | null
   /** true from pressing Call until the room accepts (or refuses) us — the button says so,
    *  and a second press while it's set is ignored rather than double-opening the mic */
   joining: boolean
@@ -419,6 +424,7 @@ const IDLE: VoiceState = {
   roomName: '',
   roomKind: null,
   inCall: false,
+  myName: null,
   joining: false,
   muted: false,
   peers: [],
@@ -733,7 +739,15 @@ export function devCall(
     offRoster()
   }
   meter = newMeter(performance.now())
-  set({ inCall: true, roomId: 'dev-call', roomName: 'Dev call', roomKind, muted: true, peers: [] })
+  set({
+    inCall: true,
+    roomId: 'dev-call',
+    roomName: 'Dev call',
+    roomKind,
+    myName: me.name,
+    muted: true,
+    peers: [],
+  })
   return () => voiceSession.leave(true)
 }
 
@@ -1505,7 +1519,15 @@ export const voiceSession = {
 
     resetDiag()
     meter = newMeter(performance.now())
-    set({ inCall: true, roomId, roomName, roomKind: roomKind ?? null, muted: false, peers: [] })
+    set({
+      inCall: true,
+      roomId,
+      roomName,
+      roomKind: roomKind ?? null,
+      myName: displayName,
+      muted: false,
+      peers: [],
+    })
     // Sampled rather than summed at the end, so a call that crashes or a tab that closes still
     // accounts for the traffic it already used.
     clearInterval(usageTimer)
