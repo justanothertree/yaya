@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cameFromPasswordReset,
   getSessionUser,
@@ -22,6 +22,8 @@ import { showToast } from '../circuit/toast'
 import { YourCopy } from '../chronicle/YourCopy'
 import { PhoneAlertsCard } from '../notify/PhoneAlertsCard'
 import { Toast } from '../circuit/ui/Toast'
+import { CouldNotLoad } from '../ui/CouldNotLoad'
+import { readNicknames, maySaveNicknames, type NicknamesRead } from './nicknamesRead'
 import {
   backupName,
   backupSays,
@@ -630,35 +632,75 @@ function ClaimSnakeName() {
   )
 }
 
+/** my own row's three names, or `{ ok: false }` — a throw is a failed read like any other */
+async function fetchNicknames(sb: SupabaseClient): Promise<NicknamesRead> {
+  try {
+    const { data: auth } = await sb.auth.getSession()
+    const me = auth.session?.user.id ?? null
+    if (!me) return readNicknames({ data: null, error: null }, null)
+    /* pinned to `me` rather than `.limit(1)`: an admin can read every row — see nicknamesRead.ts */
+    return readNicknames(
+      await sb
+        .from('profiles')
+        .select('user_id,nickname,circuit_nickname,snake_nickname')
+        .eq('user_id', me)
+        .maybeSingle(),
+      me,
+    )
+  } catch (error) {
+    return readNicknames({ data: null, error }, null)
+  }
+}
+
 function NicknamesCard() {
   const sb = useMemo(() => getSupabaseClient(), [])
   const [nickname, setNickname] = useState('')
   const [circuitNickname, setCircuitNickname] = useState('')
   const [snakeNickname, setSnakeNickname] = useState('')
+  /* ⚠️ THE BOXES ARE ONLY KNOWN AFTER A READ THAT SUCCEEDED, and Save names waits for one — it
+     sends all three, and a blank is stored as "no name", so boxes left empty by a failed read
+     would erase the names they failed to show. See nicknamesRead.ts. The workbench has no
+     session, so it starts from three blank boxes the way it always did. */
+  const [read, setRead] = useState<NicknamesRead | null>(
+    previewMember
+      ? { ok: true, names: { nickname: '', circuitNickname: '', snakeNickname: '' } }
+      : null,
+  )
+  const [retrying, setRetrying] = useState(false)
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [err, setErr] = useState<string | null>(null)
 
+  /* the setters are stable, so this is too, and the effect can name it */
+  const take = useCallback((r: NicknamesRead) => {
+    setRead(r)
+    if (!r.ok) return
+    setNickname(r.names.nickname)
+    setCircuitNickname(r.names.circuitNickname)
+    setSnakeNickname(r.names.snakeNickname)
+  }, [])
+
   useEffect(() => {
-    void sb
-      .from('profiles')
-      .select('nickname,circuit_nickname,snake_nickname')
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) return
-        const d = data as {
-          nickname: string | null
-          circuit_nickname: string | null
-          snake_nickname: string | null
-        }
-        setNickname(d.nickname ?? '')
-        setCircuitNickname(d.circuit_nickname ?? '')
-        setSnakeNickname(d.snake_nickname ?? '')
-      })
-  }, [sb])
+    if (previewMember) return
+    let alive = true
+    void fetchNicknames(sb).then((r) => {
+      if (alive) take(r)
+    })
+    return () => {
+      alive = false
+    }
+  }, [sb, take])
+
+  async function retry() {
+    setRetrying(true)
+    take(await fetchNicknames(sb))
+    setRetrying(false)
+  }
+
+  const canSave = maySaveNicknames(read, state === 'saving')
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
+    if (!canSave) return
     setState('saving')
     setErr(null)
     const { error } = await sb.rpc('set_my_nicknames', {
@@ -703,14 +745,36 @@ function NicknamesCard() {
       <p className="muted" style={{ margin: 0, fontSize: '0.8rem', opacity: 0.75 }}>
         Looking for your @handle? It is the unique one, up under <strong>Your info</strong>.
       </p>
-      {field('Nickname', 'Used anywhere you have no more specific name.', nickname, setNickname)}
-      {field(
-        'In the Circuit',
-        'How you appear on the board, feed and charts.',
-        circuitNickname,
-        setCircuitNickname,
+      {/* no boxes at all until the names are known: an empty box says "none set", which is the
+          one thing a failed read must not say */}
+      {read === null ? (
+        <p className="muted" style={{ margin: 0 }}>
+          Loading your nicknames…
+        </p>
+      ) : !read.ok ? (
+        <CouldNotLoad what="your nicknames" onRetry={() => void retry()} retrying={retrying} />
+      ) : (
+        <>
+          {field(
+            'Nickname',
+            'Used anywhere you have no more specific name.',
+            nickname,
+            setNickname,
+          )}
+          {field(
+            'In the Circuit',
+            'How you appear on the board, feed and charts.',
+            circuitNickname,
+            setCircuitNickname,
+          )}
+          {field(
+            'On the Snake leaderboard',
+            'Your arcade handle.',
+            snakeNickname,
+            setSnakeNickname,
+          )}
+        </>
       )}
-      {field('On the Snake leaderboard', 'Your arcade handle.', snakeNickname, setSnakeNickname)}
       <SnakeVisibility />
       <ClaimSnakeName />
       {err && (
@@ -719,7 +783,9 @@ function NicknamesCard() {
         </p>
       )}
       <div>
-        <button className="btn" type="submit" disabled={state === 'saving'}>
+        {/* `save` asks the same question, so it holds however the form is submitted — Enter in
+            any box in this card submits it, ClaimSnakeName's included */}
+        <button className="btn" type="submit" disabled={!canSave}>
           {state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved ✓' : 'Save names'}
         </button>
       </div>
