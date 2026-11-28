@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-27 for the Lab: §26 names two party-tour calls the liveness bound left open. Before that, 2026-11-26: §25 parks four-player Spades by turns, on Evan's answer of that day. Before that, 2026-11-22 for Chronicle: §24 records Evan's answers of that day and what was applied. Before that, 2026-11-21: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
+Last reviewed: 2026-11-27 for the Lab: §27 asks whether Back on a puzzle's link should keep the board counting, from batch 1's beat links. Before that, 2026-11-27: §26 names two party-tour calls the liveness bound left open. Before that, 2026-11-26: §25 parks four-player Spades by turns, on Evan's answer of that day. Before that, 2026-11-22 for Chronicle: §24 records Evan's answers of that day and what was applied. Before that, 2026-11-21: §22 brought up to date, and §23 lists everything still open there. Before that, 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
 
 ---
 
@@ -1544,3 +1544,22 @@ build before the bound tolerated about 38 s in a roll. On the call's one channel
 cannot drift apart: presence sweeps a host that slow in 16–18 s and the next rider takes over,
 measured with no Start at any delay up to 38 s. **No answer needed unless Evan wants the old
 tolerance back**, which would mean a longer `STALL_MS` for everybody.
+
+---
+
+## 27. Back on a puzzle's beat link: does the finish still count? (27 Nov 2026)
+
+**Already built** (docs/2026-11-27-lab-beat-my-board.md, group g3). In Pipes, Cages, Island bridges
+and Tents, pressing Back after opening a friend's "beat my board" link clears the challenge and
+leaves the board on screen, so half a solved puzzle is not thrown away; finishing it then adds one
+to that toy's boards-finished count (`solvedCount`), as any other board would. No best can be built
+on it: these four keep a best only for Today's board, and a link to Today's board counts as
+Today's anyway.
+
+**The ask.** The batch's own rule is that playing a link writes none of the toy's records, and
+Stackfall was changed to keep that rule after Back (its link stays with the run). Should these four
+do the same — keep the link with the board after Back, so the finish counts nowhere — or keep
+today's behaviour, where a finished board is a finished board?
+
+**If it keeps waiting:** nothing breaks. The only effect is one more in a count of boards finished,
+for a board the person did finish.
