@@ -20,13 +20,24 @@
 
 /** What this page knows of the look on one person's profile. `sent: null` means not known. */
 export type LookMemo = { uid: string; sent: string | null }
-/** A look this browser chose for this person and has not yet seen land. */
-export type LookIntent = { uid: string; look: string }
+/**
+ * A look this browser chose for this person and has not yet seen land.
+ *
+ * `base` is the look the profile was KNOWN to hold when this one was chosen — the version it was
+ * chosen over — or null when that was not known. A reload replays the intent only while the
+ * profile still holds `base`; see replayVerdict.
+ */
+export type LookIntent = { uid: string; look: string; base: string | null }
 
 export type LookPlan = {
   memo: LookMemo
   /** send this look */
   publish: boolean
+  /**
+   * a look owed from an earlier visit: read the profile and ask replayVerdict before sending —
+   * never send it on the strength of this browser alone
+   */
+  verify: boolean
   /** a stored intent for this person is stale: drop it */
   forgetIntent: boolean
 }
@@ -42,13 +53,13 @@ export function planLook(
     /* the first run for this person carries no intention — unless this browser chose this very
        look earlier and never saw it land, in which case it is owed */
     if (mine && intent.look === sig)
-      return { memo: { uid, sent: null }, publish: true, forgetIntent: false }
+      return { memo: { uid, sent: null }, publish: false, verify: true, forgetIntent: false }
     /* a different person is a first run of their own, or signing in as somebody else on a shared
        browser would publish the look the last one happened to be using */
-    return { memo: { uid, sent: sig }, publish: false, forgetIntent: mine }
+    return { memo: { uid, sent: sig }, publish: false, verify: false, forgetIntent: mine }
   }
-  if (memo.sent === sig) return { memo, publish: false, forgetIntent: mine }
-  return { memo, publish: true, forgetIntent: false }
+  if (memo.sent === sig) return { memo, publish: false, verify: false, forgetIntent: mine }
+  return { memo, publish: true, verify: false, forgetIntent: false }
 }
 
 /**
@@ -92,7 +103,9 @@ const LOOK_INTENT_KEY = 'profile_look_pending_v1'
 export function readLookIntent(): LookIntent | null {
   try {
     const v = JSON.parse(localStorage.getItem(LOOK_INTENT_KEY) || 'null') as LookIntent | null
-    return v && typeof v.uid === 'string' && typeof v.look === 'string' ? v : null
+    if (!v || typeof v.uid !== 'string' || typeof v.look !== 'string') return null
+    /* an intent written before `base` existed has none, so it can only land or be superseded */
+    return { uid: v.uid, look: v.look, base: typeof v.base === 'string' ? v.base : null }
   } catch {
     return null
   }
@@ -115,4 +128,59 @@ export function forgetLookIntent(uid: string, look?: string): void {
   } catch {
     /* ignore */
   }
+}
+
+export type ReplayVerdict = 'send' | 'landed' | 'superseded' | 'wait'
+
+/**
+ * What to do with a look owed from an earlier visit, given what the profile holds NOW (its
+ * signature, or undefined when it could not be read).
+ *
+ * ⚠️ THE NEWEST CHOICE WINS, AND A REPLAY IS NOT A CHOICE. A look that failed to land was kept
+ * and sent again on a later load — with no way to know whether, in between, a newer look had been
+ * chosen on another device. Replayed blind, the older one overwrote it (found in review, 28 Nov
+ * 2026). So the intent remembers the version it was chosen over (`base`), and is sent only while
+ * the profile still holds exactly that; anything else on the profile is newer and wins. A
+ * compare-and-set on content, done from here because the server function has no version check.
+ */
+export function replayVerdict(intent: LookIntent, profileNow: string | undefined): ReplayVerdict {
+  if (profileNow === undefined) return 'wait'
+  if (profileNow === intent.look) return 'landed'
+  if (intent.base !== null && profileNow === intent.base) return 'send'
+  return 'superseded'
+}
+
+type LookArgs = { p_theme: unknown; p_palette: unknown; p_flair: unknown; p_backdrop: unknown }
+
+/**
+ * A look as one comparable string — the same for what this browser would send and for what the
+ * profile row holds, so a replay can tell "unchanged" from "changed elsewhere".
+ *
+ * ⚠️ NORMALISED, because the two spell it differently: the server rebuilds the palette as its own
+ * jsonb object, whose key order is jsonb's rather than ours, and stores hex as it was given.
+ */
+export function lookSig(l: LookArgs): string {
+  const p = l.p_palette as { bg?: unknown; text?: unknown; accent?: unknown } | null
+  const hex = (v: unknown) => (typeof v === 'string' ? v.toLowerCase() : null)
+  return JSON.stringify([
+    typeof l.p_theme === 'string' ? l.p_theme : null,
+    p && typeof p === 'object' ? [hex(p.bg), hex(p.text), hex(p.accent)] : null,
+    typeof l.p_flair === 'string' ? l.p_flair : null,
+    typeof l.p_backdrop === 'string' ? l.p_backdrop : null,
+  ])
+}
+
+/** The profile row's look, in lookSig's spelling. */
+export function profileLookSig(row: {
+  look_theme: unknown
+  look_palette: unknown
+  look_flair: unknown
+  look_backdrop: unknown
+}): string {
+  return lookSig({
+    p_theme: row.look_theme,
+    p_palette: row.look_palette,
+    p_flair: row.look_flair,
+    p_backdrop: row.look_backdrop,
+  })
 }

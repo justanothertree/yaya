@@ -7,8 +7,11 @@ import {
   lookRefused,
   lookRetryIn,
   lookSending,
+  lookSig,
   planLook,
+  profileLookSig,
   readLookIntent,
+  replayVerdict,
   type LookMemo,
 } from './profile/lookPublish'
 import { errText } from './ui/errText'
@@ -678,14 +681,14 @@ export default function App() {
       p_flair: sparksOn ? sparksStyle : null,
       p_backdrop: background === 'none' ? null : background,
     }
-    const sig = JSON.stringify(look)
-    const plan = planLook(lookMemo.current, readLookIntent(), uid, sig)
+    const sig = lookSig(look)
+    const intent = readLookIntent()
+    const plan = planLook(lookMemo.current, intent, uid, sig)
     lookMemo.current = plan.memo
     if (plan.forgetIntent) forgetLookIntent(uid)
-    if (!plan.publish) return
-    keepLookIntent({ uid, look: sig })
+    if (!plan.publish && !plan.verify) return
     let live = true
-    let timer: ReturnType<typeof setTimeout>
+    let timer: ReturnType<typeof setTimeout> | undefined
     const giveUp = (error: unknown) =>
       console.warn('[profile] your look did not reach your profile: ' + errText(error))
     const attempt = (n: number) => {
@@ -698,8 +701,12 @@ export default function App() {
           (e: unknown) => ({ error: e ?? 'failed', status: 0 }),
         )
         .then(({ error, status }) => {
-          /* a newer run owns the look now — it sends its own, and reads its own answer */
-          if (!live) return
+          /* a newer run owns the look now — it sends its own, and reads its own answer. But a
+             write that LANDED is still paid: left owed, a later load would send it again */
+          if (!live) {
+            if (!error) forgetLookIntent(uid, sig)
+            return
+          }
           if (!error) {
             if (lookMemo.current) lookMemo.current = lookLanded(lookMemo.current, uid, sig)
             forgetLookIntent(uid, sig)
@@ -716,6 +723,42 @@ export default function App() {
           else timer = setTimeout(() => attempt(n + 1), wait)
         })
     }
+    if (plan.verify && intent) {
+      /**
+       * ⚠️ A LOOK OWED FROM AN EARLIER VISIT IS CHECKED BEFORE IT IS SENT. In between, a newer one
+       * may have been chosen on another device; replayed blind, the older look overwrote it. So
+       * the profile is read first and the newest choice wins — see replayVerdict.
+       */
+      void getSupabaseClient()
+        .from('profiles')
+        .select('look_theme, look_palette, look_flair, look_backdrop')
+        .eq('user_id', uid)
+        .maybeSingle()
+        .then(
+          ({ data, error }) => (error || !data ? undefined : profileLookSig(data)),
+          () => undefined,
+        )
+        .then((now) => {
+          if (!live) return
+          const verdict = replayVerdict(intent, now)
+          if (verdict === 'send') return attempt(0)
+          if (verdict === 'landed') {
+            if (lookMemo.current) lookMemo.current = lookLanded(lookMemo.current, uid, sig)
+            forgetLookIntent(uid, sig)
+          } else if (verdict === 'superseded' && now !== undefined) {
+            /* the profile holds a newer look: that is what it is known to have now */
+            lookMemo.current = { uid, sent: now }
+            forgetLookIntent(uid, sig)
+          }
+          /* 'wait': the profile could not be read — still owed, for the next change or load */
+        })
+      return () => {
+        live = false
+        clearTimeout(timer)
+      }
+    }
+    /* chosen now: remember the version it was chosen over, so a later replay can check it */
+    keepLookIntent({ uid, look: sig, base: plan.memo.sent })
     // dragging a colour picker shouldn't be one write per frame
     timer = setTimeout(() => attempt(0), 600)
     return () => {

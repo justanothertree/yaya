@@ -4,6 +4,7 @@ import {
   lookRetryIn,
   lookSending,
   planLook,
+  replayVerdict,
   type LookIntent,
   type LookMemo,
 } from './lookPublish'
@@ -80,10 +81,12 @@ describe('a change reaches the profile', () => {
 })
 
 describe('a reload finishes what this browser chose', () => {
-  const pending: LookIntent = { uid: UID, look: ALT }
+  const pending: LookIntent = { uid: UID, look: ALT, base: DARK }
 
-  it('a look chosen here that never landed is sent on the next load', () => {
-    expect(planLook(null, pending, UID, ALT).publish).toBe(true)
+  it('a look chosen here that never landed is checked against the profile on the next load — never sent blind', () => {
+    const p = planLook(null, pending, UID, ALT)
+    expect(p.verify).toBe(true)
+    expect(p.publish).toBe(false)
   })
 
   it('and once it lands it is not sent again', () => {
@@ -104,7 +107,7 @@ describe('a reload finishes what this browser chose', () => {
   })
 
   it("somebody else's pending look is neither sent nor dropped", () => {
-    const theirs: LookIntent = { uid: 'member-2', look: DARK }
+    const theirs: LookIntent = { uid: 'member-2', look: DARK, base: null }
     const p = planLook(null, theirs, UID, DARK)
     expect(p.publish).toBe(false)
     expect(p.forgetIntent).toBe(false)
@@ -139,5 +142,33 @@ describe('retrying a write that did not land', () => {
     for (const status of [400, 403, 404, 409, 422]) {
       expect(lookRetryIn(0, { status })).toBeNull()
     }
+  })
+})
+
+describe('a reload never replays an older look over a newer one', () => {
+  /* chosen here as ALT while the profile was known to hold DARK, and never seen to land */
+  const owed: LookIntent = { uid: UID, look: ALT, base: DARK }
+  const NEWER = '{"p_theme":"light","p_palette":null,"p_flair":"stars","p_backdrop":null}'
+
+  it('is not sent over a profile that changed since it was chosen — the newer look wins', () => {
+    expect(replayVerdict(owed, NEWER)).toBe('superseded')
+  })
+
+  it('is sent when the profile still holds what it held when the look was chosen', () => {
+    expect(replayVerdict(owed, DARK)).toBe('send')
+  })
+
+  it('is not sent when the profile already holds it — the debt is paid', () => {
+    expect(replayVerdict(owed, ALT)).toBe('landed')
+  })
+
+  it('is not sent while the profile could not be read — it stays owed', () => {
+    expect(replayVerdict(owed, undefined)).toBe('wait')
+  })
+
+  it('is never sent blind: with no known starting point it only counts as landed or superseded', () => {
+    const blind = { ...owed, base: null }
+    expect(replayVerdict(blind, DARK)).toBe('superseded')
+    expect(replayVerdict(blind, ALT)).toBe('landed')
   })
 })
