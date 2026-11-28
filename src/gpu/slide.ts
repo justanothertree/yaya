@@ -204,6 +204,13 @@ export function rng(seed: number) {
   }
 }
 
+/**
+ * The seeds an endless board is dealt from, 1 to SEEDS: what SlideDemo mints, and what a "beat my
+ * board" link may carry (src/lab/beat.ts). Every one of them makes a board at every difficulty —
+ * all 299,997 were generated on 27 Nov 2026 and none was null.
+ */
+export const SEEDS = 99_999
+
 export const DIFFICULTY = {
   easy: { min: 4, max: 6, size: [8, 7], coins: 1 },
   medium: { min: 7, max: 10, size: [10, 8], coins: 2 },

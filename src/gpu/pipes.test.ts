@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { beatHash, readBeat } from '../lab/beat'
 import {
   E,
   EMPTY,
   N,
   S,
+  SIZES,
   W,
   across,
   keepBest,
@@ -147,5 +149,45 @@ describe('what is kept', () => {
     bests = keepBest(bests, { ...a, size: 9, seconds: 90 }, 100)
     expect(bests).toHaveLength(2)
     expect(keepBest(bests, { ...a, day: 120 }, 120)).toHaveLength(1)
+  })
+})
+
+/* ── a board sent as a "beat my board" link (src/lab/beat.ts). The link carries the seed, the size
+   and whether the edges wrap; whoever opens it is dealt make() of those three, exactly as here. The
+   browser readback (two pages, one link) is the check on the room; this is the check on the board. */
+const sha256 = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+describe('a board from a link', () => {
+  it('lays the boards it always has: one seed, every size, both ways, pinned', async () => {
+    /* measured identical in node v22.23.4 and bun 1.4.4 (27 Nov 2026, 18:56 EST). A change here
+       changes every Pipes link already sent, and needs a `v=` in the link (beat.ts). */
+    const boards = SIZES.flatMap((n) => [
+      make(4_279_824_600, n, false),
+      make(4_279_824_600, n, true),
+    ])
+    expect(boards[5].tiles.slice(0, 9)).toEqual([13, 15, 6, 10, 10, 1, 5, 2, 10])
+    expect(await sha256(boards)).toBe(
+      '0fd6913106bf5e76b15669555b91d6d4b111d0bfeb52ae8196585643438c71ec',
+    )
+  })
+  it('the seed, size and wrapping a link carries lay the board the sender played', () => {
+    const link = readBeat(
+      beatHash({ game: 'pipes', seed: 4_279_824_600, size: 9, wrap: true, secs: 95, turns: 61 }),
+    )
+    if (link?.game !== 'pipes') throw new Error('no Pipes link')
+    expect(make(link.seed, link.size, link.wrap)).toEqual(make(4_279_824_600, 9, true))
+  })
+  it('another seed, size or wrapping is another board', () => {
+    const b = make(4_279_824_600, 9, true)
+    expect(make(4_279_824_601, 9, true).tiles).not.toEqual(b.tiles)
+    expect(make(4_279_824_600, 9, false).tiles).not.toEqual(b.tiles)
+    expect(make(4_279_824_600, 7, true).tiles).not.toEqual(b.tiles.slice(0, 49))
   })
 })

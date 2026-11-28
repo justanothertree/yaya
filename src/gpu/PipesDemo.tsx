@@ -21,8 +21,12 @@ import {
 } from './pipes'
 import { clock, dayNumber } from './daily'
 import { useKept } from './kept'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { newSeed, outcome, verdict, type Beat } from '../lab/beat'
 
 const LOOK_NAMES: Record<Saved['look'], string> = { water: 'Water', lava: 'Lava', neon: 'Neon' }
+type Result = Extract<Beat, { game: 'pipes' }>
 /** a day as a count of days, so "the last fortnight" can be worked out */
 const seedFor = (size: number, wrap: boolean) =>
   (daySeed(new Date()) ^ (size * 7919) ^ (wrap ? 0x5bd1e995 : 0)) >>> 0
@@ -53,7 +57,10 @@ function Pipe({ t }: { t: number }) {
 
 export function PipesDemo() {
   const [saved, setSaved] = useKept(PIPES_KEY, readSaved)
-  const [seed, setSeed] = useState(() => seedFor(saved.size, saved.wrap))
+  /** a friend's board to beat, from the address (src/lab/beat.ts) */
+  const [challenge, leaveChallenge] = useChallenge('pipes')
+  const [seed, setSeed] = useState(() => challenge?.seed ?? seedFor(saved.size, saved.wrap))
+  /** today's board, and so the one board a link can count on: a link to it is today's here too */
   const daily = seed === seedFor(saved.size, saved.wrap)
   const fresh = useMemo(() => make(seed, saved.size, saved.wrap), [seed, saved.size, saved.wrap])
   const [board, setBoard] = useState<Board>(fresh)
@@ -66,8 +73,12 @@ export function PipesDemo() {
   const [now, setNow] = useState(() => Date.now())
   const [done, setDone] = useState<number | null>(null)
   const [cursor, setCursor] = useState(0)
+  /** the finished board, as a link would carry it */
+  const [result, setResult] = useState<Result | null>(null)
+  /** bumped to start the same board over: a new link on the board already up, or Leave */
+  const [round, setRound] = useState(0)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  // a new board whenever the seed, size or wrapping changes
+  // a new board whenever the seed, size or wrapping changes, or it starts over
   useEffect(() => {
     setBoard(fresh)
     setSpins(fresh.tiles.map(() => 0))
@@ -76,7 +87,26 @@ export function PipesDemo() {
     setStarted(null)
     setDone(null)
     setCursor(fresh.source)
-  }, [fresh])
+    setResult(null)
+  }, [fresh, round])
+  /* A link's board, its size and wrapping written exactly as their buttons write them — so `daily`
+     above is the toy's own question, and a best kept from it is filed under the board's own size. */
+  useEffect(() => {
+    if (!challenge) return
+    setSaved((x) => ({ ...x, size: challenge.size, wrap: challenge.wrap }))
+    setSeed(challenge.seed)
+    setRound((r) => r + 1)
+  }, [challenge, setSaved])
+  /** any control that changes the board leaves the link first, so the address never names one
+   *  board while another is up */
+  const off = () => {
+    if (challenge) leaveChallenge()
+  }
+  const leave = () => {
+    leaveChallenge()
+    setSeed(seedFor(saved.size, saved.wrap))
+    setRound((r) => r + 1)
+  }
   // the clock, while a board is being worked on
   useEffect(() => {
     if (started === null || done !== null) return
@@ -115,17 +145,30 @@ export function PipesDemo() {
       setDone(end)
       setNow(end)
       const secs = Math.max(1, Math.floor((end - start) / 1000))
-      setSaved((s) => ({
-        ...s,
-        solvedCount: s.solvedCount + 1,
-        bests: daily
-          ? keepBest(
-              s.bests,
-              { day: today, size: s.size, wrap: s.wrap, seconds: secs, turns: turns + 1 },
-              today,
-            )
-          : s.bests,
-      }))
+      const mine: Result = {
+        game: 'pipes',
+        seed,
+        size: saved.size,
+        wrap: saved.wrap,
+        secs,
+        turns: turns + 1,
+      }
+      setResult(mine)
+      /* ⚠️ A LINK'S BOARD IS PRACTICE, unless it is today's board here: then it counts exactly as
+         the Today's button's would, and the banner said so */
+      const onLink = challenge !== null && outcome(mine, challenge) !== null
+      if (!onLink || daily)
+        setSaved((s) => ({
+          ...s,
+          solvedCount: s.solvedCount + 1,
+          bests: daily
+            ? keepBest(
+                s.bests,
+                { day: today, size: s.size, wrap: s.wrap, seconds: secs, turns: turns + 1 },
+                today,
+              )
+            : s.bests,
+        }))
     }
   }
 
@@ -157,13 +200,14 @@ export function PipesDemo() {
 
   const line =
     done !== null
-      ? `🎉 Flowing everywhere in ${clock(seconds)}, with ${turns} turns — par is ${p}.${daily && best && best.seconds === seconds && best.turns === turns ? ' Your best today.' : ''}`
+      ? `🎉 Flowing everywhere in ${clock(seconds)}, with ${turns} turns — par is ${p}.${daily && best && best.seconds === seconds && best.turns === turns ? ' Your best today.' : ''}${result && challenge ? verdict(result, challenge) : ''}`
       : started === null
         ? `Turn the tiles until water from the source reaches every one, with no pipe open to nothing. Par is ${p} turns.`
         : `${wet.size} of ${n * n} tiles have water.`
 
   return (
     <div className={`lab-keys pp-room is-${saved.look}`}>
+      {challenge && <BeatBanner beat={challenge} today={daily} onLeave={leave} />}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Board size">
           {SIZES.map((s) => (
@@ -172,6 +216,7 @@ export function PipesDemo() {
               className="btn btn-ghost"
               aria-pressed={saved.size === s}
               onClick={() => {
+                off()
                 setSaved((x) => ({ ...x, size: s as Size }))
                 setSeed(seedFor(s, saved.wrap))
               }}
@@ -184,6 +229,7 @@ export function PipesDemo() {
           className="btn btn-ghost"
           aria-pressed={saved.wrap}
           onClick={() => {
+            off()
             setSaved((x) => ({ ...x, wrap: !x.wrap }))
             setSeed(seedFor(saved.size, !saved.wrap))
           }}
@@ -194,13 +240,19 @@ export function PipesDemo() {
           <button
             className="btn btn-ghost"
             aria-pressed={daily}
-            onClick={() => setSeed(seedFor(saved.size, saved.wrap))}
+            onClick={() => {
+              off()
+              setSeed(seedFor(saved.size, saved.wrap))
+            }}
           >
             Today’s
           </button>
           <button
             className="btn btn-ghost"
-            onClick={() => setSeed((Math.random() * 2 ** 31) >>> 0)}
+            onClick={() => {
+              off()
+              setSeed(newSeed())
+            }}
           >
             ⟳ New board
           </button>
@@ -226,6 +278,7 @@ export function PipesDemo() {
       <p className="mc-line" aria-live="polite">
         {line}
       </p>
+      {done !== null && result && <BeatShare beat={result} answering={challenge} />}
 
       <div className="pp-fit">
         <div
@@ -285,6 +338,7 @@ export function PipesDemo() {
             setTurns(0)
             setStarted(null)
             setDone(null)
+            setResult(null)
           }}
         >
           ↺ Start this board again

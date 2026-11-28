@@ -6,12 +6,15 @@ import {
   dealWithPlan,
   free,
   pairs,
+  deal,
   readSaved,
+  shuffle,
   shuffleWithPlan,
   take,
   type Board,
   type Place,
 } from './tiles'
+import { beatHash, dealRand, readBeat } from '../lab/beat'
 
 const at = (places: Place[]) => ({ places, filled: places.map(() => true) })
 describe('which tiles are free', () => {
@@ -115,5 +118,55 @@ describe('tiles saves', () => {
     }
     expect(readSaved(JSON.stringify(s))).toEqual(s)
     expect(readSaved(JSON.stringify({ layout: 'moon', best: { moon: 5 } }))).toEqual(EMPTY)
+  })
+})
+
+/** SHA-256 of a value's JSON, hex: the same only if every byte of the deal is */
+const sha = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+/** the k-th press of Shuffle on a deal: TilesDemo's reshuffle, from the deal's own seed */
+const reshuffle = (b: Board, dealSeed: number, k: number) =>
+  shuffle(b, Math.floor(dealRand(dealSeed, k, 0)() * 2 ** 32))
+
+describe('a "beat my deal" link deals the same tiles, and the same shuffles', () => {
+  const twin = LAYOUTS.find((l) => l.id === 'twin')!
+  /* pinned from node v22 and bun 1.4.4, which agree (27 Nov 2026) */
+  it('is pinned, byte for byte, the deal and its first two shuffles', async () => {
+    expect(await sha(deal(twin, 3_000_000_001))).toBe(
+      '4dc0e62ec3674aa8537418cdead481024c9a927c79dc788475866abc352d1da1',
+    )
+    const { board, plan } = dealWithPlan(twin, 3_000_000_001)
+    const one = take(board, plan[0][0], plan[0][1])
+    expect(await sha(reshuffle(one, 3_000_000_001, 0))).toBe(
+      'fe2b3568ee1576e12104979d374e78255ecfd1538741eb870c64b869790a2b6a',
+    )
+    expect(await sha(reshuffle(one, 3_000_000_001, 1))).toBe(
+      '22bfe7dc394ea34b3ab52795136f03d5e24f2f1f45801b1ea3ac62acd63ff05b',
+    )
+  })
+  it('the link’s seed and layout deal what they deal by hand', () => {
+    const b = readBeat(beatHash({ game: 'tiles', seed: 3_000_000_001, layout: 'twin', secs: 431 }))
+    if (b?.game !== 'tiles') throw new Error('the link did not read back')
+    expect(deal(LAYOUTS.find((l) => l.id === b.layout)!, b.seed)).toEqual(deal(twin, 3_000_000_001))
+  })
+  it('the same deal and press give the same shuffle; another press gives another', () => {
+    const { board, plan } = dealWithPlan(twin, 3_000_000_001)
+    let b: Board = board
+    for (const [i, j] of plan.slice(0, 6)) b = take(b, i, j)
+    expect(reshuffle(b, 3_000_000_001, 0)).toEqual(reshuffle(b, 3_000_000_001, 0))
+    expect(reshuffle(b, 3_000_000_001, 2)).toEqual(reshuffle(b, 3_000_000_001, 2))
+    expect(reshuffle(b, 3_000_000_001, 1).kind).not.toEqual(reshuffle(b, 3_000_000_001, 0).kind)
+    expect(reshuffle(b, 3_000_000_002, 0).kind).not.toEqual(reshuffle(b, 3_000_000_001, 0).kind)
+    // the multiply by 2^32 is exact: the stream's numbers are whole 32-bit states over 2^32
+    for (let k = 0; k < 50; k++) {
+      const x = dealRand(3_000_000_001, k, 0)() * 2 ** 32
+      expect(Number.isInteger(x) && x > 0 && x < 2 ** 32, `press ${k}`).toBe(true)
+    }
   })
 })

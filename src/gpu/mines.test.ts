@@ -16,6 +16,7 @@ import {
   type Size,
 } from './mines'
 import { rng } from './bricks'
+import { beatHash, readBeat } from '../lab/beat'
 
 const centre = (s: Size) => Math.floor(s.h / 2) * s.w + Math.floor(s.w / 2)
 /** mines anywhere at all, the way a board is laid before it is checked */
@@ -158,5 +159,35 @@ describe('mines saves', () => {
       won: 2,
       played: 2,
     })
+  })
+})
+
+/** SHA-256 of a value's JSON, hex: the same only if every byte of the board is */
+const sha = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+describe('a "beat my board" link lays the same board', () => {
+  /* ⚠️ A BOARD IS ITS SEED, ITS SIZE AND THE SQUARE IT OPENED FROM: `layBoard` keeps the first
+     square and its neighbours clear, so the same seed opened somewhere else is another board.
+     Pinned from node v22 and bun 1.4.4, which agree (27 Nov 2026). */
+  it('is pinned, byte for byte', async () => {
+    expect(await sha(reveal(newGame(SIZES.large, 4_294_967_295), 241))).toBe(
+      '3a12ae423d48382e18354385468208444cacb99d9ce128e4268f8ce16d40bebe',
+    )
+  })
+  it('the link’s seed, size and first square lay what they lay by hand', () => {
+    const b = readBeat(
+      beatHash({ game: 'mines', seed: 4_294_967_295, size: 'large', start: 241, tenths: 1234 }),
+    )
+    if (b?.game !== 'mines') throw new Error('the link did not read back')
+    const linked = reveal(newGame(SIZES[b.size], b.seed), b.start)
+    expect(linked).toEqual(reveal(newGame(SIZES.large, 4_294_967_295), 241))
+    expect(linked.mine).not.toEqual(reveal(newGame(SIZES.large, 4_294_967_295), 240).mine)
   })
 })

@@ -104,10 +104,13 @@ type Game = {
   done: boolean
   /** the draw this game was dealt, for a "beat my run" link */
   seed: number
+  /** dealt from a link's seed: kept with the game, because the address can change mid-run */
+  fromLink: boolean
 }
 
 /** a new game; a solo run is on a seed it can be challenged with, everything else on any seed */
-function newGame(mode: Mode, bot: Bot, seed = newSeed()): Game {
+function newGame(mode: Mode, bot: Bot, link: Extract<Beat, { game: 'stack' }> | null): Game {
+  const seed = link?.seed ?? newSeed()
   const junk = seeded(seed ^ 0x5f3759df)
   const n = mode === 'solo' ? 1 : 2
   return {
@@ -122,6 +125,7 @@ function newGame(mode: Mode, bot: Bot, seed = newSeed()): Game {
     paused: false,
     done: false,
     seed,
+    fromLink: link !== null,
   }
 }
 
@@ -149,9 +153,15 @@ export function StackDemo() {
     const [a, b] = g.wells
     if (g.mode === 'solo') {
       const time = Math.round(a.time * 10) / 10
+      /* ⚠️ A LINK'S RUN IS PRACTICE, NOT A RECORD. "Play again" replays the link's seed every
+         time, so a longest run kept from it could be built on a piece order learned by heart.
+         ⚠️ AND IT IS THE RUN'S LINK, NOT THE ADDRESS'S AT THE FINISH: Back, or a second link
+         clicked mid-run, took the challenge away while the run went on on the first link's
+         pieces, and the finish recorded it. The verdict is still against the banner on screen,
+         and only when it names this run's pieces. */
       const vs = challengeRef.current
       const against =
-        vs && vs.seed === g.seed
+        vs !== null && vs.seed === g.seed
           ? beatsStack(vs, time, a.lines)
             ? ` You beat the link’s ${clock(vs.time)}!`
             : ` The link says ${clock(vs.time)} with ${vs.lines} lines — not this time.`
@@ -160,12 +170,13 @@ export function StackDemo() {
         `Topped out at ${clock(a.time)} — ${a.lines} lines, ${a.score.toLocaleString()} points.${against}`,
       )
       setLastRun({ game: 'stack', seed: g.seed, time, lines: a.lines })
-      setSaved((s) => ({
-        ...s,
-        longest: Math.max(s.longest, Math.round(a.time * 10) / 10),
-        lines: Math.max(s.lines, a.lines),
-        score: Math.max(s.score, a.score),
-      }))
+      if (!g.fromLink)
+        setSaved((s) => ({
+          ...s,
+          longest: Math.max(s.longest, Math.round(a.time * 10) / 10),
+          lines: Math.max(s.lines, a.lines),
+          score: Math.max(s.score, a.score),
+        }))
     } else if (g.mode === 'bot') {
       const won = b.over && !a.over
       setSaid(
@@ -188,7 +199,7 @@ export function StackDemo() {
   finishRef.current = finish
 
   const start = () => {
-    game.current = newGame(mode, bot, mode === 'solo' && challenge ? challenge.seed : undefined)
+    game.current = newGame(mode, bot, mode === 'solo' ? challenge : null)
     setSaid(null)
     setLastRun(null)
     setPaused(false)
@@ -305,13 +316,15 @@ export function StackDemo() {
   return (
     <div className="lab-keys stack-room" tabIndex={-1} ref={roomRef}>
       {mode === 'solo' && challenge && (
-        <p className="beat-banner">
-          🏁 <strong>A run to beat:</strong> this link says {clock(challenge.time)} with{' '}
-          {challenge.lines} lines. You get the same pieces in the same order — last longer.{' '}
+        <div className="beat-banner">
+          <p>
+            🏁 <strong>A run to beat:</strong> this link says {clock(challenge.time)} with{' '}
+            {challenge.lines} lines. You get the same pieces in the same order — last longer.
+          </p>{' '}
           <button className="btn btn-ghost" onClick={leaveChallenge} disabled={playing}>
             Leave the challenge
           </button>
-        </p>
+        </div>
       )}
       <CanvasStage
         className={mode === 'solo' ? undefined : 'stack-pair'}
@@ -410,7 +423,7 @@ export function StackDemo() {
           </button>
         )}
       </div>
-      {!playing && mode === 'solo' && lastRun && <BeatShare beat={lastRun} />}
+      {!playing && mode === 'solo' && lastRun && <BeatShare beat={lastRun} answering={challenge} />}
       <p className="sun-reading" aria-live="polite">
         {said && <strong>{said} </strong>}
         <span className="muted">{record}</span>

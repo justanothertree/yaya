@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { CopyLink } from '../lab/CopyLink'
-import { here } from '../lab/links'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { newSeed, outcome, verdict, type Beat } from '../lab/beat'
+import { useChallenge } from '../lab/useChallenge'
 import { daySeed } from './bricks'
 import {
   MARKS,
@@ -15,6 +16,7 @@ import {
   toggleFlag,
   type Game,
   type Saved,
+  type Size,
   type SizeName,
 } from './mines'
 import { useKept } from './kept'
@@ -41,6 +43,31 @@ const middle = (n: SizeName) => {
 const tenths = (ms: number) => Math.round(ms / 100)
 const secs = (t: number) => `${(t / 10).toFixed(1)} s`
 
+type Link = Extract<Beat, { game: 'mines' }>
+const nameOf = (z: Size) => (Object.keys(SIZES) as SizeName[]).find((n) => SIZES[n] === z) ?? null
+/**
+ * A link to a board somebody played as THEIR Today's: medium, opened from the middle, on the daily
+ * seed of yesterday, today or tomorrow here — a friend in another time zone is on another day. It
+ * opens already opened, as Today's does, because the sender's clock only started after that.
+ */
+const sentToday = (c: Link) => {
+  if (c.size !== TODAY_SIZE || c.start !== middle(TODAY_SIZE)) return false
+  const d = new Date()
+  return [-1, 0, 1].some(
+    (k) => daySeed(new Date(d.getFullYear(), d.getMonth(), d.getDate() + k)) === c.seed,
+  )
+}
+/** ⚠️ and it counts as the receiver's Today's only when it IS today's board here */
+const isToday = (c: Link | null) => c !== null && sentToday(c) && c.seed === daySeed(new Date())
+/**
+ * ⚠️ ANY OTHER LINK OPENS UNLAID, FROM ITS OWN SQUARE. A board is laid around the square it is
+ * opened from, so the start is part of the board; and a practice sender's clock started on the
+ * click that opened it, so the receiver's starts on the same click — not on a board handed to them
+ * already opened, which they could study for free.
+ */
+const linkGame = (c: Link) =>
+  sentToday(c) ? reveal(newGame(SIZES[c.size], c.seed), c.start) : newGame(SIZES[c.size], c.seed)
+
 /** the running time, ticking on its own so the board is not drawn again ten times a second */
 function Clock({ from, to }: { from: number | null; to: number | null }) {
   const [, tick] = useState(0)
@@ -62,6 +89,8 @@ type CellProps = {
   boom: boolean
   finished: boolean
   focus: boolean
+  /** the square a link's board opens from, before it is opened */
+  start: boolean
   mark: string
   label: string
   onAct: (i: number, how: 'open' | 'flag') => void
@@ -81,6 +110,7 @@ const Cell = memo(function Cell(p: CellProps) {
         p.boom ? 'is-boom' : '',
         showMine ? 'is-mine' : '',
         wrongFlag ? 'is-wrong' : '',
+        p.start ? 'is-start' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -119,7 +149,9 @@ const Cell = memo(function Cell(p: CellProps) {
               : p.mark
             : showMine || p.boom
               ? '✹'
-              : ''}
+              : p.start
+                ? '◎'
+                : ''}
       </span>
     </button>
   )
@@ -127,18 +159,25 @@ const Cell = memo(function Cell(p: CellProps) {
 
 export function MinesDemo() {
   const [saved, setSaved] = useKept(MINES_KEY, readSaved)
-  const [mode, setMode] = useState<Mode>('today')
+  const [challenge, leaveChallenge] = useChallenge('mines')
+  const [mode, setMode] = useState<Mode>(() =>
+    challenge && !isToday(challenge) ? 'practice' : 'today',
+  )
   const startToday = () =>
     reveal(newGame(SIZES[TODAY_SIZE], daySeed(new Date())), middle(TODAY_SIZE))
-  const [game, setGame] = useState<Game>(startToday)
+  const [game, setGame] = useState<Game>(() => (challenge ? linkGame(challenge) : startToday()))
   const [from, setFrom] = useState<number | null>(null)
   const [to, setTo] = useState<number | null>(null)
   const [flagging, setFlagging] = useState(false)
-  const [cursor, setCursor] = useState(() => middle(TODAY_SIZE))
+  const [cursor, setCursor] = useState(() => challenge?.start ?? middle(TODAY_SIZE))
   const [line, setLine] = useState(
     "Today's board — the same for everyone today, opened from the middle. The clock starts with your first square.",
   )
-  const [share, setShare] = useState('')
+  /** the board just won, which can be sent */
+  const [result, setResult] = useState<Link | null>(null)
+  /** the link the board on screen came from, so a link that leaves the address by another way
+      (Back, a typed address) takes its board with it rather than leaving it to record */
+  const dealtFrom = useRef<Link | null>(challenge)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const scroller = useRef<HTMLDivElement | null>(null)
   // a board wider than the phone opens scrolled to its middle, where today's board starts
@@ -149,48 +188,85 @@ export function MinesDemo() {
 
   const sizeName: SizeName = mode === 'today' ? TODAY_SIZE : saved.size
   const s = game.size
-  const fresh = (m: Mode = mode, size: SizeName = saved.size) => {
+  const fresh = (m: Mode = mode, size: SizeName = saved.size, link: Link | null = null) => {
+    dealtFrom.current = link
     setMode(m)
     setFrom(null)
     setTo(null)
-    setShare('')
-    if (m === 'today') {
+    setResult(null)
+    if (link) {
+      setGame(linkGame(link))
+      setCursor(link.start)
+      setLine(
+        sentToday(link)
+          ? 'The board from the link, opened from the middle as Today’s is. The clock starts with your first square.'
+          : 'The board from the link opens from the marked square ◎ — open it to start the clock.',
+      )
+    } else if (m === 'today') {
       setGame(startToday())
       setCursor(middle(TODAY_SIZE))
       setLine(
         "Today's board — the same for everyone today. The clock starts with your first square.",
       )
     } else {
-      setGame(newGame(SIZES[size], (Math.random() * 2 ** 31) | 0))
+      setGame(newGame(SIZES[size], newSeed()))
       setCursor(middle(size))
       setLine('Open any square: the first is always safe, and opens an area.')
     }
   }
+  /* a link lays its own board at its own size — the size kept as the size buttons keep it, a
+     practice preference — and one that leaves the address by any way but the controls here (which
+     deal their own board as they leave) takes its board with it */
+  useEffect(() => {
+    if (challenge) {
+      if (!isToday(challenge)) setSaved((x) => ({ ...x, size: challenge.size }))
+      fresh(isToday(challenge) ? 'today' : 'practice', challenge.size, challenge)
+    } else if (dealtFrom.current) fresh('today')
+    // `fresh` is rebuilt every render; only a new challenge is a reason to lay a board
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge])
+  /** any control that changes the board leaves the challenge first, so the address says what is on screen */
+  const leave = () => {
+    if (challenge) leaveChallenge()
+  }
+  /** the square a link's board must be opened from, until it is */
+  const gate = challenge && !game.mine && game.seed === challenge.seed ? challenge.start : null
 
   const finish = (g: Game, t0: number) => {
     const end = performance.now()
     setTo(end)
     const t = tenths(end - t0)
+    const size = nameOf(g.size)
+    const mine: Link | null = size
+      ? { game: 'mines', seed: g.seed, size, start: g.start, tenths: t }
+      : null
+    /* ⚠️ A LINK'S BOARD IS PRACTICE, NOT A RECORD — not a best, not a played count, not Today's —
+       unless it is today's board here, which records exactly as Today's does */
+    const onLink = challenge !== null && mine !== null && outcome(mine, challenge) !== null
+    const keep = !onLink || isToday(challenge)
+    const against = challenge && mine ? verdict(mine, challenge) : ''
     if (g.won) {
       const prev = saved.best[sizeName]
       const day = daySeed(new Date())
-      setSaved((x) => ({
-        ...x,
-        played: x.played + 1,
-        won: x.won + 1,
-        best: { ...x.best, [sizeName]: Math.min(x.best[sizeName] ?? Infinity, t) },
-        today:
-          mode === 'today'
-            ? { day, tenths: x.today && x.today.day === day ? Math.min(x.today.tenths, t) : t }
-            : x.today,
-      }))
+      if (keep)
+        setSaved((x) => ({
+          ...x,
+          played: x.played + 1,
+          won: x.won + 1,
+          best: { ...x.best, [sizeName]: Math.min(x.best[sizeName] ?? Infinity, t) },
+          today:
+            mode === 'today'
+              ? { day, tenths: x.today && x.today.day === day ? Math.min(x.today.tenths, t) : t }
+              : x.today,
+        }))
       setLine(
-        `🏆 Cleared in ${secs(t)}${prev === undefined || t < prev ? ' — your best on this size!' : `. Your best is ${secs(prev)}.`}`,
+        keep
+          ? `🏆 Cleared in ${secs(t)}${prev === undefined || t < prev ? ' — your best on this size!' : `. Your best is ${secs(prev)}.`}${against}`
+          : `🏆 Cleared in ${secs(t)}.${against}`,
       )
-      if (mode === 'today')
-        setShare(`I cleared today's Mines board in ${secs(t)}. Your go:\n${here()}#lab?demo=mines`)
+      setResult(mine)
     } else {
-      setSaved((x) => ({ ...x, played: x.played + 1 }))
+      if (keep) setSaved((x) => ({ ...x, played: x.played + 1 }))
       setLine(
         `Boom — a mine, ${secs(t)} in. Every board here can be cleared without a guess, so the clue was there.`,
       )
@@ -198,15 +274,22 @@ export function MinesDemo() {
   }
 
   // read inside the cells' one stable handler, so a cell is drawn again only when it changes
-  const live = useRef({ game, flagging, from })
-  live.current = { game, flagging, from }
+  const live = useRef({ game, flagging, from, gate })
+  live.current = { game, flagging, from, gate }
   const act = useRef((i: number, how: 'open' | 'flag') => {
-    const { game: g, flagging: fl, from: f } = live.current
+    const { game: g, flagging: fl, from: f, gate: only } = live.current
     if (over(g)) return
+    /* ⚠️ BEFORE THE CLOCK, NOT AFTER IT: a link's board opens from its own square, and a press
+       anywhere else that started the clock would be time charged for a refusal */
+    if (only !== null && (i !== only || how === 'flag')) {
+      setLine('This board opens from the marked square ◎ — open it to start the clock.')
+      return
+    }
     const t0 = f ?? performance.now()
     if (f === null) setFrom(t0)
     let next: Game
-    if (how === 'flag' || (fl && !g.open[i])) next = toggleFlag(g, i)
+    // the marked square is opened by any press, marking or not: it cannot be a mine
+    if (only === null && (how === 'flag' || (fl && !g.open[i]))) next = toggleFlag(g, i)
     else if (g.open[i]) next = chord(g, i)
     else next = reveal(g, i)
     if (next === g) return
@@ -217,6 +300,18 @@ export function MinesDemo() {
   // the handler above was made once, so what it calls at the end is kept current here
   const finishRef = useRef(finish)
   finishRef.current = finish
+  /* and a link's marked square is brought into view, wherever on a wide board it is — inside the
+     board's own scroller and nowhere else. ⚠️ NOT scrollIntoView: that scrolls every scrolling
+     ancestor, the page included, so a ◎ on a tall board's bottom row dropped the page 1,085px at
+     1440 and the banner, the line saying where to start and Leave all went off the top. */
+  useEffect(() => {
+    const sc = scroller.current
+    const el = gate === null ? null : refs.current[gate]
+    if (!sc || !el) return
+    const a = sc.getBoundingClientRect()
+    const c = el.getBoundingClientRect()
+    sc.scrollLeft += c.left - a.left - (a.width - c.width) / 2
+  }, [gate, game.seed, game.size])
   const setRef = useRef((i: number, el: HTMLButtonElement | null) => {
     refs.current[i] = el
   }).current
@@ -245,6 +340,8 @@ export function MinesDemo() {
 
   const finished = over(game)
   const flags = game.flag.filter(Boolean).length
+  /* on a link to another board, neither Today's nor a practice board of your own is on screen */
+  const elsewhere = challenge !== null && !isToday(challenge)
   const day = daySeed(new Date())
   const todayBest = saved.today && saved.today.day === day ? saved.today.tenths : null
   const best = saved.best[sizeName]
@@ -255,24 +352,41 @@ export function MinesDemo() {
     if (game.flag[i])
       return `${where}: marked${finished && game.mine && !game.mine[i] ? ', wrongly' : ''}`
     if (finished && game.mine?.[i]) return `${where}: a mine`
+    if (i === gate) return `${where}: hidden, the square this board opens from`
     return `${where}: hidden`
   }
 
   return (
     <div className={`lab-keys mn-room is-${saved.theme}`}>
+      {challenge && (
+        <BeatBanner
+          beat={challenge}
+          today={isToday(challenge)}
+          onLeave={() => {
+            leaveChallenge()
+            fresh('today')
+          }}
+        />
+      )}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Which board">
           <button
             className="btn btn-ghost"
-            aria-pressed={mode === 'today'}
-            onClick={() => fresh('today')}
+            aria-pressed={!elsewhere && mode === 'today'}
+            onClick={() => {
+              leave()
+              fresh('today')
+            }}
           >
             Today's board
           </button>
           <button
             className="btn btn-ghost"
-            aria-pressed={mode === 'practice'}
-            onClick={() => fresh('practice')}
+            aria-pressed={!elsewhere && mode === 'practice'}
+            onClick={() => {
+              leave()
+              fresh('practice')
+            }}
           >
             Practice
           </button>
@@ -286,6 +400,7 @@ export function MinesDemo() {
                 aria-pressed={saved.size === n}
                 aria-label={`${SIZE_NAMES[n]}: ${SIZES[n].w} by ${SIZES[n].h}, ${SIZES[n].mines} mines`}
                 onClick={() => {
+                  leave()
                   setSaved((x) => ({ ...x, size: n }))
                   fresh('practice', n)
                 }}
@@ -295,8 +410,12 @@ export function MinesDemo() {
             ))}
           </div>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ {mode === 'today' ? 'Start again' : 'New board'}
+        {/* on a link's board, the same board again; anywhere else, as it always was */}
+        <button
+          className="btn btn-ghost"
+          onClick={() => (dealtFrom.current ? fresh(mode, saved.size, dealtFrom.current) : fresh())}
+        >
+          ↻ {mode === 'today' || challenge ? 'Start again' : 'New board'}
         </button>
         <button className="btn" aria-pressed={flagging} onClick={() => setFlagging((f) => !f)}>
           {flagging ? `${MARK_GLYPH[saved.mark]} Marking` : '⛏ Opening'}
@@ -350,6 +469,7 @@ export function MinesDemo() {
               boom={game.boom === i}
               finished={finished}
               focus={i === cursor}
+              start={i === gate}
               mark={MARK_GLYPH[saved.mark]}
               label={labelOf(i)}
               onAct={act}
@@ -358,7 +478,7 @@ export function MinesDemo() {
           ))}
         </div>
       </div>
-      {share && <CopyLink text={share} label="🔗 Copy my time" />}
+      {result && <BeatShare beat={result} answering={challenge} />}
       <p className="sun-reading">
         <span className="muted">
           Cleared {saved.won} of {saved.played}

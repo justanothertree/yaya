@@ -30,6 +30,7 @@ import {
   toCode,
   type Picture,
 } from './nonogram'
+import { currentToy, hashParam, toyHash } from '../lab/links'
 
 /** a small seeded generator, so a failure names a case that comes back */
 function rng(seed: number) {
@@ -376,5 +377,57 @@ describe('the stage', () => {
     expect(data[2]).toBe(l.colours[0]) // a colour survives the float exactly: 24 bits fit
     expect(data.length).toBeLessThanOrEqual(MAX_FLOATS)
     expect(MAX_CLUES).toBe(10)
+  })
+})
+
+describe('a picture puzzle sent as a link', () => {
+  /** the address a copied link carries, as NonogramDemo writes it */
+  const linkOf = (code: string) => `#lab?${new URLSearchParams({ demo: 'nonogram', code })}`
+  it('every character a code can hold travels in a link as itself, and comes back', () => {
+    // a 20×20 picture whose six-square groups count 0 to 63, so its code holds every letter there is
+    const cells = new Uint8Array(400)
+    for (let g = 0; g < 64; g++) for (let k = 0; k < 6; k++) cells[g * 6 + k] = (g >> (5 - k)) & 1
+    const code = toCode({ w: 20, h: 20, cells })
+    expect(new Set(code.slice('20x20.'.length)).size).toBe(64)
+    const h = linkOf(code)
+    // nothing escaped: the link shows the same code "Open a code" takes, x and . included
+    expect(h).toBe(`#lab?demo=nonogram&code=${code}`)
+    expect(hashParam('code', h)).toBe(code)
+    expect(fromCode(hashParam('code', h)!)).toEqual({ w: 20, h: 20, cells })
+  })
+  it('every built-in picture arrives as the same picture', () => {
+    expect(LEVELS).toHaveLength(10)
+    for (const l of LEVELS) {
+      const back = fromCode(hashParam('code', linkOf(toCode(l.picture))) ?? '')
+      expect(back, l.name).toEqual(l.picture)
+      expect(cluesOf(back!), l.name).toEqual(cluesOf(l.picture))
+    }
+  })
+  it('a code spoiled on the way is no puzzle at all', () => {
+    const good = toCode(LEVELS[2].picture)
+    const spoiled = [
+      good.slice(0, -1),
+      `${good}A`,
+      good.replace('10x10', '10x11'),
+      good.replace('10x10', '25x10'),
+      `${good.slice(0, 10)}+${good.slice(11)}`, // a "+" in a link is a space
+      `${good.slice(0, 10)}%${good.slice(11)}`,
+      '5x5.AAAAh', // the last square filled, and a padding bit set
+      '5x5.AAAAA', // blank
+      '',
+    ]
+    expect(fromCode('5x5.AAAAg')).not.toBeNull() // the same without the padding bit
+    for (const code of spoiled) {
+      const h = `#lab?demo=nonogram&code=${code}`
+      expect(fromCode(hashParam('code', h) ?? ''), code).toBeNull()
+    }
+    expect(hashParam('code', '#lab?demo=nonogram')).toBeNull()
+  })
+  it('names its toy to the tour and Follow, and drops the code for any other toy', () => {
+    const h = linkOf(toCode(LEVELS[0].picture))
+    expect(currentToy(h)).toBe('nonogram')
+    expect(toyHash(h, 'swarm')).toBe('#lab?demo=swarm')
+    expect(toyHash(h, 'nonogram')).toBeNull()
+    expect(hashParam('match', h)).toBeNull()
   })
 })
