@@ -20,7 +20,12 @@ import { getSupabaseClient } from '../finance/client'
 export function useRoomPresence(
   roomId: string | null,
   myId: string | null,
-  myName: string,
+  /**
+   * what to announce yourself as — or `null` to announce NOTHING while still seeing who is here.
+   * The Lounge passes null until the server has confirmed your Lounge name, so a failed read can
+   * never put your real name in front of the room (src/circuit/loungeName.ts).
+   */
+  myName: string | null,
 ): string[] {
   const [names, setNames] = useState<string[]>([])
 
@@ -56,7 +61,7 @@ export function useRoomPresence(
         setNames(Object.entries(state).map(([, metas]) => metas[0]?.name || 'Someone'))
       })
       ch.subscribe((status) => {
-        if (status === 'SUBSCRIBED') void ch!.track({ name: myName })
+        if (status === 'SUBSCRIBED' && myName) void ch!.track({ name: myName })
       })
     })()
     return () => {

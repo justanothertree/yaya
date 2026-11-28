@@ -26,6 +26,7 @@ export function Composer({
   onSend,
   autoFocus = false,
   keep,
+  canSend = true,
 }: {
   placeholder: string
   onSend: (text: string) => Promise<string | null>
@@ -33,6 +34,8 @@ export function Composer({
   autoFocus?: boolean
   /** where its unsent words are kept across a reload — one key per conversation; absent keeps none */
   keep?: string
+  /** false holds Send (and Enter) while typing stays open — the Lounge, until your name there is known */
+  canSend?: boolean
 }) {
   const [draft, setDraft] = useState('')
   const kept = useKeptDraft({
@@ -50,7 +53,7 @@ export function Composer({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const text = draft.trim()
-    if (!text || sending) return
+    if (!text || sending || !canSend) return
     setSending(true)
     setErr(null)
     const problem = await onSend(text)
@@ -81,7 +84,7 @@ export function Composer({
           aria-label={placeholder}
           maxLength={MAX_MESSAGE}
         />
-        <button className="btn" disabled={!draft.trim() || sending} type="submit">
+        <button className="btn" disabled={!draft.trim() || sending || !canSend} type="submit">
           {sending ? '…' : 'Send'}
         </button>
       </form>
