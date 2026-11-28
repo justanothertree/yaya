@@ -732,6 +732,22 @@ export type HeldOffer = { key: string; toy: string; why: Parameters<typeof offer
  * drawn over "Your turn to roll." left the tour with nobody able to roll: found on the dev call, a
  * guide who stayed in a game, was offered, and was never shown the dice.
  */
+/**
+ * Where Catch up takes me: the stop the bus is at.
+ *
+ * ⚠️ NOT WHATEVER OFFER IS HELD. An offer stands until the next stop (lineWith) and nothing clears
+ * it when the bus moves on, so the toy it names can be a stop behind. Read off the code in the step
+ * 6 design pass, 27 Nov 2026, and live on main until this: Cy, offered at stop 1 for staying in her
+ * game, was shown "The bus left for Hex" at stop 2 with Catch up under it, and the press took her
+ * to Four in a row. Every Catch up on screen sits under a line naming the stop the bus holds now
+ * (the offer's own line only while it is about that stop), so that stop is where it goes.
+ */
+export function catchUpToy(b: Pick<View['bus'], 'tour' | 'stops'>, offer: HeldOffer | null) {
+  const n = b.stops.length
+  const here = b.stops[n - 1]?.toy ?? null
+  return offer && offer.key === `${b.tour}:${n}` ? offer.toy : here
+}
+
 export function lineWith(v: View, offer: HeldOffer | null): Line | null {
   const b = v.bus
   const phase = phaseLine(v)

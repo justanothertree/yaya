@@ -25,6 +25,7 @@ import {
   leavingSaid,
   hopWords,
   leavingWords,
+  catchUpToy,
   lineWith,
   offerWords,
   phaseLine,
@@ -389,6 +390,38 @@ describe('the bus leaves (§1.2, 6–7)', () => {
     expect(labels(dee)).toEqual(['Come too'])
     const counting = view(DEE, left({ stops: [stop('hex')] }), { ...stale, hopAt: NOW + 900 })
     expect(text(counting)).toBe('The bus is leaving for Hex with 3 riders.')
+  })
+  it('Catch up goes to the stop the bus is at, never to the one an old offer was about', () => {
+    /* Cy stayed in her game at stop 1 (Four in a row) and was offered; nothing clears that offer when
+       the bus moves on. At stop 2 the bus has landed on Hex, and the line Cy is shown is the phase
+       line's "left for Hex" with Catch up under it, the only Catch up on screen */
+    const stale = { key: 'tour0001:1', toy: 'fourrow', why: 'seat' as const }
+    const atHex = left({
+      stops: [stop('fourrow'), stop('hex')],
+      went: [0, 1],
+      leaveAt: NOW - 60_000,
+      openAt: NOW + 5000,
+      freeAt: NOW + 5000 + KNOBS.IDLE_MS,
+    })
+    const cy = view(CY, atHex)
+    const line = lineWith(cy, stale)
+    expect(line?.text).toBe('The bus left for Hex with 2 riders.')
+    expect(line?.buttons.map((x) => x.act)).toEqual(['catchUp'])
+    expect(catchUpToy(cy.bus, stale)).toBe('hex')
+    /* an offer from another tour at the same count is not about this stop either */
+    expect(catchUpToy(cy.bus, { ...stale, key: 'tour0002:2' })).toBe('hex')
+    /* and while the offer IS about the stop the bus is at, its line names that stop, and so does
+       the press */
+    const atFour = view(
+      CY,
+      left({ leaveAt: NOW - 9000, openAt: NOW - 1, freeAt: NOW + KNOBS.IDLE_MS }),
+    )
+    expect(lineWith(atFour, stale)?.text).toBe(
+      "The bus went to Four in a row. You're in a game here, so you stayed.",
+    )
+    expect(catchUpToy(atFour.bus, stale)).toBe('fourrow')
+    /* with no offer at all, the stop the bus is at */
+    expect(catchUpToy(cy.bus, null)).toBe('hex')
   })
   it('an offer stands until the next stop, and gives way to a turn', () => {
     /* Bo stayed in his game at stop 1 and was offered; the turn then passed to him */

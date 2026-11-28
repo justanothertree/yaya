@@ -66,6 +66,7 @@ import {
   SHARING_OFF,
   TOUR_BACK,
   arrivedWords,
+  catchUpToy,
   faceCard,
   followEndedWords,
   heading,
@@ -783,7 +784,7 @@ export function useBus(a: BusInputs): BusApi {
           press({ t: 'fin', ...(btn.act === 'finAnyway' && { anyway: true }) })
           break
         case 'catchUp': {
-          const toy = L.offer?.toy ?? b.stops[b.stops.length - 1]?.toy
+          const toy = catchUpToy(b, L.offer)
           L.offer = null
           if (toy) i.onGo(toy)
           break
