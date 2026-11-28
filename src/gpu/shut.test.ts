@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rng } from './bricks'
+import { beatHash, dealRand, readBeat } from '../lab/beat'
 import {
   ALL,
   EMPTY,
@@ -15,6 +16,7 @@ import {
   playTurn,
   readSaved,
   roll,
+  rollTotal,
   score,
   sum,
   tilesOf,
@@ -158,5 +160,58 @@ describe('what is kept', () => {
     expect(readSaved(JSON.stringify(s))).toEqual(s)
     expect(readSaved('{"best":46,"look":"gold","odds":"y"}')).toEqual(EMPTY)
     expect(readSaved('{"best":0}').best).toBe(0)
+  })
+})
+
+/* ── a turn alone sent as a "beat my turn" link (src/lab/beat.ts). The k-th roll of a turn alone
+   comes from dealRand(seed, k, 0) — the very call ShutDemo's rollMine makes, written out again
+   here. The browser readback (two pages, one link) is the check on the room; this is the check on
+   the luck. */
+/** a turn alone with a fixed way of choosing: one die whenever it is allowed, and the first way
+ *  `ways` finds — every roll it saw, and what was left */
+function scripted(seed: number) {
+  let t = newTurn()
+  let k = 0
+  const dice: number[][] = []
+  while (!t.over) {
+    t = roll(t, oneDieAllowed(t.up) ? 1 : 2, dealRand(seed, k++, 0))
+    dice.push(t.dice)
+    if (t.over) break
+    for (const tile of tilesOf(ways(t.up, rollTotal(t))[0])) t = pick(t, tile)
+  }
+  return { dice, left: score(t) }
+}
+
+describe('a turn alone from a link', () => {
+  it('rolls what it always has: the dice of a seed are pinned', () => {
+    /* measured identical in node v22.23.4 and bun 1.4.4 (27 Nov 2026), for seeds both sides of
+       2^31 up to 2^32 − 1; a change here changes every Shut the box link already sent */
+    expect(scripted(3_000_000_001)).toEqual({
+      dice: [[5, 4], [2, 5], [6, 2], [3], [3], [2]],
+      left: 15,
+    })
+  })
+  it('the seed a link carries rolls the turn the sender played', () => {
+    const link = readBeat(beatHash({ game: 'shut', seed: 3_000_000_001, left: 7 }))
+    expect(scripted(link!.seed)).toEqual(scripted(3_000_000_001))
+  })
+  it('the same choices get the same dice, played twice', () => {
+    for (const seed of [1, 2_147_483_647, 2_147_483_648, 4_294_967_295])
+      expect(scripted(seed)).toEqual(scripted(seed))
+  })
+  it('one die is the first of the same two, so choosing one never shifts the dice', () => {
+    const low: Turn = { ...newTurn(), up: bits(1, 2, 3, 4, 5, 6) }
+    for (let seed = 1; seed <= 50; seed++)
+      for (let k = 0; k < 10; k++)
+        expect(roll(low, 1, dealRand(seed, k, 0)).dice).toEqual(
+          roll(low, 2, dealRand(seed, k, 0)).dice.slice(0, 1),
+        )
+  })
+  it('another seed, or another roll, is other dice', () => {
+    expect(scripted(3_000_000_001).dice).not.toEqual(scripted(3_000_000_002).dice)
+    const rolls = new Set<string>()
+    for (let k = 0; k < 20; k++)
+      rolls.add(roll(newTurn(), 2, dealRand(3_000_000_001, k, 0)).dice.join())
+    expect(rolls.size).toBeGreaterThan(10)
   })
 })

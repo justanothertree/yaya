@@ -30,6 +30,9 @@ import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
 import { MatchChallenge } from '../lab/matches/MatchChallenge'
 import { useSignedIn } from '../lab/matches/useSignedIn'
 import { otherName } from '../lab/matches/words'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { dealRand, newSeed, outcome, verdict, type Beat } from '../lab/beat'
 
 type Mode = 'bot' | 'alone'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
@@ -49,14 +52,29 @@ const BOXES: Record<Cat, [string, string]> = {
   yacht: ['Yacht', 'five alike: 50'],
 }
 const dicePhrase = (dice: number[]) => (dice.length ? [...dice].sort().join(' ') : 'nothing')
+const ALONE = 'Twelve turns alone: fill every box for the best total you can.'
+/**
+ * The dice for a roll in a game alone: roll k of turn t on the game's seed, where t is how many
+ * boxes are filled (see beat.ts `dealRand`). The dice not kept draw in order, so the same keeps get
+ * the same dice and keeping one more takes the first of the same draw — which is what makes a game
+ * alone something a friend can be sent. yacht.test.ts writes this call out again to pin the luck.
+ */
+const aloneDice = (g: Game, seed: number) =>
+  dealRand(seed, 12 - open(g.cards[0]).length, 3 - g.rolls)
 
 export function YachtDemo() {
   const [saved, setSaved] = useKept(YACHT_KEY, readSaved)
-  const [mode, setMode] = useState<Mode>('bot')
+  /** a friend's game alone to beat, from the address: it opens on their seed */
+  const [challenge, leaveChallenge] = useChallenge('yacht')
+  const [mode, setMode] = useState<Mode>(() => (challenge ? 'alone' : 'bot'))
   const [level, setLevel] = useState<Level>(saved.level)
-  const [game, setGame] = useState<Game>(() => newGame(0))
+  const [game, setGame] = useState<Game>(() => (challenge ? soloGame() : newGame(0)))
+  /** the seed a game alone rolls from, so any game alone can be sent as a link */
+  const [seed, setSeed] = useState(() => challenge?.seed ?? newSeed())
   const [line, setLine] = useState(
-    'Roll up to three times, keeping any dice between rolls, then score them in one of the twelve boxes.',
+    challenge
+      ? ALONE
+      : 'Roll up to three times, keeping any dice between rolls, then score them in one of the twelve boxes.',
   )
   const [roller, setRoller] = useState(0)
   /** who went first in this game against the computer: the next one, the other side does */
@@ -120,6 +138,12 @@ export function YachtDemo() {
     recorded.current = true
     const me = total(game.cards[0])
     if (mode === 'alone') {
+      // a game on a link's seed is practice: the link's dice can be learned by heart
+      const result: Beat = { game: 'yacht', seed, points: me }
+      if (challenge && outcome(result, challenge) !== null) {
+        setLine(`All twelve boxes filled: ${me} points.${verdict(result, challenge)}`)
+        return
+      }
       const record = me > saved.best
       setSaved((s) => ({ ...s, best: Math.max(s.best, me) }))
       setLine(`All twelve boxes filled: ${me} points${record ? ' — your best alone!' : '.'}`)
@@ -159,11 +183,28 @@ export function YachtDemo() {
     // only leaving the match starts a game
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inMatch])
+  /* a link opened while this toy is already up starts a game alone on its seed; and a link that
+     leaves the address some other way than Leave (Back, say) takes its game with it, so a game on
+     its seed never goes on to record as the reader's own. ⚠️ THE LINK, NOT ITS SEED: a friend's
+     reply is on the same seed as the link already up, and comparing seeds left the game under way
+     under the reply's banner */
+  const lastLink = useRef(challenge)
+  useEffect(() => {
+    const was = lastLink.current
+    lastLink.current = challenge
+    if (!inMatch && challenge && challenge !== was) fresh('alone', saved.level, challenge.seed)
+    else if (!inMatch && !challenge && mode === 'alone' && was && seed === was.seed)
+      fresh('alone', saved.level, newSeed())
+    // fresh is rebuilt every render; only a new challenge should run this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge])
 
-  const fresh = (m: Mode = mode, lv: Level = saved.level) => {
+  /** a new game; alone, on the link's seed while one is up (a retry), or on `s`, or a new one */
+  const fresh = (m: Mode = mode, lv: Level = saved.level, s?: number) => {
     recorded.current = false
     setMode(m)
     setLevel(lv)
+    setSeed(s ?? challenge?.seed ?? newSeed())
     // against the computer, whoever went second in a game under way or over goes first
     const begun = Object.keys(mine).length + Object.keys(theirs).length > 0
     const first: 0 | 1 = m === 'bot' && m === mode && begun ? (starter === 0 ? 1 : 0) : 0
@@ -171,7 +212,7 @@ export function YachtDemo() {
     setGame(m === 'alone' ? soloGame() : newGame(first))
     setLine(
       m === 'alone'
-        ? 'Twelve turns alone: fill every box for the best total you can.'
+        ? ALONE
         : first
           ? 'A new game — the computer goes first.'
           : 'A new game. Roll the dice.',
@@ -180,7 +221,7 @@ export function YachtDemo() {
   const rollMine = () => {
     if (!yours || game.rolls === 0) return
     setRoller((n) => n + 1)
-    const g = roll(game, Math.random)
+    const g = roll(game, mode === 'alone' ? aloneDice(game, seed) : Math.random)
     setGame(g)
     setLine(
       g.rolls
@@ -346,14 +387,30 @@ export function YachtDemo() {
 
   const record = saved.record[saved.level]
   const meTotal = total(mine)
+  /** a game alone that is over, as it would be sent */
+  const result: Beat | null =
+    mode === 'alone' && game.over ? { game: 'yacht', seed, points: meTotal } : null
+  const onLink = !!challenge && mode === 'alone' && challenge.seed === seed
   return (
     <div className={`lab-keys yt-room is-${saved.look}`}>
+      {challenge && mode === 'alone' && (
+        <BeatBanner
+          beat={challenge}
+          onLeave={() => {
+            leaveChallenge()
+            fresh('alone', saved.level, newSeed())
+          }}
+        />
+      )}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Opponent">
           <button
             className="btn btn-ghost"
             aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
+            onClick={() => {
+              if (challenge) leaveChallenge()
+              fresh('bot')
+            }}
           >
             Against the computer
           </button>
@@ -405,7 +462,7 @@ export function YachtDemo() {
         ) : (
           <div className="dice-score">
             <span>Best alone</span>
-            <strong>{Math.max(saved.best, game.over ? meTotal : 0)}</strong>
+            <strong>{Math.max(saved.best, game.over && !onLink ? meTotal : 0)}</strong>
             <span className="muted">of 297 possible</span>
           </div>
         )}
@@ -413,6 +470,7 @@ export function YachtDemo() {
       <p className="mc-line" aria-live="polite">
         {line}
       </p>
+      {result && <BeatShare beat={result} answering={challenge} />}
 
       <div className="yt-play">
         <div className="yt-table" onKeyDown={onKey}>

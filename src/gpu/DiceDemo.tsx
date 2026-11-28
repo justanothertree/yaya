@@ -221,11 +221,12 @@ export function DiceDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computerTurn])
 
-  // a challenge link opened while this game is already up switches to its deal
-  const lastSeed = useRef(challenge?.seed)
+  /* a challenge link opened while this game is already up switches to its deal — the link, not
+     its seed, so a friend's reply on the same deal starts the race over too */
+  const lastLink = useRef(challenge)
   useEffect(() => {
-    if (challenge && challenge.seed !== lastSeed.current) reset('race', challenge.seed)
-    lastSeed.current = challenge?.seed
+    if (challenge && challenge !== lastLink.current) reset('race', challenge.seed)
+    lastLink.current = challenge
     // reset is rebuilt every render; only a new challenge should run this
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [challenge])
@@ -400,9 +401,11 @@ export function DiceDemo() {
   return (
     <div className="lab-keys dice-room">
       {mode === 'race' && challenge && (
-        <p className="beat-banner">
-          🏁 <strong>A race to beat:</strong> this link says 10,000 in {challenge.turns} turns. The
-          same choices get the same dice — do it in fewer.{' '}
+        <div className="beat-banner">
+          <p>
+            🏁 <strong>A race to beat:</strong> this link says 10,000 in {challenge.turns} turns.
+            The same choices get the same dice — do it in fewer.
+          </p>{' '}
           <button
             className="btn btn-ghost"
             onClick={() => {
@@ -412,7 +415,7 @@ export function DiceDemo() {
           >
             Leave the challenge
           </button>
-        </p>
+        </div>
       )}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Opponent">
@@ -561,7 +564,9 @@ export function DiceDemo() {
           ))}
         </ul>
       )}
-      {mode === 'race' && lastRace && winner !== null && <BeatShare beat={lastRace} />}
+      {mode === 'race' && lastRace && winner !== null && (
+        <BeatShare beat={lastRace} answering={challenge} />
+      )}
       <p className="sun-reading">
         <span className="muted">
           {mode === 'race' ? (

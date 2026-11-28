@@ -40,6 +40,8 @@ import {
 } from './nonogram'
 import { createNonogram, type NonogramView } from './nonogramEngine'
 import { writeKept } from './kept'
+import { CopyLink } from '../lab/CopyLink'
+import { hashParam, here } from '../lab/links'
 
 type Props = {
   running: boolean
@@ -74,6 +76,16 @@ const ofCode = (name: string, code: string): Puzzle | null => {
   const colours = Uint32Array.from(p.cells, (v) => (v ? MADE_INK : MADE_PAPER))
   return { id: code.trim(), name, picture: p, colours, paper: MADE_PAPER, level: null }
 }
+/**
+ * A picture somebody drew, opened from a link: `#lab?demo=nonogram&code=…`. The code IS the picture
+ * (nonogram.ts toCode), so nothing about it can be claimed or forged — anything fromCode refuses is
+ * no puzzle at all, and the toy opens as it would have. It carries no name.
+ */
+const LINKED = 'A picture from a link'
+const linkedCode = () => (hashParam('demo') === 'nonogram' ? hashParam('code') : null)
+/** the sentence and link a "🔗 Copy a link" button copies */
+const linkText = (lead: string, p: Picture) =>
+  `🧩 ${lead}:\n${here()}#lab?${new URLSearchParams({ demo: 'nonogram', code: toCode(p) })}`
 const clock = (ms: number) =>
   `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`
 
@@ -107,6 +119,8 @@ export function NonogramDemo({ running, setRunning, onAdapter }: Props) {
   const [saved, setSaved] = useState<Saved>(load)
   const [mode, setMode] = useState<'play' | 'make'>('play')
   const [puzzle, setPuzzle] = useState<Puzzle>(() => {
+    const linked = ofCode(LINKED, linkedCode() ?? '')
+    if (linked) return linked
     const s = load()
     const first = LEVELS.findIndex((l) => !s.solved[l.name])
     return ofLevel(Math.max(0, first))
@@ -173,6 +187,17 @@ export function NonogramDemo({ running, setRunning, onAdapter }: Props) {
 
   /** open a puzzle where it was left — marks, clock and hints — or fresh */
   const open = (p: Puzzle) => {
+    /* ⚠️ ANOTHER PUZZLE TAKES THE LINK'S CODE OUT OF THE ADDRESS. Left in, clicking the same link
+       again would do nothing — an identical hash fires no hashchange — and a reload would bring
+       back the link's picture rather than the one on screen. Replaced, not pushed, and no
+       TOY_EVENT: the toy has not changed */
+    const linked = linkedCode()
+    if (linked !== null && linked.trim() !== p.id)
+      try {
+        history.replaceState(history.state, '', '#lab?demo=nonogram')
+      } catch {
+        /* an address that cannot be rewritten keeps its code; nothing breaks */
+      }
     const n = p.picture.w * p.picture.h
     const prog = saved.progress[p.id]
     marks.current = marksFromText(prog?.m, n)
@@ -196,6 +221,18 @@ export function NonogramDemo({ running, setRunning, onAdapter }: Props) {
   useEffect(() => {
     open(puzzle)
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  /* a link clicked while the Lab is open changes only the hash: its picture opens, unless it is the
+     one on screen already. The latest `open` and puzzle, since `open` reads what is kept */
+  const latestOpen = useRef({ open, id: puzzle.id })
+  latestOpen.current = { open, id: puzzle.id }
+  useEffect(() => {
+    const on = () => {
+      const p = ofCode(LINKED, linkedCode() ?? '')
+      if (p && p.id !== latestOpen.current.id) latestOpen.current.open(p)
+    }
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
   }, [])
 
   const remember = (extra?: Partial<Saved>) =>
@@ -726,6 +763,13 @@ export function NonogramDemo({ running, setRunning, onAdapter }: Props) {
                 ✏️ Change this picture
               </button>
             )}
+            {/* a picture somebody made can be passed on; a built-in one cannot, its code has no colours */}
+            {puzzle.level === null && (
+              <CopyLink
+                text={linkText(`A ${w}×${h} picture puzzle to solve`, puzzle.picture)}
+                label="🔗 Copy a link"
+              />
+            )}
           </div>
           <p className="lab-score nono-score" aria-live="off">
             {filledCount} filled · {clock(elapsed.current)}
@@ -817,6 +861,16 @@ export function NonogramDemo({ running, setRunning, onAdapter }: Props) {
             <button className="btn btn-ghost" disabled={!madeCode} onClick={copy}>
               📋 Copy code
             </button>
+            {madeCode ? (
+              <CopyLink
+                text={linkText(`I drew a ${w}×${h} picture puzzle. Solve it`, madePicture())}
+                label="🔗 Copy a link"
+              />
+            ) : (
+              <button className="btn btn-ghost" disabled>
+                🔗 Copy a link
+              </button>
+            )}
           </div>
           <p className="nono-verdict" aria-live="polite">
             {verdictText(verdict)}
@@ -847,7 +901,7 @@ export function NonogramDemo({ running, setRunning, onAdapter }: Props) {
             {note && <strong>{note} </strong>}
             Draw by pressing and dragging; press a filled square to clear from there. The numbers
             update as you draw. Kept pictures and the drawing stay in this browser only — share one
-            by its code.
+            by its code, or as a link that opens it.
           </p>
         </>
       )}

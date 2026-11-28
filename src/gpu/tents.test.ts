@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { beatHash, readBeat } from '../lab/beat'
 import { rng } from './bricks'
 import {
   EMPTY,
@@ -192,5 +193,46 @@ describe('what is kept', () => {
       { day: 100, size: 6, seconds: 60 },
     ])
     expect(keepBest(old, { day: 100, size: 6, seconds: 120 }, 100)).toEqual([old[0]])
+  })
+})
+
+/* ── a field sent as a "beat my field" link (src/lab/beat.ts). The link carries the seed and the
+   size; whoever opens it is dealt make() of those two, exactly as here. The browser readback (two
+   pages, one link) is the check on the room; this is the check on the field. */
+const sha256 = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+/** a field with its sets as sorted lists: JSON writes a Set as {}, which would pin only the counts */
+const plain = (p: Puzzle) => ({
+  ...p,
+  trees: [...p.trees].sort((a, b) => a - b),
+  tents: [...p.tents].sort((a, b) => a - b),
+})
+
+describe('a field from a link', () => {
+  it('makes the fields it always has: one seed, every size, pinned', async () => {
+    /* measured identical in node v22.23.4 and bun 1.4.4 (27 Nov 2026, 18:56 EST). A change here
+       changes every Tents link already sent, and needs a `v=` in the link (beat.ts). */
+    const fields = SIZES.map((n) => plain(make(n, 3_000_000_001)))
+    expect(fields[2].trees.slice(0, 6)).toEqual([1, 6, 12, 17, 19, 21])
+    expect(await sha256(fields)).toBe(
+      'eec2e0217dda1b4f0f8875f257fa244b85433f906bd7f5b7b42615e7af46a385',
+    )
+  })
+  it('the seed and size a link carries make the field the sender solved', () => {
+    const link = readBeat(beatHash({ game: 'tents', seed: 3_000_000_001, size: 10, secs: 140 }))
+    if (link?.game !== 'tents') throw new Error('no Tents link')
+    expect(plain(make(link.size, link.seed))).toEqual(plain(make(10, 3_000_000_001)))
+  })
+  it('another seed or size is another field', () => {
+    const p = plain(make(10, 3_000_000_001))
+    expect(plain(make(10, 3_000_000_002)).trees).not.toEqual(p.trees)
+    expect(plain(make(8, 3_000_000_001)).trees).not.toEqual(p.trees)
   })
 })

@@ -31,12 +31,16 @@ import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
 import { MatchChallenge } from '../lab/matches/MatchChallenge'
 import { useSignedIn } from '../lab/matches/useSignedIn'
 import { otherName } from '../lab/matches/words'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { dealRand, newSeed, outcome, verdict, type Beat } from '../lab/beat'
 
 type Mode = 'bot' | 'alone'
 type Whose = 'you' | 'computer' | 'done'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', felt: 'Felt', brass: 'Brass' }
 const TILES = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+const ALONE = 'Alone: shut as many as you can. Roll.'
 const and = (t: number[]) =>
   t.length > 1 ? `${t.slice(0, -1).join(', ')} and ${t[t.length - 1]}` : String(t[0] ?? '')
 /** what the best player expects to be left with after rolling one die or two here */
@@ -48,7 +52,16 @@ const expectBy = (up: number, n: 1 | 2) =>
 
 export function ShutDemo() {
   const [saved, setSaved] = useKept(SHUT_KEY, readSaved)
-  const [mode, setMode] = useState<Mode>('bot')
+  /** a friend's turn alone to beat, from the address: it opens on their seed */
+  const [challenge, leaveChallenge] = useChallenge('shut')
+  const [mode, setMode] = useState<Mode>(() => (challenge ? 'alone' : 'bot'))
+  /**
+   * The seed a turn alone rolls from, so any turn alone can be sent as a link: its k-th roll is
+   * `dealRand(seed, k, 0)`, and one die is the first of the same two (see beat.ts `dealRand`).
+   * shut.test.ts writes that call out again to pin the luck.
+   */
+  const [seed, setSeed] = useState(() => challenge?.seed ?? newSeed())
+  const rollNo = useRef(0)
   const [level, setLevel] = useState<Level>(saved.level)
   const [whose, setWhose] = useState<Whose>('you')
   const [yours, setYours] = useState<Turn>(newTurn)
@@ -57,7 +70,9 @@ export function ShutDemo() {
   const [aiming, setAiming] = useState(0)
   const [roller, setRoller] = useState(0)
   const [line, setLine] = useState(
-    'Roll, then shut tiles that add up to the roll. Lowest total left wins; shut them all to shut the box.',
+    challenge
+      ? ALONE
+      : 'Roll, then shut tiles that add up to the roll. Lowest total left wins; shut them all to shut the box.',
   )
   const recorded = useRef(false)
 
@@ -76,6 +91,14 @@ export function ShutDemo() {
     const s = score(u)
     if (mode === 'alone') {
       setWhose('done')
+      // a turn on a link's seed is practice: the link's dice can be learned by heart
+      const result: Beat = { game: 'shut', seed, left: s }
+      if (challenge && outcome(result, challenge) !== null) {
+        setLine(
+          `${s === 0 ? '🎉 You shut the box!' : `No way to make ${rollTotal(u)}: ${s} left.`}${verdict(result, challenge)}`,
+        )
+        return
+      }
       const record = saved.best === null || s < saved.best
       setSaved((x) => ({
         ...x,
@@ -172,22 +195,44 @@ export function ShutDemo() {
     // only leaving the match starts a game
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inMatch])
+  /* a link opened while this toy is already up starts a turn alone on its seed; and a link that
+     leaves the address some other way than Leave (Back, say) takes its turn with it, so a turn on
+     its seed never goes on to record as the reader's own. ⚠️ THE LINK, NOT ITS SEED: a friend's
+     reply is on the same seed as the link already up, and comparing seeds left the turn under way
+     under the reply's banner */
+  const lastLink = useRef(challenge)
+  useEffect(() => {
+    const was = lastLink.current
+    lastLink.current = challenge
+    if (!inMatch && challenge && challenge !== was) fresh('alone', saved.level, challenge.seed)
+    else if (!inMatch && !challenge && mode === 'alone' && was && seed === was.seed)
+      fresh('alone', saved.level, newSeed())
+    // fresh is rebuilt every render; only a new challenge should run this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge])
 
-  const fresh = (m: Mode = mode, lv: Level = saved.level) => {
+  /** a new turn; alone, on the link's seed while one is up (a retry), or on `s`, or a new one */
+  const fresh = (m: Mode = mode, lv: Level = saved.level, s?: number) => {
     recorded.current = false
     setMode(m)
     setLevel(lv)
+    setSeed(s ?? challenge?.seed ?? newSeed())
+    rollNo.current = 0
     setWhose('you')
     setYours(newTurn())
     setTheirs(newTurn())
     setAiming(0)
-    setLine(m === 'alone' ? 'Alone: shut as many as you can. Roll.' : 'Your turn first. Roll.')
+    setLine(m === 'alone' ? ALONE : 'Your turn first. Roll.')
   }
   const rollMine = (n: 1 | 2) => {
     if (!mine || yours.live || yours.over) return
     if (n === 1 && !oneDieAllowed(yours.up)) return
     setRoller((k) => k + 1)
-    const next = roll(yours, n, Math.random)
+    const next = roll(
+      yours,
+      n,
+      mode === 'alone' ? dealRand(seed, rollNo.current++, 0) : Math.random,
+    )
     setYours(next)
     if (next.over) yoursDone(next)
     else setLine(`You rolled ${rollTotal(next)}. Shut tiles that add up to it.`)
@@ -335,14 +380,29 @@ export function ShutDemo() {
     )
   }
 
+  /** a turn alone that is over, as it would be sent */
+  const result: Beat | null =
+    mode === 'alone' && whose === 'done' ? { game: 'shut', seed, left: score(yours) } : null
   return (
     <div className={`lab-keys xb-room is-${saved.look}`}>
+      {challenge && mode === 'alone' && (
+        <BeatBanner
+          beat={challenge}
+          onLeave={() => {
+            leaveChallenge()
+            fresh('alone', saved.level, newSeed())
+          }}
+        />
+      )}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Opponent">
           <button
             className="btn btn-ghost"
             aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
+            onClick={() => {
+              if (challenge) leaveChallenge()
+              fresh('bot')
+            }}
           >
             Against the computer
           </button>
@@ -403,6 +463,7 @@ export function ShutDemo() {
       <p className="mc-line" aria-live="polite">
         {line}
       </p>
+      {result && <BeatShare beat={result} answering={challenge} />}
 
       <div className="xb-box" onKeyDown={onKey}>
         <p className="xb-whose">{whose === 'computer' ? 'The computer’s box' : 'Your box'}</p>

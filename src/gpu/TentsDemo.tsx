@@ -19,16 +19,27 @@ import {
 } from './tents'
 import { clock, dayNumber } from './daily'
 import { useKept } from './kept'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { newSeed, outcome, verdict, type Beat } from '../lab/beat'
 
 const LOOK_NAMES: Record<Saved['look'], string> = { park: 'Park', beach: 'Beach', night: 'Night' }
 /** seconds added for each hint */
 const PENALTY = 30
+/** the line before a move; a new board puts it back, so a finished board's verdict never outlives it */
+const INTRO =
+  'Pitch a tent beside each tree — above, below, left or right — with no two tents touching, even at a corner.'
 const seedFor = (size: number) => (daySeed(new Date()) ^ (size * 104729)) >>> 0
 const MARK_WORDS = ['empty', 'a tent', 'grass']
 
+type Result = Extract<Beat, { game: 'tents' }>
+
 export function TentsDemo() {
   const [saved, setSaved] = useKept(TENTS_KEY, readSaved)
-  const [seed, setSeed] = useState(() => seedFor(saved.size))
+  /** a friend's field to beat, from the address (src/lab/beat.ts) */
+  const [challenge, leaveChallenge] = useChallenge('tents')
+  const [seed, setSeed] = useState(() => challenge?.seed ?? seedFor(saved.size))
+  /** today's field, and so the one field a link can count on: a link to it is today's here too */
   const daily = seed === seedFor(saved.size)
   const p: Puzzle = useMemo(() => make(saved.size, seed), [saved.size, seed])
   const n = p.n
@@ -44,11 +55,13 @@ export function TentsDemo() {
   const [ended, setEnded] = useState<number | null>(null)
   const [extra, setExtra] = useState(0)
   const [now, setNow] = useState(() => Date.now())
-  const [line, setLine] = useState(
-    'Pitch a tent beside each tree — above, below, left or right — with no two tents touching, even at a corner.',
-  )
+  const [line, setLine] = useState(INTRO)
+  /** the finished field, as a link would carry it */
+  const [result, setResult] = useState<Result | null>(null)
+  /** bumped to start the same field over: a new link on the field already up, or Leave */
+  const [round, setRound] = useState(0)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  // everything else fresh whenever the field changes
+  // everything else fresh whenever the field changes, or starts over
   useEffect(() => {
     setPlay({ p, marks: new Array<Mark>(p.n * p.n).fill(0) })
     setHistory([])
@@ -56,7 +69,27 @@ export function TentsDemo() {
     setStarted(null)
     setEnded(null)
     setExtra(0)
-  }, [p])
+    setResult(null)
+    setLine(INTRO)
+  }, [p, round])
+  /* A link's field, its size written exactly as the size buttons write it — so `daily` above is
+     the toy's own question, and a best kept from it is filed under the field's own size. */
+  useEffect(() => {
+    if (!challenge) return
+    setSaved((x) => ({ ...x, size: challenge.size }))
+    setSeed(challenge.seed)
+    setRound((r) => r + 1)
+  }, [challenge, setSaved])
+  /** any control that changes the field leaves the link first, so the address never names one
+   *  field while another is up */
+  const off = () => {
+    if (challenge) leaveChallenge()
+  }
+  const leave = () => {
+    leaveChallenge()
+    setSeed(seedFor(saved.size))
+    setRound((r) => r + 1)
+  }
   useEffect(() => {
     if (started === null || ended !== null) return
     const t = window.setInterval(() => setNow(Date.now()), 500)
@@ -76,15 +109,21 @@ export function TentsDemo() {
     setEnded(end)
     setNow(end)
     const total = Math.max(1, Math.floor((end - start) / 1000) + extra + added)
-    setSaved((s) => ({
-      ...s,
-      solvedCount: s.solvedCount + 1,
-      bests: daily
-        ? keepBest(s.bests, { day: today, size: s.size, seconds: total }, today)
-        : s.bests,
-    }))
+    const mine: Result = { game: 'tents', seed, size: saved.size, secs: total }
+    setResult(mine)
+    /* ⚠️ A LINK'S FIELD IS PRACTICE, unless it is today's field here: then it counts exactly as
+       the Today's button's would, and the banner said so */
+    const onLink = challenge !== null && outcome(mine, challenge) !== null
+    if (!onLink || daily)
+      setSaved((s) => ({
+        ...s,
+        solvedCount: s.solvedCount + 1,
+        bests: daily
+          ? keepBest(s.bests, { day: today, size: s.size, seconds: total }, today)
+          : s.bests,
+      }))
     setLine(
-      `🏕️ Every tree has its tent — ${clock(total)}${daily && (!best || total < best.seconds) ? ', your best on today’s field!' : '.'}`,
+      `🏕️ Every tree has its tent — ${clock(total)}${daily && (!best || total < best.seconds) ? ', your best on today’s field!' : '.'}${challenge ? verdict(mine, challenge) : ''}`,
     )
   }
   const put = (i: number, m: Mark, added = 0) => {
@@ -150,6 +189,7 @@ export function TentsDemo() {
       .join(' ')
   return (
     <div className={`lab-keys tn-room is-${saved.look}`}>
+      {challenge && <BeatBanner beat={challenge} today={daily} onLeave={leave} />}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Size">
           {SIZES.map((s) => (
@@ -158,6 +198,7 @@ export function TentsDemo() {
               className="btn btn-ghost"
               aria-pressed={saved.size === s}
               onClick={() => {
+                off()
                 setSaved((x) => ({ ...x, size: s as Size }))
                 setSeed(seedFor(s))
               }}
@@ -170,13 +211,19 @@ export function TentsDemo() {
           <button
             className="btn btn-ghost"
             aria-pressed={daily}
-            onClick={() => setSeed(seedFor(saved.size))}
+            onClick={() => {
+              off()
+              setSeed(seedFor(saved.size))
+            }}
           >
             Today’s
           </button>
           <button
             className="btn btn-ghost"
-            onClick={() => setSeed((Math.random() * 2 ** 31) >>> 0)}
+            onClick={() => {
+              off()
+              setSeed(newSeed())
+            }}
           >
             ⟳ New field
           </button>
@@ -208,6 +255,7 @@ export function TentsDemo() {
       <p className="mc-line" aria-live="polite">
         {line}
       </p>
+      {done && result && <BeatShare beat={result} answering={challenge} />}
 
       <div
         className={`tn-grid${done ? ' is-done' : ''}`}

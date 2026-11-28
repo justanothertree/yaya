@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { CopyLink } from '../lab/CopyLink'
-import { here } from '../lab/links'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { dealRand, newSeed, outcome, verdict, type Beat } from '../lab/beat'
+import { useChallenge } from '../lab/useChallenge'
 import { daySeed } from './bricks'
 import {
   LAYOUTS,
@@ -29,6 +30,13 @@ const kindName = (k: number) =>
   `${['one', 'two', 'three'][colourOf(k)]} ${SHAPE_NAMES[k % 6]}${colourOf(k) ? 's' : ''}`
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
+type Link = Extract<Beat, { game: 'tiles' }>
+const layoutOf = (id: string) => LAYOUTS.find((l) => l.id === id) ?? LAYOUTS[0]
+const todaysLayout = () => LAYOUTS[daySeed(new Date()) % LAYOUTS.length]
+/** a link to today's tiles on today's layout IS today's tiles here, and counts as Today's would */
+const isToday = (c: Link | null) =>
+  c !== null && c.seed === daySeed(new Date()) && c.layout === todaysLayout().id
+
 function Clock({ from, to, extra }: { from: number | null; to: number | null; extra: number }) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -42,14 +50,23 @@ function Clock({ from, to, extra }: { from: number | null; to: number | null; ex
 
 export function TilesDemo() {
   const [saved, setSaved] = useKept(TILES_KEY, readSaved)
-  const [mode, setMode] = useState<Mode>('today')
-  const layoutFor = (m: Mode, id: string) =>
-    m === 'today'
-      ? LAYOUTS[daySeed(new Date()) % LAYOUTS.length]
-      : (LAYOUTS.find((l) => l.id === id) ?? LAYOUTS[0])
-  const [board, setBoard] = useState<Board>(() =>
-    deal(layoutFor('today', saved.layout), daySeed(new Date())),
+  const [challenge, leaveChallenge] = useChallenge('tiles')
+  const [mode, setMode] = useState<Mode>(() =>
+    challenge && !isToday(challenge) ? 'practice' : 'today',
   )
+  const layoutFor = (m: Mode, id: string) => (m === 'today' ? todaysLayout() : layoutOf(id))
+  /** the seed the deal on screen was dealt from: a Board does not carry it, and its shuffles need it */
+  const [dealSeed, setDealSeed] = useState(() => challenge?.seed ?? daySeed(new Date()))
+  const [board, setBoard] = useState<Board>(() =>
+    challenge
+      ? deal(layoutOf(challenge.layout), challenge.seed)
+      : deal(layoutFor('today', saved.layout), daySeed(new Date())),
+  )
+  /** how many times Shuffle has been pressed on this deal — an undo does not take a press back */
+  const shuffles = useRef(0)
+  /** the link the deal on screen came from, so a link that leaves the address by another way
+      (Back, a typed address) takes its deal with it rather than leaving it to record */
+  const dealtFrom = useRef<Link | null>(challenge)
   const [history, setHistory] = useState<Board[]>([])
   const [picked, setPicked] = useState<number | null>(null)
   const [hint, setHint] = useState<[number, number] | null>(null)
@@ -59,7 +76,8 @@ export function TilesDemo() {
   const [line, setLine] = useState(
     "Today's tiles — the same for everyone today. Take matching free pairs: nothing on top, and one side open.",
   )
-  const [share, setShare] = useState('')
+  /** the deal just cleared, which can be sent */
+  const [result, setResult] = useState<Link | null>(null)
   const [cursor, setCursor] = useState(-1)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
 
@@ -68,23 +86,44 @@ export function TilesDemo() {
   const open = pairs(board)
   const left = board.filled.filter(Boolean).length
 
-  const fresh = (m: Mode = mode, id: string = saved.layout) => {
-    const l = layoutFor(m, id)
+  const fresh = (m: Mode = mode, id: string = saved.layout, link: Link | null = null) => {
+    const l = link ? layoutOf(link.layout) : layoutFor(m, id)
+    const sd = link ? link.seed : m === 'today' ? daySeed(new Date()) : newSeed()
+    dealtFrom.current = link
+    shuffles.current = 0
     setMode(m)
-    setBoard(deal(l, m === 'today' ? daySeed(new Date()) : (Math.random() * 2 ** 31) | 0))
+    setDealSeed(sd)
+    setBoard(deal(l, sd))
     setHistory([])
     setPicked(null)
     setHint(null)
     setExtra(0)
     setFrom(null)
     setTo(null)
-    setShare('')
+    setResult(null)
     setCursor(-1)
     setLine(
-      m === 'today'
-        ? `Today's tiles: ${l.name}, the same for everyone today.`
-        : `${l.name}. Take matching free pairs.`,
+      link && !isToday(link)
+        ? `${l.name}, from the link — the same tiles, and the same shuffles for the same presses.`
+        : m === 'today'
+          ? `Today's tiles: ${l.name}, the same for everyone today.`
+          : `${l.name}. Take matching free pairs.`,
     )
+  }
+  /* a link deals its own tiles on its own layout — the layout kept as the layout buttons keep it,
+     a practice preference — and one that leaves the address by any way but the controls here (which
+     deal their own tiles as they leave) takes its deal with it */
+  useEffect(() => {
+    if (challenge) {
+      if (!isToday(challenge)) setSaved((s) => ({ ...s, layout: challenge.layout }))
+      fresh(isToday(challenge) ? 'today' : 'practice', challenge.layout, challenge)
+    } else if (dealtFrom.current) fresh('today')
+    // `fresh` is rebuilt every render; only a new challenge is a reason to deal
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge])
+  /** any control that changes the deal leaves the challenge first, so the address says what is on screen */
+  const leave = () => {
+    if (challenge) leaveChallenge()
   }
 
   const win = (b: Board, t0: number) => {
@@ -94,23 +133,31 @@ export function TilesDemo() {
     const id = b.layout.id
     const prev = saved.best[id]
     const day = daySeed(new Date())
-    setSaved((s) => ({
-      ...s,
-      cleared: s.cleared + 1,
-      best: { ...s.best, [id]: Math.min(s.best[id] ?? Infinity, secs) },
-      today:
-        mode === 'today'
-          ? {
-              day,
-              seconds: s.today && s.today.day === day ? Math.min(s.today.seconds, secs) : secs,
-            }
-          : s.today,
-    }))
+    /* ⚠️ A LINK'S DEAL IS PRACTICE, NOT A RECORD — not a best, not a count, not Today's — unless
+       it is today's tiles here, which record exactly as Today's do */
+    const mine: Link = { game: 'tiles', seed: dealSeed, layout: id, secs }
+    const onLink = challenge !== null && outcome(mine, challenge) !== null
+    const keep = !onLink || isToday(challenge)
+    const against = challenge ? verdict(mine, challenge) : ''
+    if (keep)
+      setSaved((s) => ({
+        ...s,
+        cleared: s.cleared + 1,
+        best: { ...s.best, [id]: Math.min(s.best[id] ?? Infinity, secs) },
+        today:
+          mode === 'today'
+            ? {
+                day,
+                seconds: s.today && s.today.day === day ? Math.min(s.today.seconds, secs) : secs,
+              }
+            : s.today,
+      }))
     setLine(
-      `🏆 Cleared in ${fmt(secs)}${prev === undefined || secs < prev ? ` — your best on ${b.layout.name}!` : `. Your best there is ${fmt(prev)}.`}`,
+      keep
+        ? `🏆 Cleared in ${fmt(secs)}${prev === undefined || secs < prev ? ` — your best on ${b.layout.name}!` : `. Your best there is ${fmt(prev)}.`}${against}`
+        : `🏆 Cleared in ${fmt(secs)}.${against}`,
     )
-    if (mode === 'today')
-      setShare(`I cleared today's Tile pairs in ${fmt(secs)}. Your go:\n${here()}#lab?demo=tiles`)
+    setResult(mine)
   }
 
   const tap = (i: number) => {
@@ -155,7 +202,10 @@ export function TilesDemo() {
   const doShuffle = () => {
     if (to !== null || !left) return
     setHistory((h) => [...h, board])
-    setBoard(shuffle(board, (Math.random() * 2 ** 31) | 0))
+    /* ⚠️ SEEDED FROM THE DEAL, BY PRESS: the k-th Shuffle on a deal is the same for everybody who
+       has the same tiles left, so a friend on the link is dealt the shuffles the sender was. The
+       stream's numbers are whole 32-bit states over 2^32, so the multiply is exact. */
+    setBoard(shuffle(board, Math.floor(dealRand(dealSeed, shuffles.current++, 0)() * 2 ** 32)))
     setExtra((e) => e + PENALTY)
     setPicked(null)
     setHint(null)
@@ -209,23 +259,41 @@ export function TilesDemo() {
   const todayBest = saved.today && saved.today.day === day ? saved.today.seconds : null
   const best = mode === 'today' ? todayBest : (saved.best[board.layout.id] ?? null)
   const firstFree = board.filled.findIndex((f, i) => f && isFree(i))
+  /* on a link to another deal, neither Today's nor a practice deal of your own is on screen */
+  const elsewhere = challenge !== null && !isToday(challenge)
   const tabTo = cursor >= 0 && board.filled[cursor] ? cursor : firstFree
 
   return (
     <div className={`lab-keys tl-room is-${saved.style}${saved.glow ? ' is-glow' : ''}`}>
+      {challenge && (
+        <BeatBanner
+          beat={challenge}
+          today={isToday(challenge)}
+          onLeave={() => {
+            leaveChallenge()
+            fresh('today')
+          }}
+        />
+      )}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Which tiles">
           <button
             className="btn btn-ghost"
-            aria-pressed={mode === 'today'}
-            onClick={() => fresh('today')}
+            aria-pressed={!elsewhere && mode === 'today'}
+            onClick={() => {
+              leave()
+              fresh('today')
+            }}
           >
             Today's tiles
           </button>
           <button
             className="btn btn-ghost"
-            aria-pressed={mode === 'practice'}
-            onClick={() => fresh('practice')}
+            aria-pressed={!elsewhere && mode === 'practice'}
+            onClick={() => {
+              leave()
+              fresh('practice')
+            }}
           >
             Practice
           </button>
@@ -238,6 +306,7 @@ export function TilesDemo() {
                 className="btn btn-ghost"
                 aria-pressed={saved.layout === l.id}
                 onClick={() => {
+                  leave()
                   setSaved((s) => ({ ...s, layout: l.id }))
                   fresh('practice', l.id)
                 }}
@@ -258,8 +327,14 @@ export function TilesDemo() {
         <button className="btn btn-ghost" onClick={undo} disabled={!history.length || to !== null}>
           ↶ Undo
         </button>
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ {mode === 'today' ? 'Start again' : 'New deal'}
+        {/* on a link's deal, the same deal again; anywhere else, as it always was */}
+        <button
+          className="btn btn-ghost"
+          onClick={() =>
+            dealtFrom.current ? fresh(mode, saved.layout, dealtFrom.current) : fresh()
+          }
+        >
+          ↻ {mode === 'today' || challenge ? 'Start again' : 'New deal'}
         </button>
       </div>
 
@@ -331,7 +406,7 @@ export function TilesDemo() {
           })}
         </div>
       </div>
-      {share && <CopyLink text={share} label="🔗 Copy my time" />}
+      {result && <BeatShare beat={result} answering={challenge} />}
       <p className="sun-reading">
         <span className="muted">
           Boards cleared {saved.cleared}

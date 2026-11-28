@@ -4,6 +4,7 @@ import { LabStage } from './LabStage'
 import {
   DIFFICULTY,
   LEVELS,
+  SEEDS,
   SLIDE_KEY,
   generate,
   packTiles,
@@ -20,6 +21,9 @@ import {
 } from './slide'
 import { createSlide, type SlideView } from './slideEngine'
 import { loadKept, useKept } from './kept'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { outcome, verdict, type Beat } from '../lab/beat'
 
 type Props = {
   running: boolean
@@ -42,12 +46,15 @@ const KEYS: Record<string, Dir> = {
   d: 'right',
 }
 
-const newSeed = () => 1 + Math.floor(Math.random() * 99999)
+/** an endless board's seed, 1 to SEEDS — Slide's own, which a link carries as they are */
+const newSeed = () => 1 + Math.floor(Math.random() * SEEDS)
 
 export function SlideDemo({ running, setRunning, onAdapter }: Props) {
   const [live, setLive] = useState(false)
   const [saved, setSaved] = useKept(SLIDE_KEY, readSaved)
-  const [mode, setMode] = useState<'levels' | 'endless'>('levels')
+  /** a friend's endless board to beat, from the address: its seed, difficulty and pushes */
+  const [challenge, leaveChallenge] = useChallenge('slide')
+  const [mode, setMode] = useState<'levels' | 'endless'>(() => (challenge ? 'endless' : 'levels'))
   const [level, setLevel] = useState(() => {
     const s = loadKept(SLIDE_KEY, readSaved)
     return Math.max(
@@ -55,8 +62,8 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
       LEVELS.findIndex((l) => s.best[l.name] === undefined),
     )
   })
-  const [difficulty, setDifficulty] = useState<Difficulty>('easy')
-  const [seed, setSeed] = useState(newSeed)
+  const [difficulty, setDifficulty] = useState<Difficulty>(() => challenge?.difficulty ?? 'easy')
+  const [seed, setSeed] = useState(() => challenge?.seed ?? newSeed())
   const board: Board = useMemo(
     () => (mode === 'levels' ? LEVELS[level] : (generate(seed, difficulty) ?? LEVELS[0])),
     [mode, level, seed, difficulty],
@@ -66,6 +73,8 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
   const [note, setNote] = useState<string | null>(null)
   const [hintDir, setHintDir] = useState<Dir | null>(null)
   const [sound, setSound] = useState(true)
+  /** this board's finish as a link would carry it */
+  const [finished, setFinished] = useState<Extract<Beat, { game: 'slide' }> | null>(null)
   const state = history[history.length - 1]
   const moves = history.length - 1
   const done = won(board, state)
@@ -92,12 +101,38 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
     anim.current = null
     setHintDir(null)
     setNote(null)
+    setFinished(null)
   }
-  // a new board — another level, another seed — starts at its start
+  /** bumped to start the same board over: a new link on the board already up */
+  const [round, setRound] = useState(0)
+  // a new board — another level, another seed — starts at its start, and so does a new round
   useEffect(() => {
     reset(board)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board])
+  }, [board, round])
+
+  /** a control that changes the board leaves a link first, so the address names what is on screen */
+  const leave = () => {
+    if (challenge) leaveChallenge()
+  }
+  /* a link names an endless board: its mode, difficulty and seed, in this component's own state —
+     nothing is saved. And a link that leaves the address some other way than Leave (Back, say)
+     takes its board with it, so a link's board never goes on to count as one of yours */
+  const lastLink = useRef(challenge)
+  useEffect(() => {
+    const was = lastLink.current
+    lastLink.current = challenge
+    if (challenge) {
+      setMode('endless')
+      setDifficulty(challenge.difficulty)
+      setSeed(challenge.seed)
+      /* ⚠️ a friend's reply is on the board already up: the same seed changes nothing, so without
+         this the pushes made against the first link went on counting under the second's banner */
+      if (challenge !== was) setRound((r) => r + 1)
+    } else if (was && seed === was.seed && difficulty === was.difficulty) setSeed(newSeed())
+    // only a new link, or one going, should run this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge])
 
   const blip = (m: number, len: number, voice: 'pluck' | 'bell' = 'pluck') => {
     if (!sound) return
@@ -131,11 +166,22 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
         )
         setNote(`✨ Done in ${n} push${n === 1 ? '' : 'es'} — the fewest possible is ${par}. ${'★'.repeat(k)}${'☆'.repeat(3 - k)}`) // prettier-ignore
       } else {
-        setSaved((s) => ({
-          ...s,
-          endless: { ...s.endless, [difficulty]: s.endless[difficulty] + 1 },
-        }))
-        setNote(`✨ Done in ${n} — the fewest possible is ${par}.`)
+        const result: Extract<Beat, { game: 'slide' }> = {
+          game: 'slide',
+          seed,
+          difficulty,
+          pushes: n,
+        }
+        setFinished(result)
+        // ⚠️ A LINK'S BOARD IS PRACTICE: it is not one of the boards you found, and Restart replays it
+        if (!(challenge && outcome(result, challenge) !== null))
+          setSaved((s) => ({
+            ...s,
+            endless: { ...s.endless, [difficulty]: s.endless[difficulty] + 1 },
+          }))
+        setNote(
+          `✨ Done in ${n} — the fewest possible is ${par}.${challenge ? verdict(result, challenge) : ''}`,
+        )
       }
       if (sound)
         [64, 67, 71, 76].forEach((m, i) => {
@@ -153,6 +199,7 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
     setHistory(history.slice(0, -1))
     anim.current = null
     setNote(null)
+    setFinished(null)
   }
   const hint = () => {
     const p = solve(board, state)
@@ -186,6 +233,15 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
 
   return (
     <div className="lab-keys" tabIndex={0} onKeyDown={onKey} aria-label="Slide">
+      {challenge && (
+        <BeatBanner
+          beat={challenge}
+          onLeave={() => {
+            leaveChallenge()
+            setSeed(newSeed())
+          }}
+        />
+      )}
       <LabStage
         label={label}
         running={running}
@@ -257,14 +313,21 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
               <button
                 className="btn btn-ghost"
                 aria-pressed={mode === 'levels'}
-                onClick={() => setMode('levels')}
+                onClick={() => {
+                  leave()
+                  setMode('levels')
+                }}
               >
                 Levels
               </button>
               <button
                 className="btn btn-ghost"
                 aria-pressed={mode === 'endless'}
-                onClick={() => setMode('endless')}
+                onClick={() => {
+                  if (mode === 'endless') return
+                  leave()
+                  setMode('endless')
+                }}
               >
                 ♾ Endless
               </button>
@@ -289,7 +352,10 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
                   <span className="sr-only">Difficulty</span>
                   <select
                     value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value as Difficulty)}
+                    onChange={(e) => {
+                      leave()
+                      setDifficulty(e.target.value as Difficulty)
+                    }}
                   >
                     {(Object.keys(DIFFICULTY) as Difficulty[]).map((d) => (
                       <option key={d} value={d}>
@@ -300,7 +366,13 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
                     ))}
                   </select>
                 </label>
-                <button className="btn btn-ghost" onClick={() => setSeed(newSeed())}>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    leave()
+                    setSeed(newSeed())
+                  }}
+                >
                   🎲 New board
                 </button>
               </>
@@ -364,6 +436,9 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
               {best !== undefined ? ` · best ${best}` : ''}
             </p>
           </div>
+          {done && mode === 'endless' && finished && (
+            <BeatShare beat={finished} answering={challenge} />
+          )}
           <p className="muted lab-hint" aria-live="polite">
             {note && <strong>{note} </strong>}
             {done && mode === 'levels' && level < LEVELS.length - 1 && (
@@ -375,7 +450,13 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
             )}
             {done && mode === 'endless' && (
               <>
-                <button className="btn" onClick={() => setSeed(newSeed())}>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    leave()
+                    setSeed(newSeed())
+                  }}
+                >
                   Another ›
                 </button>{' '}
               </>

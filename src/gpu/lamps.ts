@@ -16,6 +16,8 @@ export const SIZES = [4, 5, 6, 7] as const
 export type Size = (typeof SIZES)[number]
 export const PATTERNS = ['plus', 'cross'] as const
 export type Pattern = (typeof PATTERNS)[number]
+/** each pattern as its button says it — and as a link's sentence says it, so the two never differ */
+export const PATTERN_NAMES: Record<Pattern, string> = { plus: '✚ Beside', cross: '✖ Corners' }
 
 /** the lamps a press at `i` switches: itself and its neighbours of the pattern */
 export function reach(n: number, i: number, pattern: Pattern): number[] {
