@@ -4,6 +4,7 @@ import {
   answerRead,
   mayWrite,
   startRead,
+  tradeStatus,
   wrote,
   type LedgerRead,
   type ReadTicket,
@@ -84,9 +85,13 @@ describe('after an assign is sent', () => {
     expect(mayWrite(answered)).toBe(false)
   })
 
-  it('an assign that SAID it failed still needs a read before the next', () => {
-    // a timeout can land: the tab counts the write when it is sent, not when it answers
-    expect(mayWrite(wrote(loaded))).toBe(false)
+  /* ⚠️ this used to assert the same expression as the test before it under a different name
+     (found in review); what it was named for is that a failed assign does not lock the ledger
+     for good — one good read after it opens writes again */
+  it('an assign that SAID it failed is followed by a read, and one good read opens writes again', () => {
+    const afterFailedAssign = wrote(loaded)
+    expect(mayWrite(afterFailedAssign)).toBe(false)
+    expect(mayWrite(readOk(afterFailedAssign))).toBe(true)
   })
 
   it('two writes need a read after the second, not just after the first', () => {
@@ -130,5 +135,22 @@ describe('whether a read is still out', () => {
     const { next, ticket } = startRead(readFails(LEDGER_UNREAD))
     expect(next.waiting).toBe(true)
     expect(answerRead(next, ticket, 'Failed to fetch').next.waiting).toBe(false)
+  })
+})
+
+describe('a trade row after a failed read', () => {
+  it('does not claim the trade is yours from allocations that did not load', () => {
+    expect(tradeStatus(false, false, true)).toBe('⚠️ Not loaded')
+  })
+
+  it('does not claim anything else from them either', () => {
+    expect(tradeStatus(false, true, false)).toBe('⚠️ Not loaded')
+    expect(tradeStatus(false, false, false)).toBe('⚠️ Not loaded')
+  })
+
+  it('says what the allocations say once they loaded', () => {
+    expect(tradeStatus(true, true, false)).toBe('🟢 Family fund')
+    expect(tradeStatus(true, false, true)).toBe('⚪ Yours')
+    expect(tradeStatus(true, false, false)).toBe('🟡 Partial')
   })
 })

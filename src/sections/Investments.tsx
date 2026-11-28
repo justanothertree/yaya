@@ -18,6 +18,7 @@ import {
   answerRead,
   mayWrite,
   startRead,
+  tradeStatus,
   wrote,
   type LedgerRead,
 } from '../finance/ledgerRead'
@@ -2306,7 +2307,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
           const isSell = t.units < 0
           const full = absU > 0 && Math.abs(remaining) <= absU * 1e-6
           const none = Math.abs(got) <= absU * 1e-6
-          const status = full ? '🟢 Family fund' : none ? '⚪ Yours' : '🟡 Partial'
+          const status = tradeStatus(read.failed === null, full, none)
           const isOpen = open === t.id
           const rows = allocs.filter((a) => a.executedTradeId === t.id)
           return (

@@ -67,3 +67,16 @@ export const wrote = (r: LedgerRead): LedgerRead => ({ ...r, writes: r.writes + 
 
 /** the newest read worked and began after the latest write */
 export const mayWrite = (r: LedgerRead): boolean => r.failed === null && r.readAfter === r.writes
+
+/**
+ * A trade row's status line.
+ *
+ * ⚠️ NOT FROM ALLOCATIONS THAT DID NOT LOAD. The ledger's panel said so after a failed read, but
+ * the collapsed row above it still worked its status out from the stale list — "⚪ Yours" on a
+ * trade that may well be assigned, which is the same failed-read-as-answer this file exists to stop
+ * (found in review, 28 Nov 2026).
+ */
+export function tradeStatus(readOk: boolean, full: boolean, none: boolean): string {
+  if (!readOk) return '⚠️ Not loaded'
+  return full ? '🟢 Family fund' : none ? '⚪ Yours' : '🟡 Partial'
+}
