@@ -27,6 +27,10 @@
 import { seeded } from '../gpu/stack'
 /* ── g1 imports ── */
 /* ── g2 imports ── */
+import { COLUMNS as GOLF_COLUMNS, DEPTH as GOLF_DEPTH } from '../gpu/golf'
+import { SIZES as MINE_SIZES, type SizeName as MineSize } from '../gpu/mines'
+import { LAYOUTS as TILE_LAYOUTS } from '../gpu/tiles'
+import { clock as tilesClock } from '../gpu/daily'
 /* ── g3 imports ── */
 /* ── g4 imports ── */
 
@@ -196,6 +200,61 @@ export const ARMS = {
     says: (b) => (b.left ? `${b.left} left` : '0 left — the box shut'),
   }),
   /* ── g2 arms ── */
+  golf: arm({
+    name: 'Golf patience',
+    noun: 'deal',
+    same: 'Same cards, same order',
+    goal: 'lower wins',
+    fields: {
+      seed: SEED,
+      wrap: flag('wrap'),
+      /* golf.ts's own reader bounds: every column card left, down to clearing them all with the
+         whole stock unturned (52 cards, less the columns and the one face up to start) */
+      score: signed('score', GOLF_COLUMNS * GOLF_DEPTH + 1 - 52, GOLF_COLUMNS * GOLF_DEPTH),
+    },
+    board: ['seed', 'wrap'],
+    rank: (b) => [b.score],
+    says: (b) =>
+      `${b.score > 0 ? `+${b.score}` : b.score < 0 ? `−${-b.score}` : '0'}${b.wrap ? ', king and ace neighbours' : ''}`,
+  }),
+  mines: arm({
+    name: 'Mines',
+    noun: 'board',
+    same: 'Same board, opened from the same square',
+    goal: 'faster wins',
+    fields: {
+      seed: SEED,
+      size: oneOf('size', Object.keys(MINE_SIZES) as MineSize[]),
+      /* the board is laid around the square it opened from, so that square is part of the board */
+      start: whole('start', 0, Math.max(...Object.values(MINE_SIZES).map((z) => z.w * z.h)) - 1),
+      /* in tenths, as the toy keeps its own times; a day at most */
+      tenths: whole('tenths', 1, 864_000),
+    },
+    board: ['seed', 'size', 'start'],
+    check: (b) => b.start < MINE_SIZES[b.size].w * MINE_SIZES[b.size].h,
+    rank: (b) => [b.tenths],
+    says: (b) => `${(b.tenths / 10).toFixed(1)} s on a ${b.size} board`,
+  }),
+  tiles: arm({
+    name: 'Tile pairs',
+    /* "deal", as the toy's own New deal says: "a tiles to beat" is not English */
+    noun: 'deal',
+    same: 'Same tiles, and the same shuffles for the same presses',
+    goal: 'faster wins; hints and shuffles add time',
+    fields: {
+      seed: SEED,
+      layout: oneOf(
+        'layout',
+        TILE_LAYOUTS.map((l) => l.id),
+      ),
+      /* whole seconds, the hint and shuffle penalties included, as the toy counts them */
+      secs: whole('secs', 1, 86_400),
+    },
+    board: ['seed', 'layout'],
+    rank: (b) => [b.secs],
+    says: (b) =>
+      `${tilesClock(b.secs)} on ${TILE_LAYOUTS.find((l) => l.id === b.layout)?.name ?? b.layout}`,
+  }),
   /* ── g3 arms ── */
   /* ── g4 arms ── */
 }

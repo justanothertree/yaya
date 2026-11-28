@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-import { CopyLink } from '../lab/CopyLink'
-import { here } from '../lab/links'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { newSeed, outcome, verdict, type Beat } from '../lab/beat'
+import { useChallenge } from '../lab/useChallenge'
 import { daySeed } from './bricks'
 import {
   BACKS,
@@ -22,6 +23,13 @@ import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
 import { useKept } from './kept'
 
 type Mode = 'today' | 'practice'
+type Link = Extract<Beat, { game: 'golf' }>
+/**
+ * ⚠️ A LINK TO TODAY'S DEAL ON THE PLAIN RULES IS TODAY'S DEAL HERE, and counts as Today's would:
+ * it is the deal the Today button gives, so nothing about playing it from a link is any different.
+ * Any other link — another day's seed, a practice deal, the king-and-ace rule — is practice.
+ */
+const isToday = (c: Link | null) => c !== null && c.seed === daySeed(new Date()) && !c.wrap
 const BACK_NAMES: Record<Saved['back'], string> = {
   lattice: 'Lattice backs',
   stripes: 'Striped backs',
@@ -63,17 +71,27 @@ function Face({ c }: { c: Card }) {
 
 export function GolfDemo() {
   const [saved, setSaved] = useKept(GOLF_KEY, readSaved)
-  const [mode, setMode] = useState<Mode>('today')
-  const [seed, setSeed] = useState(() => daySeed(new Date()))
-  const [game, setGame] = useState<Game>(() => deal(daySeed(new Date()), saved.wrap))
+  const [challenge, leaveChallenge] = useChallenge('golf')
+  const [mode, setMode] = useState<Mode>(() =>
+    challenge && !isToday(challenge) ? 'practice' : 'today',
+  )
+  const [seed, setSeed] = useState(() => challenge?.seed ?? daySeed(new Date()))
+  /* ⚠️ A LINK NEVER WRITES `saved.wrap`. That setting decides whether Today's records at all, so a
+     friend's king-and-ace link would quietly stop the receiver's own Today's from counting. The
+     link's rule lives on the deal (`game.wrap`) and nowhere else. */
+  const [game, setGame] = useState<Game>(() =>
+    challenge ? deal(challenge.seed, challenge.wrap) : deal(daySeed(new Date()), saved.wrap),
+  )
   const [par, setPar] = useState<{ best: number; exact: boolean } | null>(null)
   const [run, setRun] = useState(0)
   const [longest, setLongest] = useState(0)
   const [line, setLine] = useState(
     "Today's deal — the same for everyone today. Take a card one above or one below the card on the right.",
   )
-  const [share, setShare] = useState('')
   const recorded = useRef(false)
+  /** the link the deal on screen came from, so a link that leaves the address by another way
+      (Back, a typed address) takes its deal with it rather than leaving it to record */
+  const dealtFrom = useRef<Link | null>(challenge)
 
   // par is worked out a slice at a time between frames, so the cards never wait for it
   useEffect(() => {
@@ -96,17 +114,22 @@ export function GolfDemo() {
     const s = score(g)
     const p = par?.best
     const day = daySeed(new Date())
-    setSaved((x) => ({
-      ...x,
-      played: x.played + 1,
-      cleared: x.cleared + (left(g) ? 0 : 1),
-      best: x.best === null ? s : Math.min(x.best, s),
-      onPar: x.onPar + (p !== undefined && s <= p ? 1 : 0),
-      today:
-        mode === 'today' && g.wrap === false
-          ? { day, score: x.today && x.today.day === day ? Math.min(x.today.score, s) : s }
-          : x.today,
-    }))
+    /* ⚠️ A LINK'S DEAL IS PRACTICE, NOT A RECORD — "Start this deal again" replays it as often as
+       anybody likes — unless it is today's deal on the plain rules, which records as Today's does */
+    const mine: Link = { game: 'golf', seed, wrap: g.wrap, score: s }
+    const onLink = challenge !== null && outcome(mine, challenge) !== null
+    if (!onLink || isToday(challenge))
+      setSaved((x) => ({
+        ...x,
+        played: x.played + 1,
+        cleared: x.cleared + (left(g) ? 0 : 1),
+        best: x.best === null ? s : Math.min(x.best, s),
+        onPar: x.onPar + (p !== undefined && s <= p ? 1 : 0),
+        today:
+          mode === 'today' && g.wrap === false
+            ? { day, score: x.today && x.today.day === day ? Math.min(x.today.score, s) : s }
+            : x.today,
+      }))
     const parLine =
       p === undefined
         ? ''
@@ -116,12 +139,8 @@ export function GolfDemo() {
             ? ` That is par: nobody could do better with this deal.`
             : ` Par was ${signed(p)}.`
     setLine(
-      `${left(g) ? `No more moves: ${left(g)} ${left(g) === 1 ? 'card' : 'cards'} left` : `🏆 Cleared, with ${g.stock.length} still in the stock`} — you score ${signed(s)}.${parLine} Longest run ${longestRun}.`,
+      `${left(g) ? `No more moves: ${left(g)} ${left(g) === 1 ? 'card' : 'cards'} left` : `🏆 Cleared, with ${g.stock.length} still in the stock`} — you score ${signed(s)}.${parLine} Longest run ${longestRun}.${challenge ? verdict(mine, challenge) : ''}`,
     )
-    if (mode === 'today' && !g.wrap)
-      setShare(
-        `I scored ${signed(s)} on today's Golf deal${p !== undefined ? ` (par ${signed(p)})` : ''}, with a run of ${longestRun}. Beat it:\n${here()}#lab?demo=golf`,
-      )
   }
 
   const after = (g: Game, r: number) => {
@@ -150,44 +169,90 @@ export function GolfDemo() {
     after(turn(game), 0)
   }
 
-  const fresh = (m: Mode = mode, next?: number, wrap = saved.wrap) => {
-    const sd = next ?? (m === 'today' ? daySeed(new Date()) : (Math.random() * 2 ** 31) | 0)
+  const fresh = (m: Mode = mode, next?: number, wrap = saved.wrap, link: Link | null = null) => {
+    const sd = next ?? (m === 'today' ? daySeed(new Date()) : newSeed())
     recorded.current = false
+    dealtFrom.current = link
     setMode(m)
     setSeed(sd)
     setGame(deal(sd, wrap))
     setRun(0)
     setLongest(0)
-    setShare('')
-    setLine(m === 'today' ? "Today's deal — the same for everyone today." : 'A new deal.')
+    setLine(
+      link && !isToday(link)
+        ? 'The deal from the link — the same cards in the same order.'
+        : m === 'today'
+          ? "Today's deal — the same for everyone today."
+          : 'A new deal.',
+    )
+  }
+  /* a link deals its own cards under its own rule; one that leaves the address by any way but the
+     controls here (which deal their own board as they leave) takes its deal with it */
+  useEffect(() => {
+    if (challenge)
+      fresh(isToday(challenge) ? 'today' : 'practice', challenge.seed, challenge.wrap, challenge)
+    else if (dealtFrom.current) fresh('today')
+    // `fresh` is rebuilt every render; only a new challenge is a reason to deal
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge])
+  /** any control that changes the deal leaves the challenge first, so the address says what is on screen */
+  const leave = () => {
+    if (challenge) leaveChallenge()
   }
 
   const can = new Set(playable(game))
   const done = over(game)
+  const result = useMemo<Link | null>(
+    () => (done ? { game: 'golf', seed, wrap: game.wrap, score: score(game) } : null),
+    [done, seed, game],
+  )
+  /* on a link to another deal, neither Today's nor a new deal is what is on screen */
+  const elsewhere = challenge !== null && !isToday(challenge)
   const wasteTop = game.waste[game.waste.length - 1]
   const day = daySeed(new Date())
   const todayScore = saved.today && saved.today.day === day ? saved.today.score : null
 
   return (
     <div className={`lab-keys gf-room is-${saved.felt}`}>
+      {challenge && (
+        <BeatBanner
+          beat={challenge}
+          today={isToday(challenge)}
+          onLeave={() => {
+            leaveChallenge()
+            fresh('today')
+          }}
+        />
+      )}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Which deal">
           <button
             className="btn btn-ghost"
-            aria-pressed={mode === 'today'}
-            onClick={() => fresh('today')}
+            aria-pressed={!elsewhere && mode === 'today'}
+            onClick={() => {
+              leave()
+              fresh('today')
+            }}
           >
             Today's deal
           </button>
           <button
             className="btn btn-ghost"
-            aria-pressed={mode === 'practice'}
-            onClick={() => fresh('practice')}
+            aria-pressed={!elsewhere && mode === 'practice'}
+            onClick={() => {
+              leave()
+              fresh('practice')
+            }}
           >
             New deal
           </button>
         </div>
-        <button className="btn btn-ghost" onClick={() => fresh(mode, seed)} disabled={!game.moves}>
+        {/* the same deal under the same rule — a link's own, while it is on screen */}
+        <button
+          className="btn btn-ghost"
+          onClick={() => fresh(mode, seed, game.wrap, dealtFrom.current)}
+          disabled={!game.moves}
+        >
           ↻ Start this deal again
         </button>
       </div>
@@ -286,7 +351,7 @@ export function GolfDemo() {
           </div>
         </div>
       </div>
-      {share && <CopyLink text={share} label="🔗 Copy my score" />}
+      {result && <BeatShare beat={result} answering={challenge} />}
       <p className="sun-reading">
         <span className="muted">
           Played {saved.played}, cleared {saved.cleared}, on par or better {saved.onPar}
@@ -330,11 +395,13 @@ export function GolfDemo() {
             >
               Lift the cards that can be taken
             </button>
+            {/* the rule the deal on screen is played under — a link's own, which is never saved */}
             <button
               className="btn btn-ghost"
-              aria-pressed={saved.wrap}
+              aria-pressed={game.wrap}
               onClick={() => {
-                const wrap = !saved.wrap
+                const wrap = !game.wrap
+                leave()
                 setSaved((s) => ({ ...s, wrap }))
                 fresh(mode, seed, wrap)
               }}
@@ -342,7 +409,7 @@ export function GolfDemo() {
               King and ace are neighbours
             </button>
           </div>
-          {saved.wrap && mode === 'today' && (
+          {game.wrap && mode === 'today' && (
             <p className="muted mc-note">
               Today's score is kept for the plain rules only, so everybody plays the same game.
             </p>

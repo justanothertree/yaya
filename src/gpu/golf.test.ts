@@ -20,6 +20,7 @@ import {
 import { rng } from './bricks'
 import { card } from './poker'
 import { NIGHTLY, named } from './testMatches'
+import { beatHash, readBeat } from '../lab/beat'
 
 /** every way through, by the rules alone: no memory, no bounds, nothing shared with the solver */
 function brute(g: Game): number {
@@ -151,5 +152,32 @@ describe('golf saves', () => {
       cleared: 3,
       onPar: 3,
     })
+  })
+})
+
+/** SHA-256 of a value's JSON, hex: the same only if every byte of the deal is */
+const sha = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+describe('a "beat my deal" link deals the same cards', () => {
+  /* ⚠️ A LINK ALREADY SENT NAMES A DEAL BY ITS SEED, so a change to `deal` or to `shuffled` would
+     quietly hand every friend different cards from the score they are trying to beat. Pinned from
+     node v22 and bun 1.4.4, which agree (27 Nov 2026); a deliberate change needs a `v=` parameter. */
+  it('is pinned, byte for byte', async () => {
+    expect(await sha(deal(4_279_824_600, true))).toBe(
+      '6d7f67700c109bc83306c6554672c5dab49f16bb6e88def1f11042e327483027',
+    )
+  })
+  it('the link’s seed and rule deal what the seed itself deals', () => {
+    const b = readBeat(beatHash({ game: 'golf', seed: 4_279_824_600, wrap: true, score: -3 }))
+    if (b?.game !== 'golf') throw new Error('the link did not read back')
+    expect(deal(b.seed, b.wrap)).toEqual(deal(4_279_824_600, true))
+    expect(deal(b.seed, b.wrap)).not.toEqual(deal(4_279_824_600, false))
   })
 })
