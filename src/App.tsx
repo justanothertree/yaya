@@ -1,5 +1,17 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { dropWriters } from './profile/writerRegistry'
+import {
+  forgetLookIntent,
+  keepLookIntent,
+  lookLanded,
+  lookRefused,
+  lookRetryIn,
+  lookSending,
+  planLook,
+  readLookIntent,
+  type LookMemo,
+} from './profile/lookPublish'
+import { errText } from './ui/errText'
 import { applyLook, registerLookApplier, type Look } from './ui/looks'
 import { lazyRetry } from './lazyRetry'
 import { VizFloat } from './audio/VizFloat'
@@ -645,7 +657,15 @@ export default function App() {
    * published this browser's defaults over a real profile, which is the bug the note above
    * describes; production builds do not double-mount, so the live site never had it.
    */
-  const lookPublished = useRef<{ uid: string; look: string } | null>(null)
+  /**
+   * ⚠️ AND A PUBLISH THAT FAILED WAS LOST. The look was recorded as published before the write and
+   * the write's result was ignored, so a dropped connection left the profile on the old look with
+   * nothing anywhere to retry it — not this page, and not a reload. The decisions now live in
+   * profile/lookPublish.ts: what the profile is known to hold is recorded only when a write LANDS,
+   * a failed one is retried with a bounded backoff, and a look chosen here stays owed in
+   * localStorage until it lands, so the next change or the next load finishes it.
+   */
+  const lookMemo = useRef<LookMemo | null>(null)
   useEffect(() => {
     /* the harness writes nothing real, the way every chronicle writer guards itself — see
        chronicle/cloud.ts, where the module that writes asks rather than each of its callers */
@@ -659,20 +679,49 @@ export default function App() {
       p_backdrop: background === 'none' ? null : background,
     }
     const sig = JSON.stringify(look)
-    /* a different person is a first run of their own, or signing in as somebody else on a shared
-       browser would publish the look the last one happened to be using */
-    if (lookPublished.current?.uid !== uid) {
-      lookPublished.current = { uid, look: sig }
-      return
-    }
-    if (lookPublished.current.look === sig) return
-    lookPublished.current = { uid, look: sig }
-    const t = setTimeout(() => {
+    const plan = planLook(lookMemo.current, readLookIntent(), uid, sig)
+    lookMemo.current = plan.memo
+    if (plan.forgetIntent) forgetLookIntent(uid)
+    if (!plan.publish) return
+    keepLookIntent({ uid, look: sig })
+    let live = true
+    let timer: ReturnType<typeof setTimeout>
+    const giveUp = (error: unknown) =>
+      console.warn('[profile] your look did not reach your profile: ' + errText(error))
+    const attempt = (n: number) => {
+      if (!live) return
+      if (lookMemo.current) lookMemo.current = lookSending(lookMemo.current, uid)
       void getSupabaseClient()
         .rpc('set_my_profile_look', look)
-        .then(() => {})
-    }, 600) // dragging a colour picker shouldn't be one write per frame
-    return () => clearTimeout(t)
+        .then(
+          ({ error, status }) => ({ error, status }),
+          (e: unknown) => ({ error: e ?? 'failed', status: 0 }),
+        )
+        .then(({ error, status }) => {
+          /* a newer run owns the look now — it sends its own, and reads its own answer */
+          if (!live) return
+          if (!error) {
+            if (lookMemo.current) lookMemo.current = lookLanded(lookMemo.current, uid, sig)
+            forgetLookIntent(uid, sig)
+            return
+          }
+          if (lookRefused({ status })) {
+            forgetLookIntent(uid, sig)
+            giveUp(error)
+            return
+          }
+          const wait = lookRetryIn(n, { status })
+          /* out of tries: the look stays owed, and the next change or load sends it */
+          if (wait === null) giveUp(error)
+          else timer = setTimeout(() => attempt(n + 1), wait)
+        })
+    }
+    // dragging a colour picker shouldn't be one write per frame
+    timer = setTimeout(() => attempt(0), 600)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
   }, [isFinanceAuthed, theme, customPalette, paletteTick, sparksOn, sparksStyle, background])
 
   // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
