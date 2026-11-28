@@ -66,8 +66,12 @@ export async function connectCircuit() {
   try {
     await circuitStore.init(current)
   } catch {
-    // cloud load failed (dead session, network) — fall back to the sandbox for now;
-    // the auth listener below re-wires the moment the session settles
+    // cloud load THREW — fall back to the sandbox for now; the auth listener below re-wires the
+    // moment the session settles. ⚠️ A READ THAT FAILED DOES NOT COME HERE: supabase-js resolves a
+    // failure rather than throwing, and the adapter answers it with the last good board marked
+    // `loadFailed`, which the room shows as "Couldn't load the board. Retry" (boardLoad.ts). The
+    // sandbox would be the wrong answer to it — a member on Evan's demo board, logging into this
+    // browser only.
     if (current !== local) {
       if (!local) local = createLocalAdapter(bundledPublicBoard())
       current = local

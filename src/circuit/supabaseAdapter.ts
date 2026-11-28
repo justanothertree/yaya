@@ -15,9 +15,17 @@ import type {
   WatchlistItem,
   ID,
 } from './types'
-import { ratingId, voteId } from './types'
+import { emptyCircuitState, ratingId, voteId } from './types'
 import { getSupabaseClient, subscribeLogged } from '../finance/client'
 import { CellRefused } from './cellRefused'
+import {
+  BoardNotLoaded,
+  failedReads,
+  mayCache,
+  mayWrite,
+  type BoardRead,
+  type CircuitWrite,
+} from './boardLoad'
 import { localISO } from './dates'
 import { cellChanges, sessionsIn, withConverted, withSessions, type SessionSum } from './sessions'
 
@@ -286,12 +294,34 @@ export function createSupabaseAdapter(
    */
   let lastLogs = new Map<string, DayLog>()
   let linked = new Set<string>()
+  /** whether a load has come back whole in this adapter — before one has, the kept board stands in */
+  let loadedOnce = false
+  /**
+   * The reads the LAST load could not get; empty when it came back whole. The writes made from the
+   * board wait while this is not empty — see mayWrite.
+   */
+  let unloaded: BoardRead[] = []
+
+  /** what the write path compares against: the board on screen, by log id, and who is linked */
+  function remember(s: CircuitState) {
+    lastLogs = new Map(s.logs.map((l) => [l.id, l]))
+    linked = new Set(s.people.filter((p) => !!p.ownerUserId).map((p) => p.id))
+  }
+  /** a write made from the board, held while the last load failed */
+  function mustBeLoaded(write: CircuitWrite) {
+    if (!mayWrite(write, unloaded)) throw new BoardNotLoaded()
+  }
+  /** the answer to a load that failed: the last good board, marked — never a blank made of it */
+  function notLoaded(failed: BoardRead[]): CircuitState {
+    return { ...(readCloudCache(cacheKey) ?? emptyCircuitState()), loadFailed: failed }
+  }
 
   async function loadAll(): Promise<CircuitState> {
     /**
      * ⚠️ CHRONICLE'S SESSIONS, ADDED INTO THE CELLS THEY BELONG TO. Four hundred days, the session
-     * reader's own limit. A server without the grid draft refuses the call, which reads as no
-     * sessions and leaves the board exactly as it was.
+     * reader's own limit. ⚠️ A REFUSAL OF IT IS A FAILED LOAD, not "no sessions": it once was, for a
+     * server without the grid draft, and production has not been one since the grid was applied —
+     * see failedReads.
      */
     const today = new Date()
     const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12)
@@ -312,19 +342,43 @@ export function createSupabaseAdapter(
       sb.from('circuit_watchlist').select('*'),
       sb.from('circuit_person_groups').select('person_id, group_id'),
       sb.from('circuit_groups').select('id, name'),
-      /* ⚠️ A missing table comes back as { data: null, error } rather than throwing, so a
-         build that ships before the migration runs shows "no pools yet" instead of a broken
-         board — and starts working the moment the SQL lands, with no second deploy. */
+      /* ⚠️ A missing table comes back as { data: null, error } rather than throwing. That once let
+         a build ship before the pools migration and show "no pools yet"; the tables have long been
+         there, and a refusal now is a failed load like any other (see failedReads). */
       sb.from('pools').select('id, name, audience, owner_user_id'),
       sb.from('pool_votes').select('item_id, user_id'),
       sb.from('circuit_ratings').select('movie_id, user_id, score, icons, review, picture'),
     ])
+    const sessionRes = await sessionsCall
+    const manualRes = await manualCall
+    /**
+     * ⚠️ ASKED BEFORE ANY OF IT IS READ. Every `?? []` below turns a failure into "none", so a load
+     * with a read missing goes no further: not shown, not cached, and `lastLogs` and `linked` stay
+     * what the board on screen was made from. See boardLoad.ts.
+     */
+    const failed = failedReads({
+      circuit_people: ppl,
+      circuit_logs: logs,
+      circuit_movies: movies,
+      circuit_watchlist: wl,
+      circuit_person_groups: pgroups,
+      circuit_groups: groups,
+      pools,
+      pool_votes: votes,
+      circuit_ratings: ratings,
+      circuit_session_sums: sessionRes,
+      circuit_manual_sums: manualRes,
+    })
+    unloaded = failed
+    if (!mayCache(failed)) {
+      console.error('[circuit] the board did not load:', failed.join(', '))
+      return notLoaded(failed)
+    }
     // which circuit(s) each person is shared into — lets the board scope to one circuit
     const byPerson: Record<string, string[]> = {}
     for (const r of (pgroups.data as { person_id: string; group_id: string }[] | null) ?? []) {
       ;(byPerson[r.person_id] ||= []).push(r.group_id)
     }
-    const sessionRes = await sessionsCall
     const sums: SessionSum[] = Array.isArray(sessionRes.data)
       ? (sessionRes.data as Array<Record<string, unknown>>).map((r) => ({
           person: String(r.person),
@@ -333,7 +387,6 @@ export function createSupabaseAdapter(
           value: Number(r.value) || 0,
         }))
       : []
-    const manualRes = await manualCall
     const conv = (manualRes.data ?? null) as { converted?: unknown; manual?: unknown } | null
     const converted = new Set(Array.isArray(conv?.converted) ? conv.converted.map(String) : [])
     const typed: SessionSum[] = Array.isArray(conv?.manual)
@@ -348,11 +401,7 @@ export function createSupabaseAdapter(
       withConverted(((logs.data as LogRow[] | null) ?? []).map(rowToLog), converted, typed),
       sums,
     )
-    lastLogs = new Map(merged.map((l) => [l.id, l]))
-    linked = new Set(
-      ((ppl.data as PersonRow[] | null) ?? []).filter((r) => !!r.owner_user_id).map((r) => r.id),
-    )
-    return {
+    const s: CircuitState = {
       people: ((ppl.data as PersonRow[] | null) ?? []).map((r) => ({
         ...rowToPerson(r),
         groupIds: byPerson[r.id] ?? [],
@@ -372,6 +421,11 @@ export function createSupabaseAdapter(
       votes: ((votes.data as VoteRow[] | null) ?? []).map(rowToVote),
       ratings: ((ratings.data as RatingRow[] | null) ?? []).map(rowToRating),
     }
+    remember(s)
+    loadedOnce = true
+    /* the one place the board is kept for next visit, so the question above is asked of every copy */
+    writeCloudCache(cacheKey, s)
+    return s
   }
 
   // Note: no auto-seeding. The crew's data already lives in the cloud, and under the
@@ -383,28 +437,33 @@ export function createSupabaseAdapter(
   let emitExternal: ((s: CircuitState) => void) | null = null
 
   return {
+    /**
+     * ⚠️ A LOAD THAT FAILS RESOLVES, MARKED — IT DOES NOT THROW. A throw here sends connect.ts to its
+     * fallback, which puts a signed-in member on the signed-out sandbox: Evan's demo board, with
+     * whatever they log kept in this browser only. "Couldn't load the board. Retry" is the true
+     * answer, and Retry is one tap.
+     */
     async load() {
       const cached = readCloudCache(cacheKey)
       if (cached) {
+        /* ⚠️ THE KEPT BOARD IS WHAT THE WRITE PATH COMPARES AGAINST UNTIL THE FRESH ONE LANDS. It is
+           what is on screen, and it is the last load that came back whole. Without this, `lastLogs`
+           and `linked` were empty for that beat: a linked person's day went out as a plain row and
+           a day the screen showed holding sessions could be deleted. Only before the first fresh
+           load — after it, `lastLogs` holds this session's own saves, which the cache does not. */
+        if (!loadedOnce) remember(cached)
         // serve the snapshot instantly; the fresh board lands like a realtime update
         void loadAll()
-          .then((s) => {
-            writeCloudCache(cacheKey, s)
-            emitExternal?.(s)
-          })
+          .then((s) => emitExternal?.(s))
           .catch(() => undefined)
-        return cached
+        return unloaded.length ? { ...cached, loadFailed: unloaded } : cached
       }
-      const s = await loadAll()
-      writeCloudCache(cacheKey, s)
-      return s
+      return loadAll()
     },
     /* ⚠️ NOT load(): that answers from the cache first, which would paint an older board over the
        one on screen before the fresh one arrived — the opposite of what reopening is for */
     async reload() {
-      const s = await loadAll()
-      writeCloudCache(cacheKey, s)
-      return s
+      return loadAll()
     },
     async savePerson(p: Person) {
       await must(sb.from('circuit_people').upsert(personToRow(p)))
@@ -421,6 +480,7 @@ export function createSupabaseAdapter(
      * back to the old write — there are no sessions on such a server to protect.
      */
     async saveLog(l: DayLog) {
+      mustBeLoaded('saveLog')
       if (!linked.has(l.personId)) {
         await must(sb.from('circuit_logs').upsert(logToRow(l)))
         return
@@ -449,6 +509,8 @@ export function createSupabaseAdapter(
       lastLogs.set(l.id, { ...l, sessions: prev?.sessions })
     },
     async deleteLog(id: ID) {
+      /* ⚠️ and the guard below asks the loaded board, so a board that did not load cannot answer it */
+      mustBeLoaded('deleteLog')
       /* ⚠️ a day whose cells hold sessions is not the grid's to delete — the sessions are Chronicle's */
       const prev = lastLogs.get(id)
       const held = (prev?.sessions ?? []).filter((x) => x.val > 0)
@@ -497,6 +559,7 @@ export function createSupabaseAdapter(
        path wrote the whole film row including everybody's ratings; this writes one row and
        cannot reach any other. */
     async saveRating(r: Rating) {
+      mustBeLoaded('saveRating')
       await must(
         sb.from('circuit_ratings').upsert(
           {
@@ -512,6 +575,7 @@ export function createSupabaseAdapter(
       )
     },
     async deleteRating(id: ID) {
+      mustBeLoaded('deleteRating')
       const [movieId, userId] = id.split('::')
       if (!movieId || !userId) return
       await must(sb.from('circuit_ratings').delete().eq('movie_id', movieId).eq('user_id', userId))
@@ -539,11 +603,9 @@ export function createSupabaseAdapter(
         if (pending) return
         pending = setTimeout(() => {
           pending = null
+          /* loadAll keeps the board for next mount itself, and only a whole one */
           void loadAll()
-            .then((s) => {
-              writeCloudCache(cacheKey, s) // keep next mount's instant paint current
-              onExternalChange(s)
-            })
+            .then(onExternalChange)
             .catch(() => undefined)
         }, COALESCE_MS)
       }

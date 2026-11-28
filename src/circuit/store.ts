@@ -6,6 +6,7 @@
 // store keeps a 30-step undo/redo history. Signing in or out resets it; a realtime
 // change from somebody else does not — see adoptState for why.
 import { CellRefused } from './cellRefused'
+import { BoardNotLoaded, boardToShow } from './boardLoad'
 import { useSyncExternalStore } from 'react'
 import type { CircuitAdapter } from './adapter'
 import { showToast } from './toast'
@@ -128,6 +129,8 @@ function inverseOf(s: CircuitState, op: Op): Op {
 function reasonFor(err: unknown): string {
   /* ⚠️ a cell the server refused for a reason it can name says that reason — see CellRefused */
   if (err instanceof CellRefused) return `Not saved — ${err.message}`
+  /* a write made from a board that did not load — see boardLoad.ts */
+  if (err instanceof BoardNotLoaded) return 'Not saved — the board didn’t load. Retry first.'
   const msg = String((err as { message?: unknown })?.message ?? '')
   if (/row-level security|violates row-level/i.test(msg))
     return 'Not saved — the database refused it. That is a bug here, not something you did.'
@@ -238,8 +241,10 @@ export function createCircuitStore(): CircuitStore {
    * party/transport.ts). A stale undo is survivable; an undo button that quietly stops working
    * is not.
    */
+  /* ⚠️ through boardToShow: a load that FAILED keeps the board on screen and only marks it, so a
+     blip never trades somebody's board for a blank (see boardLoad.ts) */
   const adoptState = (next: CircuitState) => {
-    state = next
+    state = boardToShow(state, next)
     emit()
   }
   /** An incoming board, with our own too-recent writes put back on top. See `recent`. */

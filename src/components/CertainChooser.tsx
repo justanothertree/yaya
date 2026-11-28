@@ -2,9 +2,22 @@ import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember } from '../dev/previewMember'
 import { useFriendRoster, type Circle } from './friendRoster'
+import { readCertain, mayChangeCertain, type CertainRead } from './certainRead'
+import { CouldNotLoad } from '../ui/CouldNotLoad'
 
 /** case-insensitive, because the server matches on `lower(username)` */
 const has = (list: string[], u: string) => list.some((x) => x.toLowerCase() === u.toLowerCase())
+
+/** one item's list, or `{ ok: false }` — a throw is a failed read like any other */
+async function fetchCertain(kind: string, id: string): Promise<CertainRead> {
+  try {
+    return readCertain(
+      await getSupabaseClient().rpc('visibility_certain_get', { p_kind: kind, p_id: id }),
+    )
+  } catch (error) {
+    return readCertain({ data: null, error })
+  }
+}
 
 /**
  * WHO, EXACTLY — the list behind the "Certain friends" level.
@@ -155,40 +168,41 @@ export function CertainForItem({
   disabled?: boolean
   label?: string
 }) {
-  const [names, setNames] = useState<string[] | null>(previewMember ? [] : null)
+  /* ⚠️ A FAILED READ IS KEPT AS ONE, never as an empty list — see certainRead.ts. The tap below
+     sends the whole list, so "nobody chosen" read off an error is a tap that erases everybody. */
+  const [read, setRead] = useState<CertainRead | null>(
+    previewMember ? { ok: true, names: [] } : null,
+  )
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [retrying, setRetrying] = useState(false)
 
-  const load = async () => {
-    const { data } = await getSupabaseClient().rpc('visibility_certain_get', {
-      p_kind: kind,
-      p_id: id,
-    })
-    const rows = (data as { username: string }[] | null) ?? []
-    setNames(rows.map((r) => r.username))
-  }
+  const load = async () => setRead(await fetchCertain(kind, id))
 
   useEffect(() => {
     if (previewMember) return
     let alive = true
-    void getSupabaseClient()
-      .rpc('visibility_certain_get', { p_kind: kind, p_id: id })
-      .then(({ data }) => {
-        if (!alive) return
-        const rows = (data as { username: string }[] | null) ?? []
-        setNames(rows.map((r) => r.username))
-      })
+    void fetchCertain(kind, id).then((r) => {
+      if (alive) setRead(r)
+    })
     return () => {
       alive = false
     }
   }, [kind, id])
 
-  if (names === null) return <p className="vis-hint muted">Loading who you’ve chosen…</p>
+  if (read === null) return <p className="vis-hint muted">Loading who you’ve chosen…</p>
+
+  const retry = async () => {
+    setRetrying(true)
+    await load()
+    setRetrying(false)
+  }
 
   const save = async (next: string[]) => {
+    if (!mayChangeCertain(read)) return
     /* shown immediately, then reconciled: a privacy toggle that waits for a round trip before
        moving feels broken, and the reconcile below is what keeps the optimism honest */
-    setNames(next)
+    setRead({ ok: true, names: next })
     setErr('')
     if (previewMember) return
     setBusy(true)
@@ -209,12 +223,18 @@ export function CertainForItem({
 
   return (
     <>
-      <CertainChooser
-        value={names}
-        onChange={(next) => void save(next)}
-        disabled={disabled || busy}
-        {...(label ? { label } : {})}
-      />
+      {read.ok ? (
+        <CertainChooser
+          value={read.names}
+          onChange={(next) => void save(next)}
+          disabled={disabled || busy}
+          {...(label ? { label } : {})}
+        />
+      ) : (
+        /* no chooser at all, rather than a disabled one: a row of unticked names would still say
+           "nobody chosen" about a list that may hold several */
+        <CouldNotLoad what="who you’ve chosen" onRetry={() => void retry()} retrying={retrying} />
+      )}
       {err && (
         <p className="vis-hint" role="status" style={{ color: 'var(--danger, #e06c75)' }}>
           {err}

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('./toast', () => ({ showToast: () => undefined }))
+const toasts: string[] = []
+vi.mock('./toast', () => ({ showToast: (m: string) => void toasts.push(m) }))
 
 const { createCircuitStore } = await import('./store')
+const { BoardNotLoaded } = await import('./boardLoad')
 import type { CircuitAdapter } from './adapter'
 import type { CircuitState, DayLog } from './types'
 
@@ -114,5 +116,50 @@ describe('the Circuit opening again', () => {
     }
     await expect(s.refresh()).resolves.toBeUndefined()
     expect(s.getState().logs[0].entries[0].val).toBe(15)
+  })
+})
+
+/**
+ * A load that did not get every read (boardLoad.ts). The adapter answers it with the board marked
+ * `loadFailed` instead of a blank — and the store keeps what is ON SCREEN, which is not the same
+ * board: it holds every write made since the adapter's last good load.
+ */
+describe('a board whose load failed', () => {
+  const failedLoad = (): CircuitState => ({ ...board([]), loadFailed: ['circuit_logs'] })
+
+  it('keeps the board on screen, marked, rather than the blank the failure made', async () => {
+    const s = createCircuitStore()
+    const t = stand()
+    await s.init(t.a)
+    t.a.reload = async () => failedLoad()
+    await s.refresh()
+    expect(s.getState().logs.map((l) => l.entries[0].val)).toEqual([15])
+    expect(s.getState().loadFailed).toEqual(['circuit_logs'])
+  })
+
+  it('takes the next board that loads whole, and stops saying it failed', async () => {
+    const s = createCircuitStore()
+    const t = stand()
+    await s.init(t.a)
+    const reload = t.a.reload!
+    t.a.reload = async () => failedLoad()
+    await s.refresh()
+    t.a.reload = reload
+    t.elsewhere([day(4)])
+    await s.refresh()
+    expect(s.getState().logs[0].entries[0].val).toBe(4)
+    expect(s.getState().loadFailed).toBeUndefined()
+  })
+
+  it('says why a write made from it was not saved', async () => {
+    const s = createCircuitStore()
+    const t = stand()
+    await s.init(t.a)
+    t.a.saveLog = async () => {
+      throw new BoardNotLoaded()
+    }
+    toasts.length = 0
+    await s.saveLog(day(20))
+    expect(toasts).toEqual(['Not saved — the board didn’t load. Retry first.'])
   })
 })

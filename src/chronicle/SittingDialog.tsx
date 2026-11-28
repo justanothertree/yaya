@@ -2,7 +2,8 @@ import { editNote, dropSet } from './cloud'
 import { Modal } from '../circuit/ui/Modal'
 import { AddPicture } from '../pictures/AddPicture'
 import { HoldButton } from '../ui/HoldButton'
-import { countedIn, moveNote, setName } from './sets'
+import { CouldNotLoad } from '../ui/CouldNotLoad'
+import { countedIn, moveNote, savePath, setName, setsShown } from './sets'
 import { unitOf } from './units'
 import {
   clockOfLocal,
@@ -81,6 +82,7 @@ export function SittingDialog({
     entWas,
     entSets,
     setEntSets,
+    retrySets,
     shot,
     bigPicture,
     hangPicture,
@@ -100,7 +102,16 @@ export function SittingDialog({
    * save moves it to an activity in another unit, which takes them back out on the server.
    */
   const unitMoves = unitOf(a?.metric) !== unitOf(metric)
-  const floor = unitMoves ? 0 : countedIn(entSets, e.id)
+  /**
+   * ⚠️ SAVE WAITS FOR THE SETS — see `savePath`. Which call saves a sitting depends on whether it
+   * has any, so until the read has answered there is no right call to make, and a read that failed
+   * says so with a Retry rather than drawing a sitting with none.
+   */
+  const setsKnown = savePath(entSets) !== null
+  const shownSets = setsShown(entSets)
+  const lost =
+    entSets === 'failed' ? <CouldNotLoad what="this session’s sets" onRetry={retrySets} /> : null
+  const floor = unitMoves ? 0 : countedIn(shownSets, e.id)
   const asked = entAmount.trim() === '' ? 0 : Number(entAmount)
   const below = !!e.end && floor > 0 && Number.isFinite(asked) && asked < floor
   const len = minsBetweenLocal(entFrom, entTo)
@@ -256,8 +267,8 @@ export function SittingDialog({
         {/* ⚠️ SAID AT THE MOMENT IT HAPPENS (§15c): a move takes the time to the new
               activity and leaves every set the exercise it was. Correct, and it looks like a
               bug — a goal's number moves and the Circuit's does not. */}
-        {entAct !== e.activity && moveNote(entSets, e.id) ? (
-          <p className="muted chron-move-note">{moveNote(entSets, e.id)}</p>
+        {entAct !== e.activity && moveNote(shownSets, e.id) ? (
+          <p className="muted chron-move-note">{moveNote(shownSets, e.id)}</p>
         ) : null}
       </div>
     </>
@@ -329,11 +340,11 @@ export function SittingDialog({
        * exactly what it added. A set that is not counted is shown as such, so the two numbers
        * on this dialog never look like they disagree for no reason.
        */}
-      {entSets.some((x) => x.entry === e.id) ? (
+      {shownSets.some((x) => x.entry === e.id) ? (
         <div className="chron-sets">
           <span className="muted">Sets</span>
           <ul>
-            {entSets
+            {shownSets
               .filter((x) => x.entry === e.id)
               .map((x) => (
                 <li key={x.id}>
@@ -349,7 +360,9 @@ export function SittingDialog({
                       const bad = await dropSet(x.id)
                       setBusy(false)
                       if (bad) return moan(bad.why)
-                      setEntSets((all) => all.filter((y) => y.id !== x.id))
+                      setEntSets((all) =>
+                        Array.isArray(all) ? all.filter((y) => y.id !== x.id) : all,
+                      )
                       if (x.counted && entAmount.trim() !== '') {
                         const n = Number(entAmount)
                         if (Number.isFinite(n)) setEntAmount(String(Math.max(0, n - x.value)))
@@ -521,7 +534,7 @@ export function SittingDialog({
         footer={
           <button
             className="btn chron-done"
-            disabled={busy || (changed && ((len ?? 0) < 0 || below))}
+            disabled={busy || (changed && ((len ?? 0) < 0 || below || !setsKnown))}
             onClick={() => void done()}
           >
             Done
@@ -530,6 +543,8 @@ export function SittingDialog({
       >
         {/* ⚠️ "HOW DID IT GO?" COMES FIRST, because it is the question the title asks — it was the
             ninth thing on this dialog, under the activity, both ends, the count and the photo */}
+        {/* ⚠️ but a failed read goes above it, because it is why Done may not be pressable */}
+        {lost}
         {moods}
         {journal}
         {/**
@@ -590,7 +605,7 @@ export function SittingDialog({
             </button>
             <button
               className="btn"
-              disabled={busy || (len ?? 0) < 0 || below}
+              disabled={busy || (len ?? 0) < 0 || below || !setsKnown}
               onClick={() => void saveEnt(metric)}
             >
               Save
@@ -599,6 +614,7 @@ export function SittingDialog({
         </div>
       }
     >
+      {lost}
       {e.end == null ? journal : null}
       {what}
       {times}

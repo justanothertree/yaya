@@ -227,12 +227,27 @@ async function rpcAllRows(
   return out
 }
 
+/**
+ * Who is signed in, or a thrown error. Never "nobody, so there is nothing to show".
+ *
+ * ⚠️ `auth.getUser()` IS A ROUND TRIP, AND IT ANSWERS A FAILURE AS `{ data: { user: null }, error }`
+ * rather than throwing. Both reads below used to take that `null` to mean an empty ledger and
+ * resolve `[]`, so a timeout on /auth/v1/user said "No trades yet" and "Nothing assigned yet —
+ * all N units are still yours" about every trade. `insert_allocation` ADDS rows, so an admin
+ * re-assigning what looked lost wrote a second copy of it (audit of 27 Nov 2026). The ledger is
+ * only ever opened signed in, so no user is a failure here too, not an empty answer.
+ */
+async function signedInUid(): Promise<string> {
+  const { data, error } = await getSupabaseClient().auth.getUser()
+  if (error) throw error
+  const uid = data.user?.id
+  if (!uid) throw new Error('Not signed in.')
+  return uid
+}
+
 /** The signed-in owner's executed trades — all of them (paged past the row cap). */
 export async function fetchMyTrades(): Promise<Trade[]> {
-  const sb = getSupabaseClient()
-  const { data: u } = await sb.auth.getUser()
-  const uid = u.user?.id
-  if (!uid) return []
+  const uid = await signedInUid()
   const rows = await rpcAllRows('get_executed_trades', uid)
   return rows.map((t) => ({
     id: String(t.id),
@@ -248,10 +263,7 @@ export async function fetchMyTrades(): Promise<Trade[]> {
 
 /** The signed-in owner's allocations — all of them (paged past the row cap). */
 export async function fetchMyAllocations(): Promise<AllocationRow[]> {
-  const sb = getSupabaseClient()
-  const { data: u } = await sb.auth.getUser()
-  const uid = u.user?.id
-  if (!uid) return []
+  const uid = await signedInUid()
   const rows = await rpcAllRows('get_allocations', uid)
   return rows.map((a) => ({
     id: String(a.id),

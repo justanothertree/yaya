@@ -72,6 +72,16 @@ const idOf = (r: { id: string } | { why: string }): string => {
 }
 
 /**
+ * A read that was supposed to be answered. `pvMarksFor` and `pvSetsBetween` answer a refusal with
+ * null, as cloud.ts does — could not read, never "none" — so this narrows the same way `idOf`
+ * does, by throwing on the line that read rather than letting a null through.
+ */
+const answered = <T>(got: T | null): T => {
+  if (got === null) throw new Error('expected an answer, got a refused read')
+  return got
+}
+
+/**
  * The preview store against the contracts its server counterparts actually keep.
  *
  * ⚠️ A DEV-ONLY HARNESS IS WORTH TESTING WHEN IT IS A DOUBLE, and this one is: it answers every
@@ -1902,16 +1912,18 @@ describe('a repeating goal, one window at a time', () => {
   it('keeps a tick to its own day', () => {
     const g = repeating()
     expect(pvSetMark(g, at(DAY), null, true)).toBeNull()
-    const got = pvMarksFor([
-      { id: g, from: DAY },
-      { id: g, from: '2026-01-01' },
-    ])
+    const got = answered(
+      pvMarksFor([
+        { id: g, from: DAY },
+        { id: g, from: '2026-01-01' },
+      ]),
+    )
     expect(got.marks).toEqual({ [`${g}@${DAY}`]: { progress: 0, done: true } })
   })
 
   it('leaves the count alone when only the tick is sent, and the tick when only the count is', () => {
     const g = repeating()
-    const read = () => pvMarksFor([{ id: g, from: DAY }]).marks[`${g}@${DAY}`]
+    const read = () => answered(pvMarksFor([{ id: g, from: DAY }])).marks[`${g}@${DAY}`]
     pvSetMark(g, at(DAY), 12, null)
     pvSetMark(g, at(DAY), null, true)
     /* ⚠️ READ BETWEEN THE WRITES — with only a final read, a third write of the count hid a second
@@ -1942,15 +1954,23 @@ describe('a repeating goal, one window at a time', () => {
     ])
   })
 
+  it('answers a read the server refuses with null, never with no marks', () => {
+    /* 'too many windows in one ask' — the client batches below it, so this is the wall itself */
+    const g = repeating()
+    expect(pvMarksFor(Array.from({ length: 1201 }, () => ({ id: g, from: DAY })))).toBeNull()
+  })
+
   it("hands back the row's old tick as legacy for a repeating goal, and only for one", () => {
     const g = repeating()
     const once = goalOn({ title: 'Once' })
     pvProgress(g, 0, true)
     pvProgress(once, 0, true)
-    const got = pvMarksFor([
-      { id: g, from: DAY },
-      { id: once, from: DAY },
-    ])
+    const got = answered(
+      pvMarksFor([
+        { id: g, from: DAY },
+        { id: once, from: DAY },
+      ]),
+    )
     expect(Object.keys(got.legacy)).toEqual([g])
   })
 })
@@ -2152,9 +2172,9 @@ describe('a set', () => {
     const e = sitting()
     const ok = pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
     expect('id' in ok).toBe(true)
-    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.name, x.now, x.value])).toEqual([
-      ['Quad Curl', 'Quad Curl', 12],
-    ])
+    expect(answered(pvSetsBetween(DAY, '2026-10-13')).map((x) => [x.name, x.now, x.value])).toEqual(
+      [['Quad Curl', 'Quad Curl', 12]],
+    )
     const far = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
     const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
     expect([
@@ -2177,9 +2197,9 @@ describe('a set', () => {
   it('keeps its old name when the exercise goes, and does not join one re-made under that name', () => {
     pvSetAdd('p-1', 'ex-quad', 12, DAY)
     pvGiveCircuit('p-1', [{ id: 'ex-quad-2', name: 'Quad Curl' }])
-    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.exercise, x.name, x.now])).toEqual([
-      ['ex-quad', 'Quad Curl', null],
-    ])
+    expect(
+      answered(pvSetsBetween(DAY, '2026-10-13')).map((x) => [x.exercise, x.name, x.now]),
+    ).toEqual([['ex-quad', 'Quad Curl', null]])
   })
 
   it('moves to the new day with its sitting, in the same call — and not at all on a refusal', () => {
@@ -2194,12 +2214,12 @@ describe('a set', () => {
     expect(pvEditEntryDay(e, backTo(1), back(1), null, '2026-10-11')?.why).toBe(
       'that span ends before it starts',
     )
-    expect(pvSetsBetween('2026-10-01', '2026-10-20').map((x) => x.on)).toEqual([DAY])
+    expect(answered(pvSetsBetween('2026-10-01', '2026-10-20')).map((x) => x.on)).toEqual([DAY])
     /* and the real thing */
     expect(pvEditEntryDay(e, back(1), backTo(1), null, '2026-10-11')).toBeNull()
-    expect(pvSetsBetween('2026-10-01', '2026-10-20').map((x) => [x.on, x.value])).toEqual([
-      ['2026-10-11', 12],
-    ])
+    expect(answered(pvSetsBetween('2026-10-01', '2026-10-20')).map((x) => [x.on, x.value])).toEqual(
+      [['2026-10-11', 12]],
+    )
   })
 
   it('stays what it is when its sitting moves to another activity', () => {
@@ -2207,9 +2227,9 @@ describe('a set', () => {
     pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
     const weights = idOf(pvSaveActivity('Weights', 'free', null, undefined, 'reps'))
     expect(pvEditEntry(e, h(9), h(10), null, weights)).toBeNull()
-    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.exercise, x.entry, x.on])).toEqual([
-      ['ex-quad', e, DAY],
-    ])
+    expect(
+      answered(pvSetsBetween(DAY, '2026-10-13')).map((x) => [x.exercise, x.entry, x.on]),
+    ).toEqual([['ex-quad', e, DAY]])
   })
 
   it('goes with its sitting when the sitting is deleted', () => {
@@ -2217,7 +2237,7 @@ describe('a set', () => {
     pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
     pvSetAdd('p-1', 'ex-bench', 8, DAY)
     pvDropEntry(e)
-    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => x.exercise)).toEqual(['ex-bench'])
+    expect(answered(pvSetsBetween(DAY, '2026-10-13')).map((x) => x.exercise)).toEqual(['ex-bench'])
   })
 
   it('follows a running sitting whose start is fixed back past midnight', () => {
@@ -2229,7 +2249,9 @@ describe('a set', () => {
       pvSetAdd('p-1', 'ex-quad', 5, DAY, e)
       const before = new Date(Date.parse(h(1)) - 3 * 3_600_000).toISOString()
       expect(pvFixRunningDay(before, null, '2026-10-11')).toBeNull()
-      expect(pvSetsBetween('2026-10-11', '2026-10-13').map((x) => x.on)).toEqual(['2026-10-11'])
+      expect(answered(pvSetsBetween('2026-10-11', '2026-10-13')).map((x) => x.on)).toEqual([
+        '2026-10-11',
+      ])
     } finally {
       vi.useRealTimers()
     }
@@ -2242,9 +2264,9 @@ describe('a set', () => {
     pvEmpty()
     /* the sitting comes back with the file; the person does not exist in this account */
     expect(pvImport(file)).toMatchObject({ sets: 1 })
-    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.person, x.name, x.now])).toEqual([
-      [null, 'Quad Curl', null],
-    ])
+    expect(
+      answered(pvSetsBetween(DAY, '2026-10-13')).map((x) => [x.person, x.name, x.now]),
+    ).toEqual([[null, 'Quad Curl', null]])
   })
 })
 
@@ -2338,13 +2360,15 @@ describe('an exercise linked to an activity', () => {
     expect(amount(s)).toBe(9)
     /* ✕ and then a restore: the sitting is still here and no longer holds the 7 */
     pvImport(doc)
-    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => x.id)).not.toContain(a.id)
+    expect(answered(pvSetsBetween(DAY, '2026-10-13')).map((x) => x.id)).not.toContain(a.id)
     expect(amount(s)).toBe(9)
     /* with the sitting gone as well, both come back, and its count holds the set again */
     expect(pvDropEntry(s)).toBe(true)
     pvImport(doc)
     expect(amount(s)).toBe(16)
-    expect(pvSetsBetween(DAY, '2026-10-13').find((x) => x.id === a.id)?.counted).toBe(true)
+    expect(answered(pvSetsBetween(DAY, '2026-10-13')).find((x) => x.id === a.id)?.counted).toBe(
+      true,
+    )
   })
 
   it('takes counted sets back out of a sitting moved to another unit, and only then', () => {
@@ -2357,7 +2381,7 @@ describe('an exercise linked to an activity', () => {
     expect(amount(s)).toBe(20)
     expect(pvEditEntryDay(s, h(9), h(10), holds, DAY)).toBeNull()
     expect(amount(s)).toBe(8)
-    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => x.counted)).toEqual([false])
+    expect(answered(pvSetsBetween(DAY, '2026-10-13')).map((x) => x.counted)).toEqual([false])
   })
 
   it('counts the grid toward a goal by local day, and never a set with a sitting twice', () => {
@@ -2656,7 +2680,10 @@ describe('the stand-ins keep the server rules the audit found missing', () => {
     /* and the reads that are allowed still read */
     expect(pvEntries(dayStart(), dayEnd()).length).toBe(1)
     expect(pvPlans(dayStart(), dayEnd()).length).toBe(1)
-    expect(pvSetsBetween('2026-10-13', '2026-10-12')).toEqual([])
+    /* ⚠️ THE SETS READ IS THE EXCEPTION: cloud.ts answers its refusal with null — could not read —
+       because the sitting editor decides from it which call Save makes, and "no sets" is an answer
+       that decides it wrongly. An empty range is not a refusal, and is honestly none. */
+    expect(pvSetsBetween('2026-10-13', '2026-10-12')).toBeNull()
     expect(pvSetsBetween(DAY, DAY)).toEqual([])
   })
 })

@@ -101,6 +101,43 @@ export function markWindow(g: Goal, on: string): MarkAt | null {
 }
 
 /**
+ * What a tick or a − / + on a goal sends: one window's mark for a repeating goal (null leaves that
+ * value alone), or the row's two values for a goal that is not repeating.
+ */
+export type HandWrite =
+  | { at: MarkAt; progress: number | null; done: boolean | null }
+  | { at: null; progress: number; done: boolean }
+
+/**
+ * What − (`by` -1) or + (`by` 1) writes for a goal as it stands in the window for `on` — or null
+ * for nothing at all. `marksRead` is whether the room's latest marks read succeeded.
+ *
+ * ⚠️ NULL FOR A REPEATING GOAL WHOSE MARKS COULD NOT BE READ. Its count is this window's mark, so
+ * without the mark the room does not know it — and the count on screen is 0, which − and + would
+ * write back as 0 ± 1 over whatever the window really holds (the 27 Nov 2026 audit). A goal that
+ * does not repeat is moved on its row, which the marks read never held, so it does not wait.
+ */
+export function bumpTo(g: Goal, on: string, by: number, marksRead: boolean): HandWrite | null {
+  const at = markWindow(g, on)
+  if (at && !marksRead) return null
+  const progress = Math.max(0, g.progress + by)
+  return at ? { at, progress, done: null } : { at: null, progress, done: g.done }
+}
+
+/**
+ * What a tick writes for a goal as it stands in the window for `on` — or null, for the same
+ * reason as `bumpTo`: a tick sends the opposite of what the room holds, and the room does not
+ * hold anything for a window whose mark it could not read.
+ */
+export function tickTo(g: Goal, on: string, marksRead: boolean): HandWrite | null {
+  const at = markWindow(g, on)
+  if (at && !marksRead) return null
+  return at
+    ? { at, progress: null, done: !g.done }
+    : { at: null, progress: g.progress, done: !g.done }
+}
+
+/**
  * Whether a repeating goal's window for `on` has begun yet — false means a tick there would be a
  * claim about a day nobody has had, which the writer refuses. One-offs are always open: finishing
  * tomorrow's errand today is finishing it.
