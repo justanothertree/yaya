@@ -28,6 +28,11 @@ import { seeded } from '../gpu/stack'
 /* ── g1 imports ── */
 /* ── g2 imports ── */
 /* ── g3 imports ── */
+import { SIZES as PIPES_SIZES } from '../gpu/pipes'
+import { SIZES as CAGES_SIZES } from '../gpu/cages'
+import { SIZES as BRIDGES_SIZES } from '../gpu/bridges'
+import { SIZES as TENTS_SIZES } from '../gpu/tents'
+import { clock as boardClock } from '../gpu/daily'
 /* ── g4 imports ── */
 
 /* ---------------------------------------------------------------------------- seeds */
@@ -175,6 +180,60 @@ export const ARMS = {
   /* ── g1 arms ── */
   /* ── g2 arms ── */
   /* ── g3 arms ── */
+  /* Pipes, Cages, Island bridges and Tents: a board made from its seed and its size (and for Pipes
+     whether the edges wrap), solved against the clock. The time is the toy's own, every hint's 30 s
+     included, and "an" goes before a size whose word starts with a vowel: an 8×8, an 11×11. */
+  pipes: arm({
+    name: 'Pipes',
+    noun: 'board',
+    same: 'Same board',
+    goal: 'faster wins, then fewer turns',
+    fields: {
+      seed: SEED,
+      size: oneOf('size', PIPES_SIZES),
+      wrap: flag('wrap'),
+      secs: whole('secs', 1, 86_400),
+      turns: whole('turns', 1, 99_999),
+    },
+    board: ['seed', 'size', 'wrap'],
+    // the order the toy's own keepBest ranks a day's finishes in: the time, then the turns
+    rank: (b) => [b.secs, b.turns],
+    says: (b) =>
+      `${boardClock(b.secs)} and ${b.turns} turn${b.turns === 1 ? '' : 's'} on ${[8, 11, 18].includes(b.size) ? 'an' : 'a'} ${b.size}×${b.size}${b.wrap ? ' wrapping' : ''} board`,
+  }),
+  cages: arm({
+    name: 'Cages',
+    noun: 'board',
+    same: 'Same board',
+    goal: 'faster wins; hints add time',
+    fields: { seed: SEED, size: oneOf('size', CAGES_SIZES), secs: whole('secs', 1, 86_400) },
+    board: ['seed', 'size'],
+    rank: (b) => [b.secs],
+    says: (b) =>
+      `${boardClock(b.secs)} on ${[8, 11, 18].includes(b.size) ? 'an' : 'a'} ${b.size}×${b.size} board`,
+  }),
+  bridges: arm({
+    name: 'Island bridges',
+    noun: 'map',
+    same: 'Same map',
+    goal: 'faster wins; hints add time',
+    fields: { seed: SEED, size: oneOf('size', BRIDGES_SIZES), secs: whole('secs', 1, 86_400) },
+    board: ['seed', 'size'],
+    rank: (b) => [b.secs],
+    says: (b) =>
+      `${boardClock(b.secs)} on ${[8, 11, 18].includes(b.size) ? 'an' : 'a'} ${b.size}×${b.size} map`,
+  }),
+  tents: arm({
+    name: 'Tents',
+    noun: 'field',
+    same: 'Same field',
+    goal: 'faster wins; hints add time',
+    fields: { seed: SEED, size: oneOf('size', TENTS_SIZES), secs: whole('secs', 1, 86_400) },
+    board: ['seed', 'size'],
+    rank: (b) => [b.secs],
+    says: (b) =>
+      `${boardClock(b.secs)} on ${[8, 11, 18].includes(b.size) ? 'an' : 'a'} ${b.size}×${b.size} field`,
+  }),
   /* ── g4 arms ── */
 }
 

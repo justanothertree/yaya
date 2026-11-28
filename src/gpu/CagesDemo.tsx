@@ -17,6 +17,9 @@ import {
 } from './cages'
 import { clock, dayNumber } from './daily'
 import { useKept } from './kept'
+import { BeatBanner, BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { newSeed, outcome, verdict, type Beat } from '../lab/beat'
 
 const LOOK_NAMES: Record<Saved['look'], string> = { paper: 'Paper', slate: 'Slate', sun: 'Sunny' }
 const OP_WORDS: Record<string, string> = {
@@ -30,10 +33,16 @@ const OP_WORDS: Record<string, string> = {
 const PENALTY = 30
 const seedFor = (size: number) => (daySeed(new Date()) ^ (size * 7919)) >>> 0
 const blank = (n: number) => new Array<number>(n * n).fill(0)
+/** the line before a move; a new board puts it back, so a finished board's verdict never outlives it */
+const INTRO = 'Fill each row and column with every number once, so each cage makes its target.'
+type Result = Extract<Beat, { game: 'cages' }>
 
 export function CagesDemo() {
   const [saved, setSaved] = useKept(CAGES_KEY, readSaved)
-  const [seed, setSeed] = useState(() => seedFor(saved.size))
+  /** a friend's board to beat, from the address (src/lab/beat.ts) */
+  const [challenge, leaveChallenge] = useChallenge('cages')
+  const [seed, setSeed] = useState(() => challenge?.seed ?? seedFor(saved.size))
+  /** today's board, and so the one board a link can count on: a link to it is today's here too */
   const daily = seed === seedFor(saved.size)
   const p: Puzzle = useMemo(() => make(saved.size, seed), [saved.size, seed])
   const n = p.n
@@ -59,11 +68,13 @@ export function CagesDemo() {
   const [ended, setEnded] = useState<number | null>(null)
   const [extra, setExtra] = useState(0)
   const [now, setNow] = useState(() => Date.now())
-  const [line, setLine] = useState(
-    'Fill each row and column with every number once, so each cage makes its target.',
-  )
+  const [line, setLine] = useState(INTRO)
+  /** the finished board, as a link would carry it */
+  const [result, setResult] = useState<Result | null>(null)
+  /** bumped to start the same puzzle over: a new link on the board already up, or Leave */
+  const [round, setRound] = useState(0)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  // a fresh grid whenever the puzzle changes
+  // a fresh grid whenever the puzzle changes, or starts over
   useEffect(() => {
     setPlay({ p, grid: blank(p.n), notes: blank(p.n) })
     setHistory([])
@@ -71,7 +82,27 @@ export function CagesDemo() {
     setStarted(null)
     setEnded(null)
     setExtra(0)
-  }, [p])
+    setResult(null)
+    setLine(INTRO)
+  }, [p, round])
+  /* A link's board, its size written exactly as the size buttons write it — so `daily` below is
+     the toy's own question, and a best kept from it is filed under the board's own size. */
+  useEffect(() => {
+    if (!challenge) return
+    setSaved((x) => ({ ...x, size: challenge.size }))
+    setSeed(challenge.seed)
+    setRound((r) => r + 1)
+  }, [challenge, setSaved])
+  /** any control that changes the board leaves the link first, so the address never names one
+   *  board while another is up */
+  const off = () => {
+    if (challenge) leaveChallenge()
+  }
+  const leave = () => {
+    leaveChallenge()
+    setSeed(seedFor(saved.size))
+    setRound((r) => r + 1)
+  }
   useEffect(() => {
     if (started === null || ended !== null) return
     const t = window.setInterval(() => setNow(Date.now()), 500)
@@ -91,15 +122,21 @@ export function CagesDemo() {
     setEnded(end)
     setNow(end)
     const total = Math.max(1, Math.floor((end - start) / 1000) + extra + added)
-    setSaved((s) => ({
-      ...s,
-      solvedCount: s.solvedCount + 1,
-      bests: daily
-        ? keepBest(s.bests, { day: today, size: s.size, seconds: total }, today)
-        : s.bests,
-    }))
+    const mine: Result = { game: 'cages', seed, size: saved.size, secs: total }
+    setResult(mine)
+    /* ⚠️ A LINK'S BOARD IS PRACTICE, unless it is today's board here: then it counts exactly as
+       the Today's button's would, and the banner said so */
+    const onLink = challenge !== null && outcome(mine, challenge) !== null
+    if (!onLink || daily)
+      setSaved((s) => ({
+        ...s,
+        solvedCount: s.solvedCount + 1,
+        bests: daily
+          ? keepBest(s.bests, { day: today, size: s.size, seconds: total }, today)
+          : s.bests,
+      }))
     setLine(
-      `🏆 Solved in ${clock(total)}${daily && (!best || total < best.seconds) ? ' — your best on today’s board!' : '.'}`,
+      `🏆 Solved in ${clock(total)}${daily && (!best || total < best.seconds) ? ' — your best on today’s board!' : '.'}${challenge ? verdict(mine, challenge) : ''}`,
     )
   }
 
@@ -207,6 +244,7 @@ export function CagesDemo() {
 
   return (
     <div className={`lab-keys ck-room is-${saved.look}`}>
+      {challenge && <BeatBanner beat={challenge} today={daily} onLeave={leave} />}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Size">
           {SIZES.map((s) => (
@@ -215,6 +253,7 @@ export function CagesDemo() {
               className="btn btn-ghost"
               aria-pressed={saved.size === s}
               onClick={() => {
+                off()
                 setSaved((x) => ({ ...x, size: s as Size }))
                 setSeed(seedFor(s))
               }}
@@ -227,13 +266,19 @@ export function CagesDemo() {
           <button
             className="btn btn-ghost"
             aria-pressed={daily}
-            onClick={() => setSeed(seedFor(saved.size))}
+            onClick={() => {
+              off()
+              setSeed(seedFor(saved.size))
+            }}
           >
             Today’s
           </button>
           <button
             className="btn btn-ghost"
-            onClick={() => setSeed((Math.random() * 2 ** 31) >>> 0)}
+            onClick={() => {
+              off()
+              setSeed(newSeed())
+            }}
           >
             ⟳ New board
           </button>
@@ -258,6 +303,7 @@ export function CagesDemo() {
       <p className="mc-line" aria-live="polite">
         {line}
       </p>
+      {done && result && <BeatShare beat={result} answering={challenge} />}
 
       <div
         className={`ck-grid${done ? ' is-done' : ''}`}

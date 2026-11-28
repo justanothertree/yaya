@@ -32,6 +32,10 @@ import registry from '../sections/labDemos.tsx?raw'
 /* ── g1 imports ── */
 /* ── g2 imports ── */
 /* ── g3 imports ── */
+import { SIZES as PIPES_SIZES, keepBest as pipesKeep } from '../gpu/pipes'
+import { SIZES as CAGES_SIZES, keepBest as cagesKeep } from '../gpu/cages'
+import { SIZES as BRIDGES_SIZES, keepBest as bridgesKeep } from '../gpu/bridges'
+import { SIZES as TENTS_SIZES, keepBest as tentsKeep } from '../gpu/tents'
 /* ── g4 imports ── */
 
 /**
@@ -46,6 +50,10 @@ const FIXTURE: { [G in Game]: Extract<Beat, { game: G }> } = {
   /* ── g1 fixtures ── */
   /* ── g2 fixtures ── */
   /* ── g3 fixtures ── */
+  pipes: { game: 'pipes', seed: daySeedOf(2026, 11, 27), size: 9, wrap: true, secs: 95, turns: 61 },
+  cages: { game: 'cages', seed: 3_000_000_001, size: 6, secs: 140 },
+  bridges: { game: 'bridges', seed: 3_000_000_001, size: 11, secs: 140 },
+  tents: { game: 'tents', seed: 3_000_000_001, size: 10, secs: 140 },
   /* ── g4 fixtures ── */
 }
 const ROWS: Beat[] = Object.values(FIXTURE)
@@ -450,4 +458,174 @@ describe('the dice deal', () => {
 /* ── g1 cases ── */
 /* ── g2 cases ── */
 /* ── g3 cases ── */
+describe('g3: Pipes, Cages, Island bridges and Tents', () => {
+  const G3 = ['pipes', 'cages', 'bridges', 'tents'] as const
+  /** every size each toy offers, from the toy's own module */
+  const SIZED: Record<(typeof G3)[number], readonly number[]> = {
+    pipes: PIPES_SIZES,
+    cages: CAGES_SIZES,
+    bridges: BRIDGES_SIZES,
+    tents: TENTS_SIZES,
+  }
+  const DAY = 24 * 60 * 60
+  /** the fixture's link with one parameter set to `v`, read back */
+  const withParam = (b: Beat, key: string, v: string) => {
+    const q = paramsOf(beatHash(b))
+    q.set(key, v)
+    return readBeat(`#lab?${q}`)
+  }
+  for (const game of G3) {
+    const b = FIXTURE[game]
+    it(`${game}: opens on every size the toy has, and on no other`, () => {
+      const sizes = SIZED[game]
+      for (const n of sizes)
+        expect(withParam(b, 'size', String(n)), String(n)).toEqual({ ...b, size: n })
+      let refused = 0
+      for (let n = Math.min(...sizes) - 1; n <= Math.max(...sizes) + 1; n++)
+        if (!sizes.includes(n)) {
+          expect(withParam(b, 'size', String(n)), String(n)).toBeNull()
+          refused++
+        }
+      // below the smallest, above the largest, and every gap between
+      expect(refused).toBe(Math.max(...sizes) - Math.min(...sizes) + 3 - sizes.length)
+      expect(withParam(b, 'size', `0${sizes[0]}`)).toBeNull()
+    })
+    it(`${game}: a time from one second to a day, hints included`, () => {
+      expect(withParam(b, 'secs', '0')).toBeNull()
+      expect(withParam(b, 'secs', '1')).toEqual({ ...b, secs: 1 })
+      expect(withParam(b, 'secs', String(DAY))).toEqual({ ...b, secs: DAY })
+      expect(withParam(b, 'secs', String(DAY + 1))).toBeNull()
+      expect(withParam(b, 'secs', '1.5')).toBeNull()
+    })
+    it(`${game}: faster beats it, the same time is level, slower is not this time`, () => {
+      expect(outcome({ ...b, secs: b.secs - 1 }, b)).toBe('beat')
+      expect(outcome({ ...b }, b)).toBe('level')
+      expect(outcome({ ...b, secs: b.secs + 1 }, b)).toBe('short')
+    })
+    it(`${game}: another seed or another size is another board, and no comparison`, () => {
+      const size = SIZED[game].find((n) => n !== b.size)
+      expect(outcome({ ...b, size, secs: 1 } as Beat, b)).toBeNull()
+      expect(outcome({ ...b, seed: b.seed + 1, secs: 1 }, b)).toBeNull()
+    })
+    it(`${game}: says the size with the article English gives it, at every size`, () => {
+      /* the world's rule, not the code's: "an" before a number whose word starts with a vowel */
+      const WORD: Record<number, string> = {
+        4: 'four',
+        5: 'five',
+        6: 'six',
+        7: 'seven',
+        8: 'eight',
+        9: 'nine',
+        10: 'ten',
+        11: 'eleven',
+      }
+      for (const n of SIZED[game]) {
+        const text = beatMessage({ ...b, size: n } as Beat, 'L')
+        const an = /^[aeiou]/.test(WORD[n])
+        expect(text, String(n)).toContain(` on ${an ? 'an' : 'a'} ${n}×${n} `)
+      }
+    })
+  }
+  it('a faster finish is a better one exactly when the toy’s own record would keep it', () => {
+    /* asked of each toy's keepBest, which decides "better" for its own records and shares no
+       arithmetic with the arms: the time, and for Pipes the turns on a tie */
+    let checked = 0
+    for (let secs = 1; secs <= 4; secs++)
+      for (let turns = 1; turns <= 4; turns++) {
+        /** whether the toy's own record keeps `mine` over `kept`, a finish already there */
+        const keeps = <T>(keep: (bests: T[], b: T, today: number) => T[], kept: T, mine: T) =>
+          keep([kept], mine, 9).includes(mine)
+        const pipes = FIXTURE.pipes
+        const day = { day: 9, size: pipes.size, wrap: pipes.wrap }
+        expect(
+          outcome({ ...pipes, secs, turns }, { ...pipes, secs: 2, turns: 2 }) === 'beat',
+          `${secs}s ${turns}`,
+        ).toBe(keeps(pipesKeep, { ...day, seconds: 2, turns: 2 }, { ...day, seconds: secs, turns }))
+        for (const [game, keep] of [
+          ['cages', cagesKeep],
+          ['bridges', bridgesKeep],
+          ['tents', tentsKeep],
+        ] as const) {
+          const b = FIXTURE[game]
+          const at = { day: 9, size: b.size }
+          expect(outcome({ ...b, secs }, { ...b, secs: 2 }) === 'beat', `${game} ${secs}s`).toBe(
+            keeps(keep, { ...at, seconds: 2 }, { ...at, seconds: secs }),
+          )
+        }
+        checked++
+      }
+    expect(checked).toBe(16)
+  })
+  it('pipes: a tie on time goes to fewer turns, and a faster time wins whatever the turns', () => {
+    const b = FIXTURE.pipes
+    expect(outcome({ ...b, turns: b.turns - 1 }, b)).toBe('beat')
+    expect(outcome({ ...b, turns: b.turns + 1 }, b)).toBe('short')
+    expect(outcome({ ...b, secs: b.secs - 1, turns: b.turns + 500 }, b)).toBe('beat')
+    expect(outcome({ ...b, secs: b.secs + 1, turns: 1 }, b)).toBe('short')
+    expect(outcome({ ...b, wrap: false }, b)).toBeNull()
+  })
+  it('pipes: turns from 1 to 99,999, and wrapping as 1 or 0', () => {
+    const b = FIXTURE.pipes
+    expect(withParam(b, 'turns', '0')).toBeNull()
+    expect(withParam(b, 'turns', '1')).toEqual({ ...b, turns: 1 })
+    expect(withParam(b, 'turns', '99999')).toEqual({ ...b, turns: 99_999 })
+    expect(withParam(b, 'turns', '100000')).toBeNull()
+    expect(withParam(b, 'wrap', '0')).toEqual({ ...b, wrap: false })
+    expect(withParam(b, 'wrap', 'true')).toBeNull()
+    expect(beatMessage({ ...b, turns: 1 }, 'L')).toContain(' and 1 turn on ')
+  })
+  it('the banners, the invitations and the replies, verbatim', () => {
+    expect(bannerText(FIXTURE.pipes)).toEqual({
+      lead: 'A board to beat:',
+      body: 'this link says 1:35 and 61 turns on a 9×9 wrapping board. Same board — faster wins, then fewer turns.',
+    })
+    expect(beatMessage(FIXTURE.pipes, 'L')).toBe(
+      '🏁 Beat my board at Pipes: 1:35 and 61 turns on a 9×9 wrapping board. Same board:\nL',
+    )
+    expect(beatMessage({ ...FIXTURE.pipes, secs: 95, turns: 58 }, 'L', FIXTURE.pipes)).toBe(
+      '🏆 I beat the link at Pipes: 1:35 and 58 turns on a 9×9 wrapping board — it said 1:35 and 61 turns on a 9×9 wrapping board. Same board, your go:\nL',
+    )
+    expect(bannerText(FIXTURE.cages, true)).toEqual({
+      lead: 'A board to beat:',
+      body: 'this link says 2:20 on a 6×6 board. Same board — faster wins; hints add time. It is today’s board here, so it counts as your today’s.',
+    })
+    expect(beatMessage(FIXTURE.cages, 'L')).toBe(
+      '🏁 Beat my board at Cages: 2:20 on a 6×6 board. Same board:\nL',
+    )
+    expect(beatMessage({ ...FIXTURE.cages, secs: 200 }, 'L', FIXTURE.cages)).toBe(
+      '🏁 My go at Cages: 3:20 on a 6×6 board — the link I was sent said 2:20 on a 6×6 board. Same board, your go:\nL',
+    )
+    expect(bannerText(FIXTURE.bridges)).toEqual({
+      lead: 'A map to beat:',
+      body: 'this link says 2:20 on an 11×11 map. Same map — faster wins; hints add time.',
+    })
+    expect(beatMessage(FIXTURE.bridges, 'L')).toBe(
+      '🏁 Beat my map at Island bridges: 2:20 on an 11×11 map. Same map:\nL',
+    )
+    expect(beatMessage({ ...FIXTURE.bridges, secs: 75 }, 'L', FIXTURE.bridges)).toBe(
+      '🏆 I beat the link at Island bridges: 1:15 on an 11×11 map — it said 2:20 on an 11×11 map. Same map, your go:\nL',
+    )
+    expect(bannerText(FIXTURE.tents)).toEqual({
+      lead: 'A field to beat:',
+      body: 'this link says 2:20 on a 10×10 field. Same field — faster wins; hints add time.',
+    })
+    expect(beatMessage(FIXTURE.tents, 'L')).toBe(
+      '🏁 Beat my field at Tents: 2:20 on a 10×10 field. Same field:\nL',
+    )
+    expect(beatMessage(FIXTURE.tents, 'L', FIXTURE.tents)).toBe(
+      '🏁 My go at Tents: 2:20 on a 10×10 field — the link I was sent said 2:20 on a 10×10 field. Same field, your go:\nL',
+    )
+  })
+  it('the result line says how a finish stood, and a time past a day is not offered', () => {
+    expect(verdict({ ...FIXTURE.tents, secs: 100 }, FIXTURE.tents)).toBe(
+      ' You beat the link’s 2:20 on a 10×10 field!',
+    )
+    expect(verdict({ ...FIXTURE.tents, size: 6 }, FIXTURE.tents)).toBe('')
+    for (const game of G3) {
+      expect(shareable({ ...FIXTURE[game], secs: DAY }), game).toBe(true)
+      expect(shareable({ ...FIXTURE[game], secs: DAY + 1 }), game).toBe(false)
+    }
+    expect(shareable({ ...FIXTURE.pipes, turns: 100_000 })).toBe(false)
+  })
+})
 /* ── g4 cases ── */
