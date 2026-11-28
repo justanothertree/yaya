@@ -1,10 +1,12 @@
 // Full-richness movie rating sheet: score + vibes + sentiment + rewatch + recommend
 // + tip-of-the-cap + tags + hot-take, for one person on one movie. Writes via the store.
-import { useMemo, useState } from 'react'
-import { circuitStore } from '../store'
+import { useEffect, useMemo, useState } from 'react'
+import { circuitStore, useCircuit } from '../store'
 import { ratingId } from '../types'
 import type { Movie, MovieReview } from '../types'
 import { Modal } from './Modal'
+import { BoardLoad } from './BoardLoad'
+import { mayRateSave, mustReseed, type RateSeed } from '../rateSheet'
 import { AddPicture } from '../../pictures/AddPicture'
 import { useSeenPicture } from '../../pictures/seen'
 import { useBigPicture } from '../../pictures/useBigPicture'
@@ -62,19 +64,49 @@ function Chip({
   )
 }
 
-export function MovieRate({
-  movie,
-  personId,
-  personName,
-  color,
-  onClose,
-}: {
+type RateProps = {
   movie: Movie
   personId: string
   personName: string
   color: string
   onClose: () => void
-}) {
+}
+
+/**
+ * The rating sheet.
+ *
+ * ⚠️ SAVE WAITS FOR A BOARD THAT LOADED — AND FOR A FORM FILLED FROM ONE. The form fills its
+ * fields once, from the rating the board holds, and Save writes all of them back (or deletes the
+ * rating when they look empty). Opened on ratings that did not load, it erased a review and
+ * Save-with-no-change deleted the rating (the 27 Nov 2026 audit). Holding Save while the board
+ * stayed unloaded was half of it: a Retry inside the sheet loaded the board and switched Save back
+ * on over the blank form (found in review, 28 Nov 2026). So a form filled from an unloaded board is
+ * filled again — remounted from the live rating — the moment the board loads, and Save opens only
+ * then. One filled from a loaded board is never refilled. The rules are in rateSheet.ts; the
+ * adapter refuses the write too, and this is the half people can see.
+ */
+export function MovieRate(props: RateProps) {
+  const unloaded = !!useCircuit().loadFailed?.length
+  /* the live rating, not the snapshot the opener held — that is what a refill fills from */
+  const live = useMoviesWithRatings().find((m) => m.id === props.movie.id) ?? props.movie
+  const [seed, setSeed] = useState<RateSeed & { gen: number }>(() => ({
+    gen: 0,
+    fromLoadedBoard: !unloaded,
+  }))
+  useEffect(() => {
+    if (mustReseed(seed, unloaded)) setSeed((s) => ({ gen: s.gen + 1, fromLoadedBoard: true }))
+  }, [seed, unloaded])
+  return <RateForm key={seed.gen} {...props} movie={live} canSave={mayRateSave(seed, unloaded)} />
+}
+
+function RateForm({
+  movie,
+  personId,
+  personName,
+  color,
+  onClose,
+  canSave,
+}: RateProps & { canSave: boolean }) {
   const existing = movie.ratings[personId]
   const isMovie = (movie.kind ?? 'movie') === 'movie'
   const rv = existing?.review ?? {}
@@ -126,6 +158,7 @@ export function MovieRate({
     })
 
   const save = () => {
+    if (!canSave) return
     const review: MovieReview = { sentiment, rewatch, rec, tips, tags, note: note.trim() }
     const reviewEmpty =
       sentiment == null &&
@@ -187,6 +220,7 @@ export function MovieRate({
           <button
             className="btn"
             onClick={save}
+            disabled={!canSave}
             style={{
               background: 'var(--accent, #7c6af7)',
               color: 'var(--btn-text)',
@@ -198,6 +232,8 @@ export function MovieRate({
         </>
       }
     >
+      {/* why Save is off, said where Save is — the room's own notice is behind this sheet */}
+      <BoardLoad what="the ratings" />
       {/* score */}
       <div style={sectionLabel}>Score</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>

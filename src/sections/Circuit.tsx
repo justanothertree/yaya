@@ -10,6 +10,7 @@ import { Log } from '../circuit/ui/Log'
 import { Feed } from '../circuit/ui/Feed'
 import { Charts } from '../circuit/ui/Charts'
 import { Toast } from '../circuit/ui/Toast'
+import { BoardLoad } from '../circuit/ui/BoardLoad'
 import type { CanvasPane } from '../circuit/ui/CircuitCanvas'
 import { CircuitsPanel } from '../circuit/ui/CircuitsPanel'
 import { Chat } from '../circuit/ui/Chat'
@@ -331,29 +332,41 @@ export function Circuit({
           (t) => dailyTabs.includes(t.id) || t.id === tab || visitedExtra.includes(t.id),
         )
 
+  /* ⚠️ each board pane carries its own BoardLoad: on the canvas they are separate windows and this
+     section draws nothing, so a notice up here would be in none of them */
   const canvasPanes: CanvasPane[] = [
     {
       id: 'board',
       title: '🏆 Board',
       node: (
-        <Board
-          onLogToday={requestLogToday}
-          onLogDate={requestLog}
-          viewGroup={activeGroup}
-          demo={!authed}
-        />
+        <BoardLoad>
+          <Board
+            onLogToday={requestLogToday}
+            onLogDate={requestLog}
+            viewGroup={activeGroup}
+            demo={!authed}
+          />
+        </BoardLoad>
       ),
     },
-    { id: 'log', title: '✏️ Log', node: logNode },
+    { id: 'log', title: '✏️ Log', node: <BoardLoad>{logNode}</BoardLoad> },
     {
       id: 'feed',
       title: '📋 Feed',
-      node: <Feed onOpenLog={requestLog} authed={authed} viewGroup={activeGroup} />,
+      node: (
+        <BoardLoad>
+          <Feed onOpenLog={requestLog} authed={authed} viewGroup={activeGroup} />
+        </BoardLoad>
+      ),
     },
     {
       id: 'charts',
       title: '📊 Charts',
-      node: <Charts onDayClick={requestLog} viewGroup={activeGroup} />,
+      node: (
+        <BoardLoad>
+          <Charts onDayClick={requestLog} viewGroup={activeGroup} />
+        </BoardLoad>
+      ),
     },
     ...(authed ? [{ id: 'chat', title: '💬 Chat', node: <Chat authed voiceIn={voiceIn} /> }] : []),
   ]
@@ -550,16 +563,28 @@ export function Circuit({
             )}
 
           <div className="cz-pane" key={tab}>
-            {tab === 'board' && (
-              <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={activeGroup} />
+            {/* the chat and the circuits list are not the board: each loads its own, and neither
+                waits for it */}
+            {tab === 'chat' ? (
+              <Chat authed={authed} voiceIn={voiceIn} />
+            ) : tab === 'circuits' ? (
+              <CircuitsPanel />
+            ) : (
+              <BoardLoad>
+                {tab === 'board' && (
+                  <Board
+                    onLogToday={requestLogToday}
+                    onLogDate={requestLog}
+                    viewGroup={activeGroup}
+                  />
+                )}
+                {tab === 'log' && logNode}
+                {tab === 'feed' && (
+                  <Feed onOpenLog={requestLog} authed={authed} viewGroup={activeGroup} />
+                )}
+                {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={activeGroup} />}
+              </BoardLoad>
             )}
-            {tab === 'log' && logNode}
-            {tab === 'feed' && (
-              <Feed onOpenLog={requestLog} authed={authed} viewGroup={activeGroup} />
-            )}
-            {tab === 'charts' && <Charts onDayClick={requestLog} viewGroup={activeGroup} />}
-            {tab === 'chat' && <Chat authed={authed} voiceIn={voiceIn} />}
-            {tab === 'circuits' && <CircuitsPanel />}
           </div>
         </section>
       )}

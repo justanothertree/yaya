@@ -246,6 +246,12 @@ export interface CircuitState {
    * a wrong one.
    */
   groupsLoaded?: boolean
+  /**
+   * The reads the last load could not get, when it could not get them all — and then the board
+   * around this is the one from BEFORE that load, never a blank made of the failure. See
+   * boardLoad.ts. Absent on every board that loaded whole, and so on every board ever cached.
+   */
+  loadFailed?: string[]
   /** Pools you own or are in. Optional so older cached boards deserialise unchanged. */
   pools?: Pool[]
   votes?: PoolVote[]
