@@ -101,3 +101,29 @@ export function moveNote(sets: readonly ChronSet[], entry: string): string | nul
  * looking at your column must see a set on the day YOU did it.
  */
 export const dayOfStart = (startISO: string): string => localISO(new Date(startISO))
+
+/**
+ * What the sitting editor knows of one sitting's sets: the answer, or that it does not have one —
+ * still asking, or the read failed.
+ *
+ * ⚠️ THREE THINGS, NOT AN EMPTY LIST FOR TWO OF THEM. "No sets" is an answer that decides which
+ * call Save makes; a list that is empty because nothing has come back yet, or because the read
+ * failed, is not one — and treating it as one is how a sitting moved across midnight left its sets
+ * on the old day (the 27 Nov 2026 audit).
+ */
+export type SetsRead = ChronSet[] | 'asking' | 'failed'
+
+/** The sets the editor holds for one sitting, from a read of the day it starts on — null failed. */
+export const setsOf = (got: ChronSet[] | null, entry: string): SetsRead =>
+  got === null ? 'failed' : got.filter((x) => x.entry === entry)
+
+/**
+ * Which call a sitting editor's Save makes: the day editor for a sitting that has sets, which moves
+ * them with its start (§15c), the plain one for a sitting that has none — and null, no call at all,
+ * while the editor does not know which it is.
+ */
+export const savePath = (sets: SetsRead): 'day' | 'plain' | null =>
+  !Array.isArray(sets) ? null : sets.length ? 'day' : 'plain'
+
+/** The sets to draw: what was read, and nothing while there is no answer to draw. */
+export const setsShown = (sets: SetsRead): ChronSet[] => (Array.isArray(sets) ? sets : [])

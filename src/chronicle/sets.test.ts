@@ -1,5 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { dayOfStart, moveNote, perExercise, setName, type ChronSet } from './sets'
+import {
+  dayOfStart,
+  moveNote,
+  perExercise,
+  savePath,
+  setName,
+  setsOf,
+  setsShown,
+  type ChronSet,
+} from './sets'
 
 /* ⚠️ PINNED, because one of these is a LOCAL day that is not the UTC one */
 beforeAll(() => {
@@ -91,5 +100,26 @@ describe('the day a moved start sends with its sets', () => {
   it('is the local day of the new start, not the UTC one', () => {
     /* 11:30pm on 7 Nov in California is already the 8th in UTC */
     expect(dayOfStart('2026-11-08T07:30:00.000Z')).toBe('2026-11-07')
+  })
+})
+
+describe('what Save makes of a sitting whose sets are not known', () => {
+  it('makes no call while the read is still out, the same as when it failed', () => {
+    expect([savePath('asking'), savePath('failed')]).toEqual([null, null])
+  })
+
+  it('draws no sets, rather than a stale list, while there is no answer', () => {
+    expect([setsShown('asking'), setsShown('failed'), setsShown([set()])]).toEqual([
+      [],
+      [],
+      [set()],
+    ])
+  })
+
+  it("keeps only this sitting's sets from the day's read, and keeps a failure a failure", () => {
+    expect([setsOf([set(), set({ id: 's2', entry: 'e2' })], 'e1'), setsOf(null, 'e1')]).toEqual([
+      [set()],
+      'failed',
+    ])
   })
 })

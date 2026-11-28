@@ -1201,10 +1201,11 @@ export const pvSetMark = (
 }
 
 /** `chronicle_goal_marks_for`: the marks asked about, at each goal's current scope, and legacy. */
-export const pvMarksFor = (asks: ReadonlyArray<{ id: string; from: string }>): Marked => {
+export const pvMarksFor = (asks: ReadonlyArray<{ id: string; from: string }>): Marked | null => {
   const out: Marked = { marks: {}, legacy: {} }
-  /* the server raises past 1200, and the client turns any refusal into no marks at all */
-  if (asks.length > 1200) return out
+  /* the server raises past 1200 ('too many windows in one ask'), and the client turns any refusal
+     into null — could not read, never "no marks", because the room writes from this answer */
+  if (asks.length > 1200) return null
   for (const a of asks) {
     const g = db().goals.find((x) => x.id === a.id)
     if (!g) continue
@@ -1716,10 +1717,11 @@ export const pvGiveCircuitLog = (
 }
 
 /** `chronicle_sets_between`: yours, half-open, with today's name looked up BY ID */
-export const pvSetsBetween = (from: string, to: string): ChronSet[] =>
-  /* chronicle_sets_between's own two refusals, on DATES: to before from, or over 400 days */
+export const pvSetsBetween = (from: string, to: string): ChronSet[] | null =>
+  /* chronicle_sets_between's own two refusals, on DATES: to before from, or over 400 days — as
+     the null cloud.ts turns a refusal into, never the empty list, which would be "no sets" */
   !(to >= from) || Date.parse(to) - Date.parse(from) > RANGE_MS
-    ? []
+    ? null
     : db()
         .sets.filter((x) => x.on >= from && x.on < to)
         .sort(

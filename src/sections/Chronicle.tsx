@@ -45,10 +45,12 @@ import {
 } from '../chronicle/cloud'
 import {
   asOf,
+  bumpTo,
   markAsks,
   markOpen,
-  markWindow,
   NO_MARKS,
+  tickTo,
+  type HandWrite,
   type Marked,
   type MarkAt,
 } from '../chronicle/marks'
@@ -68,6 +70,7 @@ import { useWide } from '../chronicle/useWide'
 import { Modal } from '../circuit/ui/Modal'
 import { Toast } from '../circuit/ui/Toast'
 import { showToast } from '../circuit/toast'
+import { CouldNotLoad } from '../ui/CouldNotLoad'
 
 /**
  * Chronicle — what you are aiming at, at every cadence.
@@ -353,6 +356,15 @@ export function Chronicle({
    */
   const [marked, setMarked] = useState<Marked>(NO_MARKS)
   /**
+   * Whether the latest marks read answered.
+   *
+   * ⚠️ A FAILED READ IS NOT "NO MARKS". `marked` keeps what the room last knew, and while this is
+   * false a repeating goal's tick, − and + send nothing — see `bumpTo` — because the window's real
+   * count is not on screen and 0 ± 1 would be written over it.
+   */
+  const [marksRead, setMarksRead] = useState(true)
+  const [retrying, setRetrying] = useState(false)
+  /**
    * The run of windows behind each repeating goal.
    *
    * ⚠️ ITS OWN FETCH, SEPARATE FROM THE TALLY, because the two are asked about different things:
@@ -522,7 +534,8 @@ export function Chronicle({
      */
     const mk = await marksFor(markAsks(mine, [todayISO(), tomorrowISO()]))
     setGoals(mine)
-    setMarked(mk)
+    if (mk) setMarked(mk)
+    setMarksRead(mk !== null)
     setActs(a)
     /**
      * ⚠️ EVERY DERIVED GOAL, NOT JUST THE ONES ON SCREEN. Asking per view would mean the counts on
@@ -578,6 +591,16 @@ export function Chronicle({
   useEffect(() => {
     void load()
   }, [load])
+
+  /* Retry on a marks read that failed: the same load every write ends in */
+  const retryMarks = async () => {
+    setRetrying(true)
+    try {
+      await load()
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   /* leaving the tab is when finished work from a closed window rolls off — see `kept` */
   useEffect(() => {
@@ -707,14 +730,20 @@ export function Chronicle({
     }))
   }
 
+  /* a repeating goal's window through its mark, anything else through the row — see HandWrite */
+  const send = async (g: Goal, w: HandWrite) => {
+    if (w.at !== null) await mark(g, w.at, w.progress, w.done)
+    else await setProgress(g.id, w.progress, w.done)
+  }
+
   const bump = async (g: Goal, by: number) => {
     if (busy) return
-    setBusy(true)
     /* ⚠️ a repeating goal's count is this window's, from the mark — see `asOf`; a one-off's is
        the row's, which is its only window */
-    const at = markWindow(g, on)
-    if (at) await mark(g, at, Math.max(0, g.progress + by), null)
-    else await setProgress(g.id, Math.max(0, g.progress + by), g.done)
+    const w = bumpTo(g, on, by, marksRead)
+    if (!w) return
+    setBusy(true)
+    await send(g, w)
     setBusy(false)
     await load()
   }
@@ -752,15 +781,15 @@ export function Chronicle({
 
   const tick = async (g: Goal) => {
     if (busy) return
+    const w = tickTo(g, on, marksRead)
+    if (!w) return
     /* ⚠️ BEFORE THE WRITE, not after: `load()` replaces the goals and the row is re-filtered on
        that render, so an id remembered afterwards arrives too late to keep anything on screen */
     if (pastIn(g, v.scope, on, todayISO()) || offOn(g, on)) {
       setKept((k) => (k.includes(g.id) ? k : [...k, g.id]))
     }
     setBusy(true)
-    const at = markWindow(g, on)
-    if (at) await mark(g, at, null, !g.done)
-    else await setProgress(g.id, g.progress, !g.done)
+    await send(g, w)
     setBusy(false)
     await load()
   }
@@ -876,6 +905,9 @@ export function Chronicle({
     /* only where there IS a box or a ± — a goal the record counts has nothing to
                        press, and "opens tomorrow" on it was a line about a control it never had */
     const notYet = !auto && !markOpen(g, on, todayISO())
+    /* ⚠️ and a repeating goal whose marks could not be read has nothing it may send — see
+       `bumpTo`; the room says why above the list */
+    const held = !auto && tickTo(g, on, marksRead) === null
     return (
       <li
         key={g.id}
@@ -894,7 +926,7 @@ export function Chronicle({
                 <input
                   type="checkbox"
                   checked={g.done}
-                  disabled={notYet}
+                  disabled={notYet || held}
                   onChange={() => void tick(g)}
                 />
                 <span>{g.title}</span>
@@ -1099,7 +1131,7 @@ export function Chronicle({
               <>
                 <button
                   className="btn btn-ghost"
-                  disabled={notYet}
+                  disabled={notYet || held}
                   aria-label={`One less for ${g.title}`}
                   onClick={() => void bump(g, -1)}
                 >
@@ -1107,7 +1139,7 @@ export function Chronicle({
                 </button>
                 <button
                   className="btn btn-ghost"
-                  disabled={notYet}
+                  disabled={notYet || held}
                   aria-label={`One more for ${g.title}`}
                   onClick={() => void bump(g, 1)}
                 >
@@ -1428,6 +1460,15 @@ export function Chronicle({
               )}
             </div>
 
+            {/* ⚠️ ABOVE THE "N left" LINE, because that line, the strip's counts and every repeating
+                row are read from the marks this could not load — see `marksRead` */}
+            {goals !== null && !marksRead ? (
+              <CouldNotLoad
+                what="progress on your repeating goals"
+                onRetry={() => void retryMarks()}
+                retrying={retrying}
+              />
+            ) : null}
             {/**
              * ⚠️ IT SAYS WHAT IT COULD NOT COUNT, and that is the whole reason this is two sentences
              * rather than one number. An estimate is optional, so the minutes are a FLOOR — "about 50m"

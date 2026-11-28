@@ -289,13 +289,21 @@ export async function setProgress(id: string, progress: number, done: boolean): 
 
 /**
  * The marks for the windows on screen, and the ticks from before marks existed — see marks.ts.
+ * Null when they could not be read.
  *
- * ⚠️ AN EMPTY ANSWER ON FAILURE, LIKE `myGoals`, and that is safe in exactly one direction: every
- * repeating goal reads as untouched for the window, which is a goal you can tick again rather than
- * one that claims to be done. The asks go in batches like the tally's, because the function caps
- * a call and a quiet cap would drop windows without saying so.
+ * ⚠️ NULL, NEVER AN EMPTY ANSWER, because the room WRITES from this. It used to return no marks on
+ * any failure, on the reasoning that an untouched window is the safe direction to be wrong in. It
+ * is not, for a count: a goal reading 0 for a window that holds 5 sends 0 ± 1 on the next − or +,
+ * and the 5 is gone (the 27 Nov 2026 audit). So the room is told the read failed, and refuses a
+ * hand-moved change to a repeating goal until one succeeds — see `bumpTo`.
+ *
+ * ⚠️ AND ONE FAILED BATCH FAILS THE READ. The asks go in batches like the tally's, because the
+ * function caps a call and a quiet cap would drop windows without saying so; half an answer would
+ * be that same quiet drop.
  */
-export async function marksFor(asks: ReadonlyArray<{ id: string; from: string }>): Promise<Marked> {
+export async function marksFor(
+  asks: ReadonlyArray<{ id: string; from: string }>,
+): Promise<Marked | null> {
   if (!asks.length) return NO_MARKS
   if (previewMember) return pvMarksFor(asks)
   const out: Marked = { marks: {}, legacy: {} }
@@ -303,7 +311,7 @@ export async function marksFor(asks: ReadonlyArray<{ id: string; from: string }>
     const { data, error } = await getSupabaseClient().rpc('chronicle_goal_marks_for', {
       p_asks: batch.map((a) => ({ id: a.id, from: a.from })),
     })
-    if (error || !data || typeof data !== 'object') return NO_MARKS
+    if (error || !data || typeof data !== 'object') return null
     const d = data as {
       marks?: Record<string, { progress?: unknown; done?: unknown }>
       legacy?: Record<string, unknown>
@@ -741,18 +749,22 @@ export async function editEntry(
 /* ── sets: one exercise's quantity on one day — see sets.ts ───────────────── */
 
 /**
- * Your sets on [fromDay, toDay), half-open like every range here.
+ * Your sets on [fromDay, toDay), half-open like every range here. Null when they could not be read.
  *
- * ⚠️ EMPTY ON ANY REFUSAL, including the one every account gets until the sets draft is applied —
- * the function does not exist yet, and a sitting with no sets is exactly what that means.
+ * ⚠️ NULL, NEVER AN EMPTY LIST, because the sitting editor decides from this which call its Save
+ * makes. This used to be empty on any refusal, written while the function did not exist yet and
+ * "no sets" was the honest answer. It has existed since 20261110025141_chronicle_sets, and an
+ * empty answer from a failed read sent Save through the plain editor, so a sitting moved across
+ * midnight left its sets on the old day (the 27 Nov 2026 audit). The editor holds Save until a
+ * read succeeds — see `savePath`.
  */
-export async function setsBetween(fromDay: string, toDay: string): Promise<ChronSet[]> {
+export async function setsBetween(fromDay: string, toDay: string): Promise<ChronSet[] | null> {
   if (previewMember) return pvSetsBetween(fromDay, toDay)
   const { data, error } = await getSupabaseClient().rpc('chronicle_sets_between', {
     p_from: fromDay,
     p_to: toDay,
   })
-  if (error || !Array.isArray(data)) return []
+  if (error || !Array.isArray(data)) return null
   return (data as Array<Record<string, unknown>>).map((r) => ({
     id: String(r.id),
     entry: r.entry == null ? null : String(r.entry),
@@ -850,8 +862,8 @@ export async function dropSet(id: string): Promise<{ why: string } | null> {
  * the two cannot disagree (§15c).
  *
  * ⚠️ ONLY FOR A SITTING THAT HAS SETS. It wraps `chronicle_entry_edit` on the server and adds the
- * day; a sitting with none goes on using `editEntry`, so nothing calls this until a sitting has
- * sets, which nothing can make until the sets draft is applied.
+ * day; a sitting with none goes on using `editEntry`. Which one a Save sends is decided from
+ * `setsBetween`, so the editor holds Save until that read has answered — see `savePath`.
  */
 export async function editEntryDay(
   id: string,
