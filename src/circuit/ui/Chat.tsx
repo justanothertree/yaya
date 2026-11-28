@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../../finance/client'
 import {
   previewMember,
@@ -18,6 +18,16 @@ import { Composer } from './Composer'
 import { sendToThread, useThread } from '../roomThread'
 import { roomIcon, seenWord, type Overview } from '../chatRooms'
 import { ProfileChallenge } from '../../lab/matches/ProfileChallenge'
+import { CouldNotLoad } from '../../ui/CouldNotLoad'
+import {
+  LOUNGE_NAME_MAX,
+  LOUNGE_NAME_PENDING,
+  canSendInLounge,
+  joinLounge,
+  loungeNameRead,
+  loungePresenceName,
+  type LoungeName,
+} from '../loungeName'
 
 /**
  * Chat — a real messaging screen, not a row of room chips. The left side is your friends, each
@@ -58,8 +68,18 @@ export function Chat({
    * The Lounge is the one room open to every opted-in account rather than to friends or
    * circuit-mates, which is why joining it asks for a name at all. Publishing `myName` in its
    * presence strip would hand back the real identity that name exists to keep out of it.
+   *
+   * ⚠️ AND IT HAS NO FALLBACK TO `myName`. It used to be `myLoungeName ?? myName`, so a failed
+   * read announced the real name to the whole Lounge. Until the server has answered, the Lounge
+   * hears no name and the Send there is held — see loungeName.ts.
    */
-  const [myLoungeName, setMyLoungeName] = useState<string | null>(null)
+  const [lounge, setLoungeName] = useState<LoungeName>(
+    previewMember ? { status: 'known', name: PREVIEW_ME.name } : LOUNGE_NAME_PENDING,
+  )
+  const [loungeRetrying, setLoungeRetrying] = useState(false)
+  /** each ask of the Lounge name takes a number, and only the latest may land — a read sent before
+   *  a Join saved a name must not arrive after it and put the old answer back */
+  const loungeAsk = useRef(0)
   // The Lounge is opt-in: nobody is placed in a room with every other account by
   // default. null = not looked up yet, so the invite card doesn't flash on load.
   const [loungeIn, setLoungeIn] = useState<boolean | null>(previewMember ? PREVIEW_LOUNGE_IN : null)
@@ -72,8 +92,8 @@ export function Chat({
   const loungeNames = useRoomPresence(
     !previewMember && room?.kind === 'lounge' ? room.id : null,
     me,
-    // the Lounge name, never the real one — see myLoungeName above
-    myLoungeName ?? myName,
+    // the Lounge name the server confirmed, or no name at all — never the real one
+    loungePresenceName(lounge),
   )
   const [loungeBusy, setLoungeBusy] = useState(false)
   /* the directory and your standing with everyone in it — presence only with a real session */
@@ -97,6 +117,30 @@ export function Chat({
     if (data) setRooms(data as Overview[])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
+
+  /**
+   * What to announce yourself as in the Lounge. The server falls back to the same chain as
+   * `myName` when no Lounge name was chosen, so a successful answer is always the right name —
+   * and a failed one is a failure, shown with Retry, never "use the real name".
+   */
+  const loadLoungeName = useCallback(async () => {
+    if (!sb) return
+    const ask = ++loungeAsk.current
+    let next: LoungeName
+    try {
+      next = loungeNameRead(await sb.rpc('my_lounge_display_name'))
+    } catch {
+      next = { status: 'failed' }
+    }
+    if (ask === loungeAsk.current) setLoungeName(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed])
+
+  async function retryLoungeName() {
+    setLoungeRetrying(true)
+    await loadLoungeName()
+    setLoungeRetrying(false)
+  }
 
   // initial load — plus a ?room= deep link (the profile's Message button) opens that thread
   useEffect(() => {
@@ -131,12 +175,7 @@ export function Chat({
       if (live && n) setMyName(n)
     })
     void sb.rpc('my_lounge_opt_in').then(({ data }) => live && setLoungeIn(data === true))
-    // What to announce yourself as in the Lounge specifically. Falls back to the same chain as
-    // `myName` server-side when no Lounge name was chosen, so this is only ever different when
-    // the person deliberately picked one.
-    void sb
-      .rpc('my_lounge_display_name')
-      .then(({ data }) => live && typeof data === 'string' && data && setMyLoungeName(data))
+    void loadLoungeName()
     void sb.rpc('list_chat_overview').then(({ data }) => {
       if (!live || !data) return
       const rs = data as Overview[]
@@ -291,7 +330,7 @@ export function Chat({
 
   // Joining/leaving changes what chat_room_member() allows, so the room appears in
   // or vanishes from list_chat_overview on the next load — no local splicing needed.
-  async function setLounge(on: boolean) {
+  async function joinTheLounge() {
     if (!sb || loungeBusy) return
     /**
      * Asked ONCE, at join -- the Lounge is the one room broader than friends/circuit, so this
@@ -299,30 +338,46 @@ export function Chat({
      * you are; a room open to every opted-in member is different, and the name asked for here
      * is what OTHER lounge members see, not your real name.
      */
-    let name: string | undefined
-    if (on) {
-      const raw = window.prompt(
-        'What name should other Lounge members see you as? Leave blank to use your usual name.',
-      )
-      if (raw === null) return // cancelled -- do not opt in
-      name = raw.trim()
+    const raw = window.prompt(
+      `What name should other Lounge members see you as? Up to ${LOUNGE_NAME_MAX} characters. ` +
+        'Leave blank to use your usual name.',
+    )
+    if (raw === null) return // cancelled -- do not opt in
+    setLoungeBusy(true)
+    // said in the list, where Join is: the thread pane may be showing nothing, or be hidden
+    setListErr(null)
+    try {
+      // the name is checked and SAVED before you join, so a refusal leaves you outside the room
+      // rather than inside it under your real name — see joinLounge
+      const out = await joinLounge((fn, args) => sb.rpc(fn, args), raw, lounge)
+      if (out.lounge !== lounge) {
+        loungeAsk.current++ // a read still on its way answers about the name before this one
+        setLoungeName(out.lounge)
+      }
+      if (out.problem) setListErr(out.problem)
+      if (out.joined) {
+        setLoungeIn(true)
+        await loadOverview()
+        // joined on your usual name while it had not loaded: ask again rather than hold Send
+        if (out.lounge.status !== 'known') void loadLoungeName()
+      }
+    } catch {
+      setListErr('Couldn’t join the Lounge. Try again.')
+    } finally {
+      setLoungeBusy(false)
     }
+  }
+
+  async function leaveTheLounge() {
+    if (!sb || loungeBusy) return
     setLoungeBusy(true)
     setErr(null)
-    const { error } = await sb.rpc('set_lounge_opt_in', { p_on: on })
-    if (!error && on && name) {
-      await sb.rpc('set_lounge_display_name', { p_name: name })
-      // locally too, so the presence strip announces the chosen name on this visit rather than
-      // the real one until the next reload
-      setMyLoungeName(name)
-    }
+    const { error } = await sb.rpc('set_lounge_opt_in', { p_on: false })
     if (error) {
       setErr(error.message)
     } else {
-      setLoungeIn(on)
-      if (!on && room?.kind === 'lounge') {
-        setRoom(null)
-      }
+      setLoungeIn(false)
+      if (room?.kind === 'lounge') setRoom(null)
       await loadOverview()
     }
     setLoungeBusy(false)
@@ -361,7 +416,7 @@ export function Chat({
           lounge={{
             offer: loungeIn === false,
             busy: loungeBusy,
-            join: () => void setLounge(true),
+            join: () => void joinTheLounge(),
           }}
         />
 
@@ -421,7 +476,7 @@ export function Chat({
                 {room.kind === 'lounge' && loungeIn && (
                   <button
                     className="btn btn-ghost cz-thread-leave"
-                    onClick={() => void setLounge(false)}
+                    onClick={() => void leaveTheLounge()}
                     disabled={loungeBusy}
                     title="Stop seeing The Lounge. You can rejoin any time."
                   >
@@ -475,11 +530,21 @@ export function Chat({
                 </p>
               )}
 
+              {room.kind === 'lounge' && lounge.status === 'failed' && (
+                <CouldNotLoad
+                  what="your Lounge name"
+                  onRetry={() => void retryLoungeName()}
+                  retrying={loungeRetrying}
+                />
+              )}
+
               <Composer
                 key={room.id}
                 keep={`thread:${room.id}`}
                 placeholder={`Message ${room.name}`}
                 onSend={(text) => sendToThread(room.id, text)}
+                // in the Lounge, held until the server has said what you are called there
+                canSend={room.kind !== 'lounge' || canSendInLounge(lounge)}
               />
             </>
           ) : (
