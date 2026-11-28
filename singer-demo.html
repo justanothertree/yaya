@@ -1,0 +1,164 @@
+<!doctype html>
+<!-- Throwaway singer demo — served by the dev server only, not a build input. See src/singerDemo. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Singer demo</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #12101a;
+        --card: #1c1928;
+        --ink: #ece8f6;
+        --dim: #a49cbc;
+        --accent: #ff5fd2;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.45 system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin: 0 0 4px;
+      }
+      .note {
+        color: var(--dim);
+        margin: 0 0 20px;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        color: var(--dim);
+        font-size: 0.9rem;
+      }
+      textarea,
+      select,
+      input[type='number'] {
+        font: inherit;
+        color: var(--ink);
+        background: var(--card);
+        border: 1px solid #3a3450;
+        border-radius: 8px;
+        padding: 8px 10px;
+        min-height: 44px;
+        width: 100%;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+        gap: 12px;
+        margin: 14px 0;
+      }
+      .checks label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ink);
+        min-height: 44px;
+      }
+      .checks input {
+        width: 22px;
+        height: 22px;
+        accent-color: var(--accent);
+      }
+      button {
+        font: inherit;
+        font-weight: 600;
+        color: #1a0d18;
+        background: var(--accent);
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 28px;
+        min-height: 48px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      #status {
+        color: var(--dim);
+        min-height: 1.5em;
+      }
+      audio {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Singer demo</h1>
+      <p class="note">
+        Throwaway test. A neural voice (Kokoro) speaks each word in your browser, then the page cuts
+        it into syllables and sings them on the melody. Nothing is saved.
+      </p>
+      <label
+        >Lyrics (hyphens split syllables, _ holds a note)
+        <textarea id="lyric" rows="2">glit-ter in the dark _ _ hold me close to-night _ _</textarea>
+      </label>
+      <div class="row">
+        <label
+          >Voice
+          <select id="voice">
+            <option value="af_heart">Heart</option>
+            <option value="af_bella">Bella</option>
+            <option value="af_nicole">Nicole (breathy)</option>
+            <option value="af_sky">Sky</option>
+            <option value="af_aoede">Aoede</option>
+            <option value="bf_emma">Emma (British)</option>
+          </select>
+        </label>
+        <label
+          >Tuning
+          <select id="tune">
+            <option value="hard">Hard tune</option>
+            <option value="soft">Natural</option>
+          </select>
+        </label>
+        <label
+          >Voice size
+          <select id="formant">
+            <option value="1">As spoken</option>
+            <option value="1.1">Bright</option>
+            <option value="1.22">Pixie</option>
+          </select>
+        </label>
+        <label
+          >Key
+          <select id="key">
+            <option value="-7">−7</option>
+            <option value="-5">−5</option>
+            <option value="-3">−3</option>
+            <option value="0" selected>A minor</option>
+            <option value="2">+2</option>
+            <option value="4">+4</option>
+          </select>
+        </label>
+        <label>BPM <input id="bpm" type="number" value="120" min="70" max="170" /></label>
+      </div>
+      <div class="row checks">
+        <label><input type="checkbox" id="double" checked /> Double</label>
+        <label><input type="checkbox" id="harmony" /> Harmony</label>
+        <label><input type="checkbox" id="stutter" checked /> Stutter</label>
+        <label><input type="checkbox" id="beat" checked /> Beat</label>
+      </div>
+      <button id="sing" type="button">▶ Sing</button>
+      <p id="status" role="status"></p>
+      <audio id="out" controls></audio>
+    </main>
+    <script type="module" src="/src/singerDemo/main.ts"></script>
+  </body>
+</html>
