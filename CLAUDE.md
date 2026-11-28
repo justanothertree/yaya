@@ -814,10 +814,11 @@ Assume real users and sensitive data, because there are and it is.
   rewriting rows, anything touching another member's data. A `create or replace` is recoverable; a
   `delete` is not.
 - **A local cap that is looser than the server's is a silent half-save.** `member_library`
-  carries `check (octet_length(body::text) <= 131072)`, and `put` in `library/cloud.ts`
-  deliberately discards a refusal — it is not a crash, and the item is still exactly where it
-  was. So the only thing that can stop somebody being told "Kept" about something the account
-  will never hold is the LOCAL ceiling, and three of the four synced kinds did not have one that
+  carries `check (octet_length(body::text) <= 131072)`, and a refusal from `put` in
+  `library/cloud.ts` is not a crash — the item is still exactly where it was, owed in the outbox
+  and asked about again (since 28 Nov 2026; before that it was simply dropped). A refusal for SIZE
+  will be refused every time it is asked, though. So the only thing that can stop somebody being
+  told "Kept" about something the account will never hold is the LOCAL ceiling, and three of the four synced kinds did not have one that
   worked: the gallery's was 200KB (copied from the maps store, which does not sync and answers a
   different question), and minions and songs had none at all. They share `ACCOUNT_ITEM_BYTES`
   now. **And measure it in the server's unit**: `octet_length` counts UTF-8 bytes while

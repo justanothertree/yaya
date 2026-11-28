@@ -27,6 +27,7 @@ import {
 import type { LeaderboardEntry, Mode, Point, Settings, TrophyCounts } from './types'
 import { ChallengeFriend } from './ChallengeFriend'
 import { beatMessage, beatTargetOf } from './challenge'
+import { autoPlayerName } from './playerId'
 import { getSupabaseClient } from '../finance/client'
 import { SpectatorView } from './SpectatorView'
 import { drainFor, hungerLabel, stageFor, type HungerState } from './hunger'
@@ -1100,18 +1101,17 @@ export function GameManager({
       try {
         if (nameSourceRef.current === 'custom') return
         const nextNum = await getNextPlayerIdNumber()
-        if (!nextNum) return
-        const proposed = `Player${nextNum}`
-        const cur = (playerNameRef.current || '').trim()
-        // Only update if current name is empty or still an auto placeholder
-        if (!cur || /^Player[0-9A-Za-z]+$/.test(cur)) {
-          setPlayerName(proposed)
-          try {
-            localStorage.setItem(LS_PLAYER_NAME_KEY, proposed)
-            localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
-          } catch {
-            /* ignore */
-          }
+        // Only update if current name is empty or still an auto placeholder, and only when the
+        // read answered: null (a failed read) keeps the name and the stored copy as they are,
+        // and the next mount asks again. See playerId.ts for the Player1 it used to hand out.
+        const proposed = autoPlayerName(playerNameRef.current, nameSourceRef.current, nextNum)
+        if (!proposed) return
+        setPlayerName(proposed)
+        try {
+          localStorage.setItem(LS_PLAYER_NAME_KEY, proposed)
+          localStorage.setItem(LS_PLAYER_NAME_SOURCE_KEY, 'auto')
+        } catch {
+          /* ignore */
         }
       } catch {
         /* ignore */
