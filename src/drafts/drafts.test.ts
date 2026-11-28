@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { draftKey, makeAutosave, makeDrafts, memoryBackend, SIGNED_OUT } from './drafts'
+import { draftKey, makeAutosave, makeDrafts, memoryBackend, SIGNED_OUT, whenKept } from './drafts'
 
 /**
  * The draft store, asked without a browser.
@@ -195,5 +195,19 @@ describe('makeAutosave', () => {
     a.resume()
     await vi.advanceTimersByTimeAsync(600)
     expect(log).toEqual(['write drawn while the offer was up'])
+  })
+})
+
+describe('whenKept', () => {
+  const at = new Date(2026, 10, 27, 13, 50).getTime()
+
+  it('says a time for a draft from today, and a date as well for one from before', () => {
+    const today = whenKept(at, new Date(2026, 10, 27, 23, 59).getTime())
+    const yesterday = whenKept(at, new Date(2026, 10, 28, 0, 1).getTime())
+    expect(today).toMatch(/1:50/)
+    expect(today).not.toMatch(/Nov|27/)
+    expect(yesterday).toMatch(/1:50/)
+    expect(yesterday).toMatch(/Nov/)
+    expect(yesterday).toMatch(/27/)
   })
 })

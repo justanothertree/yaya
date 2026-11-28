@@ -90,6 +90,7 @@ import {
   hushScheduled,
 } from '../audio/looper'
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
+import { useNoPullToRefresh } from '../hooks/useNoPullToRefresh'
 import { redo, startHistory, undo } from '../audio/history'
 import { familyOf } from '../audio/families'
 import { AudioHealthStrip } from '../instrument/AudioHealthStrip'
@@ -529,6 +530,14 @@ export function InstrumentRoom({
       }),
     [],
   )
+  /**
+   * ⚠️ NO PULL-TO-REFRESH IN HERE, because a keyboard is played by dragging. The bench above
+   * already brings the song back after a reload — that is what 7 Nov was for — but a refresh
+   * still stops the music, cuts a take that is recording and throws away whatever is half-played,
+   * and on a phone a slide down the keys at the top of the page is one. Paint lost a whole minion
+   * to the same gesture; see useNoPullToRefresh.
+   */
+  useNoPullToRefresh()
   /* ⚠️ AFTER the workbench above, so the bench it puts back is where undo starts rather than a
      step — it also marks that restore as from elsewhere, so the order is belt and braces */
   useEffect(() => startHistory(), [])

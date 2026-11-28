@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { localISO } from '../circuit/dates'
+import { useKeptDraft } from '../drafts/useKeptDraft'
 import { addDayNote, dayNotesBetween, editNote, entriesBetween } from './cloud'
 import { aboutDay, byDay, journalRows, matching, type DayNote, type JournalRow } from './journal'
+import { readJournalDraft, type JournalDraft } from './noteDrafts'
 import { dayBounds, type Activity, type Entry } from './record'
 
 /** how far back the list reaches at first, and how much each "further back" adds */
@@ -84,6 +86,25 @@ export function JournalList({
   /* the day the box is writing about, when it is not today */
   const [about, setAbout] = useState<string | null>(null)
   const box = useRef<HTMLTextAreaElement>(null)
+  /**
+   * ⚠️ THE NEW NOTE OUTLIVES A RELOAD, AND THE DAY TAB (drafts/useKeptDraft). It was state and
+   * nothing else, and this list unmounts when the Day tab is opened, so a note half-written here
+   * went with a tab switch as well as a reload. Put back into the empty box on the way in, gone
+   * once saved — write() empties the box, which is what drops it.
+   */
+  const writing = useMemo<JournalDraft>(() => ({ draft, about }), [draft, about])
+  /* ✎ Note asked for a day on the way in — that day wins over the draft's (found in review) */
+  const askedDay = useRef(false)
+  const kept = useKeptDraft<JournalDraft>({
+    kind: 'journal',
+    value: writing,
+    isEmpty: (v) => !v.draft.trim(),
+    parse: readJournalDraft,
+    restore: (v) => {
+      setDraft(v.draft)
+      if (!askedDay.current) setAbout(v.about)
+    },
+  })
 
   /* the window, re-derived each render from the day it is — a tab left open overnight moves on */
   const today = localISO(new Date())
@@ -112,6 +133,7 @@ export function JournalList({
 
   useEffect(() => {
     if (!writeNow) return
+    askedDay.current = true
     setAbout(writeDay && writeDay !== localISO(new Date()) ? writeDay : null)
     box.current?.focus()
     /* ⚠️ ON THE BUMP ALONE: `writeDay` arrives with it, and a later change to it on its own is the
@@ -147,6 +169,8 @@ export function JournalList({
     setSaid(null)
     setAbout(null)
     setMine((n) => n + 1)
+    /* its kept copy now, in case the list closed while the note was being saved — see Composer */
+    kept.markSaved()
   }
 
   /* ⚠️ an emptied note is deleted — chronicle_note_edit's own rule, and the hint says so */

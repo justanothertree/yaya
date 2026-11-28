@@ -477,6 +477,7 @@ export function Chat({
 
               <Composer
                 key={room.id}
+                keep={`thread:${room.id}`}
                 placeholder={`Message ${room.name}`}
                 onSend={(text) => sendToThread(room.id, text)}
               />
