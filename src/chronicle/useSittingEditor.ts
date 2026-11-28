@@ -13,7 +13,7 @@ import {
 } from './cloud'
 import { seenPictures, type Kept } from '../pictures/cloud'
 import { useBigPicture } from '../pictures/useBigPicture'
-import { dayOfStart, type ChronSet } from './sets'
+import { dayOfStart, savePath, setsOf, type SetsRead } from './sets'
 import {
   minsBetweenLocal,
   overlapMs,
@@ -90,11 +90,16 @@ export function useSittingEditor({
    * The sets counted during the sitting being edited — see sets.ts.
    *
    * ⚠️ READ SO THE EDITOR CAN SAY WHAT A MOVE DOES NOT DO, and so a start moved across midnight
-   * takes them with it. Empty for every sitting until the sets draft is applied, and then for
-   * every sitting nobody counted sets in — and an editor with no sets is exactly the editor there
-   * has always been.
+   * takes them with it. Empty for every sitting nobody counted sets in, and an editor with no sets
+   * is exactly the editor there has always been.
+   *
+   * ⚠️ AND NOT A LIST UNTIL THE READ HAS ANSWERED. Save makes a different call for a sitting with
+   * sets, so "asking" and "failed" hold Save rather than reading as none — see `savePath`.
    */
-  const [entSets, setEntSets] = useState<ChronSet[]>([])
+  const [entSets, setEntSets] = useState<SetsRead>('asking')
+  /** bumped by Retry, to ask for the sets again after a read that failed */
+  const [setsAsk, setSetsAsk] = useState(0)
+  const retrySets = () => setSetsAsk((n) => n + 1)
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
 
@@ -108,10 +113,10 @@ export function useSittingEditor({
   const showing = fixEnt ?? justDid
   const fixStart = showing ? (log.find((e) => e.id === showing)?.start ?? null) : null
   useEffect(() => {
-    if (!showing || !fixStart) {
-      setEntSets([])
-      return
-    }
+    /* ⚠️ "asking" whenever there is no answer for THIS sitting, so a dialog never opens holding
+       the last one's — or a closed editor's — as if it had been read */
+    setEntSets('asking')
+    if (!showing || !fixStart) return
     let dead = false
     /* the sets of a sitting are on the local day it starts — see dayOfStart */
     const day = dayOfStart(fixStart)
@@ -119,12 +124,12 @@ export function useSittingEditor({
     next.setDate(next.getDate() + 1)
     void (async () => {
       const got = await setsBetween(day, dayOfStart(next.toISOString()))
-      if (!dead) setEntSets(got.filter((x) => x.entry === showing))
+      if (!dead) setEntSets(setsOf(got, showing))
     })()
     return () => {
       dead = true
     }
-  }, [showing, fixStart])
+  }, [showing, fixStart, setsAsk])
 
   /**
    * ⚠️ THE DIALOG HAS TWO DOORS AND ONLY ONE OF THEM FILLED IT IN. ✎ seeds the fields in its own
@@ -220,6 +225,15 @@ export function useSittingEditor({
     const fixEnt = showing
     if (!fixEnt || !entFrom || busy) return
     /**
+     * ⚠️ NOTHING IS SENT UNTIL THE SETS ARE KNOWN. Which call saves this sitting depends on
+     * whether it has sets, so a read still out, or one that failed, is not "none" — guessing
+     * "none" sends the plain editor and leaves any sets on the day the sitting used to start.
+     * The dialog says why and offers Retry; this is the rule behind its disabled button.
+     */
+    const path = savePath(entSets)
+    if (!path) return
+    const withSets = path === 'day'
+    /**
      * ⚠️ THE ONE STILL GOING TAKES A DIFFERENT CALL, because it has no end to send and nothing
      * should give it one — that is what Stop is for. Everything else on the row is set after a
      * session finishes, so the running editor offers exactly the two things you notice while you
@@ -232,7 +246,7 @@ export function useSittingEditor({
       const kept = w != null && forInput(w.from) === entFrom
       const from = kept ? w!.from : new Date(entFrom).toISOString()
       /* ⚠️ A SITTING WITH SETS MOVES THEM WITH ITS START, in the same call — §15c */
-      const no = entSets.length
+      const no = withSets
         ? await fixRunningDay(from, entAct || null, dayOfStart(from))
         : await fixRunning(from, entAct || null)
       setBusy(false)
@@ -266,7 +280,7 @@ export function useSittingEditor({
      * failure, in which the Circuit grid and the sitting disagree about which day the reps were.
      * The note is not sent at all on that path, and the server leaves it alone.
      */
-    const bad = entSets.length
+    const bad = withSets
       ? await editEntryDay(fixEnt, fromISO, toISO, entAct || null, dayOfStart(fromISO))
       : await editEntry(
           fixEnt,
@@ -432,6 +446,7 @@ export function useSittingEditor({
     entWas,
     entSets,
     setEntSets,
+    retrySets,
     shot,
     bigPicture,
     hangPicture,
