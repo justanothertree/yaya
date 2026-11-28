@@ -1,0 +1,1299 @@
+diff --git a/src/gpu/lab.css b/src/gpu/lab.css
+index 2b2ec7ba..5f9b4fb1 100644
+--- a/src/gpu/lab.css
++++ b/src/gpu/lab.css
+@@ -408,6 +408,14 @@ html:has(.lab) {
+   display: flex;
+   gap: 0.4rem;
+ }
++/* the leader's line: who follows them now. It wraps and never ellipses — on a phone it sits
++   outside the fold under the follow row, and a summary line that ellipses would cut the names */
++.lab-tour-lead {
++  margin: 0;
++  min-width: 0;
++  font-size: 0.9rem;
++  overflow-wrap: anywhere;
++}
+ .lab-tour-follow-say:focus {
+   outline: none;
+ }
+diff --git a/src/lab/social/TourStrip.tsx b/src/lab/social/TourStrip.tsx
+index ea8eabd3..773f05e8 100644
+--- a/src/lab/social/TourStrip.tsx
++++ b/src/lab/social/TourStrip.tsx
+@@ -21,6 +21,9 @@ import { heldSeat } from './held'
+ import { hashParam } from '../links'
+ import {
+   followStep,
++  leadSaid,
++  leadWords,
++  leaderSees,
+   placeWords,
+   summaryOf,
+   surprise,
+@@ -69,6 +72,12 @@ const START = { act: 'start', label: '🚌 Start a party tour' } as const
+ const OFF = { act: 'off', label: 'Hop off' } as const
+ /** viewing a saved match: the address carries `&match=`, and a move would rebuild it without */
+ const inMatchNow = () => !!hashParam('match')
++/**
++ * Who the leader's screen reader has been told follows them (tour.ts's leadSaid), for the call it
++ * was said in. ⚠️ IN THE MODULE, NOT THE STRIP: a strip that remounts — the Lab left for another
++ * page and come back to — is not a follow starting, and would otherwise say it again.
++ */
++let told: { room: string | null; heard: ReadonlySet<string> } = { room: null, heard: new Set() }
+ 
+ export function TourStrip({
+   current,
+@@ -169,7 +178,7 @@ export function TourStrip({
+       noteRef.current?.focus({ preventScroll: true })
+     heldFocusRef.current = false
+   }, [why])
+-  const { step, follow } = useFollow({
++  const { step, hidden, follow } = useFollow({
+     inCall: call !== '',
+     onLabPage: route === 'lab',
+     following,
+@@ -209,6 +218,20 @@ export function TourStrip({
+     say,
+   })
+   const riding = !!bus.model?.riding
++  const descId = useId()
++
++  /* the leader hears a follow start, once (tour.ts's leadSaid): keyed on who follows and who is
++     quiet, so a heartbeat or a pointer moving asks nothing */
++  const people = tour?.why === null ? tour.people : null
++  const followKey = people ? people.map((p) => `${p.id}:${p.followsMe}:${p.place.at}`).join() : ''
++  const peopleRef = useRef(people)
++  peopleRef.current = people
++  useEffect(() => {
++    if (told.room !== room) told = { room, heard: new Set() }
++    const r = leadSaid(told.heard, peopleRef.current)
++    told = { room, heard: r.heard }
++    if (r.text) say(r.text)
++  }, [followKey, room])
+ 
+   /* what a screen reader hears: the follow starting, moving, offering and stopping — never the
+      waits, which change as the leader wanders and would talk over the call.
+@@ -307,6 +330,7 @@ export function TourStrip({
+           toyName={toyName}
+           onGo={onGo}
+           followed={following === p.id}
++          describedBy={descId}
+           onFollow={() => {
+             if (following === p.id) return follow(null)
+             /* ⚠️ FOLLOW STAYS WHILE YOU RIDE, AND PRESSING IT IS GETTING OFF: a follow and a seat on
+@@ -322,10 +346,26 @@ export function TourStrip({
+       ))}
+     </ul>
+   )
++  /* what pressing Follow tells, said before the press: every Follow not yet pressed is described
++     by it. Hidden, so it is read as each one's description and never again as a line of its own */
++  const followTells = (
++    <span id={descId} hidden>
++      The friend you follow can see that you&apos;re following them.
++    </span>
++  )
+ 
++  /* the leader's one line: who follows them now — and nothing at nought (tour.ts's leadWords) */
++  const leadText = leadWords(tour.people)
++  const lead = leadText && (
++    <p className="lab-tour-lead">
++      <span aria-hidden>👣 </span>
++      {leadText}
++    </p>
++  )
+   const row = following && step && (
+     <FollowRow
+       step={step}
++      sees={leaderSees(step, hidden)}
+       name={leaderName}
+       toyName={toyName}
+       onGo={onLead}
+@@ -356,7 +396,9 @@ export function TourStrip({
+           )}
+           {panel}
+           {row}
++          {lead}
+           {list}
++          {followTells}
+         </section>
+       </div>
+     )
+@@ -410,6 +452,7 @@ export function TourStrip({
+         </div>
+         {panel}
+         {row}
++        {lead}
+         {open && (
+           <div className="lab-tour-head">
+             <span className="lab-tour-acts">
+@@ -420,6 +463,7 @@ export function TourStrip({
+           </div>
+         )}
+         {list}
++        {followTells}
+       </section>
+     </div>
+   )
+@@ -430,12 +474,15 @@ function Chip({
+   toyName,
+   onGo,
+   followed,
++  describedBy,
+   onFollow,
+ }: {
+   p: Shadow
+   toyName: (toy: string) => string
+   onGo: (toy: string) => void
+   followed: boolean
++  /** the sentence saying the one you follow can see it, for a Follow not yet pressed */
++  describedBy: string
+   onFollow: () => void
+ }) {
+   const at = p.place
+@@ -473,6 +520,7 @@ function Chip({
+       <button
+         className={`btn btn-ghost lab-tour-follow${followed ? ' is-on' : ''}`}
+         aria-label={followed ? `Stop following ${p.name}` : `Follow ${p.name}`}
++        aria-describedby={followed ? undefined : describedBy}
+         onClick={onFollow}
+       >
+         {followed ? 'Following' : 'Follow'}
+@@ -481,8 +529,17 @@ function Chip({
+   )
+ }
+ 
+-/** the follow row's words for a wait, an offer or a settled follow */
+-function rowWords(step: FollowStep, name: string, toyName: (t: string) => string): string {
++/** what pressing Follow tells, said with the press while it is true (tour.ts's leaderSees) */
++const seesWords = (sees: boolean, name: string) =>
++  sees ? ` ${name} can see that you're following.` : ''
++
++/** the follow row's words for a wait, an offer or a settled follow; `sees`: tour.ts's leaderSees */
++function rowWords(
++  step: FollowStep,
++  sees: boolean,
++  name: string,
++  toyName: (t: string) => string,
++): string {
+   if (step.do === 'offer') {
+     const why =
+       step.why === 'seat'
+@@ -510,11 +567,14 @@ function rowWords(step: FollowStep, name: string, toyName: (t: string) => string
+         return `You and ${name} swapped places. One of you will join the other in a moment.`
+       default:
+     }
+-  return `You'll go where ${name} goes. Pick a toy yourself to stop.`
++  return sees
++    ? `You'll go where ${name} goes, and ${name} can see that you're following. Pick a toy yourself to stop.`
++    : `You'll go where ${name} goes. Pick a toy yourself to stop.`
+ }
+ 
+ function FollowRow({
+   step,
++  sees,
+   name,
+   toyName,
+   onGo,
+@@ -522,6 +582,7 @@ function FollowRow({
+   statusRef,
+ }: {
+   step: FollowStep
++  sees: boolean
+   name: string
+   toyName: (t: string) => string
+   onGo: (toy: string) => void
+@@ -533,7 +594,7 @@ function FollowRow({
+       {/* focusable, so a follow move that takes away the control you were on leaves you here
+           rather than on the page (useFollow), and the words you land on say why */}
+       <p className="lab-tour-follow-say" ref={statusRef} tabIndex={-1}>
+-        <b>👣 Following {name}.</b> {rowWords(step, name, toyName)}
++        <b>👣 Following {name}.</b> {rowWords(step, sees, name, toyName)}
+       </p>
+       <span className="lab-tour-follow-acts">
+         {step.do === 'offer' && (
+@@ -744,10 +805,12 @@ function useFollow(a: {
+         statusRef.current?.focus({ preventScroll: true })
+       left.current = { toy: current, at: now }
+       onLead(s.toy)
+-      setSaid(firstWords ?? `Following ${name} to ${toyName(s.toy)}.`)
++      setSaid(
++        firstWords ?? `Following ${name} to ${toyName(s.toy)}.${seesWords(leaderSees(s), name)}`,
++      )
+       return
+     }
+-    if (started) setSaid(firstWords ?? `Following ${name}.`)
++    if (started) setSaid(firstWords ?? `Following ${name}.${seesWords(leaderSees(s, hidden), name)}`)
+     if (s.at !== undefined) {
+       const t = window.setTimeout(() => setTick((n) => n + 1), Math.max(0, s.at - now) + 5)
+       return () => window.clearTimeout(t)
+@@ -785,5 +848,5 @@ function useFollow(a: {
+     }
+     a.onFollow(id)
+   }
+-  return { step, follow }
++  return { step, hidden, follow }
+ }
+diff --git a/src/lab/social/busWords.ts b/src/lab/social/busWords.ts
+index 2209e5bc..5f7180f7 100644
+--- a/src/lab/social/busWords.ts
++++ b/src/lab/social/busWords.ts
+@@ -4,9 +4,11 @@
+  * panel (later) only lays them out. The wording is the plan's (docs/2026-11-22-lab-tour.md, "What
+  * friends see and do"), word for word where it gives one.
+  *
+- * ⚠️ COUNTS, NOT NAMES, FOR WHO IS GOING. The house rule is that a leader is never told who
+- * follows (shared.ts, together.ts), so the ready check says "3 going so far" and names nobody. The
+- * scoreboard names riders because boarding is a pressed, public act, as a seat at a table is.
++ * ⚠️ COUNTS, NOT NAMES, FOR WHO IS GOING, until Evan answers the bus plan's "Name who is going?".
++ * A Lab follow is told to its leader now (Evan, 26 Nov 2026; tour.ts's followsMe), and to nobody
++ * else; who is going is a different audience — everybody on the bus — so the ready check still
++ * says "3 going so far" and names nobody. The scoreboard names riders because boarding is a
++ * pressed, public act, as a seat at a table is.
+  *
+  * ⚠️ A TOY YOUR LAB DOES NOT LIST IS NEVER NAMED AS ONE YOU CAN OPEN. `{toy}` is the name in your
+  * own Lab, or "a toy that isn't in your Lab" — hidden by its owner, or from a newer build.
+diff --git a/src/lab/social/following.ts b/src/lab/social/following.ts
+new file mode 100644
+index 00000000..3c4ba46e
+--- /dev/null
++++ b/src/lab/social/following.ts
+@@ -0,0 +1,29 @@
++/**
++ * Whom you follow on the Lab (TourStrip's Follow), or null — a store in held.ts's shape, so the
++ * party can read it when it says where you are (party.ts's announceHere, through gate.ts's
++ * labWhere) and say it again the moment it changes.
++ *
++ * ⚠️ ONLY YOUR OWN PRESS SETS IT. Follow and Stop, a toy you pick yourself (GpuLab's pick, a link),
++ * the follow ending in words (useFollow), and the Lab unmounting. Nothing anybody else sends can,
++ * and the one you follow gets no control over it: they are told, and that is all (tour.ts).
++ *
++ * Kept in this module rather than in GpuLab's state because the party lives in the site's main
++ * bundle and the Lab does not; nothing here is stored or sent by itself.
++ */
++let following: string | null = null
++const listeners = new Set<() => void>()
++
++export const follows = {
++  get: (): string | null => following,
++  set(id: string | null) {
++    if (following === id) return
++    following = id
++    listeners.forEach((l) => l())
++  },
++  subscribe(fn: () => void) {
++    listeners.add(fn)
++    return () => {
++      listeners.delete(fn)
++    }
++  },
++}
+diff --git a/src/lab/social/gate.test.ts b/src/lab/social/gate.test.ts
+index 8902554b..435e2b98 100644
+--- a/src/lab/social/gate.test.ts
++++ b/src/lab/social/gate.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest'
+-import { labShareAllowed, isToyId, onToysNow } from './gate'
++import { isPeerId, isToyId, labFacts, labShareAllowed, labWhere, onToysNow } from './gate'
+ 
+ const friends = new Set(['ann', 'bo', 'cy'])
+ const call = (over: Partial<Parameters<typeof labShareAllowed>[0]> = {}) =>
+@@ -70,3 +70,107 @@ describe('who is drawn on a toy (onToysNow)', () => {
+     expect(onToysNow(undefined, roster, true)).toEqual([])
+   })
+ })
++
++/*
++ * Whom you follow, on the wire (Evan, 26 Nov 2026: "a leader can see who is following them"). A
++ * `where` reaches everybody on the call's channel, so who may learn "Bo follows Ann" is decided by
++ * WHEN Bo's browser says it — and the world's shape is: only while Bo's own gate is open (everyone
++ * there is Bo's friend) and Ann's latest `where` names a toy (so hers was open when she said it).
++ */
++describe('whom you follow, as your `where` says it (labWhere)', () => {
++  const routes = ['lab', 'paint']
++  const leaders = [
++    ['nobody heard', undefined],
++    ['on another page', { route: 'paint' }],
++    ['on the Lab, no toy said', { route: 'lab' }],
++    ['showing a toy', { route: 'lab', sub: 'chess' }],
++  ] as const
++  /* the toy as main's announceHere said it, before `fol` existed: `route === 'lab' && allowed ?
++     currentToy() : null`, and `sub` only when that named one */
++  const mainSub = (route: string, allowed: boolean, toy: string | null) =>
++    route === 'lab' && allowed ? toy : null
++  const cases = routes.flatMap((route) =>
++    [true, false].flatMap((allowed) =>
++      ['swarm', null].flatMap((toy) =>
++        ['ann', null].flatMap((following) =>
++          leaders.map(([shape, leader]) => ({ route, allowed, toy, following, shape, leader })),
++        ),
++      ),
++    ),
++  )
++  it('says your toy exactly as before, whatever you follow', () => {
++    expect(cases).toHaveLength(64)
++    for (const c of cases) {
++      const said = labWhere(c)
++      const sub = mainSub(c.route, c.allowed, c.toy)
++      expect([c, said.sub]).toEqual([c, sub ?? undefined])
++    }
++  })
++  it('says whom you follow only beside your toy, and only while they are showing theirs', () => {
++    let told = 0
++    for (const c of cases) {
++      const said = labWhere(c)
++      /* everyone present is my friend (my toy goes out), and the leader's own gate was open when
++         they last spoke (their `where` named a toy) — and I follow somebody */
++      const both = c.route === 'lab' && c.allowed && !!c.toy && c.shape === 'showing a toy'
++      const fol = both && c.following ? c.following : undefined
++      expect([c, said.fol]).toEqual([c, fol])
++      if (fol) told++
++      /* never `fol` without `sub`: a receiver drops one that comes alone, and so must the sender */
++      if (said.fol) expect(said.sub).toBeTruthy()
++    }
++    expect(told).toBe(1)
++  })
++  it('a leader whose gate is shut is a leader whose `where` names no toy, so nobody hears it', () => {
++    /* Ann's gate shut by Cy, a friend of Bo's and not of Ann's: Ann says the Lab and no toy */
++    expect(labWhere({ route: 'lab', allowed: true, toy: 'swarm', following: 'ann', leader: { route: 'lab' } })).toEqual({
++      sub: 'swarm',
++    })
++  })
++})
++
++describe('whom somebody follows, as a receiver believes it (labFacts)', () => {
++  const known = { sub: 'chess', fol: 'ann' }
++  it('a pointer sample keeps whom somebody follows, as it keeps their toy', () => {
++    expect(labFacts(known, 'bo', 'lab')).toEqual({ sub: 'chess', fol: 'ann' })
++    expect(labFacts({ sub: 'chess' }, 'bo', 'lab')).toEqual({ sub: 'chess' })
++    expect(labFacts(undefined, 'bo', 'lab')).toEqual({})
++    /* a page that is not the Lab has neither, from a pointer or a `where` */
++    expect(labFacts(known, 'bo', 'paint')).toEqual({})
++    expect(labFacts(known, 'bo', 'paint', { sub: 'chess', fol: 'ann' })).toEqual({})
++  })
++  it('a where that names nobody ends the follow it said before', () => {
++    expect(labFacts(known, 'bo', 'lab', { sub: 'chess' })).toEqual({ sub: 'chess' })
++    expect(labFacts(known, 'bo', 'lab', { sub: 'swarm', fol: 'ann' })).toEqual({
++      sub: 'swarm',
++      fol: 'ann',
++    })
++    /* and one that names no toy says neither */
++    expect(labFacts(known, 'bo', 'lab', {})).toEqual({})
++  })
++  it('fol is believed only beside a toy, on the Lab, naming somebody else', () => {
++    const bad: [string, { sub?: unknown; fol?: unknown }][] = [
++      ['no toy', { fol: 'ann' }],
++      ['a toy of the wrong shape', { sub: 'Chess', fol: 'ann' }],
++      ['themselves', { sub: 'chess', fol: 'bo' }],
++      ['65 characters', { sub: 'chess', fol: 'a'.repeat(65) }],
++      ['a number', { sub: 'chess', fol: 7 }],
++      ['an object', { sub: 'chess', fol: { id: 'ann' } }],
++      ['a space', { sub: 'chess', fol: 'a b' }],
++      ['empty', { sub: 'chess', fol: '' }],
++    ]
++    for (const [why, said] of bad) {
++      const got = labFacts(undefined, 'bo', 'lab', said)
++      expect([why, got.fol]).toEqual([why, undefined])
++      /* the toy is believed or not on its own terms, whatever came beside it */
++      expect([why, got.sub]).toEqual([why, isToyId(said.sub) ? said.sub : undefined])
++    }
++    expect(labFacts(undefined, 'bo', 'home', { sub: 'chess', fol: 'ann' })).toEqual({})
++  })
++  it('a peer id off the wire: a member’s uuid, or the dev call’s', () => {
++    for (const ok of ['00000000-0000-0000-0000-000000000002', 'dev-k3x9qa', 'a'.repeat(64)])
++      expect([ok, isPeerId(ok)]).toEqual([ok, true])
++    for (const bad of ['', 'a b', 'a'.repeat(65), '<b>', 'ann\n', 7, null, undefined, {}])
++      expect([bad, isPeerId(bad)]).toEqual([bad, false])
++  })
++})
+diff --git a/src/lab/social/gate.ts b/src/lab/social/gate.ts
+index fa19fb4e..37a27c79 100644
+--- a/src/lab/social/gate.ts
++++ b/src/lab/social/gate.ts
+@@ -15,6 +15,7 @@
+  */
+ 
+ import type { RoomKind } from '../../voice/voiceSession'
++import type { PartyHere } from '../../party/party'
+ export type { RoomKind }
+ export type Refusal =
+   | 'no-call'
+@@ -51,6 +52,72 @@ export function labShareAllowed(a: {
+ export const isToyId = (v: unknown): v is string =>
+   typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(v)
+ 
++/**
++ * Somebody on the call, by id, as it may arrive from somebody else's client: a member's uuid, or
++ * the dev call's `dev-xxxxxx`. Only ever compared with ids the call itself gave, so the shape is
++ * all that is checked.
++ */
++export const isPeerId = (v: unknown): v is string =>
++  typeof v === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(v)
++
++/**
++ * What a `where` may say about the Lab (party.ts's announceHere): the toy, and whom you follow —
++ * the toy only while your own gate allows, and whom you follow only beside it and only while the
++ * one you follow is showing theirs.
++ *
++ * ⚠️ FOLLOW IS TOLD TO THE LEADER, AND THIS IS THE RULE THAT KEEPS IT TO THEM (Evan, 26 Nov 2026:
++ * "a leader can see who is following them"). A `where` reaches the whole channel, so the audience
++ * of `fol` cannot be narrowed at the far end — only by when it is said. Said only beside your toy,
++ * your gate is open: everybody present is YOUR friend. Said only while the leader's own latest
++ * `where` names a toy, THEIR gate was open when they said it: everybody present is theirs too. So
++ * whom you follow reaches only people who are friends of both of you — a Cy who is your friend
++ * and not the leader's never hears it, because the leader's gate is shut while Cy is there and
++ * their `where` names no toy. And the follower's own sentence, "Ann can see that you're
++ * following", is true exactly when this says `fol` (tour.ts's leaderSees asks the same).
++ */
++export function labWhere(a: {
++  route: string
++  /** your Lab's gate (labSocial.allowed) */
++  allowed: boolean
++  /** the toy on your screen */
++  toy: string | null
++  /** whom you follow, or null */
++  following: string | null
++  /** what the one you follow last said of themselves, as the party holds it */
++  leader: Pick<PartyHere, 'route' | 'sub'> | undefined
++}): { sub?: string; fol?: string } {
++  if (a.route !== 'lab' || !a.allowed || !a.toy) return {}
++  const shows = a.leader?.route === 'lab' && !!a.leader.sub
++  return a.following && shows ? { sub: a.toy, fol: a.following } : { sub: a.toy }
++}
++
++/**
++ * The Lab's facts about a sender, from what they said: a `where` (`said`) says them outright, and
++ * a pointer sample (`said` undefined) says neither and keeps what is known — as it keeps their
++ * skin, because a `ptr` arrives fifteen times a second and would otherwise wipe both. A page that
++ * is not the Lab has neither.
++ *
++ * ⚠️ `fol` ONLY BESIDE A TOY, ON THE LAB, NAMING SOMEBODY ELSE: that is the only shape the sender's
++ * own rule (labWhere) produces, and anything else is a client that has been rewritten. And a
++ * `where` without `fol` clears it: that is how a follow stopping arrives.
++ */
++export function labFacts(
++  known: { sub?: string; fol?: string } | undefined,
++  from: string,
++  route: string,
++  said?: { sub?: unknown; fol?: unknown },
++): { sub?: string; fol?: string } {
++  if (route !== 'lab') return {}
++  if (!said)
++    return {
++      ...(known?.sub ? { sub: known.sub } : {}),
++      ...(known?.sub && known.fol ? { fol: known.fol } : {}),
++    }
++  const sub = isToyId(said.sub) ? said.sub : undefined
++  const fol = sub && isPeerId(said.fol) && said.fol !== from ? said.fol : undefined
++  return { ...(sub ? { sub } : {}), ...(fol ? { fol } : {}) }
++}
++
+ /**
+  * Who to draw on which toy: the people the party says are on a Lab toy, kept only while your own
+  * gate allows and only while they are still in the call.
+diff --git a/src/lab/social/tour.test.ts b/src/lab/social/tour.test.ts
+index 9be7d4a5..01185f23 100644
+--- a/src/lab/social/tour.test.ts
++++ b/src/lab/social/tour.test.ts
+@@ -1,6 +1,11 @@
+ import { describe, expect, it } from 'vitest'
+ import {
++  followersOf,
++  followersWords,
+   followStep,
++  leadSaid,
++  leadWords,
++  leaderSees,
+   ROOM_TOYS,
+   sendsFor,
+   peopleWords,
+@@ -12,9 +17,10 @@ import {
+   tourOf,
+   whyWords,
+   withWords,
++  type FollowStep,
+   type Shadow,
+ } from './tour'
+-import type { Refusal } from './gate'
++import { labFacts, labWhere, type Refusal } from './gate'
+ import { rollFaces } from './bus'
+ import { CATEGORIES, META, entries, listed as listedFor } from '../catalog'
+ import { matchToy } from '../matches/games'
+@@ -100,6 +106,7 @@ describe('the tour (tourOf)', () => {
+       skin: 'pen',
+       speaking: true,
+       place: { at: 'toy', toy: 'chess' },
++      followsMe: false,
+     })
+     expect(t.people[4].skin).toBe('star')
+     expect(t.people[1].skin).toBeUndefined()
+@@ -197,7 +204,9 @@ describe('the phone’s one line (summaryOf)', () => {
+     )
+   })
+   it('says that nobody is sharing rather than going blank', () => {
+-    const quiet: Shadow[] = [{ id: 'a', name: 'Ann', speaking: false, place: { at: 'quiet' } }]
++    const quiet: Shadow[] = [
++      { id: 'a', name: 'Ann', speaking: false, place: { at: 'quiet' }, followsMe: false },
++    ]
+     expect(summaryOf(quiet, name)).toBe('Nobody else is showing where they are')
+     expect(summaryOf([], name)).toBe('')
+   })
+@@ -619,3 +628,298 @@ describe('Gust is never a tour stop (Evan, 27 Nov 2026)', () => {
+     expect(matchToy('gust')).toBeNull()
+   })
+ })
++
++/*
++ * A leader sees who is following them (Evan, 26 Nov 2026), and nobody else does. The whole path
++ * is pure — Bo's browser says it (gate.ts's labWhere), each receiver believes it or not (labFacts),
++ * and each receiver's strip draws it or not (tourOf) — so it is walked end to end here, with the
++ * expectation written from who may know what, never from any of the three functions' sums.
++ */
++describe('who follows you, and who can tell (followsMe)', () => {
++  const BO = 'bo'
++  const ANN = 'ann'
++  const CY = 'cy'
++  /* every field away from its default: skins, somebody talking, toys said, Dee following Cy, and
++     an id the call never had saying it follows whoever is looking */
++  const roster = [
++    { id: BO, name: 'Bo', speaking: true },
++    { id: ANN, name: 'Ann', speaking: false },
++    { id: CY, name: 'Cy', speaking: false },
++    { id: 'dee', name: 'Dee', speaking: false },
++  ]
++  const listed = new Set(['chess', 'swarm', 'paint', 'lamps'])
++  /** what a receiver's party holds after Bo's `where` — and everybody else's, fixed */
++  const heldAt = (me: string, bo: { route?: string; sub?: string; fol?: string } | null) => ({
++    ...(bo ? { [BO]: { route: 'lab', skin: 'pen' as const, ...bo } } : {}),
++    ...(me !== ANN ? { [ANN]: { route: 'lab', sub: 'chess' } } : {}),
++    ...(me !== CY ? { [CY]: { route: 'lab', sub: 'lamps', skin: 'star' as const } } : {}),
++    dee: { route: 'lab', sub: 'paint', fol: CY },
++    ghost: { route: 'lab', sub: 'swarm', fol: me },
++  })
++  const tourAt = (
++    me: string,
++    here: ReturnType<typeof heldAt>,
++    over: Partial<Parameters<typeof tourOf>[0]> = {},
++  ) =>
++    tourOf({
++      inCall: true,
++      onLabPage: true,
++      sharing: true,
++      verdict: { allowed: true },
++      me,
++      roster: roster.filter((p) => p.id !== me),
++      here,
++      myToy: me === ANN ? 'chess' : 'lamps',
++      openable: (t) => listed.has(t),
++      ...over,
++    })
++  const leaderShapes = [
++    ['quiet', undefined],
++    ['on another page', { route: 'paint' }],
++    ['on the Lab, no toy', { route: 'lab' }],
++    ['showing a toy', { route: 'lab', sub: 'chess' }],
++  ] as const
++
++  it('Bo pressing Follow on Ann shows on Ann’s strip and nowhere else', () => {
++    let drawn = 0
++    let cases = 0
++    for (const boGate of [true, false])
++      for (const boRoute of ['lab', 'paint'])
++        for (const target of [ANN, CY, null])
++          for (const [shape, leader] of leaderShapes)
++            for (const receiver of [ANN, CY])
++              for (const recvGate of [true, false])
++                for (const recvSharing of [true, false]) {
++                  cases++
++                  /* Bo's browser: what his `where` says, from his own state */
++                  const body = {
++                    route: boRoute,
++                    ...labWhere({
++                      route: boRoute,
++                      allowed: boGate,
++                      toy: 'swarm',
++                      following: target,
++                      leader: target ? leader : undefined,
++                    }),
++                  }
++                  /* the receiver's party: reciprocity first — not sharing holds nothing at all */
++                  const facts = labFacts(undefined, BO, body.route, body)
++                  const here = recvSharing
++                    ? heldAt(receiver, { route: body.route, ...facts })
++                    : ({} as ReturnType<typeof heldAt>)
++                  const t = tourAt(receiver, here, {
++                    verdict: recvGate ? { allowed: true } : { allowed: false, why: 'stranger' },
++                    sharing: recvSharing,
++                  })
++                  const bo = t && t.why === null ? t.people.find((p) => p.id === BO) : undefined
++                  /* the world's shape: Bo's gate open, Bo on the Lab, Bo follows THIS receiver,
++                     the receiver is showing a toy as far as Bo knows, and the receiver may see
++                     places at all — their gate open and them sharing */
++                  const want =
++                    boGate &&
++                    boRoute === 'lab' &&
++                    target === receiver &&
++                    shape === 'showing a toy' &&
++                    recvGate &&
++                    recvSharing
++                  const c = { boGate, boRoute, target, shape, receiver, recvGate, recvSharing }
++                  expect([c, bo?.followsMe ?? false]).toEqual([c, want])
++                  if (want) drawn++
++                }
++    expect(cases).toBe(2 * 2 * 3 * 4 * 2 * 2 * 2)
++    /* once to Ann and once to Cy: whoever Bo follows, while they show a toy */
++    expect(drawn).toBe(2)
++  })
++  it('the rest of the strip is unchanged by it, and only the one followed is told', () => {
++    const facts = labFacts(undefined, BO, 'lab', labWhere({ route: 'lab', allowed: true, toy: 'swarm', following: ANN, leader: { route: 'lab', sub: 'chess' } }))
++    const ann = tourAt(ANN, heldAt(ANN, facts))!
++    const cy = tourAt(CY, heldAt(CY, facts))!
++    if (ann.why !== null || cy.why !== null) throw new Error('not touring')
++    expect(ann.people.find((p) => p.id === BO)).toEqual({
++      id: BO,
++      name: 'Bo',
++      skin: 'pen',
++      speaking: true,
++      place: { at: 'toy', toy: 'swarm' },
++      followsMe: true,
++    })
++    /* Cy holds the same `where` and is not drawn it */
++    expect(cy.people.find((p) => p.id === BO)?.followsMe).toBe(false)
++    /* Dee follows Cy: Cy is told, Ann is not */
++    expect(ann.people.find((p) => p.id === 'dee')?.followsMe).toBe(false)
++    expect(cy.people.find((p) => p.id === 'dee')?.followsMe).toBe(true)
++    /* an id the call never had is never drawn, whatever it claims */
++    expect(ann.people.some((p) => p.id === 'ghost')).toBe(false)
++    /* and a `fol` held without a toy beside it, or off the Lab, is not a follow: only a client
++       that has been rewritten sends one, and labFacts drops it — this is the strip's own half */
++    for (const dee of [{ route: 'lab', fol: ANN }, { route: 'paint', fol: ANN }]) {
++      const t = tourAt(ANN, { ...heldAt(ANN, facts), dee })!
++      if (t.why !== null) throw new Error('not touring')
++      expect([dee, t.people.find((p) => p.id === 'dee')?.followsMe]).toEqual([dee, false])
++    }
++    expect(followersOf(ann.people).map((p) => p.id)).toEqual([BO])
++    expect(followersOf(cy.people).map((p) => p.id)).toEqual(['dee'])
++  })
++
++  it('the follower is told the leader can see it exactly when it is said on the wire', () => {
++    /* every followStep outcome, for every shape of leader, with Bo on the Lab, visible unless the
++       step is about his own hidden tab, sharing, his gate open and a toy on screen */
++    const seen = new Set<string>()
++    const base = {
++      onRoster: true,
++      gateOpen: true,
++      sharing: true,
++      myToy: 'swarm' as string | null,
++      openable: (t: string) => t !== 'secret',
++      hidden: false,
++      seated: false,
++      inMatch: false,
++      first: false,
++      since: 0,
++      now: 100_000,
++      people: 3,
++      lastPlay: -1e9,
++      offered: null as string | null,
++    }
++    const leaders = [
++      undefined,
++      { route: 'paint' },
++      { route: 'lab' },
++      { route: 'lab', sub: 'chess' },
++      { route: 'lab', sub: 'swarm' },
++      { route: 'lab', sub: 'secret' },
++    ]
++    for (const leader of leaders)
++      for (const over of [
++        {},
++        { hidden: true },
++        { seated: true },
++        { inMatch: true },
++        { since: 99_000 },
++        { offered: 'chess' },
++        { lastPlay: 99_000 },
++        { left: { toy: 'chess', at: 99_900 }, goesFirst: false },
++        { onRoster: false },
++        { gateOpen: false },
++        { sharing: false },
++      ]) {
++        const s: FollowStep = followStep({ ...base, leader, ...over })
++        seen.add(s.do === 'go' ? 'go' : `${s.do}:${s.why}`)
++        const st = { ...base, ...over }
++        /* what Bo's browser actually sends: a hidden tab sends no `where`, and a stop is no follow */
++        const wire = st.hidden
++          ? undefined
++          : labWhere({
++              route: 'lab',
++              allowed: st.gateOpen,
++              toy: st.myToy,
++              following: s.do === 'stop' ? null : ANN,
++              leader,
++            }).fol
++        const c = { leader, over, s }
++        expect([c, leaderSees(s, st.hidden)]).toEqual([c, wire !== undefined])
++      }
++    /* every outcome was asked */
++    expect([...seen].sort()).toEqual(
++      [
++        'go',
++        'offer:match',
++        'offer:offered',
++        'offer:playing',
++        'offer:seat',
++        'stop:gate',
++        'stop:left',
++        'stop:sharing',
++        'wait:away',
++        'wait:crossed',
++        'wait:hidden',
++        'wait:quiet',
++        'wait:settling',
++        'wait:unopenable',
++        'wait:unsaid',
++        'wait:with',
++      ].sort(),
++    )
++    expect(leaderSees({ do: 'wait', why: 'hidden' })).toBe(false)
++  })
++
++  it('followersWords names everybody, and the count is the rest', () => {
++    expect(followersWords([])).toBe('')
++    expect(followersWords(['Bo'])).toBe('Bo is following you.')
++    expect(followersWords(['Bo', 'Cy'])).toBe('Bo and Cy are following you.')
++    expect(followersWords(['Bo', 'Cy', 'Dee'])).toBe('Bo, Cy and Dee are following you.')
++    expect(followersWords(['Bo', 'Cy', 'Dee', 'Eve'])).toBe('Bo, Cy, Dee and Eve are following you.')
++    for (let n = 5; n <= 12; n++) {
++      const names = Array.from({ length: n }, (_, i) => `P${i}`)
++      const said = followersWords(names)
++      const m = /^(.*) and (\d+) others are following you\.$/.exec(said)
++      expect(m).not.toBeNull()
++      const named = m![1].split(', ')
++      /* every name said, plus the number given, is everybody following: never the total again */
++      expect(named.length + Number(m![2])).toBe(n)
++      for (const x of named) expect(names).toContain(x)
++    }
++  })
++
++  /** Ann's tour after a sequence of what Bo's `where` said (null: Bo quiet) */
++  const people = (bo: 'follows' | 'not' | 'quiet', cy: 'follows' | 'not' = 'not') => {
++    const here: Record<string, { route: string; sub?: string; fol?: string }> = {}
++    if (bo !== 'quiet') here[BO] = { route: 'lab', sub: 'swarm', ...(bo === 'follows' ? { fol: ANN } : {}) }
++    here[CY] = { route: 'lab', sub: 'lamps', ...(cy === 'follows' ? { fol: ANN } : {}) }
++    const t = tourAt(ANN, here as ReturnType<typeof heldAt>)!
++    if (t.why !== null) throw new Error('not touring')
++    return t.people
++  }
++  it('said once when somebody starts following you', () => {
++    const said: (string | null)[] = []
++    let heard: ReadonlySet<string> = new Set()
++    const ask = (p: Shadow[] | null) => {
++      /* each moment asked twice, as a render that changes nothing would */
++      for (let i = 0; i < 2; i++) {
++        const r = leadSaid(heard, p)
++        heard = r.heard
++        said.push(r.text)
++      }
++    }
++    ask(people('not'))
++    ask(people('follows')) // Bo presses Follow
++    ask(people('follows')) // his heartbeat
++    ask(people('quiet')) // he hides his tab
++    ask(people('follows')) // and comes back
++    ask(null) // Ann's gate shuts for a moment
++    ask(people('follows'))
++    ask(people('not')) // Stop
++    ask(people('follows')) // Follow again
++    ask(people('follows', 'follows')) // and Cy too
++    ask(people('follows', 'follows').filter((p) => p.id !== BO)) // Bo leaves the call
++    ask(people('follows', 'follows')) // and rejoins, still following
++    expect(said.filter(Boolean)).toEqual([
++      'Bo is following you.',
++      'Bo is following you.',
++      'Cy is following you.',
++      'Bo is following you.',
++    ])
++    /* and in order: the press, the second Follow, Cy, the rejoin — never a heartbeat, a return, a
++       stop or a repeat */
++    expect(said.map((x, i) => (x ? i : -1)).filter((i) => i >= 0)).toEqual([2, 16, 18, 22])
++    /* nothing changed is the same Set back */
++    const r = leadSaid(heard, people('follows', 'follows'))
++    expect(r.heard).toBe(heard)
++    expect(leadSaid(heard, null).heard).toBe(heard)
++  })
++  it('two starting together are said together', () => {
++    expect(leadSaid(new Set(), people('follows', 'follows')).text).toBe(
++      'Bo and Cy are following you.',
++    )
++  })
++  it('every figure about who follows you comes from one list', () => {
++    for (const bo of ['follows', 'not', 'quiet'] as const)
++      for (const cy of ['follows', 'not'] as const) {
++        const p = people(bo, cy)
++        const names = followersOf(p).map((x) => x.name)
++        expect(leadWords(p)).toBe(followersWords(names))
++        /* the first thing said to a leader arriving is exactly what the line then shows */
++        expect(leadSaid(new Set(), p).text ?? '').toBe(leadWords(p))
++      }
++  })
++})
+diff --git a/src/lab/social/tour.ts b/src/lab/social/tour.ts
+index a81c9cf8..fa8718a3 100644
+--- a/src/lab/social/tour.ts
++++ b/src/lab/social/tour.ts
+@@ -2,7 +2,9 @@
+  * The Lab tour: friends on the same call seeing each other on the Lab's toys, the way players see
+  * each other on a board. Pure, so tour.test.ts can ask it without a call or a page —
+  * docs/2026-11-22-lab-tour.md has the plan: everything here is a new reading of messages the call
+- * already carries, and only the party tour (bus.ts) adds a kind of its own, `bus`.
++ * already carries, and Follow's `fol` — one optional field on the `where` that already goes out,
++ * so a leader can see who follows them (gate.ts's labWhere) — and only the party tour (bus.ts)
++ * adds a kind of its own, `bus`.
+  */
+ 
+ import type { PartyHere } from '../../party/party'
+@@ -45,6 +47,8 @@ export type Shadow = {
+   skin?: CursorSkin
+   speaking: boolean
+   place: Place
++  /** they follow you (their `where` says so, beside their toy): drawn on your screen and no other */
++  followsMe: boolean
+ }
+ 
+ /** what the tour can show: nothing at all, a sentence about why not, or everybody's place */
+@@ -76,7 +80,7 @@ export function tourOf(a: {
+   me: string | null
+   /** everybody else on the call, in the call's order */
+   roster: readonly { id: string; name: string; speaking: boolean }[]
+-  here: Readonly<Record<string, Pick<PartyHere, 'route' | 'sub' | 'skin'>>>
++  here: Readonly<Record<string, Pick<PartyHere, 'route' | 'sub' | 'skin' | 'fol'>>>
+   /** the toy on your screen */
+   myToy: string | null
+   /** whether your Lab lists a toy, so Go can open it */
+@@ -95,11 +99,78 @@ export function tourOf(a: {
+       ...(h?.skin ? { skin: h.skin } : {}),
+       speaking: p.speaking,
+       place: placeOf(h, a.myToy, a.openable),
++      /* ⚠️ ONLY WHERE PLACES ARE DRAWN AT ALL — your gate open, you sharing, them on the roster —
++         and only about you: "Bo follows Ann" is never drawn on Cy's screen, though Cy's party may
++         hold it (a `where` reaches the whole channel; gate.ts's labWhere keeps that channel to
++         friends of both) */
++      followsMe: h?.route === 'lab' && !!h.sub && h.fol === a.me,
+     }
+   })
+   return { why: null, me: a.me, people }
+ }
+ 
++/** everybody who follows you: the one list behind every figure about it (the lead line, leadSaid) */
++export const followersOf = (people: readonly Shadow[]) => people.filter((p) => p.followsMe)
++
++/**
++ * "Bo is following you.", "Bo and Cy are following you.", "Bo, Cy and 3 others are following you."
++ *
++ * ⚠️ NOTHING AT NOUGHT, AND NEVER "NOBODY IS FOLLOWING YOU": a friend on an older build follows
++ * without saying so (its `where` has no `fol`), so a zero here would be a claim this screen cannot
++ * make. It says who it knows follows, and only that.
++ */
++export const followersWords = (names: readonly string[]) =>
++  names.length ? `${peopleWords(names)} ${names.length === 1 ? 'is' : 'are'} following you.` : ''
++
++/** the leader's line in the strip: who follows them now, from followersOf */
++export const leadWords = (people: readonly Shadow[]) =>
++  followersWords(followersOf(people).map((p) => p.name))
++
++/**
++ * Whether the one you follow can see that you follow them now: exactly when your `where` says
++ * `fol` (gate.ts's labWhere) — beside your toy, while they show theirs. followStep reaches `go`,
++ * `offer` and the last four waits only once the leader's toy is known, and stops or waits before
++ * it otherwise. ⚠️ AND NEVER FROM A HIDDEN TAB, which sends `gone` and no `where` at all: followStep
++ * answers `with` and `unopenable` before it asks whether you are hidden, so that is asked here.
++ */
++export function leaderSees(s: FollowStep, hidden = false): boolean {
++  if (hidden) return false
++  if (s.do === 'go' || s.do === 'offer') return true
++  if (s.do === 'stop') return false
++  return s.why === 'with' || s.why === 'unopenable' || s.why === 'settling' || s.why === 'crossed'
++}
++
++/**
++ * What the leader's screen reader hears: a follow starting, once — "Bo is following you." —
++ * and nothing else. `heard` is who it has been said about, kept by the caller and handed back;
++ * `people` null is a strip that may not show places, which changes nothing.
++ *
++ * ⚠️ STARTS, NEVER STOPS. A stop is said by the line going, and at the moment somebody boards your
++ * tour their `where` drops `fol` before your state naming them arrives — a stop said then would be
++ * about somebody who has just joined you. And a person gone QUIET is kept: a hidden tab says `gone`,
++ * and its return is not a new follow. Somebody who is here and no longer follows, or who left the
++ * call, is let go silently, so following again is said again.
++ */
++export function leadSaid(
++  heard: ReadonlySet<string>,
++  people: readonly Shadow[] | null,
++): { heard: ReadonlySet<string>; text: string | null } {
++  if (!people) return { heard, text: null }
++  const by = new Map(people.map((p) => [p.id, p]))
++  const next = new Set<string>()
++  for (const id of heard) {
++    const p = by.get(id)
++    if (p && (p.followsMe || p.place.at === 'quiet')) next.add(id)
++  }
++  const fresh = followersOf(people).filter((p) => !heard.has(p.id))
++  for (const p of fresh) next.add(p.id)
++  const same = next.size === heard.size && [...next].every((id) => heard.has(id))
++  return {
++    heard: same ? heard : next,
++    text: fresh.length ? followersWords(fresh.map((p) => p.name)) : null,
++  }
++}
++
+ function placeOf(
+   h: Pick<PartyHere, 'route' | 'sub'> | undefined,
+   myToy: string | null,
+@@ -290,8 +361,11 @@ export type FollowStep =
+ 
+ /**
+  * What following somebody does now. A standing, local, opt-in choice: nobody is moved who did not
+- * press Follow, and the leader is never told (shared.ts and together.ts: sharing never makes anybody
+- * follow). Checked in this order, and the order is the design:
++ * press Follow, and the leader gets no say in it (shared.ts and together.ts: sharing never makes
++ * anybody follow). ⚠️ THE LEADER IS TOLD, AND ONLY THE LEADER (Evan, 26 Nov 2026): your `where`
++ * says whom you follow while they show a toy (gate.ts's labWhere), their strip draws it, and you
++ * are told they can see it (leaderSees) — the Lab's one exception to shared.ts's "never told", and
++ * an audience of one. Checked in this order, and the order is the design:
+  *
+  * 1. STOP when the follow can no longer mean anything: the leader left the call, your gate shut, or
+  *    you stopped sharing — the last two because the leader's toy is no longer yours to see.
+diff --git a/src/party/party.ts b/src/party/party.ts
+index 468e57dc..01c463d5 100644
+--- a/src/party/party.ts
++++ b/src/party/party.ts
+@@ -2,7 +2,8 @@ import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
+ import { together } from './together'
+ import { isCursorSkin, myCursor, onCursorChange, type CursorSkin } from '../ui/cursorSkin'
+ import { labSocial } from '../lab/social/social'
+-import { isToyId } from '../lab/social/gate'
++import { isToyId, labFacts, labWhere } from '../lab/social/gate'
++import { follows } from '../lab/social/following'
+ import { TOY_EVENT, currentToy } from '../lab/links'
+ import { TAP_MS } from './cursorPlace'
+ 
+@@ -175,6 +176,17 @@ export type PartyHere = {
+    * arrival (isToyId); the Lab draws it only if it names a toy it has.
+    */
+   sub?: string
++  /**
++   * Whom they follow on the Lab (TourStrip's Follow), told so the one they follow can see it.
++   *
++   * ⚠️ A NEW THING LEAVING YOUR MACHINE, AND GATED LIKE `sub` (Evan, 26 Nov 2026: "a leader can see
++   * who is following them"). Said only beside your toy, and only while the one you follow is
++   * showing theirs (gate.ts's labWhere) — so it reaches only people who are friends of you both —
++   * and drawn only on the leader's own screen (tour.ts's followsMe). Never stored, never a
++   * control: the leader learns it and can do nothing with it, and it goes the moment the follow
++   * does. Checked on arrival (labFacts): only beside a toy, naming somebody else.
++   */
++  fol?: string
+   at: number
+ }
+ 
+@@ -335,12 +347,19 @@ function announceHere() {
+   const route = currentRoute()
+   /* ⚠️ THE TOY ONLY WHEN THE LAB'S GATE SAYS SO: everyone else in the call is a friend. The page
+      itself has always gone out to the whole call; which toy you are on is the new, finer fact,
+-     and it goes to friends or to nobody. */
+-  const toy = route === 'lab' && labSocial.allowed() ? currentToy() : null
++     and it goes to friends or to nobody. Whom you follow goes beside it, and only while they are
++     showing their own toy — one rule for both, gate.ts's labWhere. */
++  const following = follows.get()
+   sendParty('where', {
+     route,
+     ...(id === 'system' ? {} : { skin: id }),
+-    ...(toy ? { sub: toy } : {}),
++    ...labWhere({
++      route,
++      allowed: labSocial.allowed(),
++      toy: currentToy(),
++      following,
++      leader: following ? state.here[following] : undefined,
++    }),
+   })
+ }
+ 
+@@ -349,7 +368,7 @@ function whereFrom(
+   m: { from: string; name?: unknown },
+   route: string,
+   skin?: CursorSkin,
+-  sub?: string | null,
++  said?: { sub?: unknown; fol?: unknown },
+ ): PartyHere {
+   return {
+     id: m.from,
+@@ -360,14 +379,10 @@ function whereFrom(
+        second — rebuilt without this the skin would be wiped by the very next sample and the
+        cursor would flicker back to the default arrow almost immediately. */
+     skin: skin ?? state.here[m.from]?.skin,
+-    /* a `where` says which toy outright (null: none); a pointer sample keeps the one known, the
+-       same reason as the skin above — and a page that is not the Lab has no toy at all */
+-    sub:
+-      route !== 'lab'
+-        ? undefined
+-        : sub === undefined
+-          ? state.here[m.from]?.sub
+-          : (sub ?? undefined),
++    /* a `where` says which toy, and whom they follow, outright (none: none); a pointer sample
++       keeps what is known, the same reason as the skin above — and a page that is not the Lab
++       has neither (gate.ts's labFacts) */
++    ...labFacts(state.here[m.from], m.from, route, said),
+     at: performance.now(),
+   }
+ }
+@@ -413,15 +428,19 @@ export const party = {
+         return
+       }
+       if (m.kind === 'where') {
+-        const b = m.body as { route?: unknown; skin?: unknown; sub?: unknown }
++        const b = m.body as { route?: unknown; skin?: unknown; sub?: unknown; fol?: unknown }
+         // somebody else's string, on its way into a lookup and a title attribute
+         if (typeof b?.route !== 'string' || b.route.length > 64) return
+         /* checked against the real list rather than taken as given: it decides which picture
+            gets drawn, and the client that sent it is one anybody can rewrite */
+         const skin = isCursorSkin(b.skin) && b.skin !== 'system' ? b.skin : undefined
+-        const sub = isToyId(b.sub) ? b.sub : null
+         const isNew = !state.here[m.from]
+-        set({ here: { ...state.here, [m.from]: whereFrom(m, b.route, skin, sub) } })
++        set({
++          here: {
++            ...state.here,
++            [m.from]: whereFrom(m, b.route, skin, { sub: b.sub, fol: b.fol }),
++          },
++        })
+         /* ⚠️ SOMEBODY HEARD FOR THE FIRST TIME IS ANSWERED AT ONCE. They may have just switched
+            sharing on, and everything said before that went past them unheard (reciprocity, above)
+            — so without a reply they learn where you are only at your next heartbeat, up to five
+@@ -507,6 +526,11 @@ export const party = {
+     window.addEventListener(TOY_EVENT, announceHere)
+     // and the Lab's gate opening or closing changes what `where` may say, so say it again
+     const offLab = labSocial.subscribe(announceHere)
++    /* and so does whom you follow: the one you follow sees it start and stop at once, not at the
++       next heartbeat. ⚠️ A CHANGE ONLY: the store notifies on nothing else, so this is one `where`
++       per Follow, Stop or pick that ends a follow — and the one you follow going quiet or coming
++       back sends nothing extra (the heartbeat, and the reply to a newcomer below, carry it) */
++    const offFollow = follows.subscribe(announceHere)
+ 
+     const beat = window.setInterval(announceHere, HERE_MS)
+ 
+@@ -564,6 +588,7 @@ export const party = {
+       offVoice,
+       offAll,
+       offLab,
++      offFollow,
+       () => window.removeEventListener(TOY_EVENT, announceHere),
+       () => window.removeEventListener('pointermove', move),
+       () => window.removeEventListener('pointerdown', tap),
+diff --git a/src/party/shared.test.ts b/src/party/shared.test.ts
+new file mode 100644
+index 00000000..101ae5be
+--- /dev/null
++++ b/src/party/shared.test.ts
+@@ -0,0 +1,43 @@
++import { describe, expect, it, vi } from 'vitest'
++
++/*
++ * A shared window's sharer is never told who follows it (shared.ts's header) — and the Lab's
++ * Follow now is, to its leader alone (Evan, 26 Nov 2026; src/lab/social/gate.ts's labWhere). The
++ * exception is the Lab's, and this keeps it there: following a window, or everything somebody
++ * shows, or stopping, puts nothing on the call's channel at all.
++ */
++const sent = vi.hoisted(() => [] as [string, unknown][])
++vi.mock('../voice/voiceSession', () => ({
++  sendParty: (kind: string, body: unknown) => sent.push([kind, body]),
++  onParty: () => () => {},
++  voiceSession: { subscribe: () => () => {}, getState: () => ({ inCall: true }) },
++}))
++/* a state push is queued on a timer; node has no window, and its own timers are the same thing */
++vi.stubGlobal('window', globalThis)
++const { shared } = await import('./shared')
++
++describe('a shared window’s sharer is still never told', () => {
++  it('following, following everything, and stopping each send nothing', () => {
++    shared.register(
++      'visualizer',
++      () => ({ mode: 1 }),
++      () => {},
++    )
++    sent.length = 0
++    shared.follow('visualizer', 'ann')
++    shared.followAll('ann')
++    shared.unfollow('visualizer')
++    shared.followAll('bo')
++    shared.unfollowAll('bo')
++    expect(sent).toEqual([])
++    /* and the room is what changed, here and only here */
++    expect(shared.getState().following).toEqual({})
++    expect(shared.getState().followingAll).toEqual([])
++  })
++  it('while offering a window does go out: the probe hears a send when there is one', () => {
++    sent.length = 0
++    shared.offer('visualizer', 'Visualiser')
++    expect(sent.map(([kind]) => kind)).toContain('win')
++    shared.withdraw('visualizer')
++  })
++})
+diff --git a/src/party/shared.ts b/src/party/shared.ts
+index bde3cdba..10edb515 100644
+--- a/src/party/shared.ts
++++ b/src/party/shared.ts
+@@ -24,6 +24,8 @@ import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
+  * Anyone may offer; nobody is made to follow. Following is a LOCAL decision and the sharer is
+  * never told — there is no "Evan is watching your window" signal, because that would turn a
+  * convenience into an audience, and people behave differently in front of an audience.
++ * (The Lab's Follow is the one exception, and an audience of one: its leader sees who follows
++ * them, Evan's call of 26 Nov 2026 — src/lab/social/gate.ts's labWhere. A shared window is not.)
+  *
+  * A follower's own controls keep working. Touching one stops you following rather than fighting
+  * the incoming state, which is the only behaviour that does not feel broken: a slider that snaps
+diff --git a/src/party/whereEveryone.test.ts b/src/party/whereEveryone.test.ts
+new file mode 100644
+index 00000000..11fadac8
+--- /dev/null
++++ b/src/party/whereEveryone.test.ts
+@@ -0,0 +1,40 @@
++import { describe, expect, it } from 'vitest'
++import { hereKey } from './whereEveryone'
++import type { PartyHere } from './party'
++
++/*
++ * The snapshot the App and the Lab read (usePartyHere) is rebuilt only when its key changes, and
++ * the party's state is replaced on every pointer sample — so the key is the line between "a
++ * heartbeat saying the same" and "something somebody can see changed".
++ */
++describe('who is where, as one key (hereKey)', () => {
++  /* every field away from its default */
++  const bo: PartyHere = {
++    id: 'bo',
++    name: 'Bo',
++    route: 'lab',
++    skin: 'pen',
++    sub: 'swarm',
++    fol: 'ann',
++    at: 1000,
++  }
++  it('the snapshot changes when somebody starts or stops following, never on a heartbeat saying the same', () => {
++    const { fol: _fol, ...unfollowed } = bo
++    void _fol
++    expect(hereKey(unfollowed)).not.toBe(hereKey(bo))
++    expect(hereKey({ ...bo, fol: 'cy' })).not.toBe(hereKey(bo))
++    /* a heartbeat: the same facts, a later time */
++    expect(hereKey({ ...bo, at: 6000 })).toBe(hereKey(bo))
++  })
++  it('and still on everything else a ring or a strip shows', () => {
++    for (const change of [
++      { route: 'paint' },
++      { sub: 'chess' },
++      { sub: undefined },
++      { skin: undefined },
++      { name: 'Bob' },
++      { id: 'cy' },
++    ] as Partial<PartyHere>[])
++      expect([change, hereKey({ ...bo, ...change }) !== hereKey(bo)]).toEqual([change, true])
++  })
++})
+diff --git a/src/party/whereEveryone.ts b/src/party/whereEveryone.ts
+index 619c7a52..51b1cb79 100644
+--- a/src/party/whereEveryone.ts
++++ b/src/party/whereEveryone.ts
+@@ -32,6 +32,16 @@ import { hueFor, party, type PartyHere } from './party'
+  * are in change a few times a minute, so the grouping is rebuilt only when one of the fields it
+  * shows does.
+  */
++/**
++ * One person as the snapshot sees them: every field something shows — and nothing that changes
++ * when nothing does, so a heartbeat saying the same is not a change. ⚠️ `fol` IS IN IT: whom
++ * somebody follows changes no ring, but the leader's tour strip reads it, and left out of the key
++ * a follow starting or stopping would reach that strip only with the next change of somebody's
++ * room, toy or skin.
++ */
++export const hereKey = (p: PartyHere) =>
++  `${p.id}|${p.route}|${p.sub ?? ''}|${p.fol ?? ''}|${p.skin ?? ''}|${p.name}`
++
+ let lastKey = ''
+ let lastBy: Record<string, PartyHere[]> = {}
+ function grouped(): Record<string, PartyHere[]> {
+@@ -40,9 +50,7 @@ function grouped(): Record<string, PartyHere[]> {
+     ? // stable order, so two people in one room do not swap rings on every heartbeat
+       Object.values(state.here).sort((a, b) => a.id.localeCompare(b.id))
+     : []
+-  const key = people
+-    .map((p) => `${p.id}|${p.route}|${p.sub ?? ''}|${p.skin ?? ''}|${p.name}`)
+-    .join('\n')
++  const key = people.map(hereKey).join('\n')
+   if (key === lastKey) return lastBy
+   const by: Record<string, PartyHere[]> = {}
+   for (const p of people) (by[p.route] ||= []).push(p)
+diff --git a/src/sections/GpuLab.tsx b/src/sections/GpuLab.tsx
+index e77fefdf..f7e483e9 100644
+--- a/src/sections/GpuLab.tsx
++++ b/src/sections/GpuLab.tsx
+@@ -5,6 +5,7 @@ import {
+   useMemo,
+   useRef,
+   useState,
++  useSyncExternalStore,
+   type ReactNode,
+ } from 'react'
+ import {
+@@ -30,6 +31,7 @@ import { YourGames } from '../lab/matches/YourGames'
+ import { useFriendsOnToys, useLabMe } from '../lab/social/where'
+ import { withWords } from '../lab/social/tour'
+ import { TourStrip } from '../lab/social/TourStrip'
++import { follows } from '../lab/social/following'
+ import { hueFor } from '../party/party'
+ 
+ /**
+@@ -113,8 +115,12 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
+     stopRescue.current?.()
+     stopRescue.current = el ? rescueFocus(el) : null
+   }, [])
+-  /** the friend whose toy you are going to wherever it goes (src/lab/social/TourStrip.tsx), or null */
+-  const [following, setFollowing] = useState<string | null>(null)
++  /** the friend whose toy you are going to wherever it goes (src/lab/social/TourStrip.tsx), or
++      null — a store rather than state, because your `where` tells them (party.ts reads it) */
++  const following = useSyncExternalStore(follows.subscribe, follows.get, follows.get)
++  /* ⚠️ A FOLLOW ENDS WITH THE LAB. As this component's state it went when the Lab unmounted;
++     kept in a module it would outlive the page and go on telling the leader */
++  useEffect(() => () => follows.set(null), [])
+   // and a link clicked while the Lab is already open changes only the hash
+   useEffect(() => {
+     const on = () => {
+@@ -122,7 +128,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
+       /* a toy named by a link, the roster's 🧪 or a typed address is a toy YOU chose: it ends a
+          follow, exactly as the picker does (a follow's own moves replace the address and fire no
+          hashchange) */
+-      if (linked) setFollowing(null)
++      if (linked) follows.set(null)
+       if (linked && DEMOS.some((d) => d.id === linked)) setDemo(linked)
+     }
+     window.addEventListener('hashchange', on)
+@@ -233,9 +239,11 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
+       window.dispatchEvent(new Event(TOY_EVENT))
+     }
+   }, [])
+-  /** a toy you chose yourself — which is also how you stop following somebody */
++  /** a toy you chose yourself — which is also how you stop following somebody. ⚠️ THE FOLLOW
++      ENDS FIRST, so the `where` the move sends names no leader (party.ts says the stop at once,
++      then the move says the toy) */
+   const pick = (id: DemoId) => {
+-    setFollowing(null)
++    follows.set(null)
+     show(id)
+   }
+   const patchFlags = (id: string, patch: Partial<Flags>) =>
+@@ -300,7 +308,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
+         toys={toys}
+         onGo={pick}
+         following={following}
+-        onFollow={setFollowing}
++        onFollow={follows.set}
+         onLead={show}
+         filter={filter}
+         kindOf={kindOf}
