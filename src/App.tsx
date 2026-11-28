@@ -22,6 +22,13 @@ import { FX_STYLES } from './ui/fxStyles'
 import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
 import { SECTION_ALIASES, SECTION_TITLES, navFor, sectionOf, type Section } from './nav/places'
 import { isTypingTarget } from './nav/typing'
+import {
+  NAV_FLAGS_KEY,
+  readNavFlags,
+  settleNavFlag,
+  storeNavFlags,
+  type FlagKey,
+} from './nav/flags'
 import { occupancy, usePartyHere } from './party/whereEveryone'
 import { AppearanceDialog } from './components/AppearanceDialog'
 import { BugReport } from './components/BugReport'
@@ -256,30 +263,8 @@ if (import.meta.env.DEV) {
 // The persisted Supabase session is peeked synchronously (peekPersistedUserId) so a
 // returning user boots signed-in on the very first paint instead of flashing "Sign in"
 // until a network round-trip confirms. Same for the gated tabs: the last confirmed
-// admin/finance flags are cached per user and re-verified in the background.
-type NavFlags = { uid: string; admin: boolean; finance: boolean; suspended: boolean }
-const NAV_FLAGS_KEY = 'nav_flags_v1'
-function readNavFlags(uid: string): NavFlags | null {
-  try {
-    const f = JSON.parse(localStorage.getItem(NAV_FLAGS_KEY) || 'null') as NavFlags | null
-    return f && f.uid === uid ? f : null
-  } catch {
-    return null
-  }
-}
-function writeNavFlags(patch: Partial<NavFlags> & { uid: string }) {
-  try {
-    const cur = readNavFlags(patch.uid) ?? {
-      uid: patch.uid,
-      admin: false,
-      finance: false,
-      suspended: false,
-    }
-    localStorage.setItem(NAV_FLAGS_KEY, JSON.stringify({ ...cur, ...patch }))
-  } catch {
-    /* ignore */
-  }
-}
+// admin/finance flags are cached per user and re-verified in the background — see nav/flags.ts,
+// which is also where a check that FAILED is told apart from one that answered.
 
 // remembers whether this visitor chose canvas mode last time
 const CANVAS_PREF = 'canvas_mode_v1'
@@ -352,7 +337,8 @@ export default function App() {
    */
   // 'finance' feature flag for this account: null = still loading (don't redirect yet).
   // A cached true paints the tab immediately; a cached false stays "loading" so a
-  // deep link to #investments can't be bounced before the server weighs in.
+  // deep link to #investments can't be bounced before the server weighs in. A check that
+  // FAILED is not the server weighing in, so it leaves this where it was (nav/flags.ts).
   const [canFinance, setCanFinance] = useState<boolean | null>(
     previewMember ? true : boot.flags?.finance ? true : null,
   )
@@ -927,35 +913,25 @@ export default function App() {
 
     // Admin = the server's source of truth (is_admin() → admin_users), so the client
     // never disagrees with the security-definer RPCs the Admin panel calls. Each check
-    // also refreshes the per-user cache the next boot paints from.
-    async function checkAdmin() {
-      const { data } = await getSupabaseClient().rpc('is_admin')
+    // also refreshes the per-user cache the next boot paints from. Feature flags: only show
+    // Investments if the 'finance' feature is on for this account. Account status: an admin
+    // can pause (suspend) a member's access.
+    /* ⚠️ A check that FAILED changes nothing — not the state, not the stored flag — so a blip
+       can neither hide Admin/Investments nor reopen a paused member's UI. It is asked again on
+       the next sign-in event. See nav/flags.ts. */
+    async function check(key: FlagKey, fn: string, set: (v: boolean) => void) {
+      const res = await getSupabaseClient().rpc(fn)
       if (!alive) return
-      setIsAdmin(data === true)
-      if (uidRef.current) writeNavFlags({ uid: uidRef.current, admin: data === true })
-    }
-    // Feature flags: only show Investments if the 'finance' feature is on for this account.
-    async function checkFeatures() {
-      const { data } = await getSupabaseClient().rpc('my_features')
-      if (!alive) return
-      const fin = !!(data as { feature: string; enabled: boolean }[] | null)?.find(
-        (f) => f.feature === 'finance',
-      )?.enabled
-      setCanFinance(fin)
-      if (uidRef.current) writeNavFlags({ uid: uidRef.current, finance: fin })
-    }
-    // Account status: an admin can pause (suspend) a member's access.
-    async function checkAccount() {
-      const { data } = await getSupabaseClient().rpc('my_account')
-      if (!alive) return
-      const sus = !!(data as { suspended: boolean }[] | null)?.[0]?.suspended
-      setSuspended(sus)
-      if (uidRef.current) writeNavFlags({ uid: uidRef.current, suspended: sus })
+      const uid = uidRef.current
+      const settled = settleNavFlag(uid ? readNavFlags(uid) : null, uid ?? '', key, res)
+      if (!settled) return
+      set(settled.value)
+      if (uid) storeNavFlags(settled.flags)
     }
     const onSignedIn = () => {
-      void checkAdmin()
-      void checkFeatures()
-      void checkAccount()
+      void check('admin', 'is_admin', setIsAdmin)
+      void check('finance', 'my_features', setCanFinance)
+      void check('suspended', 'my_account', setSuspended)
     }
     const onSignedOut = () => {
       uidRef.current = null
