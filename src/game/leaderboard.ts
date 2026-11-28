@@ -1,6 +1,7 @@
 import type { LeaderboardEntry, TrophyCounts } from './types'
 import { getSupabaseClientOrNull } from '../finance/client'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { nextIdFrom } from './playerId'
 
 const LS_KEY = 'snake.leaderboard.v2'
 const LS_TROPHIES_KEY = 'snake.trophies.v1'
@@ -81,16 +82,15 @@ export async function getNextPlayerIdNumber(): Promise<number | null> {
   const client = getClient()
   if (client && url && anon) {
     try {
-      const { data } = await client
+      const { data, error } = await client
         .from(playerTable)
         .select('id')
         .order('id', { ascending: false })
         .limit(1)
-      if (Array.isArray(data) && data.length > 0) {
-        const maxId = Number((data[0] as { id: number }).id)
-        if (Number.isFinite(maxId)) return maxId + 1
-      }
-      return 1
+      /* ⚠️ a failed read resolves rather than throws, so it is asked here and not in the catch:
+         it falls through to the REST read, and then to null — never to "1" (see playerId.ts) */
+      const next = nextIdFrom(data, error)
+      if (next != null) return next
     } catch {
       /* fallthrough */
     }
@@ -99,15 +99,7 @@ export async function getNextPlayerIdNumber(): Promise<number | null> {
     try {
       const endpoint = `${url}/rest/v1/${playerTable}?select=id&order=id.desc&limit=1`
       const res = await fetch(endpoint, { headers: sbHeaders(anon) })
-      if (res.ok) {
-        const rows = (await res.json()) as Array<{ id: number }>
-        if (rows.length > 0) {
-          const maxId = Number(rows[0].id)
-          if (Number.isFinite(maxId)) return maxId + 1
-        } else {
-          return 1
-        }
-      }
+      if (res.ok) return nextIdFrom(await res.json(), null)
     } catch {
       /* ignore */
     }
