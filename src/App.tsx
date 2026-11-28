@@ -38,6 +38,7 @@ import { useReveal } from './hooks/useReveal'
 import { useNoPullToRefresh } from './hooks/useNoPullToRefresh'
 import { useNotifications, type Notice } from './hooks/useNotifications'
 import { useVoicePresence } from './voice/useVoicePresence'
+import { presenceNameInCall } from './circuit/callName'
 import { armRingtone, playCallSound } from './voice/ringtone'
 import { startIdleWatch } from './hooks/presenceStatus'
 import { useVoiceSession } from './voice/useVoiceSession'
@@ -762,7 +763,9 @@ export default function App() {
   const livePresence = useVoicePresence(
     previewMember ? [] : notifications.rooms.map((r) => r.id),
     peekPersistedUserId(),
-    me.name ?? 'Someone',
+    /* the name the call joined with — the Lounge name in a Lounge call, never the full real name,
+       which every Lounge member's room list and bell would show (see callName.ts) */
+    presenceNameInCall(voice, me.name ?? 'Someone'),
     // the room the CALL is in, which is not necessarily the one on screen — you can browse
     // other conversations, or other pages entirely, without leaving the call
     voice.inCall ? voice.roomId : null,
