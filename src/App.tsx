@@ -1,5 +1,20 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { dropWriters } from './profile/writerRegistry'
+import {
+  forgetLookIntent,
+  keepLookIntent,
+  lookLanded,
+  lookRefused,
+  lookRetryIn,
+  lookSending,
+  lookSig,
+  planLook,
+  profileLookSig,
+  readLookIntent,
+  replayVerdict,
+  type LookMemo,
+} from './profile/lookPublish'
+import { errText } from './ui/errText'
 import { applyLook, registerLookApplier, type Look } from './ui/looks'
 import { lazyRetry } from './lazyRetry'
 import { VizFloat } from './audio/VizFloat'
@@ -22,6 +37,13 @@ import { FX_STYLES } from './ui/fxStyles'
 import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
 import { SECTION_ALIASES, SECTION_TITLES, navFor, sectionOf, type Section } from './nav/places'
 import { isTypingTarget } from './nav/typing'
+import {
+  NAV_FLAGS_KEY,
+  readNavFlags,
+  settleNavFlag,
+  storeNavFlags,
+  type FlagKey,
+} from './nav/flags'
 import { occupancy, usePartyHere } from './party/whereEveryone'
 import { AppearanceDialog } from './components/AppearanceDialog'
 import { BugReport } from './components/BugReport'
@@ -256,30 +278,8 @@ if (import.meta.env.DEV) {
 // The persisted Supabase session is peeked synchronously (peekPersistedUserId) so a
 // returning user boots signed-in on the very first paint instead of flashing "Sign in"
 // until a network round-trip confirms. Same for the gated tabs: the last confirmed
-// admin/finance flags are cached per user and re-verified in the background.
-type NavFlags = { uid: string; admin: boolean; finance: boolean; suspended: boolean }
-const NAV_FLAGS_KEY = 'nav_flags_v1'
-function readNavFlags(uid: string): NavFlags | null {
-  try {
-    const f = JSON.parse(localStorage.getItem(NAV_FLAGS_KEY) || 'null') as NavFlags | null
-    return f && f.uid === uid ? f : null
-  } catch {
-    return null
-  }
-}
-function writeNavFlags(patch: Partial<NavFlags> & { uid: string }) {
-  try {
-    const cur = readNavFlags(patch.uid) ?? {
-      uid: patch.uid,
-      admin: false,
-      finance: false,
-      suspended: false,
-    }
-    localStorage.setItem(NAV_FLAGS_KEY, JSON.stringify({ ...cur, ...patch }))
-  } catch {
-    /* ignore */
-  }
-}
+// admin/finance flags are cached per user and re-verified in the background — see nav/flags.ts,
+// which is also where a check that FAILED is told apart from one that answered.
 
 // remembers whether this visitor chose canvas mode last time
 const CANVAS_PREF = 'canvas_mode_v1'
@@ -352,7 +352,8 @@ export default function App() {
    */
   // 'finance' feature flag for this account: null = still loading (don't redirect yet).
   // A cached true paints the tab immediately; a cached false stays "loading" so a
-  // deep link to #investments can't be bounced before the server weighs in.
+  // deep link to #investments can't be bounced before the server weighs in. A check that
+  // FAILED is not the server weighing in, so it leaves this where it was (nav/flags.ts).
   const [canFinance, setCanFinance] = useState<boolean | null>(
     previewMember ? true : boot.flags?.finance ? true : null,
   )
@@ -659,7 +660,15 @@ export default function App() {
    * published this browser's defaults over a real profile, which is the bug the note above
    * describes; production builds do not double-mount, so the live site never had it.
    */
-  const lookPublished = useRef<{ uid: string; look: string } | null>(null)
+  /**
+   * ⚠️ AND A PUBLISH THAT FAILED WAS LOST. The look was recorded as published before the write and
+   * the write's result was ignored, so a dropped connection left the profile on the old look with
+   * nothing anywhere to retry it — not this page, and not a reload. The decisions now live in
+   * profile/lookPublish.ts: what the profile is known to hold is recorded only when a write LANDS,
+   * a failed one is retried with a bounded backoff, and a look chosen here stays owed in
+   * localStorage until it lands, so the next change or the next load finishes it.
+   */
+  const lookMemo = useRef<LookMemo | null>(null)
   useEffect(() => {
     /* the harness writes nothing real, the way every chronicle writer guards itself — see
        chronicle/cloud.ts, where the module that writes asks rather than each of its callers */
@@ -672,21 +681,90 @@ export default function App() {
       p_flair: sparksOn ? sparksStyle : null,
       p_backdrop: background === 'none' ? null : background,
     }
-    const sig = JSON.stringify(look)
-    /* a different person is a first run of their own, or signing in as somebody else on a shared
-       browser would publish the look the last one happened to be using */
-    if (lookPublished.current?.uid !== uid) {
-      lookPublished.current = { uid, look: sig }
-      return
-    }
-    if (lookPublished.current.look === sig) return
-    lookPublished.current = { uid, look: sig }
-    const t = setTimeout(() => {
+    const sig = lookSig(look)
+    const intent = readLookIntent()
+    const plan = planLook(lookMemo.current, intent, uid, sig)
+    lookMemo.current = plan.memo
+    if (plan.forgetIntent) forgetLookIntent(uid)
+    if (!plan.publish && !plan.verify) return
+    let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const giveUp = (error: unknown) =>
+      console.warn('[profile] your look did not reach your profile: ' + errText(error))
+    const attempt = (n: number) => {
+      if (!live) return
+      if (lookMemo.current) lookMemo.current = lookSending(lookMemo.current, uid)
       void getSupabaseClient()
         .rpc('set_my_profile_look', look)
-        .then(() => {})
-    }, 600) // dragging a colour picker shouldn't be one write per frame
-    return () => clearTimeout(t)
+        .then(
+          ({ error, status }) => ({ error, status }),
+          (e: unknown) => ({ error: e ?? 'failed', status: 0 }),
+        )
+        .then(({ error, status }) => {
+          /* a newer run owns the look now — it sends its own, and reads its own answer. But a
+             write that LANDED is still paid: left owed, a later load would send it again */
+          if (!live) {
+            if (!error) forgetLookIntent(uid, sig)
+            return
+          }
+          if (!error) {
+            if (lookMemo.current) lookMemo.current = lookLanded(lookMemo.current, uid, sig)
+            forgetLookIntent(uid, sig)
+            return
+          }
+          if (lookRefused({ status })) {
+            forgetLookIntent(uid, sig)
+            giveUp(error)
+            return
+          }
+          const wait = lookRetryIn(n, { status })
+          /* out of tries: the look stays owed, and the next change or load sends it */
+          if (wait === null) giveUp(error)
+          else timer = setTimeout(() => attempt(n + 1), wait)
+        })
+    }
+    if (plan.verify && intent) {
+      /**
+       * ⚠️ A LOOK OWED FROM AN EARLIER VISIT IS CHECKED BEFORE IT IS SENT. In between, a newer one
+       * may have been chosen on another device; replayed blind, the older look overwrote it. So
+       * the profile is read first and the newest choice wins — see replayVerdict.
+       */
+      void getSupabaseClient()
+        .from('profiles')
+        .select('look_theme, look_palette, look_flair, look_backdrop')
+        .eq('user_id', uid)
+        .maybeSingle()
+        .then(
+          ({ data, error }) => (error || !data ? undefined : profileLookSig(data)),
+          () => undefined,
+        )
+        .then((now) => {
+          if (!live) return
+          const verdict = replayVerdict(intent, now)
+          if (verdict === 'send') return attempt(0)
+          if (verdict === 'landed') {
+            if (lookMemo.current) lookMemo.current = lookLanded(lookMemo.current, uid, sig)
+            forgetLookIntent(uid, sig)
+          } else if (verdict === 'superseded' && now !== undefined) {
+            /* the profile holds a newer look: that is what it is known to have now */
+            lookMemo.current = { uid, sent: now }
+            forgetLookIntent(uid, sig)
+          }
+          /* 'wait': the profile could not be read — still owed, for the next change or load */
+        })
+      return () => {
+        live = false
+        clearTimeout(timer)
+      }
+    }
+    /* chosen now: remember the version it was chosen over, so a later replay can check it */
+    keepLookIntent({ uid, look: sig, base: plan.memo.sent })
+    // dragging a colour picker shouldn't be one write per frame
+    timer = setTimeout(() => attempt(0), 600)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
   }, [isFinanceAuthed, theme, customPalette, paletteTick, sparksOn, sparksStyle, background])
 
   // Who the cog menu greets. The email is peeked from the LOCAL session so it paints
@@ -927,35 +1005,25 @@ export default function App() {
 
     // Admin = the server's source of truth (is_admin() → admin_users), so the client
     // never disagrees with the security-definer RPCs the Admin panel calls. Each check
-    // also refreshes the per-user cache the next boot paints from.
-    async function checkAdmin() {
-      const { data } = await getSupabaseClient().rpc('is_admin')
+    // also refreshes the per-user cache the next boot paints from. Feature flags: only show
+    // Investments if the 'finance' feature is on for this account. Account status: an admin
+    // can pause (suspend) a member's access.
+    /* ⚠️ A check that FAILED changes nothing — not the state, not the stored flag — so a blip
+       can neither hide Admin/Investments nor reopen a paused member's UI. It is asked again on
+       the next sign-in event. See nav/flags.ts. */
+    async function check(key: FlagKey, fn: string, set: (v: boolean) => void) {
+      const res = await getSupabaseClient().rpc(fn)
       if (!alive) return
-      setIsAdmin(data === true)
-      if (uidRef.current) writeNavFlags({ uid: uidRef.current, admin: data === true })
-    }
-    // Feature flags: only show Investments if the 'finance' feature is on for this account.
-    async function checkFeatures() {
-      const { data } = await getSupabaseClient().rpc('my_features')
-      if (!alive) return
-      const fin = !!(data as { feature: string; enabled: boolean }[] | null)?.find(
-        (f) => f.feature === 'finance',
-      )?.enabled
-      setCanFinance(fin)
-      if (uidRef.current) writeNavFlags({ uid: uidRef.current, finance: fin })
-    }
-    // Account status: an admin can pause (suspend) a member's access.
-    async function checkAccount() {
-      const { data } = await getSupabaseClient().rpc('my_account')
-      if (!alive) return
-      const sus = !!(data as { suspended: boolean }[] | null)?.[0]?.suspended
-      setSuspended(sus)
-      if (uidRef.current) writeNavFlags({ uid: uidRef.current, suspended: sus })
+      const uid = uidRef.current
+      const settled = settleNavFlag(uid ? readNavFlags(uid) : null, uid ?? '', key, res)
+      if (!settled) return
+      set(settled.value)
+      if (uid) storeNavFlags(settled.flags)
     }
     const onSignedIn = () => {
-      void checkAdmin()
-      void checkFeatures()
-      void checkAccount()
+      void check('admin', 'is_admin', setIsAdmin)
+      void check('finance', 'my_features', setCanFinance)
+      void check('suspended', 'my_account', setSuspended)
     }
     const onSignedOut = () => {
       uidRef.current = null
