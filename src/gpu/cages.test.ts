@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { beatHash, readBeat } from '../lab/beat'
 import { rng } from './bricks'
 import {
   EMPTY,
+  SIZES,
   count,
   fits,
   keepBest,
@@ -227,5 +229,39 @@ describe('what is kept', () => {
     expect(keepBest(b, { day: 120, size: 4, seconds: 30 }, 120)).toEqual([
       { day: 120, size: 4, seconds: 30 },
     ])
+  })
+})
+
+/* ── a board sent as a "beat my board" link (src/lab/beat.ts). The link carries the seed and the
+   size; whoever opens it is dealt make() of those two, exactly as here. The browser readback (two
+   pages, one link) is the check on the room; this is the check on the board. */
+const sha256 = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+describe('a board from a link', () => {
+  it('makes the puzzles it always has: one seed, every size, pinned', async () => {
+    /* measured identical in node v22.23.4 and bun 1.4.4 (27 Nov 2026, 18:56 EST). A change here
+       changes every Cages link already sent, and needs a `v=` in the link (beat.ts). */
+    const puzzles = SIZES.map((n) => make(n, 3_000_000_001))
+    expect(puzzles[2].answer.slice(0, 6)).toEqual([4, 2, 1, 6, 5, 3])
+    expect(await sha256(puzzles)).toBe(
+      '3a28251410de205e06562c8254e0f4fa5c35cb5739575a6fdae812f0b10c0293',
+    )
+  })
+  it('the seed and size a link carries make the puzzle the sender solved', () => {
+    const link = readBeat(beatHash({ game: 'cages', seed: 3_000_000_001, size: 6, secs: 140 }))
+    if (link?.game !== 'cages') throw new Error('no Cages link')
+    expect(make(link.size, link.seed)).toEqual(make(6, 3_000_000_001))
+  })
+  it('another seed or size is another puzzle', () => {
+    const p = make(6, 3_000_000_001)
+    expect(make(6, 3_000_000_002).answer).not.toEqual(p.answer)
+    expect(make(5, 3_000_000_001).n).toBe(5)
   })
 })

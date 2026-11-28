@@ -462,3 +462,161 @@ Each toy ran at 375 (touch), at 820 with the `(pointer: coarse)` rules injected,
     it.
 
 **Not reachable from here:** Firefox and Safari need a look.
+
+## Group g3: Pipes, Cages, Island bridges and Tents
+
+Four daily puzzles, each with a size, a Today's board and a ⟳ New board, solved against the clock.
+A finished board of any size, Today's or random, can now be sent as a link carrying the seed, the
+size and the time. Whoever opens it is dealt the same board.
+
+### What a link carries
+
+| Toy            | Link                                                           | Wins                     | Says                                        |
+| -------------- | -------------------------------------------------------------- | ------------------------ | ------------------------------------------- |
+| Pipes          | `#lab?demo=pipes&seed=…&size=5\|7\|9&wrap=0\|1&secs=…&turns=…` | faster, then fewer turns | "1:35 and 61 turns on a 9×9 wrapping board" |
+| Cages          | `#lab?demo=cages&seed=…&size=4\|5\|6&secs=…`                   | faster; hints add time   | "2:20 on a 6×6 board"                       |
+| Island bridges | `#lab?demo=bridges&seed=…&size=7\|9\|11&secs=…`                | faster; hints add time   | "2:20 on an 11×11 map"                      |
+| Tents          | `#lab?demo=tents&seed=…&size=6\|8\|10&secs=…`                  | faster; hints add time   | "2:20 on a 10×10 field"                     |
+
+- The seed is beat.ts's `SEED`, 1 to 2^32 − 1. A daily board's seed is a full 32-bit number here
+  too (`daySeed ^ size·7919`, and for Pipes the wrap mask), so Today's boards can be sent.
+- The sizes are each toy's own `SIZES`, imported, never retyped. Anything else is no challenge.
+- `secs` is 1 to 86,400 (a day) and is the toy's own finishing time, every hint's 30 s included,
+  exactly as the toy's `Math.max(1, …)` computes it. Pipes has no hints. `turns` is 1 to 99,999.
+- Pipes ranks by `[secs, turns]`, the order its own `keepBest` ranks a day's finishes in.
+  beat.test.ts asks each toy's `keepBest` directly, across a sweep, rather than restating it.
+- Every score is a claim, worded as "this link says".
+
+**One change from the spec's wording:** the spec wrote `on a ${n}×${n} map`, which says "a 11×11
+map" and "a 8×8 field" at sizes these toys have. The arms say "an" before a size whose word starts
+with a vowel; beat.test.ts checks every size of every toy against the spelled-out number.
+
+### Opening a link
+
+- The link writes `saved.size`, and Pipes' `saved.wrap`, exactly as the size and wrap buttons do,
+  then sets the seed. So `daily` is the toy's own question (`seed === seedFor(size)`), and a best
+  kept from a link's board is filed under the board's own size. The size (and Pipes' wrap) is a
+  practice preference, and it is the only thing a link writes.
+- When the link's board is Today's board here, the banner says it counts as today's, and the
+  finish records exactly as the Today's button's would.
+- A link clicked while the toy is up, even one on the board already showing (a friend's reply on the
+  same board), starts the board over. A `round` counter joins the reset effect's dependencies for
+  that, and Leave bumps it too, so leaving a link to Today's board deals Today's fresh. Without it,
+  a reply on a board already finished left the board locked under the new banner, with no way to
+  play it but a reload.
+- Cages, Island bridges and Tents keep the result line in state, and it was never reset with the
+  board: after ⟳ New board, "🏆 Solved in 2:20." stayed up over an empty grid. With a verdict in
+  it, that line would have named a link that was no longer up, so the reset now puts the opening
+  line back. Pipes works its line out on each render and had no such gap.
+- Every control that changes the board leaves the link first: the size buttons, Pipes' "Edges
+  wrap round", Today's and ⟳ New board (New map, New field). The looks, "Show clashes", "Grass
+  round tents", Pipes' 🔒 and "↺ Start this board again" do not change the board, so the link
+  stays.
+- Leave writes `#lab?demo=<toy>` and deals Today's board at the link's size.
+- **Back keeps the board on screen.** A link clicked in the site's chat pushes a history entry, and
+  Back clears the challenge while the board stays. That is safe in these four toys, unlike Yacht and
+  Shut the box: their bests are kept only for Today's board, which a link to it counts as anyway, so
+  there is no best to build on a board learned by heart. A finish after Back adds one to the boards
+  finished, as any other board would. Half a solved puzzle is not thrown away.
+- ⟳ New board now uses beat.ts `newSeed()` instead of `(Math.random() * 2 ** 31) >>> 0`, which
+  could be 0.
+
+### What a link run may write
+
+Nothing of the toy's records, unless it is Today's board here:
+
+- `solvedCount` and `bests` are untouched by a link board that is not Today's.
+- On Today's board, both are written as Today's button would write them, and the line may say "your
+  best on today's board", because it is.
+- The result line ends with the verdict, and BeatShare appears under it with the reply sentence.
+
+### The same board in every browser
+
+- The four generators use `rng` from bricks.ts, integer comparisons and numeric sorts on distinct
+  integers only. The grep over pipes.ts, cages.ts, bridges.ts and tents.ts finds no `sort(() =>`,
+  no `rand() - 0.5`, no `Math.random` and no float maths beyond `rand() * k`.
+- **Measured at 18:56 EST on 27 Nov 2026:** 240 boards (16 seeds from 1 to 4,294,967,295, both sides
+  of 2^31, every size, both wraps) are byte-identical in node v22.23.4 and bun 1.4.4. The control, a
+  seeded comparator shuffle, diverges between them at 81 and 100 elements, so the probe can see an
+  engine difference.
+- **The batch's earlier probe could not see half of a Tents field.** It fingerprinted
+  `JSON.stringify(make(n, seed))`, and JSON writes a `Set` as `{}`, so Tents' trees and tents were
+  never compared, only its row and column counts. The probe here and tents.test.ts's pin write the
+  sets as sorted lists. A pin with the trees emptied goes red.
+- No board changes for anyone. Firefox (SpiderMonkey) was not measured.
+
+### Tests
+
+- **beat.test.ts:** four FIXTURE rows, every field away from its default, which run every generic
+  test. The g3 cases add, for each toy: every size opens and every other number from one below the
+  smallest to one above the largest is refused; `secs` at 0, 1, 86,400 and 86,401; beat, level and
+  short; another seed or size is no comparison; the article at every size. Pipes adds `turns` at its
+  edges, `wrap`, the tie on time going to fewer turns, and "1 turn". A sweep checks `outcome`
+  against each toy's own `keepBest`. The banner, the invitation and a reply are pinned verbatim for
+  every toy, and a time past a day is not offered.
+- **pipes, cages, bridges and tents.test.ts:** one seed's boards at every size (and both wraps) are
+  pinned by SHA-256 of their JSON, as g1 does: node:crypto is not typed for these tests, and
+  WebCrypto has no md5. A readable slice is pinned beside each hash. The seed, size and wrap a link
+  carries, read back through `readBeat(beatHash(…))`, make the board `make()` makes from the
+  literals, and another seed or size makes another board.
+
+### Mutations, each made to fail once
+
+- **Unit (beat.test.ts and the four toy tests):** 21 of 21 went red. In beat.ts: Pipes' rank
+  without the turns tie-break (3 tests) and with its sign flipped (4); a size outside the toy's
+  list accepted (Pipes' 6, and Cages' size read as any whole number 3 to 7); `secs` one past a day
+  and from 0; `turns` one past 99,999; Pipes' `wrap` and `turns` each dropped from its fields (5
+  each); Cages' size and Pipes' wrap each dropped from `board`; "a" always, "turns" for one turn,
+  and "board" for a field.
+  In the toy tests: each pin's literal seed moved by one, Tents' pin with its trees emptied, Pipes'
+  link test reading the wrap the wrong way, and `SEED_MAX` back to 2^31 − 1 (all four link tests).
+- **Browser** (the dev server, a receiver with records kept, the link opened and finished once):
+  - Cages' record guard switched off: `solvedCount` changed (it must not).
+  - Tents' link not writing the size: an 8×8 field of 64 cells instead of the link's 10×10, no
+    verdict, and `solvedCount` written, because the board on screen was no longer the link's.
+  - Cages' `round` left out of the reset: a reply link on the board already finished left the
+    number pad disabled, so the friend's board could not be played.
+  - Each was restored from a copy and its md5 checked.
+
+### Browser
+
+Playwright, Chromium, on the dev server, 27 Nov 2026 (EST). Each toy at 1440 (19:05–19:09) and at
+375 with touch (19:09–19:11), and all four at 820 with the 41 `(pointer: coarse)` blocks applied
+(19:11–19:12). Cages, Island bridges and Tents ran again at 1440 after the result line was made to
+reset (19:16–19:19), and passed every step. Times were set with Playwright's clock, so every score
+was exact.
+
+- **Sender (A):** a non-default size (9×9 with wrapping, 6×6, 11×11, 10×10) and a ⟳ New board,
+  finished with the toy's own buttons from a solution worked out in node from the toy's module.
+  The copied sentence read "🏁 Beat my board at Pipes: 2:20 and 110 turns on a 9×9 wrapping
+  board. Same board:" and so on.
+- **Receiver (B), with records kept already** (a count of 7, yesterday's best at the link's size and
+  a best of today's at another size):
+  - The banner said what the link says, the same thing, and how to win.
+  - Every cell's words, and Tents' and Cages' numbers, matched A's page, at both widths.
+  - B beat it, fell short and levelled, all three reached, each saying so in the result line.
+  - The records were unchanged afterwards except `size` (and Pipes' `wrap`).
+  - B's reply read "🏆 I beat the link at …", carrying A's seed and size and B's time.
+- **Reply (C):** B's link showed B's score on A's board.
+- **Leave:** the address became `#lab?demo=<toy>`, the banner went, Today's was dealt at the link's
+  size, and its finish recorded (`solvedCount` 7 → 8, a best for today at that size).
+- **Warm opens (1440):** from another toy and from the same toy, the banner showed and the link's
+  board was dealt fresh.
+- **Today's board as a link (1440):** the banner added "It is today’s board here, so it counts as
+  your today’s." and the finish wrote `solvedCount` and today's best exactly as Today's would.
+- **Malformed:** `seed=4294967296`, no `size` or no `secs` opened the toy with no banner.
+- **Tour:** picking another toy from the picker wrote `#lab?demo=<other>` with no beat parameters.
+- **Same board, new link:** a reply opened on the board just finished put the opening line back,
+  hid the old share, and the next finish gave the verdict against the new link (Cages and Pipes).
+- **UI:** no sideways scroll at 375, 820 or 1440. Leave measured 161×36 at 375, 162×37 at 820
+  and 165×39 at 1440; the share button 224–234×36, 225–235×37 and 228–237×39. Both are labelled
+  in words. `mobileAudit` at 375 named an injected 16×16 control in the share row (`tooSmall`), and
+  reported nothing with it removed, for all four toys.
+- **Not reachable from here:** Firefox and Safari need a look.
+
+### Left as they are
+
+- The base's `bannerText` says "It is today’s board here" for every arm, so Island bridges and
+  Tents say "board" there rather than "map" or "field". That line is the base's.
+- Pipes' "↺ Start this board again" keeps a link up: it does not change the board, so it is a
+  retry on the same link.

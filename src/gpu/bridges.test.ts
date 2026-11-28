@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { beatHash, readBeat } from '../lab/beat'
 import { rng } from './bricks'
 import {
   EMPTY,
@@ -241,5 +242,43 @@ describe('what is kept', () => {
     ])
     expect(keepBest(old, { day: 100, size: 7, seconds: 120 }, 100)).toEqual([old[0]])
     expect(keepBest(old, { day: 100, size: 9, seconds: 70 }, 100)).toHaveLength(2)
+  })
+})
+
+/* ── a map sent as a "beat my map" link (src/lab/beat.ts). The link carries the seed and the size;
+   whoever opens it is dealt make() of those two, exactly as here. The browser readback (two pages,
+   one link) is the check on the room; this is the check on the map. */
+const sha256 = async (x: unknown) =>
+  [
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(x))),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+describe('a map from a link', () => {
+  it('makes the maps it always has: one seed, every size, pinned', async () => {
+    /* measured identical in node v22.23.4 and bun 1.4.4 (27 Nov 2026, 18:56 EST). A change here
+       changes every Island bridges link already sent, and needs a `v=` in the link (beat.ts). */
+    const maps = SIZES.map((n) => make(n, 3_000_000_001))
+    expect(maps[2].islands.slice(0, 3)).toEqual([
+      { r: 4, c: 6, need: 3 },
+      { r: 9, c: 6, need: 4 },
+      { r: 4, c: 8, need: 3 },
+    ])
+    expect(await sha256(maps)).toBe(
+      'a48a8e6bdca2be43deaaabdb80fafa2815918e0ddc05fed779d45defca567c33',
+    )
+  })
+  it('the seed and size a link carries make the map the sender solved', () => {
+    const link = readBeat(beatHash({ game: 'bridges', seed: 3_000_000_001, size: 11, secs: 140 }))
+    if (link?.game !== 'bridges') throw new Error('no Island bridges link')
+    expect(make(link.size, link.seed)).toEqual(make(11, 3_000_000_001))
+  })
+  it('another seed or size is another map', () => {
+    const p = make(11, 3_000_000_001)
+    expect(make(11, 3_000_000_002).islands).not.toEqual(p.islands)
+    expect(make(9, 3_000_000_001).islands).not.toEqual(p.islands)
   })
 })
