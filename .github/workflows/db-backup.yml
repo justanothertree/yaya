@@ -1,0 +1,222 @@
+name: db backup
+
+# A weekly backup of the Supabase database: dumped, RESTORED AND CHECKED inside the job, then
+# encrypted and kept as a build artifact. Every step is a subcommand of scripts/db-backup.sh, and
+# the restore test below runs the same subcommands on every pull request.
+#
+# ⚠️⚠️ THIS REPOSITORY IS PUBLIC, SO A GITHUB ARTIFACT IS PUBLIC, AND SO IS THIS WORKFLOW'S LOG.
+# That is the single fact this file is shaped around. An unencrypted `pg_dump` uploaded here
+# would publish every member's rows to anyone who clicked the run. So:
+#   - the bundle is encrypted to an age recipient BEFORE it is uploaded, and the upload is refused
+#     unless the file is ciphertext; the private key never comes near CI;
+#   - nothing printed names a value: not a row count, not a hash of a member's rows, not an
+#     input. A mismatch says WHICH table, never what it holds;
+#   - every input is a SECRET of the `db-backup` environment, which only `main` may use. A
+#     variable is printed in the log; a secret is masked, so even a private key pasted where the
+#     public one belongs never reaches the page.
+#
+# ⚠️ IT CANNOT TOUCH PRODUCTION UNTIL EVAN SAYS SO, AND SAYING SO IS AN ACTION RATHER THAN A
+# REVIEW. Until the environment's five inputs exist, the gate stops the job before it connects
+# to anything — green, with a notice. ADDING THEM IS THE APPROVAL. Adding only some of them is
+# a red run, every week, until it is finished.
+#
+# What this does NOT replace: Supabase's own backups. This is a second copy in a second place.
+# What it does not carry is listed in the doc:
+#   docs/2026-11-21-database-backup-and-restore.md
+
+# ⚠️ `pull_request` IS HERE FOR THE RESTORE TEST, NOT FOR THE DUMP. The restore test uses no
+# secret and no production data; the dump job never runs on a pull request — and if a pull
+# request edited that `if:` away, the environment's branch rule would still keep its secrets on
+# `main`, which is why the secrets live there and not on the repository.
+on:
+  schedule:
+    - cron: '23 9 * * 0' # 09:23 UTC Sunday: 4:23 AM Eastern in winter, 5:23 in summer
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/db-backup.sh
+      - scripts/db-backup/**
+      - scripts/restore-test.sh
+      - supabase/**
+      - .github/workflows/db-backup.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # ⚠️ the boundary: its secrets are released only to jobs running on main
+    environment: db-backup
+    # ⚠️ THE LOG IS PUBLIC: db-backup.sh prints no count or size, and keeps the database's own error
+    # messages (which quote rows) inside the sealed bundle instead of here
+    env:
+      DB_BACKUP_PUBLIC_LOG: '1'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Stop here unless all five inputs exist, and are what they say
+        id: gate
+        env:
+          DB_BACKUP_PGHOST: ${{ secrets.DB_BACKUP_PGHOST }}
+          DB_BACKUP_PGUSER: ${{ secrets.DB_BACKUP_PGUSER }}
+          DB_BACKUP_PGPASSWORD: ${{ secrets.DB_BACKUP_PGPASSWORD }}
+          DB_BACKUP_AGE_RECIPIENT: ${{ secrets.DB_BACKUP_AGE_RECIPIENT }}
+          DB_BACKUP_CA_CERT: ${{ secrets.DB_BACKUP_CA_CERT }}
+        run: bash scripts/db-backup.sh gate
+
+      # ⚠️ THE CLIENT MAJOR MUST MATCH. Supabase is on Postgres 17, and the image ships a newer
+      # client than that; the script calls /usr/lib/postgresql/17/bin by path, never the wrapper.
+      - name: Install the Postgres 17 client and age
+        if: steps.gate.outputs.ready == 'yes'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 age
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      # ⚠️ THE CONNECTION IS libpq's ENVIRONMENT, NEVER A URI. The password cannot turn up in `ps`
+      # or in a parse error quoting a string it could not read, and the certificate is checked
+      # against Supabase's own CA with the host name, not merely encrypted.
+      - name: Dump
+        id: dump
+        if: steps.gate.outputs.ready == 'yes'
+        env:
+          PGHOST: ${{ secrets.DB_BACKUP_PGHOST }}
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: ${{ secrets.DB_BACKUP_PGUSER }}
+          PGPASSWORD: ${{ secrets.DB_BACKUP_PGPASSWORD }}
+          PGSSLMODE: verify-full
+          PGSSLROOTCERT: ${{ runner.temp }}/supabase-ca.crt
+          PGCONNECT_TIMEOUT: '30'
+          PGAPPNAME: yaya-weekly-backup
+          DB_BACKUP_CA_CERT: ${{ secrets.DB_BACKUP_CA_CERT }}
+        run: |
+          printf '%s\n' "$DB_BACKUP_CA_CERT" > "$PGSSLROOTCERT"
+          bash scripts/db-backup.sh dump "$RUNNER_TEMP/bundle"
+
+      # ⚠️ A BACKUP NOBODY HAS RESTORED IS A HOPE. This one is restored every week, here, and
+      # compared with production's own account of itself line for line — every table's rows, every
+      # definition, every grant — before it is sealed. The plaintext never leaves this runner.
+      # The scratch Postgres is started HERE rather than as a service container, for two reasons:
+      # GitHub prints a service container's whole server log at the end of the job, and Postgres
+      # logs every error with the row that caused it; and a service that fails to start fails the
+      # job before the dump, where a step that fails is followed by the -unverified upload below.
+      - name: Restore it into a scratch Postgres and compare it with production
+        id: verify
+        if: steps.gate.outputs.ready == 'yes'
+        timeout-minutes: 15
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '55443'
+          PGDATABASE: postgres
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGSSLMODE: disable
+        run: |
+          docker run -d --name yaya-scratch -e POSTGRES_PASSWORD=postgres -p 55443:5432 postgres:17 \
+            -c log_min_messages=panic -c log_min_error_statement=panic > /dev/null
+          for i in $(seq 1 60); do
+            /usr/lib/postgresql/17/bin/pg_isready -q && break
+            sleep 1
+          done
+          bash scripts/db-backup.sh prepare-plain-target "$RUNNER_TEMP/bundle"
+          bash scripts/db-backup.sh restore "$RUNNER_TEMP/bundle"
+
+      # ⚠️ KEPT EVEN WHEN THE RESTORE CHECK FAILED, AND SAID SO IN ITS NAME. A dump that did not
+      # restore cleanly here is still the newest copy there is, and losing it would make a bad week
+      # worse; the run is red either way, and the artifact is called -unverified so that nobody
+      # restores it trusting it. seal removes a half-written file, and the upload waits for it.
+      - name: Encrypt to the recipient, prove it is ciphertext, and drop the plaintext
+        id: seal
+        if: ${{ !cancelled() && steps.dump.outcome == 'success' }}
+        env:
+          DB_BACKUP_AGE_RECIPIENT: ${{ secrets.DB_BACKUP_AGE_RECIPIENT }}
+        run: |
+          bash scripts/db-backup.sh seal "$RUNNER_TEMP/bundle" "$DB_BACKUP_AGE_RECIPIENT" "$RUNNER_TEMP/yaya-db.tar.age"
+          rm -rf "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/supabase-ca.crt"
+
+      # one name per attempt: an artifact name cannot be uploaded twice in a run, and a re-run of a
+      # failed job keeps the run id, so without the attempt the fresher dump would be refused
+      - name: Keep it
+        if: ${{ !cancelled() && steps.seal.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: yaya-db-${{ github.run_id }}-${{ github.run_attempt }}${{ steps.verify.outcome != 'success' && '-unverified' || '' }}
+          path: ${{ runner.temp }}/yaya-db.tar.age
+          retention-days: 90
+          if-no-files-found: error
+
+      # the runner is thrown away anyway; this is for the step that failed halfway
+      - name: Leave no plaintext behind
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/supabase-ca.crt"
+          docker rm -f yaya-scratch > /dev/null 2>&1 || true
+
+  # The whole procedure — dump, seal, open, restore, compare — on a database built from the
+  # repository's own schema with member data in it, restored into a target shaped like a fresh
+  # Supabase project, and then broken on purpose in every way it has failed or could. No secret,
+  # no production data, so it runs on every pull request that touches any of it.
+  restore-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      source:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+        ports: ['55441:5432']
+      target:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+        ports: ['55442:5432']
+    steps:
+      # ⚠️ THE CANARY. This job names no environment, so it can only see REPOSITORY secrets — and a
+      # backup secret saved there, rather than in the main-only db-backup environment, is readable
+      # by any branch's workflow, a same-repository pull request's included. The value is never
+      # printed: only whether there is one.
+      - name: Refuse backup secrets kept where any branch can read them
+        env:
+          CANARY_PASSWORD: ${{ secrets.DB_BACKUP_PGPASSWORD }}
+          CANARY_HOST: ${{ secrets.DB_BACKUP_PGHOST }}
+        run: |
+          if [ -n "$CANARY_PASSWORD$CANARY_HOST" ]; then
+            echo "::error title=Backup secrets at repository level::A DB_BACKUP_* secret is a REPOSITORY secret, which any branch can read. Delete it there and keep it only in the db-backup environment."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - name: Install the Postgres 17 client and age
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 age
+      - name: Back up, restore and check a database holding member data, then break it on purpose
+        run: bash scripts/restore-test.sh
+        env:
+          SOURCE_PORT: '55441'
+          TARGET_PORT: '55442'
+          PGPASSWORD: postgres
