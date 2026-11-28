@@ -52,9 +52,10 @@ export function keptAt(key: string): Kept {
  * ⚠️ THE SERVER'S NUMBER, NOT A LOCAL PREFERENCE. member_library carries
  * `check (octet_length(body::text) <= 131072)` as a table constraint, and library_put checks it
  * too so the caller is told which limit it hit. A local store that allows more than this is a
- * store that says "Kept" for something the account will never take — and `put` in cloud.ts
- * discards the error on purpose, because a refusal there is not a crash. So the only place that
- * can prevent the lie is the local ceiling, and it has to be this number.
+ * store that says "Kept" for something the account will never take — and a refusal in cloud.ts
+ * is not a crash on purpose: it goes to the console and stays owed (outbox.ts), and nothing on
+ * screen ever hears of it. So the only place that can prevent the lie is the local ceiling, and
+ * it has to be this number.
  *
  * ⚠️ THREE OF THE FOUR SYNCED KINDS DID NOT HAVE ONE. The gallery's was 200KB — mine, copied
  * from the maps store's reasoning without checking what the account takes, which opened a

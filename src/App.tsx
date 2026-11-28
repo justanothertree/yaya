@@ -1032,7 +1032,9 @@ export default function App() {
      */
     let startedSync = false
     const startLibrarySync = () => {
-      if (startedSync) return
+      /* both callers set uidRef first; whose account this is decides whose outbox is sent */
+      const uid = uidRef.current
+      if (startedSync || !uid) return
       startedSync = true
       void import('./library/cloud')
         .then(async (m) => {
@@ -1043,7 +1045,7 @@ export default function App() {
            * console is the honest place for it: this runs once per sign-in, long after any button
            * was pressed, so there is no screen it belongs on and no action to offer.
            */
-          const sync = await m.syncLibrary()
+          const sync = await m.syncLibrary(uid)
           if (sync.why) console.warn('[library] nothing synced: ' + sync.why)
           else if (sync.refused.length) {
             console.warn(
@@ -1051,7 +1053,9 @@ export default function App() {
               sync.refused.map((r) => `${r.kind} "${r.name}" — ${r.why}`),
             )
           }
-          stopWatch = m.watchLibrary()
+          /* asked on every pass: sign-out does not stop the watcher, and a change is owed to
+             whoever was signed in when it happened (library/outbox.ts) */
+          stopWatch = m.watchLibrary(() => uidRef.current)
         })
         .catch(() => {
           /* the migration is not in yet, or the network is not there: the local stores are

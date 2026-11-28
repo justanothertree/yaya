@@ -7,6 +7,18 @@ import { packDrawing, readDrawing } from '../draw/strokes'
 import { readPresets, savePreset, subscribePresets } from '../audio/vizPresets'
 import { packPet, pets, readPet, savePet, subscribePets } from '../pets/pets'
 import { mergeFought, mergeWins, packFought, packWins, subscribeWins } from '../park/records'
+import {
+  due,
+  noteChanges,
+  outboxKey,
+  outcomeOf,
+  packOutbox,
+  readOutbox,
+  retryDelay,
+  shouldPush,
+  type Outbox,
+  type Outcome,
+} from './outbox'
 
 /**
  * The library, on your account instead of in one browser.
@@ -28,6 +40,11 @@ import { mergeFought, mergeWins, packFought, packWins, subscribeWins } from '../
  * tombstones to tell those apart, a tidy-looking two-way delete would quietly eat work the first
  * time somebody signed in on a fresh browser. Deletions travel only as they happen, while the app
  * is open and watching.
+ *
+ * ⚠️ AND A DELETION THAT HAPPENED BUT DID NOT LAND IS WRITTEN DOWN — library/outbox.ts. That is
+ * the one tombstone this file keeps: made at the moment the deletion was seen, per account, and
+ * gone once the account confirms it. Sync sends it and will not pull that row back meanwhile.
+ * Nothing else about "missing here" changed, so sync still never deletes on its own say.
  *
  * ⚠️ AND SOME KINDS MERGE, WHICH IS THE SECOND CONTRACT THIS FILE HOLDS. Add-only answers "who
  * wins?" with "whoever got here first", which is right for a song or a drawing — you either have
@@ -138,15 +155,58 @@ function adoptLocally(r: Row): boolean {
  * them away. A `400` in the console with no item named and no reason given is all anybody got,
  * and the item in question never syncs again on any machine, for ever, in silence. The caller
  * cannot say which picture is not on your account if this does not tell it.
+ *
+ * ⚠️ AND WHICH KIND OF NO IT WAS, because the two want opposite things. A refusal with a reason
+ * gets the same sentence if asked again with the same body; a request that never got an answer
+ * is worth asking again soon. outbox.ts decides which is which — see `outcomeOf`.
  */
-async function put(r: Row): Promise<{ why: string } | null> {
-  const { error } = await getSupabaseClient().rpc('library_put', {
-    p_kind: r.kind,
-    p_name: r.name,
-    p_body: r.body,
-  })
-  return error ? { why: error.message || 'the account would not take it' } : null
+type Answer = { outcome: Outcome; why: string }
+
+async function ask(fn: string, args: Record<string, unknown>, fallback: string): Promise<Answer> {
+  try {
+    const { error } = await getSupabaseClient().rpc(fn, args)
+    return { outcome: outcomeOf(error), why: error?.message || fallback }
+  } catch (e) {
+    /* supabase-js resolves its failures, so this is the one that got past it — still not sent */
+    return { outcome: 'failed', why: e instanceof Error ? e.message : fallback }
+  }
 }
+
+const put = (r: Row) =>
+  ask(
+    'library_put',
+    { p_kind: r.kind, p_name: r.name, p_body: r.body },
+    'the account would not take it',
+  )
+
+const drop = (kind: string, name: string) =>
+  ask('library_drop', { p_kind: kind, p_name: name }, 'the account did not answer')
+
+/**
+ * One account's outbox, as this browser last wrote it down.
+ *
+ * ⚠️ READ AND WRITTEN EVERY TIME RATHER THAN ONCE, because a page load is when it is needed most:
+ * the tab that owed something is the tab that closed. A disk that will not take it is not a crash
+ * — the watcher keeps its own copy for the visit — it just means the next load cannot help.
+ */
+function owedTo(uid: string): Outbox {
+  try {
+    return readOutbox(localStorage.getItem(outboxKey(uid)))
+  } catch {
+    return new Map()
+  }
+}
+
+function keepOwed(uid: string, box: Outbox) {
+  try {
+    if (box.size) localStorage.setItem(outboxKey(uid), packOutbox(box))
+    else localStorage.removeItem(outboxKey(uid))
+  } catch {
+    /* full or blocked: what is owed is still in memory for this visit */
+  }
+}
+
+const snapshot = () => new Map(localRows().map((r) => [slot(r.kind, r.name), r]))
 
 /**
  * ⚠️ `refused` NAMES THE ITEMS, which is the half this used to drop. A count of failures tells
@@ -184,8 +244,12 @@ export type SyncResult = {
  * ⚠️ WHICH BODIES IS `bodiesWanted`, and it lives in kept.ts where a test can ask it. It has
  * the one exception in it that makes the rest safe: a merged kind is always fetched, because for
  * a park record both copies are real and "I have one of those" settles nothing.
+ *
+ * ⚠️ `uid` IS WHOSE OUTBOX TO SEND. What this browser still owes the account — a delete or an
+ * edit that never landed — is sent here, so closing the tab does not lose it. It is owed to the
+ * account that made it and is never sent for anybody else who signs in on this machine.
  */
-export async function syncLibrary(): Promise<SyncResult> {
+export async function syncLibrary(uid: string): Promise<SyncResult> {
   const supabase = getSupabaseClient()
   const { data: index, error } = await supabase.rpc('library_index')
   /* ⚠️ THE REASON TRAVELS. This returned `null`, and App.tsx did not look at the result at all,
@@ -200,12 +264,21 @@ export async function syncLibrary(): Promise<SyncResult> {
       why: error.message || 'could not read the account library',
     }
 
+  const owed = owedTo(uid)
+  const hereRows = snapshot()
+  const { send: owedNow, stale } = due(owed, hereRows)
+  for (const k of stale) owed.delete(k)
+  /* ⚠️ DELETED HERE AND NOT YET GONE THERE. The account still lists these, and pulling them back
+     is the exact bug the outbox is for — whether or not the drop below lands this time. */
+  const deleted = new Set(owedNow.filter((s) => s.op === 'drop').map((s) => s.key))
+
   const named = (Array.isArray(index) ? index : [])
     .map((v) => v as { kind?: unknown; name?: unknown })
     .filter((v): v is { kind: Kind; name: string } => isKind(v.kind) && typeof v.name === 'string')
+    .filter((v) => !deleted.has(slot(v.kind, v.name)))
 
   /* what is here already decides what is worth asking for */
-  const hereKeys = new Set(localRows().map((r) => slot(r.kind, r.name)))
+  const hereKeys = new Set(hereRows.keys())
   const want = bodiesWanted(named, hereKeys, (k) => merges(k as Kind))
 
   let bodies: unknown = []
@@ -237,6 +310,14 @@ export async function syncLibrary(): Promise<SyncResult> {
 
   const out: SyncResult = { pulled: 0, pushed: 0, failed: 0, refused: [] }
 
+  /* the owed deletes first: a delete makes room, and the account refuses an add when it is full */
+  for (const s of owedNow) {
+    if (s.op !== 'drop') continue
+    const r = await drop(s.kind, s.name)
+    if (r.outcome === 'sent') owed.delete(s.key)
+    else out.failed++
+  }
+
   const here = hereKeys
   for (const r of remote) {
     /* ⚠️ A merged kind is never skipped for being present. "I already have one" is the whole
@@ -252,21 +333,33 @@ export async function syncLibrary(): Promise<SyncResult> {
      back exactly the version we just improved on. */
   const theirs = new Map(remote.map((r) => [slot(r.kind, r.name), r]))
   for (const r of localRows()) {
-    /* ⚠️ asked of the INDEX, so a body we never fetched still counts as present — see above */
-    const theyHaveIt = theirKeys.has(slot(r.kind, r.name))
-    const had = theirs.get(slot(r.kind, r.name))
-    if (theyHaveIt) {
-      if (!merges(r.kind)) continue
+    const k = slot(r.kind, r.name)
+    const had = theirs.get(k)
+    const owedEdit = owed.get(k)?.op === 'put'
+    const push = shouldPush({
+      /* ⚠️ asked of the INDEX, so a body we never fetched still counts as present — see above */
+      theyHaveIt: theirKeys.has(k),
+      /* ⚠️ an edit that never landed: the account has this NAME, and an older body under it */
+      owed: owedEdit,
+      merged: merges(r.kind),
       /* the merge has run, so ours is theirs-or-better; only send it if it is actually better */
-      if (had && JSON.stringify(had.body) === JSON.stringify(r.body)) continue
+      same: !!had && JSON.stringify(had.body) === JSON.stringify(r.body),
+    })
+    if (!push) {
+      /* already level, so nothing is owed for it any more */
+      if (owedEdit) owed.delete(k)
+      continue
     }
-    const bad = await put(r)
-    if (!bad) out.pushed++
-    else {
+    const res = await put(r)
+    if (res.outcome === 'sent') {
+      out.pushed++
+      owed.delete(k)
+    } else {
       out.failed++
-      out.refused.push({ kind: r.kind, name: r.name, why: bad.why })
+      out.refused.push({ kind: r.kind, name: r.name, why: res.why })
     }
   }
+  keepOwed(uid, owed)
   return out
 }
 
@@ -281,47 +374,142 @@ export async function syncLibrary(): Promise<SyncResult> {
  * ⚠️ A DELETE TRAVELS, because while this is running the difference between "gone from here" and
  * "never here" is known: it was in the previous snapshot. That is the same fact sync cannot
  * establish on a cold start, which is why sync never deletes and this does.
+ *
+ * ⚠️ AND IT IS NOT SENT UNTIL THE ACCOUNT SAYS SO. This moved its snapshot on whether or not a
+ * put or a drop had landed, so a failed delete was never sent again — and the next load pulled
+ * the item back — and a failed edit was never sent again either. A change is now written into
+ * the outbox (outbox.ts) the moment it is seen and leaves only when the account confirms it; until
+ * then it is sent again after a bounded backoff, on the next change, when the network comes back,
+ * and by the next load's sync.
+ *
+ * ⚠️ `signedInAs` IS ASKED ON EVERY PASS, because sign-out does not stop this. What is owed is
+ * owed to the account that was signed in when the change happened, and while nobody is signed
+ * in a change is nobody's to send — which is what happened before, minus the refused requests.
  */
-export function watchLibrary(): () => void {
-  let last = new Map(localRows().map((r) => [slot(r.kind, r.name), r]))
+export function watchLibrary(signedInAs: () => string | null): () => void {
+  let last = snapshot()
   let busy = false
+  /* a change that arrived while a pass was out — it used to be dropped until the next one */
+  let again = false
+  let stopped = false
+  let tries = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  /* this visit's copy of each account's outbox, so a disk that will not take it loses nothing
+     the tab can still send */
+  const boxes = new Map<string, Outbox>()
+  /* what each account refused this visit; asked again when it changes or room is made */
+  const held = new Map<string, Set<string>>()
+
+  /** One look. True when something did not get an answer and is worth asking again soon. */
+  const pass = async (): Promise<boolean> => {
+    const now = snapshot()
+    const who = signedInAs()
+    if (!who) {
+      last = now
+      return false
+    }
+    const noted = noteChanges(boxes.get(who) ?? owedTo(who), last, now)
+    last = now
+    const box = noted.box
+    boxes.set(who, box)
+    const refused = held.get(who) ?? new Set<string>()
+    held.set(who, refused)
+    for (const k of noted.touched) refused.delete(k)
+    /* ⚠️ written down BEFORE anything is sent, so a tab closed mid-send still owes it */
+    keepOwed(who, box)
+
+    const { send, stale } = due(box, now, refused)
+    for (const k of stale) box.delete(k)
+    let failed = false
+    let roomMade = false
+    for (const s of send) {
+      const r = s.op === 'drop' ? await drop(s.kind, s.name) : await put(s.item)
+      const what = s.op === 'drop' ? `${s.kind} "${s.name}"` : `${s.item.kind} "${s.item.name}"`
+      if (r.outcome === 'sent') {
+        box.delete(s.key)
+        if (s.op === 'drop') roomMade = true
+      } else if (r.outcome === 'refused') {
+        /* ⚠️ the watcher cannot show anything — it fires long after any button was pressed —
+           but it can say so where the refusal is at least findable */
+        refused.add(s.key)
+        console.warn(`[library] ${what} was not kept: ${r.why}`)
+      } else {
+        failed = true
+        if (tries === 0)
+          console.warn(`[library] ${what} has not reached your account yet: ${r.why}`)
+      }
+    }
+    keepOwed(who, box)
+    /* a delete that landed may be the room a refused add was waiting for */
+    if (roomMade && refused.size) {
+      refused.clear()
+      again = true
+    }
+    return failed
+  }
 
   const settle = () => {
-    if (busy) return
+    if (stopped) return
+    if (busy) {
+      again = true
+      return
+    }
     busy = true
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
     void (async () => {
+      let failed = false
       try {
-        const now = new Map(localRows().map((r) => [slot(r.kind, r.name), r]))
-        for (const [k, r] of now) {
-          const was = last.get(k)
-          if (!was || JSON.stringify(was.body) !== JSON.stringify(r.body)) {
-            /* ⚠️ the watcher cannot show anything — it fires long after any button was pressed —
-               but it can say so where the refusal is at least findable, which is more than the
-               boolean it replaced did */
-            const bad = await put(r)
-            if (bad) console.warn(`[library] ${r.kind} "${r.name}" was not kept: ${bad.why}`)
-          }
-        }
-        for (const [k, r] of last) {
-          if (now.has(k)) continue
-          await getSupabaseClient().rpc('library_drop', { p_kind: r.kind, p_name: r.name })
-        }
-        last = now
+        do {
+          again = false
+          failed = await pass()
+        } while (again && !stopped)
+      } catch {
+        failed = true
       } finally {
         busy = false
       }
+      if (stopped) return
+      if (!failed) {
+        tries = 0
+        return
+      }
+      /* ⚠️ BOUNDED: when the schedule runs out, what is owed stays written down for the next
+         change, the network coming back, or the next load — never dropped */
+      const wait = retryDelay(tries)
+      if (wait == null) return
+      tries++
+      timer = setTimeout(() => {
+        timer = null
+        settle()
+      }, wait)
     })()
   }
+
+  /* a person doing something, or the network coming back, starts the schedule again */
+  const fresh = () => {
+    tries = 0
+    settle()
+  }
+  const online = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
+  if (online) window.addEventListener('online', fresh)
 
   /* ⚠️ The park too, or a record set in this session would sit here until the next sign-in.
      A win only ever improves the document, so the push half is all that ever fires for it —
      the drop half needs the slot to disappear, which takes deleting every record you have. */
   const offs = [
-    subscribeLibrary(settle),
-    subscribeGallery(settle),
-    subscribePresets(settle),
-    subscribePets(settle),
-    subscribeWins(settle),
+    subscribeLibrary(fresh),
+    subscribeGallery(fresh),
+    subscribePresets(fresh),
+    subscribePets(fresh),
+    subscribeWins(fresh),
   ]
-  return () => offs.forEach((off) => off())
+  return () => {
+    stopped = true
+    if (timer) clearTimeout(timer)
+    if (online) window.removeEventListener('online', fresh)
+    offs.forEach((off) => off())
+  }
 }
