@@ -16,3 +16,9 @@
 # and `applied.md5` is the other half of that same check — a record of those hashes.
 *.md5 text eol=lf
 *.html text eol=lf
+# .json was the one text type left to `* text=auto`, so on Windows with core.autocrlf=true it
+# checked out CRLF — and src/lab/social/__fixtures__/fourrow-wire.json is a recording that
+# roomWire.test.ts compares BYTE FOR BYTE (imported ?raw). Measured 27 Nov 2026: 36 carriage
+# returns on disk, 0 in the blob, and the pre-push suite failing on every Windows checkout
+# while CI on Linux passed. A fixture is bytes, so it has to arrive as the bytes it was.
+*.json text eol=lf
