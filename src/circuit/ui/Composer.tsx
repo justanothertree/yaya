@@ -14,8 +14,9 @@ import { useKeptDraft } from '../../drafts/useKeptDraft'
  * ⚠️ AND IT OUTLIVES A RELOAD when it is given `keep`: what is typed and not yet sent is kept on
  * this device for the person signed in, put back into the box on the way in, and gone once it is
  * sent — the protection Paint got after a minion was lost to a pull-to-refresh (useKeptDraft).
- * One per conversation and per box, which is the rule above: the call's box and the thread's box
- * for the same room keep different drafts.
+ * One per conversation. The call's box keeps none: it sends to whichever room or call you are in at
+ * the moment, so one key would bring one call's words back in the next, to other people (found in
+ * review), and a key per call is not something it can know.
  */
 /** the box's own limit, and the bound on a kept draft read back */
 const MAX_MESSAGE = 2000
@@ -34,7 +35,7 @@ export function Composer({
   keep?: string
 }) {
   const [draft, setDraft] = useState('')
-  useKeptDraft({
+  const kept = useKeptDraft({
     kind: 'chat',
     scope: keep,
     value: draft,
@@ -55,7 +56,13 @@ export function Composer({
     const problem = await onSend(text)
     setSending(false)
     if (problem) setErr(problem)
-    else setDraft('')
+    else {
+      setDraft('')
+      /* ⚠️ AND ITS KEPT COPY, NOW — not by the emptied box, which never renders if the box was
+         closed while the message was in flight. Its unmount had already written the words down,
+         so without this they came back into the box after they were sent (found in review). */
+      kept.markSaved()
+    }
   }
 
   return (

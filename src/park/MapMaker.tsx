@@ -1264,6 +1264,10 @@ export function MapMaker() {
    */
   const keep = () => {
     if (!doc) return setSaid('Put something on it first.')
+    /* ⚠️ THE MAP AS IT WAS WHEN KEEP WAS PRESSED, which is what both copies store. The account
+       answers after a round trip, and anything placed meanwhile is NOT in either copy — so that,
+       not the board when the answer comes, is what markSaved is told (found in review). */
+    const saving = doc
     const local = saveMap(doc)
     void (async () => {
       /**
@@ -1275,7 +1279,7 @@ export function MapMaker() {
        */
       const yes = signedInNow ?? (await signedIn())
       const cloud = yes ? await saveMapToAccount(doc) : null
-      if (cloud?.ok || local) wip.markSaved()
+      if (cloud?.ok || local) wip.markSaved(saving)
       if (cloud?.ok) {
         /* ⚠️ it is safe at this point whatever the browser did, so the sentence says the thing
            that is true rather than the thing that happened most recently */
@@ -1308,16 +1312,26 @@ export function MapMaker() {
 
   const drawing = mode === 'draw'
 
-  return (
-    <section className="card map-maker">
-      {wip.offered && (
+  /**
+   * ⚠️ ONLY THE QUESTION UNTIL IT IS ANSWERED. While a draft is offered nothing new is kept — or
+   * the empty board would write over the thing being offered — so a maker left usable under the
+   * card let somebody build a map no reload would bring back, and then Bring it back replaced it
+   * without asking (found in review). One press either way, and the maker is back.
+   */
+  if (wip.offered)
+    return (
+      <section className="card map-maker">
         <DraftOffer
           draft={wip.offered}
           what="map"
           onBringBack={wip.bringBack}
           onStartFresh={wip.startFresh}
         />
-      )}
+      </section>
+    )
+
+  return (
+    <section className="card map-maker">
       <div className="map-bar">
         <label className="sr-only" htmlFor="map-name">
           What to call it
@@ -1875,21 +1889,19 @@ export function MapMaker() {
                 disabled={pulling === r.name}
                 title={`Fetch "${r.name}" and work on it`}
                 onClick={() => {
+                  /* the same door as a kept map: it replaces the board, so it asks first */
+                  if (
+                    wip.unsaved &&
+                    !window.confirm(`Open "${r.name}" instead of the map you have not kept?`)
+                  )
+                    return
                   setPulling(r.name)
                   void fetchMyMap(r.name).then((d) => {
                     setPulling(null)
                     if (!d) return setSaid(`Could not fetch "${r.name}".`)
-                    setName(d.name)
-                    setPalette(d.palette)
-                    setPieces(d.pieces)
-                    setGround(d.ground?.strokes ?? [])
-                    setSpawn(d.spawn)
-                    cells.current = readZone(d.block) ?? blankZone()
-                    setBlockTick((n) => n + 1)
-                    setDoors(d.doors)
-                    /* a different map is a different history — see the note on the list above */
-                    setHist(emptyHistory<Step>())
-                    setErasing(false)
+                    openDoc(d)
+                    /* a kept map, so not unsaved until it is changed */
+                    wip.markSaved()
                     setSaid(`Working on "${d.name}".`)
                   })
                 }}

@@ -93,14 +93,16 @@ export function JournalList({
    * once saved — write() empties the box, which is what drops it.
    */
   const writing = useMemo<JournalDraft>(() => ({ draft, about }), [draft, about])
-  useKeptDraft<JournalDraft>({
+  /* ✎ Note asked for a day on the way in — that day wins over the draft's (found in review) */
+  const askedDay = useRef(false)
+  const kept = useKeptDraft<JournalDraft>({
     kind: 'journal',
     value: writing,
     isEmpty: (v) => !v.draft.trim(),
     parse: readJournalDraft,
     restore: (v) => {
       setDraft(v.draft)
-      setAbout(v.about)
+      if (!askedDay.current) setAbout(v.about)
     },
   })
 
@@ -131,6 +133,7 @@ export function JournalList({
 
   useEffect(() => {
     if (!writeNow) return
+    askedDay.current = true
     setAbout(writeDay && writeDay !== localISO(new Date()) ? writeDay : null)
     box.current?.focus()
     /* ⚠️ ON THE BUMP ALONE: `writeDay` arrives with it, and a later change to it on its own is the
@@ -166,6 +169,8 @@ export function JournalList({
     setSaid(null)
     setAbout(null)
     setMine((n) => n + 1)
+    /* its kept copy now, in case the list closed while the note was being saved — see Composer */
+    kept.markSaved()
   }
 
   /* ⚠️ an emptied note is deleted — chronicle_note_edit's own rule, and the hint says so */

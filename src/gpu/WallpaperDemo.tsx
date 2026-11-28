@@ -178,7 +178,8 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
     }
     setKept(next)
     setNote('Kept in this browser.')
-    wip.markSaved()
+    /* what was written, not what is on screen when this runs — see markSaved */
+    wip.markSaved(drawing)
   }
   /** the wall as a 1024-pixel PNG: drawn offscreen by the GPU and read back. ⚠️ A readback can fail
    *  (a GPU that was taken away), and a button that silently does nothing reads as broken — so it
@@ -210,16 +211,25 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
   }
 
   const truth = byId(quiz.group)
-  return (
-    <div className="lab-keys" tabIndex={-1} aria-label="Wallpaper">
-      {wip.offered && (
+  /**
+   * ⚠️ ONLY THE QUESTION UNTIL IT IS ANSWERED. While a draft is offered nothing new is kept — or
+   * the empty wall would write over the thing being offered — so a wall left drawable under the
+   * card let somebody draw a pattern no reload would bring back, and then Bring it back replaced
+   * it without asking (found in review). One press either way, and the toy is back.
+   */
+  if (wip.offered)
+    return (
+      <div className="lab-keys" aria-label="Wallpaper">
         <DraftOffer
           draft={wip.offered}
           what="pattern"
           onBringBack={wip.bringBack}
           onStartFresh={wip.startFresh}
         />
-      )}
+      </div>
+    )
+  return (
+    <div className="lab-keys" tabIndex={-1} aria-label="Wallpaper">
       <LabStage
         label={
           mode === 'quiz'
@@ -402,7 +412,11 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
                 value=""
                 onChange={(e) => {
                   const k = kept[Number(e.target.value)]
-                  if (k) {
+                  if (
+                    k &&
+                    (!wip.unsaved ||
+                      window.confirm('Open that one instead of the pattern you have not kept?'))
+                  ) {
                     change(k)
                     /* a kept one, so not unsaved until it is changed */
                     wip.markSaved()

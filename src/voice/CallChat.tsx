@@ -66,9 +66,6 @@ export function CallChat({
       )}
       <Composer
         autoFocus={focusBox}
-        /* one kept draft for this box, whichever way it is sending — the box itself keeps its
-           words when the destination changes, so its draft does too */
-        keep="call"
         placeholder={inRoom ? `Message ${roomName}` : 'Message the call'}
         onSend={(text) => (inRoom && roomId ? sendToThread(roomId, text) : sendCallChat(text))}
       />
