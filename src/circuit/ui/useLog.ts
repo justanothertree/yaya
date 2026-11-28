@@ -53,7 +53,15 @@ export function useLog({
   // Can the signed-in user edit this person? Signed out = local demo sandbox (always editable);
   // signed in = only your OWN Circuit, or admin. Mirrors the server RLS and surfaces it so edits
   // to someone else's board aren't silently dropped.
-  const canEdit = uid == null || isAdmin || person?.ownerUserId === uid
+  const mine = uid == null || isAdmin || person?.ownerUserId === uid
+  /**
+   * ⚠️ AND ONLY ON A BOARD THAT LOADED. Every edit here autosaves the day as the board has it, with
+   * the typed cells in — so on days that did not load, typing overwrote the row's other cells and its
+   * picture, and clearing a day whose sessions did not load deleted it (the 27 Nov 2026 audit). The
+   * adapter refuses those writes as well; this stops them being typed at all. `mine` stays separate
+   * because the Read-only notice is about whose day it is, which a failed load does not change.
+   */
+  const canEdit = mine && !state.loadFailed?.length
   const existing = useMemo(
     () => state.logs.find((l) => l.personId === pid && l.date === date),
     [state.logs, pid, date],
@@ -255,6 +263,7 @@ export function useLog({
     authReady,
     pid,
     person,
+    mine,
     canEdit,
     existing,
     imported,

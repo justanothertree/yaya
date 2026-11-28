@@ -37,6 +37,7 @@ export function Log({
     authReady,
     pid,
     person,
+    mine,
     canEdit,
     existing,
     imported,
@@ -84,7 +85,7 @@ export function Log({
         })}
       </div>
 
-      {authReady && !canEdit && person && (
+      {authReady && !mine && person && (
         <div
           className="card"
           style={{
@@ -247,9 +248,10 @@ export function Log({
          * offering something that would answer "no such workout".
          *
          * ⚠️ AND `uid != null` ON TOP OF `canEdit`, WHICH IS NOT REDUNDANT. canEdit is
-         * `uid == null || isAdmin || owner` — signed out counts as allowed, deliberately, because
-         * the local demo board is anybody's to play with. A photograph is not like the numbers: it
-         * goes to an ACCOUNT's gallery and through an RPC that refuses `auth.uid() is null`. Seen
+         * `uid == null || isAdmin || owner`, on a board that loaded — signed out counts as
+         * allowed, deliberately, because the local demo board is anybody's to play with. A
+         * photograph is not like the numbers: it goes to an ACCOUNT's gallery and through an RPC
+         * that refuses `auth.uid() is null`. Seen
          * in the pane on the demo board, which rendered "+ Photo" happily — a file picker and an
          * upload that could only ever answer "not authenticated".
          */}

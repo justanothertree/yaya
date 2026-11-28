@@ -1,10 +1,11 @@
 // Full-richness movie rating sheet: score + vibes + sentiment + rewatch + recommend
 // + tip-of-the-cap + tags + hot-take, for one person on one movie. Writes via the store.
 import { useMemo, useState } from 'react'
-import { circuitStore } from '../store'
+import { circuitStore, useCircuit } from '../store'
 import { ratingId } from '../types'
 import type { Movie, MovieReview } from '../types'
 import { Modal } from './Modal'
+import { BoardLoad } from './BoardLoad'
 import { AddPicture } from '../../pictures/AddPicture'
 import { useSeenPicture } from '../../pictures/seen'
 import { useBigPicture } from '../../pictures/useBigPicture'
@@ -76,6 +77,13 @@ export function MovieRate({
   onClose: () => void
 }) {
   const existing = movie.ratings[personId]
+  /**
+   * ⚠️ SAVE WAITS FOR A BOARD THAT LOADED. This editor opens on the rating the board holds and Save
+   * writes the whole of it back — or deletes it, when it looks empty — so opened on ratings that did
+   * not load, it erased a review and Save-with-no-change deleted the rating (the 27 Nov 2026 audit).
+   * The adapter refuses it too; this is the half people can see. See boardLoad.ts.
+   */
+  const unloaded = !!useCircuit().loadFailed?.length
   const isMovie = (movie.kind ?? 'movie') === 'movie'
   const rv = existing?.review ?? {}
   const [score, setScore] = useState<number | null>(existing?.score ?? null)
@@ -126,6 +134,7 @@ export function MovieRate({
     })
 
   const save = () => {
+    if (unloaded) return
     const review: MovieReview = { sentiment, rewatch, rec, tips, tags, note: note.trim() }
     const reviewEmpty =
       sentiment == null &&
@@ -187,6 +196,7 @@ export function MovieRate({
           <button
             className="btn"
             onClick={save}
+            disabled={unloaded}
             style={{
               background: 'var(--accent, #7c6af7)',
               color: 'var(--btn-text)',
@@ -198,6 +208,8 @@ export function MovieRate({
         </>
       }
     >
+      {/* why Save is off, said where Save is — the room's own notice is behind this sheet */}
+      <BoardLoad what="the ratings" />
       {/* score */}
       <div style={sectionLabel}>Score</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>

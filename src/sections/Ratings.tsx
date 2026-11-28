@@ -7,6 +7,7 @@ import { useCircuit } from '../circuit/store'
 import { Movies } from '../circuit/ui/Movies'
 import { Watchlist } from '../circuit/ui/Watchlist'
 import { Toast } from '../circuit/ui/Toast'
+import { BoardLoad } from '../circuit/ui/BoardLoad'
 import { useScrollFade } from '../hooks/useScrollFade'
 import { previewMember, PREVIEW_GROUPS } from '../dev/previewMember'
 
@@ -182,8 +183,11 @@ export function Ratings({ authed = false }: { authed?: boolean }) {
       </div>
 
       <div className="cz-pane" key={tab}>
-        {tab === 'reviews' && <Movies viewGroup={activeGroup} />}
-        {tab === 'watchlist' && <Watchlist />}
+        {/* the reviews and the pool are the Circuit's board too, loaded in the same go */}
+        <BoardLoad what="the ratings">
+          {tab === 'reviews' && <Movies viewGroup={activeGroup} />}
+          {tab === 'watchlist' && <Watchlist />}
+        </BoardLoad>
       </div>
 
       <Toast />
